@@ -1,4 +1,4 @@
-import { app, BrowserWindow, screen } from 'electron';
+import { app, BrowserWindow, screen, shell } from 'electron';
 import * as path from 'node:path';
 import { registerIpcHandlers } from './ipc';
 import { autoStartOpencode, stopOpencodeServer } from './backend/opencode';
@@ -37,6 +37,15 @@ function createWindow(): void {
 
   win.once('ready-to-show', () => win.show());
 
+  // 拦截 window.open / target=_blank：任何在开发助手等模块触发的"新窗口打开"都改为在原窗口内处理。
+  // 外部 http(s) 链接交给系统浏览器，其余一律拒绝新开窗口（保证单窗口应用形态）。
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) {
+      void shell.openExternal(url);
+    }
+    return { action: 'deny' };
+  });
+
   const devServerUrl = process.env.VITE_DEV_SERVER_URL;
   if (devServerUrl) {
     void win.loadURL(devServerUrl);
@@ -57,12 +66,16 @@ app.whenReady().then(() => {
   void autoStartOpencode();
 
   app.on('activate', () => {
+    // 应用已配置为关闭即完全退出，这里仅在极端情况下（窗口被系统销毁但进程存活）
+    // 补建窗口。普通关闭流程不会走到这里。
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+  // 点击标题栏关闭按钮后完全退出整个应用（含 macOS），
+  // 退出前 before-quit 会优雅终止 opencode / compile / LSP 进程。
+  app.quit();
 });
 
 // 退出时优雅终止 opencode、compile server 与 LSP 桥（避免留下孤儿进程/占用端口）
