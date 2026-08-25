@@ -393,25 +393,8 @@ const AppContent: React.FC = () => {
   const clearAllLogs = useCallback(() => {}, []);
 
   useEffect(() => {
-    const initWindowSize = async () => {
-      try {
-        const { getCurrentWindow } = await import('@tauri-apps/api/window');
-        const { LogicalSize } = await import('@tauri-apps/api/dpi');
-        const appWindow = getCurrentWindow();
-        const width = Math.round(window.screen.width * 0.7);
-        const height = Math.round(window.screen.height * 0.7);
-        await appWindow.setSize(new LogicalSize(width, height));
-        await appWindow.center();
-        // 让窗口在启动后获得焦点。
-        // 按钮需要点击两次的问题由窗口配置 acceptFirstMouse=true 原生解决
-        // （macOS 边框窗口首次点击不再只用于激活窗口）。
-        try {
-          await appWindow.setFocus();
-        } catch { /* ignore */ }
-      } catch {
-      }
-    };
-    initWindowSize();
+    // 窗口初始尺寸/居中/聚焦已由主进程 createWindow 原生实现（工作区 70%），
+    // 不再通过渲染层 Tauri 兼容垫片设置。
     disableAutoCapitalize();
   }, []);
 

@@ -3,38 +3,9 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { copyFileSync, mkdirSync, existsSync, readdirSync, statSync, readFile as fsReadFile } from 'node:fs';
+import { readFile as fsReadFile } from 'node:fs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-
-/** 将 monaco-editor 的 min/vs 目录复制到 public/monaco/vs，使 Monaco 从本地加载（与 Tauri 版一致） */
-function monacoStaticPlugin() {
-  const copy = (src: string, dest: string) => {
-    const srcStat = statSync(src);
-    if (srcStat.isDirectory()) {
-      if (!existsSync(dest)) mkdirSync(dest, { recursive: true });
-      for (const f of readdirSync(src)) copy(resolve(src, f), resolve(dest, f));
-    } else {
-      copyFileSync(src, dest);
-    }
-  };
-
-  return {
-    name: 'monaco-static-copy',
-    async buildStart() {
-      const src = resolve(__dirname, 'node_modules/monaco-editor/min/vs');
-      if (!existsSync(src)) return;
-      const publicDest = resolve(__dirname, 'public/monaco/vs');
-      copy(src, publicDest);
-    },
-    async closeBundle() {
-      const src = resolve(__dirname, 'node_modules/monaco-editor/min/vs');
-      if (!existsSync(src)) return;
-      const distDest = resolve(__dirname, 'dist/monaco/vs');
-      copy(src, distDest);
-    },
-  };
-}
 
 // dev-only：为编辑器测试页提供本地文件读取通道（与 Tauri 版相同）
 function devLocalFileReadPlugin() {
@@ -74,7 +45,7 @@ const isProduction = process.env.NODE_ENV === 'production' || process.argv.inclu
 export default defineConfig({
   // base: './' 是关键——生产构建由 Electron 通过 file:// 加载，必须用相对路径
   base: './',
-  plugins: [react(), monacoStaticPlugin(), devLocalFileReadPlugin()],
+  plugins: [react(), devLocalFileReadPlugin()],
 
   // === Tauri 兼容垫片：把所有 @tauri-apps/* 导入映射到本地 compat/ 实现 ===
   // vscode 别名：与原工程一致，指向 @codingame/monaco-vscode-extension-api
@@ -85,13 +56,12 @@ export default defineConfig({
       '@tauri-apps/api/event': resolve(__dirname, 'compat/tauri-event.ts'),
       '@tauri-apps/api/path': resolve(__dirname, 'compat/tauri-path.ts'),
       '@tauri-apps/api/app': resolve(__dirname, 'compat/tauri-app.ts'),
-      '@tauri-apps/api/window': resolve(__dirname, 'compat/tauri-window.ts'),
       '@tauri-apps/plugin-store': resolve(__dirname, 'compat/tauri-plugin-store.ts'),
       '@tauri-apps/plugin-fs': resolve(__dirname, 'compat/tauri-plugin-fs.ts'),
       '@tauri-apps/plugin-shell': resolve(__dirname, 'compat/tauri-plugin-shell.ts'),
       '@tauri-apps/plugin-http': resolve(__dirname, 'compat/tauri-plugin-http.ts'),
     },
-    dedupe: ['react', 'react-dom', 'monaco-editor', '@codingame/monaco-vscode-api'],
+    dedupe: ['react', 'react-dom', '@codingame/monaco-vscode-api'],
   },
 
   // === 关键：排除所有 @codingame/monaco-vscode-* 包出 Vite 预打包 ===
@@ -100,7 +70,6 @@ export default defineConfig({
   // 必须【全部】排除，保持唯一 DI 容器（与原工程配置一致）。
   optimizeDeps: {
     exclude: [
-      'monaco-editor',
       '@codingame/monaco-vscode-api',
       '@codingame/monaco-vscode-editor-api',
       '@codingame/monaco-vscode-extension-api',

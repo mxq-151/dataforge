@@ -12,8 +12,6 @@ interface DataforgeBridge {
   emit(event: string, payload?: unknown): void;
   /** 用户主目录 */
   homeDir(): Promise<string>;
-  /** 窗口控制（无边框 TitleBar 用） */
-  win(op: 'minimize' | 'toggleMaximize' | 'close'): Promise<void>;
   /** 文件系统操作（对应 @tauri-apps/plugin-fs） */
   fs(op: string, args: Record<string, unknown>): Promise<unknown>;
   /** 命令执行（对应 @tauri-apps/plugin-shell Command.execute） */

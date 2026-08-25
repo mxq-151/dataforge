@@ -22,9 +22,6 @@ const api = {
 
   homeDir: (): Promise<string> => ipcRenderer.invoke('df:homeDir'),
 
-  win: (op: 'minimize' | 'toggleMaximize' | 'close'): Promise<void> =>
-    ipcRenderer.invoke('df:win', op),
-
   fs: (op: string, args: Record<string, unknown>): Promise<unknown> =>
     ipcRenderer.invoke('df:fs', { op, args }),
 

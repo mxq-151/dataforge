@@ -251,9 +251,47 @@ export function resolveOpencodeBin(): string | null {
       }
     }
   }
+  // 开发模式：process.resourcesPath 指向 Electron 框架自身的 Resources，不含本项目二进制；
+  // 改从项目 resources/binaries/ 查找（命名沿用 Tauri 规范，如 opencode-aarch64-apple-darwin）。
+  if (!app.isPackaged) {
+    const devBinDir = path.join(app.getAppPath(), 'resources', 'binaries');
+    const devBin = resolveBinFromDir(devBinDir, name);
+    if (devBin) return devBin;
+  }
   // dev 兜底：PATH 中的 opencode
   const onPath = findOnPath(name);
   if (onPath) return onPath;
+  return null;
+}
+
+/** 在目录中查找 opencode 二进制：优先标准名，其次当前平台 triple 命名的构建产物。 */
+function resolveBinFromDir(dir: string, name: string): string | null {
+  let files: string[];
+  try {
+    files = fs.readdirSync(dir).filter((f) => f === name || f.startsWith(`${name}-`));
+  } catch {
+    return null;
+  }
+  const triples: Record<string, string> = {
+    'darwin-arm64': `${name}-aarch64-apple-darwin`,
+    'darwin-x64': `${name}-x86_64-apple-darwin`,
+    'linux-arm64': `${name}-aarch64-unknown-linux-gnu`,
+    'linux-x64': `${name}-x86_64-unknown-linux-gnu`,
+    'win32-x64': `${name}-x86_64-pc-windows-msvc.exe`,
+  };
+  const triple = triples[`${process.platform}-${process.arch}`];
+  const preferred = [name, triple].filter(Boolean);
+  for (const p of [...preferred, ...files]) {
+    if (!files.includes(p)) continue;
+    const full = path.join(dir, p);
+    if (fs.statSync(full).isFile()) {
+      try {
+        return fs.realpathSync(full);
+      } catch {
+        return full;
+      }
+    }
+  }
   return null;
 }
 

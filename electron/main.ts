@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, screen } from 'electron';
 import * as path from 'node:path';
 import { registerIpcHandlers } from './ipc';
 import { autoStartOpencode, stopOpencodeServer } from './backend/opencode';
@@ -11,16 +11,22 @@ const PRELOAD_PATH = path.join(__dirname, 'preload.js');
 const RENDERER_INDEX = path.join(__dirname, '../dist/index.html');
 
 function createWindow(): void {
+  // 初始尺寸为工作区 70%（与渲染层旧逻辑 initWindowSize 一致，改由主进程原生实现）
+  const { width: sw, height: sh } = screen.getPrimaryDisplay().workAreaSize;
   const win = new BrowserWindow({
-    width: 1344,
-    height: 756,
+    width: Math.round(sw * 0.7),
+    height: Math.round(sh * 0.7),
     minWidth: 960,
     minHeight: 640,
     show: false,
     title: 'DataForge',
-    // 与 Tauri 版一致：无边框窗口 + 应用内自定义 TitleBar
-    // （拖拽由 index.html 中的 -webkit-app-region 垫片 CSS 提供）
-    frame: false,
+    // 原生标题栏方案：macOS 用 hiddenInset 保留系统红绿灯（hover 效果/双击缩放等原生行为
+    // 全部可用），Windows/Linux 用 titleBarOverlay 渲染系统控制按钮；仅标题与拖拽区域
+    // 由应用内 TitleBar 组件提供，不再自绘按钮。
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
+    ...(process.platform !== 'darwin'
+      ? { titleBarOverlay: { color: '#1f1f1f', symbolColor: '#cccccc', height: 32 } }
+      : {}),
     webPreferences: {
       preload: PRELOAD_PATH,
       contextIsolation: true,

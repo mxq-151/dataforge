@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, ipcMain } from 'electron';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as fsp from 'node:fs/promises';
@@ -189,23 +189,6 @@ export function registerIpcHandlers(): void {
   });
 
   ipcMain.handle('df:homeDir', () => app.getPath('home'));
-
-  ipcMain.handle('df:win', (e, op: string) => {
-    const win = BrowserWindow.fromWebContents(e.sender);
-    if (!win) return;
-    switch (op) {
-      case 'minimize':
-        win.minimize();
-        break;
-      case 'toggleMaximize':
-        if (win.isMaximized()) win.unmaximize();
-        else win.maximize();
-        break;
-      case 'close':
-        win.close();
-        break;
-    }
-  });
 
   ipcMain.handle('df:fs', (_e, req: FsRequest) => handleFs(req));
 
