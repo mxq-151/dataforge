@@ -375,12 +375,6 @@ function createNavigationMiddleware(languageId: LspLanguageId): Middleware {
   const resultCache = new Map<string, { t: number; result: any }>();
   const RESULT_TTL = 60_000;
 
-  // hover 结果短缓存：仅缓存「完整」结果。相同位置 60s 内再次 hover 直接返回缓存的完整
-  // 结果，既避免同一符号反复触发"同步重试稳定化"逻辑，也保证同一类定义提示内容一致。
-  // 不完整结果会被丢弃（不会缓存/命中），Metals 温热后即返回完整内容。
-  const hoverResultCache = new Map<string, { t: number; result: any; complete?: boolean }>();
-  const HOVER_RESULT_TTL = 60_000;
-
   const isReadonlyResult = (result: any): boolean => {
     const items = Array.isArray(result) ? result : [result];
     return items.some((loc: any) => {
@@ -460,29 +454,16 @@ function createNavigationMiddleware(languageId: LspLanguageId): Middleware {
     // 太短——文件刚打开 ~2s 内 hover 时冷启动还没完成，重试就结束，导致"打开文件 2s 内
     // hover 简单、5s 后 hover 完整"的抖动。改进点：
     //   1) 退避拉长并自适应：内容仍在增长就继续等，拿到完整结果或连续两次无增长即提前
-    //      结束，普通已温符号仍零额外延迟，冷符号最多多等 ~6s（且 60s 缓存只发生一次）；
+    //      结束，普通已温符号仍零额外延迟，冷符号最多多等 ~6s；
     //   2) 不再因 token 取消而中断重试——鼠标移动/快速重复悬停不会把稳定化打回从零开始，
     //      避免永远命中冷窗口拿到不完整内容。
-    // 同时做 60s 短期缓存：相同位置再次 hover 直接返回缓存的完整结果，零延迟。
+    // 不做结果缓存：每次 hover 都实时向 Metals 请求（Metals 温热后转手返回完整内容，
+    // 零额外延迟），保证提示始终与服务端最新状态一致。
     provideHover: languageId === 'scala'
       ? async (document, position, token, next) => {
-          const docKey = document?.uri
-            ? (typeof document.uri === 'string' ? document.uri : document.uri.toString?.() ?? '')
-            : '';
-          const key = `hover|${docKey}#${position.line}:${position.character}`;
-
-          // 缓存命中：仅当缓存的是「完整」结果时直接返回（同为完整内容，保证一致 + 零延迟）。
-          // 若缓存的是「不完整」结果（首次冷窗口稳定化后仍未拿到文档）则不直接返回，
-          // 避免把陈旧的部分内容 60s 内反复展示给用户——此时仍走一次稳定化，
-          // Metals 温热后即可返回完整内容，消除"同一类定义缓存期间提示偏短、过期后变长"的抖变。
-          const cached = hoverResultCache.get(key);
-          if (cached && cached.complete && Date.now() - cached.t < HOVER_RESULT_TTL) {
-            return cached.result;
-          }
-
           // 同步重试稳定化：拿到内容后判断是否完整，不完整则按递增退避重试。
           // 完整性判定用 hoverIsComplete（要求 长度>=60 且含换行，避免把仅长类型签名判为完整），
-          // 否则冷窗口的长签名会被当成最终结果缓存固定。
+          // 否则冷窗口的长签名会被当成最终结果固定。
           const delays = [400, 800, 1600, 3200];
 
           // 首次请求；已完整则零额外延迟返回（已温符号），否则进入稳定化重试。
@@ -496,12 +477,6 @@ function createNavigationMiddleware(languageId: LspLanguageId): Middleware {
             delays,
           );
 
-          // 仅缓存「完整」结果：完整结果稳定不变，同一类定义提示内容一致；
-          // 不完整结果不缓存，避免其被当作固定结论在 60s 内反复返回（Metals 温热后
-          // 本该拿到完整内容，却因命中陈旧缓存而提示偏短，过期后才变全）。
-          if (result && hoverIsComplete(result)) {
-            hoverResultCache.set(key, { t: Date.now(), result, complete: true });
-          }
           return result;
         }
       : undefined,
