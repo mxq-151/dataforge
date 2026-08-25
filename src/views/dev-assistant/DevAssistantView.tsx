@@ -393,6 +393,7 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
     runningLogs,
   } = useProgramRunner({
     project,
+    username: user?.username ?? '',
     config,
     projectCwd,
     readFile,

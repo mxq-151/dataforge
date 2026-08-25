@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { generateId, parseFileHeader, validateFileHeader } from '../utils';
 import { validateYarnJobName } from '../utils/schedulerMapping';
 import type { CodeExecutionResult } from '../api/codeExecution';
@@ -10,6 +10,7 @@ import type { EditorAreaHandle } from '../components/editor/EditorArea';
 import type { ProjectInfo } from '../api/devProject';
 import type { OpenCodeConfig } from '../types/opencode-backend';
 import type { DependencyItemLite } from '../utils/dependencyMerge';
+import { buildScopedStorageKey } from '../utils/historyIsolation';
 
 interface SavedConfigLike {
   dependencies: { id: string; name: string; version: string; source?: string }[];
@@ -29,6 +30,8 @@ interface ExecutionRecord {
 
 interface UseProgramRunnerParams {
   project: ProjectInfo;
+  /** 当前登录用户名，用于执行历史按「后端host + 用户 + 项目编码」隔离 */
+  username: string;
   config: OpenCodeConfig;
   projectCwd?: string;
   readFile: (path: string) => Promise<Uint8Array>;
@@ -202,18 +205,18 @@ function serializeHistory(records: ExecutionRecord[]): string {
   return JSON.stringify(trimmed);
 }
 
-function loadHistoryFromStorage(): ExecutionRecord[] {
+function loadHistoryFromStorage(key: string): ExecutionRecord[] {
   try {
-    const json = localStorage.getItem(HISTORY_STORAGE_KEY);
+    const json = localStorage.getItem(key);
     return json ? deserializeHistory(json) : [];
   } catch {
     return [];
   }
 }
 
-function saveHistoryToStorage(records: ExecutionRecord[]): void {
+function saveHistoryToStorage(key: string, records: ExecutionRecord[]): void {
   try {
-    localStorage.setItem(HISTORY_STORAGE_KEY, serializeHistory(records));
+    localStorage.setItem(key, serializeHistory(records));
   } catch {
     // localStorage 不可用时静默忽略
   }
@@ -223,6 +226,7 @@ function saveHistoryToStorage(records: ExecutionRecord[]): void {
 
 export function useProgramRunner({
   project,
+  username,
   config,
   projectCwd,
   readFile,
@@ -249,14 +253,20 @@ export function useProgramRunner({
   // 记录上次合并的任务集 ID，避免 stop 触发两次 notify 导致重复
   const lastMergedTaskSetIdRef = useRef<string | null>(null);
 
-  // 首次加载：从 localStorage 恢复历史
+  // 执行历史按「后端host + 用户 + 项目编码」隔离存储
+  const historyStorageKey = useMemo(
+    () => buildScopedStorageKey(HISTORY_STORAGE_KEY, username, project.projectCode),
+    [username, project.projectCode],
+  );
+  const historyStorageKeyRef = useRef(historyStorageKey);
+  historyStorageKeyRef.current = historyStorageKey;
+
+  // 首次加载 / 切换 host+用户+项目时：从 localStorage 恢复对应作用域的历史
   useEffect(() => {
-    const stored = loadHistoryFromStorage();
-    if (stored.length > 0) {
-      accumulatedHistoryRef.current = stored;
-      setExecutionHistory(stored);
-    }
-  }, []);
+    const stored = loadHistoryFromStorage(historyStorageKeyRef.current);
+    accumulatedHistoryRef.current = stored;
+    setExecutionHistory(stored);
+  }, [historyStorageKey]);
 
   // 初始化服务并订阅状态变更
   useEffect(() => {
@@ -289,7 +299,7 @@ export function useProgramRunner({
         if (currentItems.length > 0 && lastMergedTaskSetIdRef.current !== taskSet.id) {
           lastMergedTaskSetIdRef.current = taskSet.id;
           accumulatedHistoryRef.current = [...currentItems, ...accumulatedHistoryRef.current];
-          saveHistoryToStorage(accumulatedHistoryRef.current);
+          saveHistoryToStorage(historyStorageKeyRef.current, accumulatedHistoryRef.current);
         }
         setExecutionHistory([...accumulatedHistoryRef.current]);
       }

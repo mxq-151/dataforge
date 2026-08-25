@@ -11,6 +11,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../components/Toast';
 import { initFileSystemAPI, getPlatformDefaultWorkspace } from '../../hooks/useFileSystem';
 import { joinPath } from '../../utils/pathUtils';
+import { buildScopedStorageKey } from '../../utils/historyIsolation';
 import { TaskExecutionService, parseSqlStatements } from '../../services/taskExecutionService';
 import type { TaskDefinition, TaskItem } from '../../services/taskExecutionService';
 import { registerAllTextmateLanguages } from '../../services/textmate';
@@ -148,18 +149,18 @@ function serializeHistory(records: ExecutionHistoryItem[]): string {
   return JSON.stringify(records.slice(0, MAX_HISTORY_ITEMS));
 }
 
-function loadHistoryFromStorage(): ExecutionHistoryItem[] {
+function loadHistoryFromStorage(key: string): ExecutionHistoryItem[] {
   try {
-    const json = localStorage.getItem(HISTORY_STORAGE_KEY);
+    const json = localStorage.getItem(key);
     return json ? deserializeHistory(json) : [];
   } catch {
     return [];
   }
 }
 
-function saveHistoryToStorage(records: ExecutionHistoryItem[]): void {
+function saveHistoryToStorage(key: string, records: ExecutionHistoryItem[]): void {
   try {
-    localStorage.setItem(HISTORY_STORAGE_KEY, serializeHistory(records));
+    localStorage.setItem(key, serializeHistory(records));
   } catch {
     // localStorage 不可用时静默忽略
   }
@@ -199,14 +200,20 @@ const DataExploreEditor: React.FC<DataExploreEditorProps> = ({ selectedDataSourc
   const toastRef = useRef(toast);
   toastRef.current = toast;
 
-  // 首次加载：从 localStorage 恢复历史
+  // 执行历史按「后端host + 用户」隔离存储（数据探索为平台级模块，无项目维度）
+  const historyStorageKey = useMemo(
+    () => buildScopedStorageKey(HISTORY_STORAGE_KEY, user?.username || ''),
+    [user?.username],
+  );
+  const historyStorageKeyRef = useRef(historyStorageKey);
+  historyStorageKeyRef.current = historyStorageKey;
+
+  // 首次加载 / 切换 host+用户时：从 localStorage 恢复对应作用域的历史
   useEffect(() => {
-    const stored = loadHistoryFromStorage();
-    if (stored.length > 0) {
-      accumulatedHistoryRef.current = stored;
-      setExecutionHistory(stored);
-    }
-  }, []);
+    const stored = loadHistoryFromStorage(historyStorageKeyRef.current);
+    accumulatedHistoryRef.current = stored;
+    setExecutionHistory(stored);
+  }, [historyStorageKey]);
 
   const { dataSources, getTablesByDataSourceId, updateTableColumns } = useDataSourceCache();
 
@@ -417,7 +424,7 @@ const DataExploreEditor: React.FC<DataExploreEditorProps> = ({ selectedDataSourc
         if (currentItems.length > 0 && lastMergedTaskSetIdRef.current !== taskSet.id) {
           lastMergedTaskSetIdRef.current = taskSet.id;
           accumulatedHistoryRef.current = [...currentItems, ...accumulatedHistoryRef.current];
-          saveHistoryToStorage(accumulatedHistoryRef.current);
+          saveHistoryToStorage(historyStorageKeyRef.current, accumulatedHistoryRef.current);
         }
         setExecutionHistory([...accumulatedHistoryRef.current]);
 
