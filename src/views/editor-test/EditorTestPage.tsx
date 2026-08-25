@@ -6,7 +6,7 @@ import { initFileSystemAPI } from '../../hooks/useFileSystem';
 import './EditorTestPage.css';
 
 /** 默认打开的测试文件 */
-const DEFAULT_FILE_PATH = '/Users/mxq/.dataforge/warehouse/test_project/procs/ads/ads_ad_campaign_report_calc_f.scala';
+const DEFAULT_FILE_PATH = '/Users/mxq/.dataforge/localhost_8082/admin/warehouse/test_project/procs/ads/ads_ad_campaign_report_calc_f.scala';
 
 /** 从文件名推导默认语言，作为 statusInfo / 编辑器语言兜底 */
 const getTabLanguage = (name: string): string => {
