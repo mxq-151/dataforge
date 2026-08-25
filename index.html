@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DataForge</title>
+    <style>
+      /*
+       * Tauri 版 TitleBar 用 data-tauri-drag-region 属性做窗口拖拽；
+       * Electron 不识别该属性，需用 -webkit-app-region 复刻同样的拖拽行为。
+       * 交互元素（按钮/输入框等）必须 no-drag，否则无法点击。
+       */
+      [data-tauri-drag-region] {
+        -webkit-app-region: drag;
+      }
+      [data-tauri-drag-region] button,
+      [data-tauri-drag-region] input,
+      [data-tauri-drag-region] select,
+      [data-tauri-drag-region] textarea,
+      [data-tauri-drag-region] a,
+      [data-tauri-drag-region] [role="button"] {
+        -webkit-app-region: no-drag;
+      }
+      html, body, #root { height: 100%; margin: 0; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

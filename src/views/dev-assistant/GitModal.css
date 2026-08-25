@@ -1,0 +1,643 @@
+.git-modal__overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.git-modal {
+  background-color: #252526;
+  border: 1px solid #3c3c3c;
+  border-radius: 8px;
+  width: 620px;
+  max-width: 92vw;
+  max-height: 86vh;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+}
+
+.git-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid #3c3c3c;
+}
+
+.git-modal__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #cccccc;
+}
+
+.git-modal__branch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  background-color: #1e1e1e;
+  border: 1px solid #3c3c3c;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #cccccc;
+  margin-left: 4px;
+}
+
+.git-modal__branch-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #4EC9B0;
+}
+
+.git-modal__branch-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 2px;
+}
+
+.git-modal__ahead {
+  color: #4EC9B0;
+  font-weight: 600;
+}
+
+.git-modal__behind {
+  color: #e2c08d;
+  font-weight: 600;
+}
+
+.git-modal__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.git-modal__icon-btn {
+  background: transparent;
+  border: none;
+  color: #858585;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  transition: all 0.15s;
+}
+
+.git-modal__icon-btn:hover:not(:disabled) {
+  background-color: #37373d;
+  color: #ffffff;
+}
+
+.git-modal__icon-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.git-modal__tabs {
+  display: flex;
+  border-bottom: 1px solid #3c3c3c;
+  padding: 0 12px;
+}
+
+.git-modal__tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #858585;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-bottom: -1px;
+}
+
+.git-modal__tab:hover {
+  color: #cccccc;
+}
+
+.git-modal__tab--active {
+  color: #ffffff;
+  border-bottom-color: #4EC9B0;
+}
+
+.git-modal__body {
+  padding: 16px 20px;
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.git-modal__error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #f44747;
+  padding: 8px 12px;
+  background-color: rgba(244, 71, 71, 0.08);
+  border: 1px solid rgba(244, 71, 71, 0.2);
+  border-radius: 4px;
+}
+
+.git-modal__success {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #4EC9B0;
+  padding: 8px 12px;
+  background-color: rgba(78, 201, 176, 0.08);
+  border: 1px solid rgba(78, 201, 176, 0.2);
+  border-radius: 4px;
+}
+
+/* 变更标签页 */
+.git-modal__changes {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.git-modal__files-section {
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  background-color: #1e1e1e;
+}
+
+.git-modal__files-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background-color: #2d2d2d;
+  border-bottom: 1px solid #3c3c3c;
+  cursor: pointer;
+  user-select: none;
+  color: #cccccc;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.git-modal__files-header:hover {
+  background-color: #37373d;
+}
+
+.git-modal__count {
+  margin-left: auto;
+  padding: 1px 8px;
+  background-color: #3c3c3c;
+  border-radius: 10px;
+  font-size: 11px;
+  color: #cccccc;
+}
+
+.git-modal__files-list {
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.git-modal__file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid #2d2d2d;
+  color: #cccccc;
+  transition: background-color 0.1s;
+}
+
+.git-modal__file:last-child {
+  border-bottom: none;
+}
+
+.git-modal__file:hover {
+  background-color: #2a2d2e;
+}
+
+.git-modal__file--selected {
+  background-color: rgba(78, 201, 176, 0.06);
+}
+
+.git-modal__file--selected:hover {
+  background-color: rgba(78, 201, 176, 0.1);
+}
+
+.git-modal__filename {
+  font-size: 12px;
+  color: #cccccc;
+  flex-shrink: 0;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-modal__filepath {
+  font-size: 11px;
+  color: #6a6a6a;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-modal__status {
+  font-size: 12px;
+  font-weight: 700;
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+  flex-shrink: 0;
+}
+
+.git-modal__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.git-modal__label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.git-modal__label {
+  font-size: 12px;
+  color: #cccccc;
+  font-weight: 500;
+}
+
+.git-modal__ai-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: linear-gradient(135deg, rgba(156, 109, 217, 0.15), rgba(78, 201, 176, 0.15));
+  border: 1px solid rgba(156, 109, 217, 0.3);
+  border-radius: 4px;
+  color: #c586c0;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.git-modal__ai-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(156, 109, 217, 0.25), rgba(78, 201, 176, 0.25));
+  border-color: rgba(156, 109, 217, 0.5);
+}
+
+.git-modal__ai-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.git-modal__textarea {
+  background-color: #1e1e1e;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  padding: 10px 12px;
+  color: #cccccc;
+  font-size: 13px;
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+  resize: vertical;
+  outline: none;
+  line-height: 1.5;
+  min-height: 70px;
+}
+
+.git-modal__textarea:focus {
+  border-color: #4EC9B0;
+  box-shadow: 0 0 0 1px rgba(78, 201, 176, 0.2);
+}
+
+.git-modal__textarea::placeholder {
+  color: #6a6a6a;
+}
+
+/* 历史标签页 */
+.git-modal__history {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.git-modal__confirm-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background-color: rgba(244, 71, 71, 0.08);
+  border: 1px solid rgba(244, 71, 71, 0.3);
+  border-radius: 4px;
+  font-size: 12px;
+  color: #f44747;
+}
+
+.git-modal__confirm-bar span {
+  flex: 1;
+}
+
+.git-modal__confirm-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.git-modal__log-list {
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  background-color: #1e1e1e;
+  max-height: 380px;
+  overflow-y: auto;
+}
+
+.git-modal__log-entry {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #2d2d2d;
+  color: #cccccc;
+}
+
+.git-modal__log-entry:last-child {
+  border-bottom: none;
+}
+
+.git-modal__log-entry:hover {
+  background-color: #2a2d2e;
+}
+
+.git-modal__log-hash {
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+  font-size: 11px;
+  color: #e2c08d;
+  background-color: #2d2d2d;
+  padding: 2px 8px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.git-modal__log-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.git-modal__log-message {
+  font-size: 12px;
+  color: #cccccc;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-modal__log-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #6a6a6a;
+}
+
+.git-modal__small-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 3px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+  border: 1px solid transparent;
+  flex-shrink: 0;
+}
+
+.git-modal__small-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.git-modal__small-btn--cancel {
+  background-color: transparent;
+  border-color: #3c3c3c;
+  color: #cccccc;
+}
+
+.git-modal__small-btn--cancel:hover:not(:disabled) {
+  background-color: #37373d;
+}
+
+.git-modal__small-btn--danger {
+  background-color: rgba(244, 71, 71, 0.15);
+  border-color: rgba(244, 71, 71, 0.4);
+  color: #f44747;
+}
+
+.git-modal__small-btn--danger:hover:not(:disabled) {
+  background-color: rgba(244, 71, 71, 0.25);
+}
+
+.git-modal__small-btn--warning {
+  background-color: rgba(226, 192, 141, 0.1);
+  border-color: rgba(226, 192, 141, 0.3);
+  color: #e2c08d;
+}
+
+.git-modal__small-btn--warning:hover:not(:disabled) {
+  background-color: rgba(226, 192, 141, 0.2);
+}
+
+/* 远程标签页 */
+.git-modal__remote {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.git-modal__remote-info {
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  background-color: #1e1e1e;
+  padding: 4px 12px;
+}
+
+.git-modal__remote-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid #2d2d2d;
+}
+
+.git-modal__remote-row:last-child {
+  border-bottom: none;
+}
+
+.git-modal__remote-label {
+  font-size: 12px;
+  color: #858585;
+}
+
+.git-modal__remote-value {
+  font-size: 12px;
+  color: #cccccc;
+  font-weight: 500;
+}
+
+.git-modal__remote-value--ahead {
+  color: #4EC9B0;
+}
+
+.git-modal__remote-value--behind {
+  color: #e2c08d;
+}
+
+.git-modal__remote-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.git-modal__action-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  border: none;
+}
+
+.git-modal__action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.git-modal__action-btn--primary {
+  background-color: #569cd6;
+  color: #1e1e1e;
+}
+
+.git-modal__action-btn--primary:hover:not(:disabled) {
+  background-color: #4a8bc4;
+}
+
+.git-modal__action-btn--accent {
+  background-color: #4EC9B0;
+  color: #1e1e1e;
+}
+
+.git-modal__action-btn--accent:hover:not(:disabled) {
+  background-color: #3db89f;
+}
+
+.git-modal__remote-tip {
+  font-size: 11px;
+  color: #6a6a6a;
+  text-align: center;
+  margin: 0;
+}
+
+/* 通用 */
+.git-modal__loading,
+.git-modal__empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  font-size: 12px;
+  color: #6a6a6a;
+}
+
+.git-modal__empty {
+  flex-direction: column;
+  gap: 6px;
+}
+
+.git-modal__empty-path {
+  font-size: 11px;
+  color: #858585;
+  word-break: break-all;
+  text-align: center;
+  max-width: 100%;
+}
+
+.git-modal__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 20px;
+  border-top: 1px solid #3c3c3c;
+}
+
+.git-modal__cancel-btn {
+  padding: 6px 16px;
+  background-color: transparent;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  color: #cccccc;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.git-modal__cancel-btn:hover {
+  background-color: #37373d;
+}
+
+.git-modal__commit-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 16px;
+  background-color: #4EC9B0;
+  border: none;
+  border-radius: 4px;
+  color: #1e1e1e;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.git-modal__commit-btn:hover:not(:disabled) {
+  background-color: #3db89f;
+}
+
+.git-modal__commit-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@keyframes gitModalSpin {
+  to { transform: rotate(360deg); }
+}
+
+.git-modal__spin {
+  animation: gitModalSpin 1s linear infinite;
+}

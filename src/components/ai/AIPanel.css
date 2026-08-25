@@ -1,0 +1,3534 @@
+/* ================================================================
+ * AIPanel — 智能体对话面板样式
+ * ================================================================ */
+
+/* ── 容器 ─────────────────────────────────────────────────────── */
+.ai-panel-wrapper {
+  position: relative;
+  display: flex;
+  flex-shrink: 0;
+  height: 100%;
+  border-right: 1px solid #333;
+}
+
+.ai-panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background-color: #1e1e1e;
+  color: #ebebeb;
+  font-size: 13px;
+  overflow: hidden;
+}
+
+.ai-panel--dragging {
+  user-select: none;
+}
+
+/* ── 拖拽手柄 ─────────────────────────────────────────────────── */
+.ai-panel__resize-handle {
+  position: absolute;
+  right: -3px;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 10;
+  transition: background-color 0.15s;
+}
+
+.ai-panel__resize-handle:hover,
+.ai-panel__resize-handle--active {
+  background-color: #0078d4;
+}
+
+/* ── 头部 ─────────────────────────────────────────────────────── */
+.ai-panel__header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  height: 30px;
+  border-bottom: 1px solid #3c3c3c;
+  background-color: #252526;
+  flex-shrink: 0;
+}
+
+/* ── 会话切换器 ────────────────────────────────────────────────── */
+.ai-panel__session-switcher {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  max-width: 180px;
+  min-width: 0;
+}
+
+.ai-panel__session-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  padding: 1px 6px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: #ccc;
+  cursor: pointer;
+  font-size: 11px;
+  text-align: left;
+}
+
+.ai-panel__session-btn:hover {
+  background-color: #3a3a3a;
+}
+
+.ai-panel__session-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ai-panel__session-btn:disabled:hover {
+  background-color: transparent;
+}
+
+.ai-panel__session-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.ai-panel__session-chevron {
+  flex-shrink: 0;
+  transition: transform 0.15s;
+}
+
+.ai-panel__session-chevron--open {
+  transform: rotate(180deg);
+}
+
+.ai-panel__session-dropdown {
+  /* position/top/left 通过 inline style 设置为 fixed，避免被 .ai-panel 的 overflow:hidden 裁剪 */
+  background-color: #252526;
+  border: 1px solid #444;
+  border-radius: 6px;
+  z-index: 1000;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  max-height: 300px;
+  display: flex;
+  flex-direction: column;
+  width: 260px;
+}
+
+.ai-panel__session-new-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: none;
+  border-bottom: 1px solid #333;
+  background: transparent;
+  color: #0078d4;
+  cursor: pointer;
+  font-size: 12px;
+  width: 100%;
+  text-align: left;
+}
+
+.ai-panel__session-new-btn:hover {
+  background-color: #2a2a2a;
+}
+
+.ai-panel__session-list {
+  overflow-y: auto;
+  flex: 1;
+}
+
+.ai-panel__session-empty {
+  padding: 16px;
+  text-align: center;
+  color: #666;
+  font-size: 12px;
+}
+
+.ai-panel__session-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #ccc;
+}
+
+.ai-panel__session-item:hover {
+  background-color: #2a2a2a;
+}
+
+.ai-panel__session-item--active {
+  background-color: #094771;
+}
+
+.ai-panel__session-item-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-panel__session-delete-btn {
+  flex-shrink: 0;
+  padding: 2px;
+  border: none;
+  background: transparent;
+  color: #666;
+  cursor: pointer;
+  border-radius: 3px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.ai-panel__session-item:hover .ai-panel__session-delete-btn {
+  opacity: 1;
+}
+
+.ai-panel__session-delete-btn:hover {
+  color: #f85149;
+  background-color: #3a1a1a;
+}
+
+/* 任务项中的时间标签 */
+.ai-panel__session-item-time {
+  font-size: 10px;
+  color: #666;
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-left: auto;
+  padding-right: 4px;
+}
+
+/* 重命名按钮 */
+.ai-panel__session-rename-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: #666;
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, background-color 0.15s;
+}
+
+.ai-panel__session-item:hover .ai-panel__session-rename-btn {
+  opacity: 1;
+}
+
+.ai-panel__session-rename-btn:hover {
+  color: #58a6ff;
+  background-color: #1a2540;
+}
+
+/* 编辑模式容器 */
+.ai-panel__session-item-edit {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.ai-panel__session-edit-input {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 6px;
+  border: 1px solid #0e639c;
+  border-radius: 3px;
+  background-color: #1e1e1e;
+  color: #ccc;
+  font-size: 12px;
+  outline: none;
+}
+
+.ai-panel__session-edit-confirm,
+.ai-panel__session-edit-cancel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.ai-panel__session-edit-confirm {
+  background-color: #238636;
+  color: #fff;
+}
+
+.ai-panel__session-edit-confirm:hover {
+  background-color: #2ea043;
+}
+
+.ai-panel__session-edit-cancel {
+  background-color: #333;
+  color: #888;
+}
+
+.ai-panel__session-edit-cancel:hover {
+  background-color: #444;
+  color: #ccc;
+}
+
+/* 常驻的"快速新建会话"按钮（紧贴主按钮右侧） */
+.ai-panel__session-quick-new-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: none;
+  border-radius: 3px;
+  background-color: #0e639c;
+  color: #fff;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background-color 0.15s;
+}
+
+.ai-panel__session-quick-new-btn:hover {
+  background-color: #1177bb;
+}
+
+.ai-panel__session-quick-new-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ai-panel__session-quick-new-btn:disabled:hover {
+  background-color: #0e639c;
+}
+
+/* ── LLM 模型选择器（新建会话按钮右侧） ─────────────────────── */
+.ai-panel__llm-selector {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.ai-panel__llm-select {
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid #444;
+  border-radius: 6px;
+  background-color: #1e1e1e;
+  color: #d4d4d4;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s;
+  max-width: 140px;
+}
+
+.ai-panel__llm-select:hover:not(:disabled) {
+  border-color: #0078d4;
+}
+
+.ai-panel__llm-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 下拉头：标题 + 刷新按钮 */
+.ai-panel__session-dropdown-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px 8px;
+  border-bottom: 1px solid #333;
+  color: #888;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.ai-panel__session-refresh-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: #888;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.ai-panel__session-refresh-btn:hover {
+  background-color: #3a3a3a;
+  color: #fff;
+}
+
+/* ── 消息区域 ──────────────────────────────────────────────────── */
+.ai-panel__messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ai-panel__messages::-webkit-scrollbar {
+  width: 6px;
+}
+
+.ai-panel__messages::-webkit-scrollbar-thumb {
+  background-color: #555;
+  border-radius: 3px;
+}
+
+.ai-panel__messages::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ── 欢迎页 ────────────────────────────────────────────────────── */
+.ai-panel__welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  text-align: center;
+  padding: 24px;
+  gap: 12px;
+}
+
+.ai-panel__welcome-icon {
+  color: #0078d4;
+  margin-bottom: 8px;
+}
+
+.ai-panel__welcome-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #ddd;
+  margin: 0;
+}
+
+.ai-panel__welcome-desc {
+  font-size: 12px;
+  color: #888;
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* ── 连接提示 ──────────────────────────────────────────────────── */
+.ai-panel__connect-prompt {
+  padding: 16px;
+  text-align: center;
+  color: #888;
+  font-size: 12px;
+}
+
+/* ── 错误横幅 ──────────────────────────────────────────────────── */
+.ai-panel__error-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background-color: #3a1a1a;
+  border-bottom: 1px solid #f85149;
+  color: #f85149;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+/* ── 消息气泡 ──────────────────────────────────────────────────── */
+.ai-panel__message {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 100%;
+  /* 关键：min-width: 0 防止 flex 子元素被内容撑大（表格/长 code 导致的溢出） */
+  min-width: 0;
+}
+
+.ai-panel__message--user {
+  align-items: flex-end;
+}
+
+.ai-panel__message--assistant {
+  align-items: flex-start;
+}
+
+.ai-panel__message-bubble {
+  max-width: 90%;
+  padding: 10px 14px;
+  border-radius: 8px;
+  line-height: 1.55;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.ai-panel__message-bubble--user {
+  background-color: #0e639c;
+  color: #fff;
+  border-bottom-right-radius: 2px;
+}
+
+.ai-panel__message-bubble--assistant {
+  background-color: #2d2d2d;
+  color: #ebebeb;
+  border-bottom-left-radius: 2px;
+  border: 1px solid #3a3a3a;
+}
+
+/* 上下文压缩总结消息气泡 */
+.ai-panel__message-bubble--summary {
+  background-color: transparent;
+  border: 1px dashed #2ea043;
+  padding: 8px 12px;
+}
+
+.ai-panel__message-text {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+/* 回滚按钮 */
+.ai-panel__message-rollback {
+  padding: 2px 8px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: #888;
+  cursor: pointer;
+  font-size: 11px;
+  opacity: 0.6;
+  transition: opacity 0.15s, color 0.15s, background-color 0.15s;
+}
+
+.ai-panel__message--user:hover .ai-panel__message-rollback {
+  opacity: 1;
+}
+
+.ai-panel__message-rollback:hover {
+  color: #f85149;
+  background-color: #3a1a1a;
+}
+
+/* ── Markdown 渲染 ────────────────────────────────────────────── */
+.ai-panel__markdown {
+  font-size: 13px;
+  line-height: 1.6;
+  color: #ebebeb;
+  /* 关键：防止内部表格/超长 code 撑爆容器 */
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ai-panel__markdown p {
+  margin: 0 0 8px;
+  overflow-wrap: anywhere;
+}
+
+.ai-panel__markdown p:last-child {
+  margin-bottom: 0;
+}
+
+.ai-panel__markdown code {
+  background-color: #1e1e1e;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 12px;
+  font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
+  /* 长路径/URL 允许在任意位置换行，避免撑爆表格单元格 */
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+.ai-panel__markdown pre {
+  background-color: #1e1e1e;
+  border: 1px solid #444;
+  border-radius: 6px;
+  padding: 12px;
+  overflow-x: auto;
+  margin: 8px 0;
+  max-width: 100%;
+}
+
+.ai-panel__markdown pre code {
+  background: none;
+  padding: 0;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.ai-panel__markdown table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 8px 0;
+  table-layout: auto;
+}
+
+.ai-panel__markdown th,
+.ai-panel__markdown td {
+  border: 1px solid #444;
+  padding: 6px 10px;
+  text-align: left;
+  font-size: 12px;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  vertical-align: top;
+}
+
+.ai-panel__markdown th {
+  background-color: #333;
+  font-weight: 600;
+}
+
+/* ── Markdown 标题 ────────────────────────────────────────────── */
+.ai-panel__markdown h1,
+.ai-panel__markdown h2,
+.ai-panel__markdown h3,
+.ai-panel__markdown h4,
+.ai-panel__markdown h5,
+.ai-panel__markdown h6 {
+  margin: 16px 0 8px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: #f0f0f0;
+}
+
+.ai-panel__markdown h1 { font-size: 18px; }
+.ai-panel__markdown h2 { font-size: 16px; }
+.ai-panel__markdown h3 { font-size: 15px; }
+.ai-panel__markdown h4 { font-size: 14px; }
+.ai-panel__markdown h5,
+.ai-panel__markdown h6 { font-size: 13px; }
+
+.ai-panel__markdown h1:first-child,
+.ai-panel__markdown h2:first-child,
+.ai-panel__markdown h3:first-child,
+.ai-panel__markdown h4:first-child,
+.ai-panel__markdown h5:first-child,
+.ai-panel__markdown h6:first-child {
+  margin-top: 0;
+}
+
+/* ── Markdown 列表 ────────────────────────────────────────────── */
+.ai-panel__markdown ul,
+.ai-panel__markdown ol {
+  margin: 0 0 8px;
+  padding-left: 24px;
+}
+
+.ai-panel__markdown ul > li,
+.ai-panel__markdown ol > li {
+  margin: 2px 0;
+}
+
+.ai-panel__markdown li > ul,
+.ai-panel__markdown li > ol {
+  margin: 2px 0 0;
+}
+
+/* ── Markdown 引用 ────────────────────────────────────────────── */
+.ai-panel__markdown blockquote {
+  margin: 8px 0;
+  padding: 4px 12px;
+  border-left: 3px solid #58a6ff;
+  background-color: rgba(88, 166, 255, 0.05);
+  color: #b0b0b0;
+}
+
+.ai-panel__markdown blockquote p {
+  margin-bottom: 4px;
+}
+
+/* ── Markdown 链接 ────────────────────────────────────────────── */
+.ai-panel__markdown a {
+  color: #58a6ff;
+  text-decoration: none;
+}
+
+.ai-panel__markdown a:hover {
+  text-decoration: underline;
+}
+
+/* ── Markdown 分割线 ──────────────────────────────────────────── */
+.ai-panel__markdown hr {
+  border: none;
+  border-top: 1px solid #444;
+  margin: 12px 0;
+}
+
+/* ── Markdown 行内代码 ────────────────────────────────────────── */
+.ai-panel__md-inline-code {
+  background-color: #1e1e1e;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 12px;
+  font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+/* ── 代码块包装（语言标签头 + 可滚动 body） ───────────────────── */
+.ai-panel__code-block {
+  margin: 8px 0;
+  border: 1px solid #444;
+  border-radius: 6px;
+  overflow: hidden;
+  background-color: #1e1e1e;
+}
+
+.ai-panel__code-block-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  background-color: #252526;
+  border-bottom: 1px solid #333;
+  color: #888;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.ai-panel__code-block pre {
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  padding: 12px;
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+/* ── 表格滚动包装 ─────────────────────────────────────────────── */
+.ai-panel__table-wrapper {
+  overflow-x: auto;
+  max-width: 100%;
+  margin: 8px 0;
+}
+
+.ai-panel__table-wrapper table {
+  margin: 0;
+}
+
+/* ── 光标闪烁 ──────────────────────────────────────────────────── */
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+.ai-panel__cursor-blink {
+  animation: blink 0.8s infinite;
+  color: #0078d4;
+  font-weight: bold;
+}
+
+/* ── Shimmer 加载占位 ──────────────────────────────────────────── */
+@keyframes shimmer {
+  0% { background-position: -200px 0; }
+  100% { background-position: 200px 0; }
+}
+
+.ai-panel__shimmer {
+  width: 80%;
+  height: 14px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #333 25%, #444 50%, #333 75%);
+  background-size: 400px 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* ── 思考块 ────────────────────────────────────────────────────── */
+.ai-panel__thinking {
+  margin: 4px 0;
+  border: 1px solid #3a2a5a;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.ai-panel__thinking--expanded {
+  background-color: #2a1a3a;
+}
+
+.ai-panel__thinking-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  background: transparent;
+  color: #b39ddb;
+  cursor: pointer;
+  font-size: 12px;
+  text-align: left;
+}
+
+.ai-panel__thinking-toggle:hover {
+  background-color: #2a1a3a;
+}
+
+.ai-panel__thinking-chevron {
+  margin-left: auto;
+  transition: transform 0.15s;
+}
+
+.ai-panel__thinking-chevron--open {
+  transform: rotate(180deg);
+}
+
+.ai-panel__thinking-content {
+  padding: 8px 12px;
+  border-top: 1px solid #3a2a5a;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.ai-panel__thinking-content pre {
+  margin: 0;
+  font-size: 11px;
+  color: #999;
+  white-space: pre-wrap;
+  font-family: inherit;
+}
+
+/* ── 工具卡片 ──────────────────────────────────────────────────── */
+.ai-panel__tool-card {
+  margin: 4px 0;
+  border: 1px solid #444;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+/* ── Subtask 分组（可折叠） ───────────────────────────────────── */
+.ai-panel__subtask-group {
+  margin: 6px 0;
+  border: 1px solid #6e4ca0;
+  border-radius: 6px;
+  overflow: hidden;
+  background-color: rgba(110, 76, 160, 0.05);
+}
+
+.ai-panel__subtask-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 10px;
+  background: none;
+  border: none;
+  color: #d4d4d4;
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.ai-panel__subtask-group-header:hover {
+  background-color: rgba(110, 76, 160, 0.12);
+}
+
+.ai-panel__subtask-group-header:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.ai-panel__subtask-group-status {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  color: #b39ddb;
+}
+
+.ai-panel__subtask-group-name {
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.ai-panel__subtask-group-desc {
+  color: #888;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.ai-panel__subtask-group-body {
+  padding: 6px 10px;
+  border-top: 1px solid #6e4ca0;
+  background-color: #1a1a1a;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.ai-panel__tool-card--running,
+.ai-panel__tool-card--pending {
+  border-color: #555;
+}
+
+.ai-panel__tool-card--error {
+  border-color: #f85149;
+}
+
+.ai-panel__tool-card--completed {
+  border-color: #3fb950;
+}
+
+/* Sub-Agent 工具卡片样式：紫色边框，与普通工具区分 */
+.ai-panel__tool-card--sub-agent {
+  border-color: #6e4ca0;
+  background-color: rgba(110, 76, 160, 0.05);
+}
+
+.ai-panel__tool-card--sub-agent.ai-panel__tool-card--running,
+.ai-panel__tool-card--sub-agent.ai-panel__tool-card--pending {
+  border-color: #8b5fbf;
+}
+
+.ai-panel__tool-card--sub-agent.ai-panel__tool-card--completed {
+  border-color: #6e4ca0;
+}
+
+.ai-panel__tool-card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  background-color: #252526;
+  color: #ccc;
+  cursor: pointer;
+  font-size: 12px;
+  text-align: left;
+}
+
+.ai-panel__tool-card-header:hover {
+  background-color: #2a2a2a;
+}
+
+.ai-panel__tool-card-status {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.ai-panel__tool-card-name {
+  font-weight: 600;
+  flex-shrink: 0;
+  color: #ebebeb;
+}
+
+.ai-panel__tool-card-title {
+  color: #b0b0b0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+/* Sub-Agent 类型徽章 */
+.ai-panel__tool-card-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  margin-right: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #fff;
+  background-color: #6e4ca0;
+  border-radius: 3px;
+  letter-spacing: 0.3px;
+  flex-shrink: 0;
+}
+
+.ai-panel__tool-icon--running {
+  color: #d29922;
+  animation: spin 1s linear infinite;
+}
+
+.ai-panel__tool-icon--error {
+  color: #f85149;
+}
+
+.ai-panel__tool-icon--completed {
+  color: #3fb950;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.ai-panel__tool-card-chevron {
+  flex-shrink: 0;
+  transition: transform 0.15s;
+}
+
+.ai-panel__tool-card-chevron--open {
+  transform: rotate(180deg);
+}
+
+.ai-panel__tool-card-body {
+  padding: 8px 12px;
+  border-top: 1px solid #444;
+  max-height: 400px;
+  overflow-y: auto;
+  background-color: #1a1a1a;
+}
+
+.ai-panel__tool-card-output {
+  margin: 0;
+  font-size: 11px;
+  color: #b0b0b0;
+  white-space: pre-wrap;
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  line-height: 1.5;
+}
+
+/* Sub-Agent 卡片展开后的分段（任务描述 / 执行过程 / 执行结果） */
+.ai-panel__tool-card-section {
+  margin-bottom: 8px;
+}
+
+.ai-panel__tool-card-section:last-child {
+  margin-bottom: 0;
+}
+
+.ai-panel__tool-card-section-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: #b39ddb;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.ai-panel__tool-card-section-content {
+  margin: 0;
+  padding: 6px 10px;
+  background-color: #252526;
+  border: 1px solid #3a2a5a;
+  border-radius: 4px;
+  font-size: 11px;
+  color: #d4d4d4;
+  white-space: pre-wrap;
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  line-height: 1.5;
+  overflow-x: auto;
+  word-break: break-word;
+}
+
+/* ── 输入区 ────────────────────────────────────────────────────── */
+.ai-panel__input-area {
+  padding: 0 0 6px;
+  border-top: 1px solid #333;
+  flex-shrink: 0;
+  background-color: #252526;
+  position: relative;
+}
+
+.ai-panel__input-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  position: relative;
+}
+
+.ai-panel__input-toolbar {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  margin-top: 0px;
+}
+
+.ai-panel__input-toolbar .ai-panel__btn {
+  margin-left: auto;
+  width: 30px;
+  height: 30px;
+}
+
+.ai-panel__task-type-select {
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid #444;
+  border-radius: 6px;
+  background-color: #1e1e1e;
+  color: #d4d4d4;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.ai-panel__task-type-select:hover {
+  border-color: #0078d4;
+}
+
+.ai-panel__input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid #444;
+  border-radius: 0px;
+  background-color: #1e1e1e;
+  color: #d4d4d4;
+  font-size: 13px;
+  font-family: inherit;
+  line-height: 1.5;
+  resize: none;
+  outline: none;
+  min-height: 54px;
+  max-height: 200px;
+  transition: border-color 0.15s;
+}
+
+.ai-panel__input:focus {
+  border-color: #0078d4;
+}
+
+.ai-panel__input:disabled {
+  opacity: 0.5;
+}
+
+.ai-panel__btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.ai-panel__btn--send {
+  background-color: #0078d4;
+  color: #fff;
+}
+
+.ai-panel__btn--send:hover:not(:disabled) {
+  background-color: #1a8ad4;
+}
+
+.ai-panel__btn--send:disabled {
+  background-color: #333;
+  color: #666;
+  cursor: not-allowed;
+}
+
+.ai-panel__btn--stop {
+  background-color: #f85149;
+  color: #fff;
+}
+
+.ai-panel__btn--stop:hover {
+  background-color: #ff6b63;
+}
+
+/* ── inline dock（权限/提问，对齐桌面版 SessionPermissionDock/SessionQuestionDock） ── */
+.ai-panel__dock {
+  background-color: #252526;
+  border: 1px solid #444;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 8px;
+  flex-shrink: 0;
+}
+
+.ai-panel__permission-dock {
+  border-color: #614a1a;
+  background-color: #2a2418;
+}
+
+.ai-panel__question-dock {
+  border-color: #1a3a5c;
+  background-color: #18222e;
+}
+
+.ai-panel__dock-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid #333;
+}
+
+.ai-panel__dock-title {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  color: #ddd;
+}
+
+.ai-panel__dock-warning-icon {
+  color: #d29922;
+  flex-shrink: 0;
+}
+
+.ai-panel__dock-info-icon {
+  color: #58a6ff;
+  flex-shrink: 0;
+}
+
+.ai-panel__dock-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border: none;
+  background: transparent;
+  color: #888;
+  cursor: pointer;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.ai-panel__dock-close:hover {
+  color: #fff;
+  background-color: #3a3a3a;
+}
+
+.ai-panel__dock-body {
+  padding: 12px 14px;
+  min-width: 0;
+}
+
+.ai-panel__dock-tool-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 13px;
+  color: #d4d4d4;
+  margin-bottom: 6px;
+}
+
+.ai-panel__dock-description {
+  font-size: 12px;
+  color: #aaa;
+  margin-bottom: 6px;
+}
+
+.ai-panel__dock-reason {
+  background-color: #1e1e1e;
+  border-radius: 6px;
+  padding: 8px 12px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.ai-panel__dock-reason pre {
+  margin: 0;
+  font-size: 11px;
+  color: #999;
+  white-space: pre-wrap;
+}
+
+.ai-panel__dock-patterns {
+  margin-bottom: 6px;
+}
+
+.ai-panel__dock-patterns-label {
+  font-size: 11px;
+  color: #888;
+  margin-bottom: 4px;
+}
+
+.ai-panel__dock-patterns-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ai-panel__dock-pattern {
+  font-size: 12px;
+  color: #58a6ff;
+  background-color: #1a1a2e;
+  padding: 2px 8px;
+  border-radius: 3px;
+  word-break: break-all;
+}
+
+.ai-panel__dock-footer {
+  display: flex;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid #333;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ai-panel__dock-footer--permission {
+  justify-content: flex-end;
+}
+
+.ai-panel__dock-footer--question {
+  justify-content: space-between;
+}
+
+.ai-panel__dock-footer-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.ai-panel__dock-btn {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+}
+
+.ai-panel__dock-btn--primary {
+  background-color: #0078d4;
+  color: #fff;
+}
+
+.ai-panel__dock-btn--primary:hover {
+  background-color: #1a8ad4;
+}
+
+.ai-panel__dock-btn--secondary {
+  background-color: #2d2d2d;
+  color: #d4d4d4;
+  border: 1px solid #3a3a3a;
+}
+
+.ai-panel__dock-btn--secondary:hover {
+  background-color: #3a3a3a;
+  border-color: #58a6ff;
+}
+
+.ai-panel__dock-btn--allow {
+  background-color: #0078d4;
+  color: #fff;
+}
+
+.ai-panel__dock-btn--allow:hover {
+  background-color: #1a8ad4;
+}
+
+.ai-panel__dock-btn--always {
+  padding: 6px 14px;
+  border: 1px solid #3a3a3a;
+  border-radius: 4px;
+  background-color: #2d2d2d;
+  color: #d4d4d4;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+
+.ai-panel__dock-btn--always:hover {
+  background-color: #3a3a3a;
+  border-color: #58a6ff;
+}
+
+.ai-panel__dock-btn--deny {
+  background-color: #333;
+  color: #ccc;
+}
+
+.ai-panel__dock-btn--deny:hover {
+  background-color: #444;
+}
+
+/* ── 提问 dock 子元素 ─────────────────────────────────────────── */
+.ai-panel__question-progress {
+  font-size: 11px;
+  color: #888;
+  font-weight: 400;
+  flex-shrink: 0;
+  margin-left: auto;
+  margin-right: 4px;
+}
+
+.ai-panel__question-header {
+  font-size: 13px;
+  font-weight: 600;
+  color: #d4d4d4;
+  margin-bottom: 6px;
+}
+
+.ai-panel__question-text {
+  font-size: 13px;
+  color: #ccc;
+  line-height: 1.5;
+  margin-bottom: 10px;
+  overflow-wrap: anywhere;
+}
+
+.ai-panel__question-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.ai-panel__question-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid #3a3a3a;
+  border-radius: 6px;
+  background-color: #1e1e1e;
+  color: #ccc;
+  cursor: pointer;
+  text-align: left;
+  font-size: 13px;
+  transition: border-color 0.15s, background-color 0.15s;
+  min-width: 0;
+}
+
+.ai-panel__question-option:hover {
+  border-color: #58a6ff;
+  background-color: #252526;
+}
+
+.ai-panel__question-option--picked {
+  border-color: #0078d4;
+  background-color: #0e2a40;
+}
+
+.ai-panel__question-option-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  font-size: 12px;
+  color: #58a6ff;
+  margin-top: 1px;
+}
+
+.ai-panel__question-option-mark--radio {
+  border: 1.5px solid #58a6ff;
+  border-radius: 50%;
+}
+
+.ai-panel__question-option-mark--checkbox {
+  border: 1.5px solid #58a6ff;
+  border-radius: 3px;
+}
+
+.ai-panel__question-option-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.ai-panel__question-option-label {
+  font-size: 13px;
+  color: #d4d4d4;
+}
+
+.ai-panel__question-option-desc {
+  font-size: 11px;
+  color: #888;
+  overflow-wrap: anywhere;
+}
+
+.ai-panel__question-custom {
+  margin-bottom: 10px;
+}
+
+.ai-panel__question-custom-label {
+  font-size: 11px;
+  color: #888;
+  margin-bottom: 4px;
+}
+
+.ai-panel__question-custom-input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #444;
+  border-radius: 6px;
+  background-color: #1e1e1e;
+  color: #d4d4d4;
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.ai-panel__question-custom-input:focus {
+  border-color: #0078d4;
+}
+
+/* ── 上下文使用量进度条 ───────────────────────────────────────── */
+.ai-panel__context-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background-color: #252526;
+  font-size: 9px;
+  color: #888;
+  flex-shrink: 0;
+  cursor: default;
+}
+
+.ai-panel__context-bar-icon {
+  flex-shrink: 0;
+}
+
+.ai-panel__context-bar-track {
+  width: 25px;
+  height: 3px;
+  background-color: #3a3a3a;
+  border-radius: 2px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.ai-panel__context-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease, background-color 0.3s ease;
+}
+
+/* 颜色根据使用率变化 */
+.ai-panel__context-bar--ok .ai-panel__context-bar-fill {
+  background-color: #3fb950;
+}
+
+.ai-panel__context-bar--ok .ai-panel__context-bar-icon,
+.ai-panel__context-bar--ok .ai-panel__context-bar-text {
+  color: #3fb950;
+}
+
+.ai-panel__context-bar--warn .ai-panel__context-bar-fill {
+  background-color: #d29922;
+}
+
+.ai-panel__context-bar--warn .ai-panel__context-bar-icon,
+.ai-panel__context-bar--warn .ai-panel__context-bar-text {
+  color: #d29922;
+}
+
+.ai-panel__context-bar--danger .ai-panel__context-bar-fill {
+  background-color: #f85149;
+}
+
+.ai-panel__context-bar--danger .ai-panel__context-bar-icon,
+.ai-panel__context-bar--danger .ai-panel__context-bar-text {
+  color: #f85149;
+}
+
+.ai-panel__context-bar-text {
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+/* ── 上下文压缩按钮（头部） ──────────────────────────────────── */
+.ai-panel__compress-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  margin-left: auto;
+  margin-right: auto;
+  padding: 1px 8px;
+  border: 1px solid #3a3a3a;
+  border-radius: 8px;
+  background-color: #2d2d2d;
+  color: #ccc;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 500;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.ai-panel__compress-btn:hover:not(:disabled) {
+  background-color: #3a3a3a;
+  border-color: #0078d4;
+  color: #fff;
+}
+
+.ai-panel__compress-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ai-panel__compress-btn--loading {
+  background-color: #094771;
+  border-color: #0078d4;
+  color: #fff;
+  cursor: progress;
+}
+
+.ai-panel__compress-btn-icon--spin {
+  animation: spin 1s linear infinite;
+}
+
+/* ── 上下文压缩系统提示（对话区） ───────────────────────────── */
+.ai-panel__compaction-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 0;
+  width: 100%;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.ai-panel__compaction-info-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #d4d4d4;
+  padding: 2px 0;
+  flex-wrap: wrap;
+}
+
+.ai-panel__compaction-info-icon {
+  flex-shrink: 0;
+}
+
+.ai-panel__compaction-info--start .ai-panel__compaction-info-icon {
+  color: #d29922;
+}
+
+.ai-panel__compaction-info--done .ai-panel__compaction-info-icon {
+  color: #3fb950;
+}
+
+.ai-panel__compaction-info--failed .ai-panel__compaction-info-icon {
+  color: #f85149;
+}
+
+.ai-panel__compaction-info-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border: 1px solid #454545;
+  border-radius: 4px;
+  background-color: #1e1e1e;
+  color: #ccc;
+  font-size: 11px;
+  font-weight: 500;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.ai-panel__compaction-info--start .ai-panel__compaction-info-badge {
+  border-color: #6e4ca0;
+  color: #b39ddb;
+}
+
+.ai-panel__compaction-info--done .ai-panel__compaction-info-badge {
+  border-color: #2ea043;
+  color: #3fb950;
+}
+
+.ai-panel__compaction-info--failed .ai-panel__compaction-info-badge {
+  border-color: #f85149;
+  color: #f85149;
+}
+
+.ai-panel__compaction-info-text {
+  flex: 1;
+  min-width: 0;
+  color: #d4d4d4;
+}
+
+.ai-panel__compaction-info--failed .ai-panel__compaction-info-text {
+  color: #f85149;
+}
+
+/* ── 自动补全下拉列表 ─────────────────────────────────────────── */
+.ai-panel__autocomplete {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 36px;
+  margin-bottom: 4px;
+  background-color: #252526;
+  border: 1px solid #454545;
+  border-radius: 6px;
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.4);
+  max-height: 240px;
+  overflow-y: auto;
+  z-index: 200;
+}
+
+.ai-panel__autocomplete--empty {
+  padding: 8px 12px;
+  color: #666;
+  font-size: 12px;
+  text-align: center;
+}
+
+.ai-panel__autocomplete-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #ccc;
+  transition: background-color 0.1s;
+}
+
+.ai-panel__autocomplete-item--active {
+  background-color: #094771;
+}
+
+.ai-panel__autocomplete-item:hover {
+  background-color: #2a2a2a;
+}
+
+.ai-panel__autocomplete-item--active:hover {
+  background-color: #094771;
+}
+
+.ai-panel__autocomplete-label {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+.ai-panel__autocomplete-detail {
+  font-size: 10px;
+  color: #888;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+
+.ai-panel__autocomplete-kind {
+  font-size: 9px;
+  color: #666;
+  flex-shrink: 0;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background-color: #333;
+}
+
+/* ── Thinking 指示器（对齐 opencode） ──────────────────────────── */
+.ai-panel__thinking-indicator {
+  padding: 4px 0;
+}
+
+@keyframes text-shimmer {
+  0% { background-position: -200px 0; }
+  100% { background-position: 200px 0; }
+}
+
+.ai-panel__thinking-shimmer {
+  font-size: 13px;
+  font-weight: 500;
+  background: linear-gradient(90deg, #888 0%, #ccc 50%, #888 100%);
+  background-size: 200px 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: text-shimmer 2s infinite linear;
+}
+
+/* ── 用户消息元信息行 ──────────────────────────────────────────── */
+.ai-panel__message-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px;
+}
+
+.ai-panel__message-meta {
+  font-size: 11px;
+  color: #666;
+  white-space: nowrap;
+}
+
+.ai-panel__message-action-btn {
+  padding: 1px 6px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: #666;
+  cursor: pointer;
+  font-size: 10px;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, background-color 0.15s;
+}
+
+.ai-panel__message--user:hover .ai-panel__message-action-btn {
+  opacity: 1;
+}
+
+.ai-panel__message-action-btn:hover {
+  color: #ccc;
+  background-color: #3a3a3a;
+}
+
+/* ── 上下文工具组（对齐 opencode 的 ContextToolGroup） ─────────── */
+.ai-panel__context-group {
+  margin: 4px 0;
+  border: 1px solid #3a3a3a;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.ai-panel__context-group--expanded {
+  background-color: #1a1a1a;
+}
+
+.ai-panel__context-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  background-color: #252526;
+  color: #ccc;
+  cursor: pointer;
+  font-size: 12px;
+  text-align: left;
+}
+
+.ai-panel__context-group-header:hover {
+  background-color: #2a2a2a;
+}
+
+.ai-panel__context-group-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  color: #58a6ff;
+}
+
+.ai-panel__context-group-title {
+  font-weight: 500;
+  color: #d4d4d4;
+}
+
+.ai-panel__context-group-title--active {
+  background: linear-gradient(90deg, #888 0%, #ccc 50%, #888 100%);
+  background-size: 200px 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: text-shimmer 2s infinite linear;
+}
+
+.ai-panel__context-group-summary {
+  color: #888;
+  font-weight: 400;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.ai-panel__context-group-body {
+  padding: 4px 10px;
+  border-top: 1px solid #3a3a3a;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.ai-panel__context-group-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+  font-size: 12px;
+}
+
+.ai-panel__context-group-item-title {
+  font-weight: 500;
+  color: #ccc;
+}
+
+.ai-panel__context-group-item-title--active {
+  background: linear-gradient(90deg, #888 0%, #ccc 50%, #888 100%);
+  background-size: 200px 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: text-shimmer 2s infinite linear;
+}
+
+.ai-panel__context-group-item-subtitle {
+  color: #888;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── 工具名称闪烁（对齐 opencode 的 TextShimmer） ────────────── */
+.ai-panel__tool-card-name--shimmer {
+  background: linear-gradient(90deg, #888 0%, #ccc 50%, #888 100%);
+  background-size: 200px 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: text-shimmer 2s infinite linear;
+}
+
+/* ── 工具错误卡片样式 ──────────────────────────────────────────── */
+.ai-panel__tool-card-header--error {
+  background-color: #3a1a1a;
+}
+
+.ai-panel__tool-card-header--error:hover {
+  background-color: #4a2020;
+}
+
+.ai-panel__tool-card-title--error {
+  color: #f85149;
+}
+
+.ai-panel__tool-card-body--error {
+  background-color: #2a1010;
+  border-top-color: #f85149;
+}
+
+/* ── Bash 工具卡片样式 ─────────────────────────────────────────── */
+.ai-panel__tool-card--bash .ai-panel__tool-card-body--bash {
+  padding: 0;
+  background-color: #1a1a1a;
+}
+
+.ai-panel__bash-output {
+  position: relative;
+}
+
+.ai-panel__bash-pre {
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 11px;
+  color: #d4d4d4;
+  white-space: pre-wrap;
+  font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
+  line-height: 1.5;
+  overflow-x: auto;
+}
+
+/* ── 文件编辑工具卡片样式 ──────────────────────────────────────── */
+.ai-panel__tool-card-filename {
+  color: #58a6ff;
+  font-weight: 500;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px;
+}
+
+.ai-panel__tool-card-diff-stats {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  flex-shrink: 0;
+}
+
+.ai-panel__tool-card-diff-add {
+  color: #3fb950;
+}
+
+.ai-panel__tool-card-diff-del {
+  color: #f85149;
+}
+
+.ai-panel__tool-card-diff {
+  margin: 0;
+  font-size: 11px;
+  color: #d4d4d4;
+  white-space: pre-wrap;
+  font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
+  line-height: 1.5;
+  overflow-x: auto;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+/* ── Web 工具卡片样式 ──────────────────────────────────────────── */
+.ai-panel__tool-card--web .ai-panel__tool-card-url {
+  color: #58a6ff;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 250px;
+  text-decoration: none;
+}
+
+.ai-panel__tool-card--web .ai-panel__tool-card-url:hover {
+  text-decoration: underline;
+}
+
+/* ── TodoDock 面板（对齐 opencode 的 SessionTodoDock） ────────── */
+.ai-panel__input-region {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid #3a3a3a;
+  background-color: #1e1e1e;
+}
+
+.ai-panel__todo-dock {
+  border-bottom: 1px solid #3a3a3a;
+  background-color: #252526;
+}
+
+.ai-panel__todo-dock-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 12px;
+  border: none;
+  background: transparent;
+  color: #ccc;
+  cursor: pointer;
+  font-size: 12px;
+  text-align: left;
+}
+
+.ai-panel__todo-dock-header:hover {
+  background-color: #2a2a2a;
+}
+
+.ai-panel__todo-dock-progress {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.ai-panel__todo-dock-progress-icon {
+  color: #3fb950;
+}
+
+.ai-panel__todo-dock-progress-text {
+  font-weight: 500;
+  font-size: 12px;
+}
+
+.ai-panel__todo-dock-preview {
+  flex: 1;
+  min-width: 0;
+  color: #888;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-panel__todo-dock-chevron {
+  flex-shrink: 0;
+  transition: transform 0.2s;
+  color: #888;
+}
+
+.ai-panel__todo-dock-chevron--open {
+  transform: rotate(180deg);
+}
+
+.ai-panel__todo-dock-list {
+  padding: 4px 12px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 168px;
+  overflow-y: auto;
+}
+
+/* ── Todo 项（Dock 和 ToolCard 共用） ──────────────────────────── */
+.ai-panel__todo-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.ai-panel__todo-item-check {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-top: 1px;
+}
+
+.ai-panel__todo-item-check--done {
+  color: #3fb950;
+}
+
+.ai-panel__todo-item-check--progress {
+  color: #58a6ff;
+  animation: spin 1s linear infinite;
+}
+
+.ai-panel__todo-item-check--empty {
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid #555;
+  border-radius: 2px;
+}
+
+.ai-panel__todo-item-content {
+  color: #d4d4d4;
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.ai-panel__todo-item-content--done {
+  text-decoration: line-through;
+  color: #666;
+}
+
+.ai-panel__todo-item-content--pending {
+  opacity: 0.7;
+}
+
+/* ── TodoWrite 工具卡片样式 ─────────────────────────────────────── */
+.ai-panel__tool-card--todo .ai-panel__tool-card-body--todo {
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* ── FileReviewPanel 文件变更审查面板 ────────────────────────── */
+.ai-panel__file-review {
+  border-bottom: 1px solid #3a3a3a;
+  background-color: #252526;
+}
+
+.ai-panel__file-review-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 12px;
+  border: none;
+  background: transparent;
+  color: #ccc;
+  cursor: pointer;
+  font-size: 12px;
+  text-align: left;
+  font-family: inherit;
+  transition: background-color 0.15s;
+}
+
+.ai-panel__file-review-header:hover {
+  background-color: #2a2a2a;
+}
+
+.ai-panel__file-review-chevron {
+  flex-shrink: 0;
+  color: #888;
+  display: flex;
+  align-items: center;
+}
+
+.ai-panel__todo-dock-chevron {
+  flex-shrink: 0;
+  color: #888;
+  display: flex;
+  align-items: center;
+}
+
+.ai-panel__file-review-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #d4d4d4;
+}
+
+.ai-panel__file-review-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background-color: #3a3a3a;
+  color: #888;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.ai-panel__file-review-approve-all {
+  margin-left: auto;
+  padding: 3px 10px;
+  border: 1px solid #3fb950;
+  border-radius: 4px;
+  background-color: transparent;
+  color: #3fb950;
+  cursor: pointer;
+  font-size: 11px;
+  transition: background-color 0.15s;
+}
+
+.ai-panel__file-review-approve-all:hover {
+  background-color: rgba(63, 185, 80, 0.15);
+}
+
+.ai-panel__file-review-summary {
+  margin-left: auto;
+  font-size: 11px;
+  color: #888;
+  white-space: nowrap;
+}
+
+/* 文件列表 */
+.ai-panel__file-review-list {
+  padding: 4px 12px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.ai-panel__file-review-item {
+  border-bottom: 1px solid #2a2a2a;
+}
+
+.ai-panel__file-review-item:last-child {
+  border-bottom: none;
+}
+
+.ai-panel__file-review-item--approved { opacity: 0.65; }
+.ai-panel__file-review-item--rejected { opacity: 0.45; text-decoration: line-through; }
+
+/* 单行文件条目 */
+.ai-panel__file-review-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 12px;
+  min-height: 28px;
+}
+
+.ai-panel__file-review-icon {
+  flex-shrink: 0;
+  color: #888;
+}
+.ai-panel__file-review-icon--edit { color: #e3b341; }
+.ai-panel__file-review-icon--write { color: #58a6ff; }
+.ai-panel__file-review-icon--apply_patch { color: #a371f7; }
+
+.ai-panel__file-review-filename {
+  flex: 1;
+  min-width: 0;
+  color: #d4d4d4;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-panel__file-review-type {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: #888;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background-color: #2a2a2a;
+}
+
+.ai-panel__file-review-diff-stats {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 11px;
+}
+
+.ai-panel__file-review-diff-add {
+  color: #3fb950;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.ai-panel__file-review-diff-del {
+  color: #f85149;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.ai-panel__file-review-status-text {
+  flex-shrink: 0;
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 3px;
+}
+.ai-panel__file-review-status-text--approved { color: #3fb950; background-color: rgba(63, 185, 80, 0.12); }
+.ai-panel__file-review-status-text--rejected { color: #f85149; background-color: rgba(248, 81, 73, 0.12); }
+
+.ai-panel__file-review-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.ai-panel__file-review-btn {
+  padding: 2px 10px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 11px;
+  transition: all 0.15s;
+}
+
+.ai-panel__file-review-btn--approve:hover {
+  background-color: rgba(63, 185, 80, 0.15);
+  border-color: #3fb950;
+  color: #3fb950;
+}
+
+.ai-panel__file-review-btn--reject:hover {
+  background-color: rgba(248, 81, 73, 0.15);
+  border-color: #f85149;
+  color: #f85149;
+}
+
+.ai-panel__file-review-btn--link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  color: #888;
+}
+.ai-panel__file-review-btn--link:hover {
+  color: #58a6ff;
+  background-color: rgba(88, 166, 255, 0.12);
+}
+
+.ai-panel__file-review-btn--diff {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  font-size: 11px;
+  color: #888;
+}
+.ai-panel__file-review-btn--diff:hover {
+  color: #a371f7;
+  background-color: rgba(163, 113, 247, 0.12);
+}
+
+/* ================================================================
+ * 阶段 5.2 通用组件样式（对齐 opencode 桌面版）
+ * ================================================================ */
+
+/* ── TextShimmer 文字扫光 ─────────────────────────────────────── */
+.ai-panel__text-shimmer {
+  position: relative;
+  display: inline-block;
+  color: var(--text-base, #d4d4d4);
+}
+
+.ai-panel__text-shimmer--active {
+  background: linear-gradient(
+    90deg,
+    #666 0%,
+    #ccc 25%,
+    #fff 50%,
+    #ccc 75%,
+    #666 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: ai-panel-text-shimmer-sweep 2s infinite linear;
+}
+
+@keyframes ai-panel-text-shimmer-sweep {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-panel__text-shimmer--active {
+    animation: none;
+    background: none;
+    -webkit-text-fill-color: initial;
+    color: #aaa;
+  }
+}
+
+/* ── MessageDivider 分隔线 ────────────────────────────────────── */
+.ai-panel__message-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 0;
+  min-width: 0;
+}
+
+.ai-panel__message-divider-line {
+  flex: 1;
+  height: 1px;
+  background-color: #444;
+  min-width: 0;
+}
+
+.ai-panel__message-divider-text {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+/* ── CollapsibleHeader 折叠头部 ───────────────────────────────── */
+.ai-panel__collapsible-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 32px;
+  padding: 4px 8px;
+  cursor: pointer;
+  user-select: none;
+  border-radius: 4px;
+  transition: background-color 0.15s ease;
+  outline: none;
+}
+
+.ai-panel__collapsible-header:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.ai-panel__collapsible-header:focus-visible {
+  background-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 0 0 1px #58a6ff;
+}
+
+.ai-panel__collapsible-header--disabled {
+  cursor: default;
+  opacity: 0.85;
+}
+
+.ai-panel__collapsible-header--disabled:hover {
+  background-color: transparent;
+}
+
+.ai-panel__collapsible-header-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.ai-panel__collapsible-arrow {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: #888;
+  transform: rotate(-90deg);
+  transition: transform 0.15s ease;
+}
+
+.ai-panel__collapsible-arrow--open {
+  transform: rotate(0deg);
+}
+
+/* ── BasicTool 通用工具卡片 ───────────────────────────────────── */
+.ai-panel__basic-tool {
+  margin: 4px 0;
+  border: 1px solid #444;
+  border-radius: 6px;
+  overflow: hidden;
+  background-color: rgba(255, 255, 255, 0.02);
+  min-width: 0;
+}
+
+.ai-panel__basic-tool--pending,
+.ai-panel__basic-tool--running {
+  border-color: #555;
+}
+
+.ai-panel__basic-tool--completed {
+  border-color: #3fb950;
+}
+
+.ai-panel__basic-tool--error {
+  border-color: #f85149;
+  background-color: rgba(248, 81, 73, 0.05);
+}
+
+.ai-panel__basic-tool-trigger {
+  border-radius: 0;
+}
+
+.ai-panel__basic-tool-trigger:hover {
+  background-color: rgba(255, 255, 255, 0.04);
+}
+
+.ai-panel__basic-tool-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.ai-panel__basic-tool-info-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.ai-panel__basic-tool-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: #ebebeb;
+  flex-shrink: 0;
+}
+
+.ai-panel__basic-tool-subtitle {
+  font-size: 11px;
+  color: #b0b0b0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.ai-panel__basic-tool-subtitle--clickable {
+  cursor: pointer;
+  color: #58a6ff;
+}
+
+.ai-panel__basic-tool-subtitle--clickable:hover {
+  text-decoration: underline;
+}
+
+.ai-panel__basic-tool-args {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.ai-panel__basic-tool-arg {
+  font-size: 10px;
+  color: #aaa;
+  background-color: rgba(255, 255, 255, 0.08);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  white-space: nowrap;
+}
+
+.ai-panel__basic-tool-action {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+}
+
+.ai-panel__basic-tool-content {
+  padding: 8px 12px;
+  border-top: 1px solid #333;
+  background-color: #1a1a1a;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* hideDetails 模式：无边框、无背景 */
+.ai-panel__basic-tool[data-hide-details="true"] {
+  border: none;
+  background: none;
+}
+
+.ai-panel__basic-tool[data-hide-details="true"] .ai-panel__basic-tool-trigger {
+  padding: 2px 0;
+}
+
+.ai-panel__basic-tool[data-hide-details="true"] .ai-panel__basic-tool-trigger:hover {
+  background-color: transparent;
+}
+
+/* ── ContextToolGroup 上下文工具组（新版本） ──────────────────── */
+.ai-panel__context-tool-group {
+  margin: 4px 0;
+  min-width: 0;
+}
+
+.ai-panel__context-tool-group-trigger {
+  padding: 4px 0;
+  min-height: 28px;
+}
+
+.ai-panel__context-tool-group-trigger:hover {
+  background-color: transparent;
+}
+
+.ai-panel__context-tool-group-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: #d4d4d4;
+  flex-shrink: 0;
+}
+
+.ai-panel__context-tool-group-summary {
+  font-size: 11px;
+  color: #888;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  font-weight: 400;
+}
+
+.ai-panel__context-tool-group-list {
+  padding: 4px 0 4px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ai-panel__context-tool-group-item {
+  min-height: 24px;
+  padding: 2px 0;
+  min-width: 0;
+}
+
+.ai-panel__context-tool-group-item .ai-panel__basic-tool-info-main {
+  flex-wrap: nowrap;
+}
+
+.ai-panel__context-tool-group-item .ai-panel__basic-tool-title {
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.ai-panel__context-tool-group-item .ai-panel__basic-tool-subtitle {
+  font-size: 11px;
+}
+
+.ai-panel__context-tool-group-item .ai-panel__basic-tool-arg {
+  font-size: 10px;
+}
+
+/* ================================================================
+ * 阶段 4/6/7：虚拟化时间线 + Part 组件 + TodoDock 状态机样式
+ * 对齐 opencode 桌面版 message-timeline + session-todo-dock
+ * ================================================================ */
+
+/* ── pulse-scale 脉冲动画（TodoDock in_progress 圆点） ─────────── */
+@keyframes pulse-scale {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(0.6666667); }
+}
+
+/* ── 虚拟化时间线容器 ────────────────────────────────────────── */
+.ai-panel__timeline {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  contain: strict;
+  padding: 8px 0;
+}
+
+.ai-panel__timeline::-webkit-scrollbar {
+  width: 6px;
+}
+
+.ai-panel__timeline::-webkit-scrollbar-thumb {
+  background-color: #555;
+  border-radius: 3px;
+}
+
+.ai-panel__timeline::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.ai-panel__timeline--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ai-panel__timeline-empty {
+  color: #666;
+  font-size: 13px;
+  text-align: center;
+  padding: 32px 16px;
+}
+
+/* ── 时间线行外壳 ─────────────────────────────────────────────── */
+.ai-panel__timeline-row {
+  padding: 0 12px;
+  min-width: 0;
+}
+
+.ai-panel__timeline-row--gap {
+  margin-top: 8px;
+}
+
+.ai-panel__timeline-turn-gap {
+  height: 12px;
+}
+
+.ai-panel__timeline-assistant-content {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.ai-panel__timeline-retry {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 12px;
+  min-width: 0;
+  background-color: rgba(248, 81, 73, 0.06);
+  border: 1px solid rgba(248, 81, 73, 0.2);
+  border-radius: 6px;
+  color: #ff8a80;
+  font-size: 12px;
+}
+
+.ai-panel__timeline-retry-icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding-top: 1px;
+  color: #ff8a80;
+}
+
+.ai-panel__timeline-retry-spinner {
+  animation: ai-panel-spin 0.8s linear infinite;
+}
+
+@keyframes ai-panel-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.ai-panel__timeline-retry-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ai-panel__timeline-retry-message {
+  font-size: 12px;
+  color: #ebebeb;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-panel__timeline-retry-info {
+  font-size: 11px;
+  color: #b0b0b0;
+}
+
+.ai-panel__timeline-retry-action {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: #79c0ff;
+  text-decoration: none;
+  padding: 2px 8px;
+  border: 1px solid rgba(121, 192, 255, 0.3);
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.ai-panel__timeline-retry-action:hover {
+  background-color: rgba(121, 192, 255, 0.1);
+}
+
+/* ── Thinking 行 ──────────────────────────────────────────────── */
+.ai-panel__timeline-thinking {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  min-width: 0;
+}
+
+.ai-panel__timeline-thinking-label {
+  font-size: 12px;
+  color: #888;
+}
+
+.ai-panel__timeline-thinking-heading {
+  font-size: 12px;
+  color: #666;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* ── Error 行 ─────────────────────────────────────────────────── */
+.ai-panel__timeline-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #3a1a1a;
+  border: 1px solid #5c2424;
+  border-radius: 4px;
+  min-width: 0;
+}
+
+.ai-panel__timeline-error-icon {
+  flex-shrink: 0;
+  color: #f85149;
+  margin-top: 2px;
+}
+
+.ai-panel__timeline-error-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ai-panel__timeline-error-text {
+  font-size: 12px;
+  color: #ff8a80;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+/* ── DiffSummary 行 ───────────────────────────────────────────── */
+.ai-panel__timeline-diffs {
+  padding: 4px 0;
+  min-width: 0;
+}
+
+.ai-panel__timeline-diffs-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  min-width: 0;
+}
+
+.ai-panel__timeline-diffs-label {
+  font-size: 12px;
+  color: #888;
+  flex-shrink: 0;
+}
+
+.ai-panel__timeline-diffs-changes {
+  font-size: 11px;
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ai-panel__timeline-diffs-toggle {
+  margin-left: auto;
+  padding: 2px 8px;
+  font-size: 11px;
+  color: #aaa;
+  background: transparent;
+  border: 1px solid #444;
+  border-radius: 3px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.ai-panel__timeline-diffs-toggle:hover {
+  background: #2a2a2a;
+}
+
+.ai-panel__timeline-diffs-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ai-panel__timeline-diffs-more {
+  padding: 4px 0;
+  font-size: 11px;
+  color: #58a6ff;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  text-align: left;
+}
+
+.ai-panel__timeline-diff-item {
+  min-width: 0;
+}
+
+.ai-panel__timeline-diff-path {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  min-width: 0;
+}
+
+.ai-panel__timeline-diff-directory {
+  color: #666;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.ai-panel__timeline-diff-filename {
+  color: #d4d4d4;
+  flex-shrink: 0;
+}
+
+.ai-panel__timeline-diff-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.ai-panel__timeline-diff-changes {
+  font-size: 11px;
+  display: flex;
+  gap: 4px;
+}
+
+.ai-panel__timeline-diff-view {
+  font-size: 11px;
+  color: #d4d4d4;
+  background: #1e1e1e;
+  padding: 8px;
+  border-radius: 3px;
+  overflow-x: auto;
+  white-space: pre;
+  line-height: 1.5;
+  min-width: 0;
+}
+
+/* ── UserMessageDisplay 用户消息 ───────────────────────────────── */
+.ai-panel__user-message {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 0;
+  min-width: 0;
+  /* 对齐桌面版：用户消息右对齐 */
+  align-items: flex-end;
+}
+
+/* 用户标识行 — 气泡上方 */
+.ai-panel__user-message-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 4px;
+}
+
+.ai-panel__user-message-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+  justify-content: flex-end;
+}
+
+.ai-panel__user-message-attachment {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: #2a2a2a;
+  border: 1px solid #3a3a3a;
+  border-radius: 4px;
+  font-size: 11px;
+  color: #aaa;
+  min-width: 0;
+}
+
+.ai-panel__user-message-attachment-image {
+  max-width: 200px;
+  max-height: 150px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+
+.ai-panel__user-message-attachment-icon {
+  flex-shrink: 0;
+  color: #888;
+}
+
+.ai-panel__user-message-attachment-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* 气泡 + 回滚按钮行 */
+.ai-panel__user-message-body-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  min-width: 0;
+  justify-content: flex-end;
+}
+
+.ai-panel__user-message-body {
+  min-width: 0;
+  overflow: hidden;
+  /* 对齐桌面版：气泡靠右，宽度自适应 */
+  width: fit-content;
+  max-width: min(85%, 64ch);
+  background-color: #264169;
+  border-radius: 12px 12px 2px 12px;
+  padding: 8px 12px;
+}
+
+.ai-panel__user-message-text {
+  font-size: 13px;
+  color: #ebebeb;
+  line-height: 1.6;
+  min-width: 0;
+}
+
+.ai-panel__user-message-meta {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.55);
+  min-width: 0;
+  text-align: right;
+}
+
+.ai-panel__user-message-revert-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  color: #888;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.15s, background-color 0.15s;
+}
+
+.ai-panel__user-message-revert-btn:hover {
+  color: #d4d4d4;
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.ai-panel__user-message-revert-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* ── TextPartDisplay 助手文本 ─────────────────────────────────── */
+.ai-panel__text-part {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 0;
+  min-width: 0;
+}
+
+.ai-panel__text-part-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  min-width: 0;
+}
+
+.ai-panel__text-part-meta {
+  font-size: 11px;
+  color: #999;
+  min-width: 0;
+}
+
+/* ── ReasoningPartDisplay 推理 ─────────────────────────────────── */
+.ai-panel__reasoning-part {
+  padding: 4px 0;
+  min-width: 0;
+}
+
+.ai-panel__markdown--reasoning {
+  color: #888;
+  font-size: 12px;
+}
+
+.ai-panel__markdown--reasoning ol,
+.ai-panel__markdown--reasoning ul {
+  overflow-wrap: anywhere;
+}
+
+.ai-panel__markdown--reasoning li {
+  min-width: 0;
+}
+
+/* ── ToolPartDisplay 包装 ──────────────────────────────────────── */
+.ai-panel__tool-part-wrapper {
+  padding: 2px 0;
+  min-width: 0;
+}
+
+.ai-panel__question-dismissed {
+  font-size: 12px;
+  color: #666;
+  padding: 4px 0;
+}
+
+/* ── QuestionTool 问答 ────────────────────────────────────────── */
+.ai-panel__question-answers {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ai-panel__question-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  background: #2a2a2a;
+  border-radius: 4px;
+  min-width: 0;
+}
+
+.ai-panel__question-header {
+  font-size: 11px;
+  color: #888;
+  font-weight: 500;
+}
+
+.ai-panel__question-text {
+  font-size: 12px;
+  color: #d4d4d4;
+  min-width: 0;
+}
+
+.ai-panel__question-options {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ai-panel__question-option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 8px;
+  background: #1e1e1e;
+  border-radius: 3px;
+  min-width: 0;
+}
+
+.ai-panel__question-option-label {
+  font-size: 12px;
+  color: #d4d4d4;
+  font-weight: 500;
+}
+
+.ai-panel__question-option-desc {
+  font-size: 11px;
+  color: #888;
+}
+
+.ai-panel__question-answer {
+  font-size: 12px;
+  color: #3fb950;
+  padding: 2px 0;
+}
+
+/* ── WebSearchTool 搜索结果 ────────────────────────────────────── */
+.ai-panel__websearch-links {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ai-panel__websearch-link {
+  font-size: 11px;
+  min-width: 0;
+}
+
+.ai-panel__websearch-link a {
+  color: #58a6ff;
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-block;
+  max-width: 100%;
+}
+
+.ai-panel__websearch-link a:hover {
+  text-decoration: underline;
+}
+
+/* ── TaskTool 子代理任务 ──────────────────────────────────────── */
+.ai-panel__task-tool-spinner {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ai-panel__task-tool-action {
+  font-size: 12px;
+  color: #aaa;
+  min-width: 0;
+}
+
+.ai-panel__basic-tool--sub-agent {
+  border-left: 2px solid var(--task-tone, #58a6ff);
+}
+
+/* ── TodoDock 新增样式（状态机 + SVG 脉冲） ───────────────────── */
+.ai-panel__todo-dot {
+  display: inline-block;
+  color: #58a6ff;
+  flex-shrink: 0;
+}
+
+.ai-panel__todo-dock--closing {
+  opacity: 0.6;
+  transition: opacity 0.3s ease;
+}
+
+/* Todo 项状态修饰（对齐桌面版 data-state） */
+.ai-panel__todo-item--in_progress {
+  color: #d4d4d4;
+}
+
+.ai-panel__todo-item--pending {
+  opacity: 0.94;
+}
+
+.ai-panel__todo-item--completed {
+  color: var(--text-weak, #666);
+}
+
+.ai-panel__todo-item--cancelled {
+  color: var(--text-weak, #666);
+}
+
+.ai-panel__todo-item-check--pending {
+  color: #555;
+}
+
+.ai-panel__todo-item-check--in_progress {
+  color: #58a6ff;
+}
+
+/* ── markdown 防溢出（保留旧约束，适用于新 Part 组件） ─────────── */
+.ai-panel__markdown ol,
+.ai-panel__markdown ul {
+  overflow-wrap: anywhere;
+}
+
+.ai-panel__markdown li {
+  min-width: 0;
+}
+
+.ai-panel__markdown pre {
+  overflow-x: auto;
+  min-width: 0;
+}
+
+.ai-panel__markdown p {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* ================================================================
+ * 类型标识徽章 & 思考折叠 & 工具参数增强
+ * ================================================================ */
+
+/* ── 通用类型徽章 ───────────────────────────────────────────── */
+.ai-panel__type-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  flex-shrink: 0;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+.ai-panel__type-badge--tool {
+  background-color: rgba(88, 166, 255, 0.15);
+  color: #79c0ff;
+}
+
+.ai-panel__type-badge--reasoning {
+  background-color: rgba(179, 157, 219, 0.18);
+  color: #b39ddb;
+}
+
+.ai-panel__type-badge--text {
+  background-color: rgba(63, 185, 80, 0.15);
+  color: #56d364;
+}
+
+.ai-panel__type-badge--error {
+  background-color: rgba(248, 81, 73, 0.18);
+  color: #ff8a80;
+}
+
+.ai-panel__type-badge--user {
+  background-color: rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.ai-panel__type-badge--system {
+  background-color: rgba(210, 168, 255, 0.15);
+  color: #d2a8ff;
+}
+
+/* ── 思考内容折叠（ReasoningPartDisplay） ──────────────────── */
+.ai-panel__reasoning-part {
+  min-width: 0;
+  border: 1px solid #3a2a5a;
+  border-radius: 6px;
+  overflow: hidden;
+  margin: 2px 0;
+}
+
+.ai-panel__reasoning-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  text-align: left;
+  color: #b39ddb;
+  user-select: none;
+  transition: background-color 0.15s;
+  outline: none;
+  min-width: 0;
+}
+
+.ai-panel__reasoning-header:hover {
+  background-color: rgba(179, 157, 219, 0.08);
+}
+
+.ai-panel__reasoning-header:focus-visible {
+  box-shadow: inset 0 0 0 1px rgba(179, 157, 219, 0.5);
+}
+
+.ai-panel__reasoning-chevron {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 10px;
+  height: 10px;
+  color: #aaa;
+}
+
+.ai-panel__reasoning-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background-color: rgba(179, 157, 219, 0.18);
+  color: #b39ddb;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  flex-shrink: 0;
+  text-transform: uppercase;
+}
+
+.ai-panel__reasoning-label {
+  font-size: 12px;
+  color: #b39ddb;
+  flex-shrink: 0;
+}
+
+.ai-panel__reasoning-preview {
+  font-size: 11px;
+  color: #888;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex: 1;
+}
+
+.ai-panel__reasoning-content {
+  padding: 8px 12px;
+  border-top: 1px solid #3a2a5a;
+  background-color: rgba(179, 157, 219, 0.04);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.ai-panel__reasoning-content .ai-panel__markdown--reasoning {
+  color: #aaa;
+  font-size: 12px;
+}
+
+/* ── 工具参数增强（标签化显示） ─────────────────────────────── */
+.ai-panel__basic-tool-args {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.ai-panel__basic-tool-section-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.ai-panel__basic-tool-section-params {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.ai-panel__basic-tool-section-params:last-child {
+  margin-bottom: 0;
+}
+
+/* ── Thinking 行增强标签 ────────────────────────────────────── */
+.ai-panel__timeline-thinking-label {
+  font-size: 12px;
+  color: #aaa;
+}
+
+.ai-panel__timeline-thinking-heading {
+  font-size: 12px;
+  color: #888;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* ── Error 行类型标签 ───────────────────────────────────────── */
+.ai-panel__timeline-error-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background-color: rgba(248, 81, 73, 0.18);
+  color: #ff8a80;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  flex-shrink: 0;
+}
+
+/* ── TextPartDisplay 增强（类型标识 + 复制按钮区内联） ─────── */
+.ai-panel__text-part-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ai-panel__text-part-header .ai-panel__type-badge {
+  flex-shrink: 0;
+}
+
+/* ── 工具内容区域折叠状态提示 ───────────────────────────────── */
+.ai-panel__basic-tool-content-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: #a0a0a0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+

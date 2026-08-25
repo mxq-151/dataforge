@@ -1,0 +1,80 @@
+.editor-test-page {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background-color: #1e1e1e;
+  overflow: hidden;
+}
+
+.editor-test-page__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background-color: #252526;
+  border-bottom: 1px solid #333;
+  flex: 0 0 auto;
+}
+
+.editor-test-page__title {
+  color: #bbbbbb;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.editor-test-page__path {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 8px;
+  font-size: 12px;
+  color: #d4d4d4;
+  background-color: #1e1e1e;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  outline: none;
+}
+
+.editor-test-page__path:focus {
+  border-color: #0078d4;
+}
+
+.editor-test-page__open {
+  padding: 5px 14px;
+  font-size: 12px;
+  color: #fff;
+  background-color: #0e639c;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.editor-test-page__open:hover {
+  background-color: #1177bb;
+}
+
+.editor-test-page__exit {
+  padding: 5px 14px;
+  font-size: 12px;
+  color: #ccc;
+  background-color: #333;
+  border: 1px solid #555;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.editor-test-page__exit:hover {
+  background-color: #444;
+}
+
+.editor-test-page__error {
+  flex: 0 0 auto;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: #f48771;
+  background-color: #2d2d2d;
+  border-bottom: 1px solid #3c3c3c;
+}

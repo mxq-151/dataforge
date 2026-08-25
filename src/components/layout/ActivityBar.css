@@ -1,0 +1,282 @@
+.activity-bar {
+  width: 48px;
+  background-color: #333333;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  color: #858585;
+}
+
+.activity-bar__top,
+.activity-bar__bottom {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.activity-bar__logo {
+  width: 40px;
+  height: 40px;
+  background-color: #0e639c;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+  cursor: pointer;
+}
+
+.activity-bar__logo-text {
+  color: white;
+  font-weight: bold;
+  font-size: 14px;
+}
+
+.activity-bar__item {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.2s;
+  position: relative;
+  border: none;
+  background: transparent;
+  color: inherit;
+}
+
+.activity-bar__item:hover {
+  background-color: #2a2d2e;
+  color: #ffffff;
+}
+
+.activity-bar__item--active {
+  color: #ffffff;
+}
+
+.activity-bar__item--active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2px;
+  height: 24px;
+  background-color: #ffffff;
+}
+
+.activity-bar__tooltip {
+  position: absolute;
+  left: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%);
+  background: #1e1e1e;
+  color: #ccc;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 100;
+  border: 1px solid #3c3c3c;
+}
+
+.activity-bar__item:hover .activity-bar__tooltip {
+  opacity: 1;
+}
+
+.activity-bar__modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.activity-bar__modal {
+  background: #2d2d2d;
+  border: 1px solid #444;
+  border-radius: 12px;
+  width: 360px;
+  max-width: 90vw;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.activity-bar__modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px 0;
+}
+
+.activity-bar__modal-header h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #e0e0e0;
+  margin: 0;
+}
+
+.activity-bar__modal-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: #888;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.activity-bar__modal-close:hover {
+  background: #444;
+  color: #e0e0e0;
+}
+
+.activity-bar__modal-body {
+  padding: 20px 24px;
+  color: #ccc;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.activity-bar__modal-body p {
+  margin: 0;
+}
+
+.activity-bar__modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 0 24px 20px;
+}
+
+.activity-bar__modal-btn {
+  padding: 6px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+  border: 1px solid transparent;
+}
+
+.activity-bar__modal-btn--cancel {
+  background: transparent;
+  border-color: #555;
+  color: #ccc;
+}
+
+.activity-bar__modal-btn--cancel:hover {
+  background: #333;
+  border-color: #888;
+  color: #fff;
+}
+
+.activity-bar__modal-btn--confirm {
+  background: #d32f2f;
+  border-color: #d32f2f;
+  color: #fff;
+}
+
+.activity-bar__modal-btn--confirm:hover {
+  background: #e53935;
+  border-color: #e53935;
+}
+
+/* 用户菜单弹出层 */
+.activity-bar__bottom {
+  position: relative;
+}
+
+.activity-bar__user-menu {
+  position: absolute;
+  bottom: 0;
+  left: calc(100% + 8px);
+  background: #2d2d2d;
+  border: 1px solid #444;
+  border-radius: 8px;
+  min-width: 180px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  z-index: 200;
+  padding: 4px 0;
+}
+
+.activity-bar__user-menu-header {
+  padding: 10px 14px 8px;
+}
+
+.activity-bar__user-menu-name {
+  color: #e0e0e0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.activity-bar__user-menu-section {
+  padding: 2px 0;
+}
+
+.activity-bar__user-menu-label {
+  padding: 6px 14px 4px;
+  color: #888;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.activity-bar__user-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 7px 14px;
+  background: transparent;
+  border: none;
+  color: #ccc;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+  gap: 8px;
+}
+
+.activity-bar__user-menu-item:hover {
+  background: #3c3c3c;
+  color: #fff;
+}
+
+.activity-bar__user-menu-item--active {
+  color: #75beff;
+}
+
+.activity-bar__user-menu-item--active:hover {
+  color: #75beff;
+}
+
+.activity-bar__user-menu-item--danger {
+  color: #f48771;
+}
+
+.activity-bar__user-menu-item--danger:hover {
+  background: rgba(244, 135, 113, 0.1);
+  color: #f48771;
+}
+
+.activity-bar__user-menu-divider {
+  height: 1px;
+  background: #444;
+  margin: 4px 0;
+}

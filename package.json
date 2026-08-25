@@ -1,0 +1,102 @@
+{
+  "name": "dataforge-electron",
+  "version": "0.1.0",
+  "description": "DataForge 基于 Electron 的重构版",
+  "author": "DataForge",
+  "main": "dist-electron/main.js",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -k \"npm:dev:renderer\" \"npm:dev:main\" \"npm:dev:electron\"",
+    "dev:renderer": "vite",
+    "dev:main": "tsc -p tsconfig.node.json --watch --preserveWatchOutput",
+    "dev:electron": "wait-on tcp:127.0.0.1:5173 dist-electron/main.js && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .",
+    "build:main": "tsc -p tsconfig.node.json",
+    "build:renderer": "vite build",
+    "build": "npm run build:main && npm run build:renderer",
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder",
+    "start": "electron ."
+  },
+  "build": {
+    "appId": "com.dataforge.electron",
+    "productName": "DataForge",
+    "asar": false,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "dist-electron/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/sandbox",
+        "to": "sandbox",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "../src-tauri/resources/jdtls",
+        "to": "jdtls",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "../src-tauri/resources/metals",
+        "to": "metals",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "../src-tauri/binaries/opencode-aarch64-apple-darwin",
+        "to": "binaries/opencode"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "icon": "build/icon.icns",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "hardenedRuntime": false,
+      "identity": null
+    }
+  },
+  "dependencies": {
+    "@codingame/monaco-vscode-api": "^25.1.2",
+    "@codingame/monaco-vscode-editor-api": "^25.1.2",
+    "@codingame/monaco-vscode-extension-api": "^25.1.2",
+    "@monaco-editor/react": "^4.7.0",
+    "@opencode-ai/sdk": "^1.18.22",
+    "@tanstack/react-virtual": "^3.14.10",
+    "@xyflow/react": "^12.11.3",
+    "adm-zip": "^0.6.0",
+    "crypto-js": "^4.2.0",
+    "lucide-react": "^1.34.0",
+    "monaco-editor": "^0.56.0",
+    "monaco-languageclient": "^10.7.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-file-navigator": "^1.0.2-dev.1",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "vscode": "npm:@codingame/monaco-vscode-extension-api@^25.1.2",
+    "ws": "^8.21.3"
+  },
+  "devDependencies": {
+    "@codingame/esbuild-import-meta-url-plugin": "^1.0.3",
+    "@types/crypto-js": "^4.2.2",
+    "@types/node": "^26.3.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "@types/ws": "^8.18.1",
+    "@vitejs/plugin-react": "^6.1.0",
+    "concurrently": "^10.0.5",
+    "cross-env": "^10.1.0",
+    "electron": "^44.0.0",
+    "electron-builder": "^26.15.3",
+    "terser": "^5.50.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2",
+    "wait-on": "^9.1.0"
+  }
+}

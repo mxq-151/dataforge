@@ -1,0 +1,137 @@
+/* 自定义标题栏：与 macOS 原生 dark title bar 风格保持一致 */
+
+.title-bar {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  flex-shrink: 0;
+  /* 与 macOS 原生 dark title bar 近似色 */
+  background-color: #1f1f1f;
+  border-bottom: 1px solid #2e2e2e;
+  color: #cccccc;
+  user-select: none;
+  -webkit-user-select: none;
+  font-size: 12px;
+  font-weight: 500;
+  position: relative;
+  z-index: 999;
+}
+
+/* 左侧区域 */
+.title-bar__left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  width: 88px;
+  flex-shrink: 0;
+}
+
+/* macOS traffic lights */
+.title-bar__traffic {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: none;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+  position: relative;
+}
+
+/* 默认隐藏图标，hover 时显示 */
+.title-bar__traffic-icon {
+  opacity: 0;
+  color: rgba(0, 0, 0, 0.5);
+  transition: opacity 0.1s ease;
+}
+
+/* hover 整个左侧区域时显示所有图标 */
+.title-bar__left:hover .title-bar__traffic-icon {
+  opacity: 1;
+}
+
+.title-bar__traffic--close {
+  background-color: #ff5f57;
+}
+
+.title-bar__traffic--min {
+  background-color: #febc2e;
+}
+
+.title-bar__traffic--max {
+  background-color: #28c840;
+}
+
+/* 单个 hover 时加深背景 */
+.title-bar__traffic--close:hover {
+  background-color: #e14a44;
+}
+
+.title-bar__traffic--min:hover {
+  background-color: #dca317;
+}
+
+.title-bar__traffic--max:hover {
+  background-color: #19ab2e;
+}
+
+/* 中间：应用标题（可拖拽区域） */
+.title-bar__center {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+}
+
+.title-bar__title {
+  color: #cccccc;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  font-size: 12px;
+}
+
+/* 右侧：窗口控制按钮（Windows 风格） */
+.title-bar__right {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  flex-shrink: 0;
+}
+
+.title-bar__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 100%;
+  background: transparent;
+  border: none;
+  color: #cccccc;
+  cursor: pointer;
+  transition: background-color 0.12s ease, color 0.12s ease;
+  padding: 0;
+  margin: 0;
+}
+
+.title-bar__btn:hover {
+  background-color: rgba(255, 255, 255, 0.06);
+  color: #ffffff;
+}
+
+.title-bar__btn--close:hover {
+  background-color: #e81123;
+  color: #ffffff;
+}
+
+.title-bar__btn:active {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.title-bar__btn--close:active {
+  background-color: #c42b1c;
+}

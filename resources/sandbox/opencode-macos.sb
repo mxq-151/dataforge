@@ -1,0 +1,111 @@
+;; DataForge — opencode macOS Seatbelt 沙箱配置
+;;
+;; 由 src-tauri/src/opencode_manager.rs 在启动 opencode sidecar 时自动套用：
+;;   sandbox-exec -f opencode-macos.sb \
+;;     -D PROJECT="$CWD" -D HOME="$HOME" -D TMPDIR="$TMPDIR" \
+;;     -D JAVA_HOME="$JAVA_HOME" -D MAVEN_HOME="$MAVEN_HOME" \
+;;     -D SCALA_HOME="$SCALA_HOME" -D OPENCODE_BIN_DIR="$OPENCE_BIN_DIR" \
+;;     -- $OPENCE_BIN serve --hostname=127.0.0.1 --port=4096 ...
+;;
+;; 设计目标
+;; ---------
+;; - 限制 opencode 进程及其所有子进程（git / java / python / mvn / npm / bash 等）
+;;   的文件【写】范围到工作目录与必要的 opencode 运行时目录，拒绝写入系统目录与
+;;   HOME 下其他位置，防止失控的 agent 篡改系统或凭据。
+;; - 限制【进程执行】到系统工具链、项目内脚本与用户配置的工具链目录，禁止高危
+;;   启动器 / 提权 / GUI 桥接二进制。
+;; - 屏蔽最敏感凭据目录（.ssh 私钥、.aws、.gnupg、gcloud、kube）的【读】权限，
+;;   但保留 .ssh/config 与 known_hosts 以便 git SSH 可用。
+;; - 【网络保持开放】：opencode 必须联网调用模型 API，且 serve 仅监听 127.0.0.1，
+;;   sandbox-exec 无法按域名做白名单（那需要额外本地代理），故出站网络不限制。
+;;
+;; 注：sandbox-exec 已被 Apple 标记为 deprecated，但在 macOS 15 仍可用。
+;;     所有 -D 变量必须由调用方保证非空（Rust 侧已做 fallback），否则 subpath ""
+;;     会错误地匹配文件系统根。
+
+(version 1)
+
+;; 基线：允许一切，再逐步收紧
+(allow default)
+
+;; ───────────────────────────────────────────────────────────────
+;; 写：默认拒绝，仅放行工作目录与必要的运行时目录
+;; ───────────────────────────────────────────────────────────────
+(deny file-write*)
+
+;; 项目工作目录（核心可写区）
+(allow file-write* (subpath (param "PROJECT")))
+
+;; opencode 自身运行时数据（会话 SQLite、缓存、配置、XDG 状态/锁）
+(allow file-write* (subpath (string-append (param "HOME") "/.local/share/opencode")))
+(allow file-write* (subpath (string-append (param "HOME") "/.local/state/opencode")))
+(allow file-write* (subpath (string-append (param "HOME") "/.config/opencode")))
+(allow file-write* (subpath (string-append (param "HOME") "/.cache/opencode")))
+(allow file-write* (subpath (string-append (param "HOME") "/.opencode")))
+
+;; 临时目录（构建产物、进程间通信、日志）
+(allow file-write* (subpath "/tmp"))
+(allow file-write* (subpath "/private/tmp"))
+(allow file-write* (subpath (param "TMPDIR")))
+;; macOS per-user 临时目录：$TMPDIR 形如 /var/folders/xx/.../T，
+;; 其中 /var 是指向 /private/var 的符号链接。sandbox-exec 处理文件路径时会进行
+;; 符号链接解析，subpath 需要匹配解析后的真实路径 /private/var/folders，
+;; 否则 opencode 尝试在临时目录创建目录时报 EPERM (operation not permitted)。
+(allow file-write* (subpath "/private/var/folders"))
+
+;; ───────────────────────────────────────────────────────────────
+;; 读：屏蔽最敏感凭据目录（其余保持默认开放）
+;; ───────────────────────────────────────────────────────────────
+(deny file-read* (subpath (string-append (param "HOME") "/.ssh")))
+;; git SSH 需要的非敏感文件例外放行
+(allow file-read* (literal (string-append (param "HOME") "/.ssh/config")))
+(allow file-read* (literal (string-append (param "HOME") "/.ssh/known_hosts")))
+
+(deny file-read* (subpath (string-append (param "HOME") "/.aws")))
+(deny file-read* (subpath (string-append (param "HOME") "/.gnupg")))
+(deny file-read* (subpath (string-append (param "HOME") "/.config/gcloud")))
+(deny file-read* (subpath (string-append (param "HOME") "/.kube")))
+
+;; ───────────────────────────────────────────────────────────────
+;; 进程执行：默认拒绝，仅放行工具链
+;; ───────────────────────────────────────────────────────────────
+(deny process-exec)
+
+(allow process-exec (subpath "/bin"))
+(allow process-exec (subpath "/usr/bin"))
+(allow process-exec (subpath "/usr/local/bin"))
+(allow process-exec (subpath "/usr/lib"))
+(allow process-exec (subpath "/System"))
+(allow process-exec (subpath "/Library"))
+(allow process-exec (subpath "/opt/homebrew"))
+(allow process-exec (subpath "/opt/local"))
+(allow process-exec (subpath "/opt"))
+(allow process-exec (subpath "/Library/Java"))
+(allow process-exec (subpath "/usr/local"))
+(allow process-exec (subpath "/private/var"))
+
+;; 用户配置的工具链（动态传入，空则忽略）
+(allow process-exec (subpath (param "JAVA_HOME")))
+(allow process-exec (subpath (param "MAVEN_HOME")))
+(allow process-exec (subpath (param "SCALA_HOME")))
+
+;; 项目内脚本
+(allow process-exec (subpath (param "PROJECT")))
+
+;; opencode 自身二进制目录（由 Rust 侧 -D OPENCODE_BIN_DIR 注入）。
+;; 显式放行，确保无论 PROJECT/cwd 落在何处，opencode 进程及其直接加载均不被
+;; process-exec 默认拒绝误伤（否则报 Operation not permitted）。
+(allow process-exec (subpath (param "OPENCODE_BIN_DIR")))
+(allow file-read*   (subpath (param "OPENCODE_BIN_DIR")))
+
+;; 禁止高危启动器 / 提权 / GUI 桥接
+(deny process-exec (literal "/usr/bin/osascript"))
+(deny process-exec (literal "/usr/bin/open"))
+(deny process-exec (literal "/usr/bin/sudo"))
+(deny process-exec (literal "/bin/launchctl"))
+(deny process-exec (literal "/usr/bin/askpass"))
+
+;; ───────────────────────────────────────────────────────────────
+;; 网络：保持开放（opencode 需调用模型 API；serve 仅监听 127.0.0.1）
+;; 不添加 (deny network*) —— 出站网络允许
+;; ───────────────────────────────────────────────────────────────
