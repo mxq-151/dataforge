@@ -84,6 +84,12 @@ interface EditorAreaProps {
   pomTemplate?: string;
   /** 项目级依赖（默认依赖集合），与逐文件依赖合并后用于更新 LSP classpath（悬停提示） */
   projectDependencies?: DependencyItemLite[];
+  /** 项目源码目录（透传给 LSP 生成 pom 的 <sourceDirectory> 与 bloop sourceDir） */
+  sourceDir?: string;
+  /** 覆盖 bloop 输出目录（透传给 LSP） */
+  bloopConfigDirectory?: string;
+  /** 是否在 bloop 导出时下载依赖源码（透传给 LSP） */
+  bloopDownloadSources?: boolean;
 }
 
 const EditorArea = forwardRef<EditorAreaHandle, EditorAreaProps>(({
@@ -120,6 +126,9 @@ const EditorArea = forwardRef<EditorAreaHandle, EditorAreaProps>(({
   scalaVersion,
   pomTemplate,
   projectDependencies,
+  sourceDir,
+  bloopConfigDirectory,
+  bloopDownloadSources,
 }, ref) => {
   const editorRef = useRef<any>(null);
   const [cursorPosition, setCursorPosition] = useState({ line: statusInfo.line, column: statusInfo.column });
@@ -182,6 +191,9 @@ const EditorArea = forwardRef<EditorAreaHandle, EditorAreaProps>(({
     projectId,
     projectCode,
     rootPath,
+    sourceDir,
+    bloopConfigDirectory,
+    bloopDownloadSources,
   });
 
   // ========== 全局 Pointer 事件：检测丢失的 pointerup 并补发 ==========

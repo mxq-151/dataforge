@@ -136,13 +136,15 @@ interface DevAssistantViewProps {
   chatBackend: OpencodeClientBackend;
   project: ProjectInfo;
   projectCwd?: string;
+  /** bloop/metals 工作目录（code/{project_code}）。缺省回退到 config.cwd。 */
+  workspaceRoot?: string;
   dsApiUrl?: string;
   dsToken?: string;
   config: OpenCodeConfig;
   onBack: () => void;
 }
 
-const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, project, projectCwd, dsApiUrl, dsToken, config, onBack }) => {
+const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, project, projectCwd, workspaceRoot, dsApiUrl, dsToken, config, onBack }) => {
   const { user } = useAuth();
   const { refresh } = useDataSourceCache();
   const toast = useToast();
@@ -953,10 +955,11 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
           onCancelExecution={handleCancelExecution}
           runningLogs={runningLogs}
           rootPath={projectCwd}
+          sourceDir={projectCwd}
           projectId={project.id}
           projectCode={project.projectCode}
           javaHome={config.javaHome}
-          workspaceRoot={config.cwd}
+          workspaceRoot={workspaceRoot ?? config.cwd}
           activeTabRange={activeTabId ? (tabRanges[activeTabId] ?? null) : null}
           onTabRangeConsumed={handleTabRangeConsumed}
           mavenHome={config.mavenHome}

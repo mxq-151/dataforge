@@ -401,3 +401,66 @@ export const gitReset = async (rootPath: string, commitHash: string, mode: 'hard
     throw err;
   }
 };
+
+/** 判断某目录是否位于（仓库或链接工作树的）git 工作树内 */
+const isInsideWorkTree = async (dir: string): Promise<boolean> => {
+  try {
+    const { Command } = await import('@tauri-apps/plugin-shell');
+    const output = await Command.create('git', ['-C', dir, 'rev-parse', '--is-inside-work-tree']).execute();
+    return output.code === 0;
+  } catch {
+    return false;
+  }
+};
+
+const sanitizeBranchSegment = (s: string): string => s.replace(/[^a-zA-Z0-9_.\-/]/g, '_').replace(/\/{2,}/g, '/');
+
+/**
+ * 为项目建立「链接工作树」并挂到源码真身 agentDir，使 git 直接读取/提交 agentDir 里的真实文件。
+ *
+ * 背景：git 仓库位于 hostBase/{gitRepoDirName}（share 仓库），仓库按 {project_code}/ 子目录组织各项目；
+ * 而智能体/文件浏览器的源码真身在 code/{project_code}/{project_code}。git 不跟随目录软链递归提交内容，
+ * 因此对每个项目用 `git subtree split` 把 {project_code} 子树切成独立分支（该分支根 = 项目根），
+ * 再用 `git worktree add` 把该分支挂到 agentDir，agentDir 即成为该分支的链接工作树。
+ * 之后从 agentDir 发起的 status/add/commit/push 均直接操作真实源码并提交进 share 仓库。
+ *
+ * 幂等：agentDir 已是链接工作树则直接复用。
+ */
+export const ensureGitWorktree = async (
+  repoRoot: string,
+  agentDir: string,
+  projectCode: string,
+): Promise<void> => {
+  const tauriAvailable = await isTauri();
+  if (!tauriAvailable) return;
+  if (!repoRoot || !agentDir || !projectCode) return;
+  // 仓库未就绪（未配置 gitRepoDirName / 尚未 clone）时不做处理
+  if (!(await checkGitRepoExists(repoRoot))) return;
+  // 已是链接工作树 → 复用
+  if (await isInsideWorkTree(agentDir)) return;
+
+  const branch = `dataforge/${sanitizeBranchSegment(projectCode)}`;
+  try {
+    const { Command } = await import('@tauri-apps/plugin-shell');
+
+    // 1) 确保 per-project 分支存在（根 = 项目源码）。分支已存在则跳过切分。
+    const listRes = await Command.create('git', ['-C', repoRoot, 'branch', '--list', branch]).execute();
+    if (listRes.code !== 0 || !listRes.stdout.trim()) {
+      const splitRes = await Command.create('git', ['-C', repoRoot, 'subtree', 'split', '--prefix', projectCode, '--branch', branch, 'HEAD']).execute();
+      if (splitRes.code !== 0) {
+        console.warn(`[git] subtree split 失败（仓库缺少 ${projectCode}/ 子树?）:`, splitRes.stderr);
+        return; // 无法建立工作树，交由 Git 操作侧提示
+      }
+    }
+
+    // 2) 把该分支挂为 agentDir 的链接工作树
+    const addRes = await Command.create('git', ['-C', repoRoot, 'worktree', 'add', '--force', agentDir, branch]).execute();
+    if (addRes.code !== 0) {
+      console.warn('[git] 挂载链接工作树失败:', addRes.stderr);
+      return;
+    }
+    console.log(`[git] 已为 ${projectCode} 挂载链接工作树: ${agentDir} -> ${repoRoot} (${branch})`);
+  } catch (err) {
+    console.warn('[git] ensureGitWorktree 异常:', err);
+  }
+};

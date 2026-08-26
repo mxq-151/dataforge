@@ -30,6 +30,16 @@ export interface EnsurePomOptions {
   projectCode?: string;
   /** 工作区根路径，用于把相对文件路径换算成后端存储路径 */
   rootPath?: string;
+  /**
+   * 项目源码目录（Maven <sourceDirectory> 与 bloop sourceDir 共同使用）。
+   * 支持相对工作区根的目录名（默认 'warehouse'）或绝对路径（如项目 cwd）。
+   * 缺省时沿用仓库内的默认源码位置 'warehouse'。
+   */
+  sourceDir?: string;
+  /** 覆盖 bloop 输出目录（bloop.configDirectory）。缺省让 Maven 使用 <workspace>/.bloop。 */
+  bloopConfigDirectory?: string;
+  /** 是否在 bloop 导出时下载依赖源码（缺省 true，与以往 mvn dependency:sources 等价）。 */
+  bloopDownloadSources?: boolean;
 }
 
 /** 把一条依赖记录拼成 <dependency> 片段（GAV 或 system 作用域的本地 jar） */
@@ -169,10 +179,42 @@ export async function ensurePomReady(
             </plugin>
 `;
 
+    // ── 按项目解析 bloop 三参数 ──────────────────────────────
+    // sourceDir：项目源码目录（相对工作区根或绝对路径），缺省沿用仓库默认 'warehouse'。
+    const sourceDir = options?.sourceDir?.trim() || 'warehouse';
+    // bloop.configDirectory：缺省让 Maven 输出到 <workspace>/.bloop（与 lspPom 诊断目录一致）。
+    const bloopConfigDir = options?.bloopConfigDirectory?.trim();
+    // downloadSources：缺省 true，与以往 mvn dependency:sources 行为一致。
+    const bloopDownloadSources = options?.bloopDownloadSources !== false;
+
+    // bloop-maven-plugin 片段：声明在 pom.xml 中，bloop:install 生成 .bloop 工程，
+    // 并按项目动态生成 bloop.configDirectory / downloadSources / sourceDir
+    // （downloadSources=true 时导出一并下载依赖源码，替代原先独立的 dependency:sources 步骤）。
+    // 版本与 lspPom.ts 保持一致。
+    const bloopPluginLines = [
+        `            <plugin>`,
+        `                <groupId>ch.epfl.scala</groupId>`,
+        `                <artifactId>bloop-maven-plugin</artifactId>`,
+        `                <version>2.0.4</version>`,
+        `                <configuration>`,
+    ];
+    if (bloopConfigDir) bloopPluginLines.push(`                    <bloop.configDirectory>${escapeXml(bloopConfigDir)}</bloop.configDirectory>`);
+    bloopPluginLines.push(`                    <downloadSources>${bloopDownloadSources}</downloadSources>`);
+    bloopPluginLines.push(`                    <sourceDir>${escapeXml(sourceDir)}</sourceDir>`);
+    bloopPluginLines.push(`                    </configuration>`, `            </plugin>`);
+    const bloopPluginXml = bloopPluginLines.join('\n');
+
+    // 向 <plugins> 注入 bloop 插件（若模板/硬编码中已有 bloop-maven-plugin 则跳过）。
+    const ensureBloopPlugin = (xml: string): string => {
+        if (/bloop-maven-plugin/i.test(xml)) return xml;
+        // $1 含 <plugins> 及其后换行+缩进；在其后紧跟一个 bloop plugin 的独立行，再保留原有 <plugin>。
+        return xml.replace(/(<plugins\b[^>]*>\s*)(<plugin>)/, `$1${bloopPluginXml}\n            $2`);
+    };
+
     // 生成 pom 内容：优先使用设置页模板（占位符替换，与编译路径一致）；
     // 未提供模板时回退到下方 LSP 专用硬编码模板。
-    // 注意：LSP pom 必须含 <sourceDirectory>warehouse</sourceDirectory>，否则 Metals/Bloop
-    // 会按 Maven 默认 src/main/scala 找源码，导致工作区 warehouse/ 下的 .scala 无法被索引
+    // 注意：LSP pom 必须含 <sourceDirectory>（值取项目 sourceDir），否则 Metals/Bloop
+    // 会按 Maven 默认 src/main/scala 找源码，导致项目源码目录下的 .scala 无法被索引
     // （悬停/跳转失效）。模板若无此节点，此处自动注入。
     const ensureSourceDirectory = (xml: string): string => {
         if (/<sourceDirectory>/i.test(xml)) return xml;
@@ -180,25 +222,27 @@ export async function ensurePomReady(
         // $1 已含 <build> 后的换行+缩进，故不再额外加缩进，避免重复空格。
         return xml.replace(
             /(<build\b[^>]*>\s*)(<plugins>)/,
-            `$1<sourceDirectory>warehouse</sourceDirectory>\n        $2`,
+            `$1<sourceDirectory>${escapeXml(sourceDir)}</sourceDirectory>\n        $2`,
         );
     };
 
     let pomContent: string;
     if (options?.pomTemplate?.trim()) {
-        pomContent = ensureSourceDirectory(
-            options.pomTemplate
-                .replace('{group_id}', groupId)
-                .replace('{artifact_id}', artifactId)
-                .replace('{main_class}', '') // LSP pom 为工作区级，无主类概念；留空不影响 bloop:install
-                .replace('{final_name}', artifactId)
-                .replace('{scala_version}', scalaVer)
-                .replace('{deps}', depsXml.trimEnd())
-                .replace('{scala_plugin}', scalaPluginXml.trimEnd()),
+        pomContent = ensureBloopPlugin(
+            ensureSourceDirectory(
+                options.pomTemplate
+                    .replace('{group_id}', groupId)
+                    .replace('{artifact_id}', artifactId)
+                    .replace('{main_class}', '') // LSP pom 为工作区级，无主类概念；留空不影响 bloop:install
+                    .replace('{final_name}', artifactId)
+                    .replace('{scala_version}', scalaVer)
+                    .replace('{deps}', depsXml.trimEnd())
+                    .replace('{scala_plugin}', scalaPluginXml.trimEnd()),
+            ),
         );
-        console.log('[ensurePomReady] 使用设置页 pomTemplate 生成 pom（已注入 sourceDirectory 若缺）');
+        console.log('[ensurePomReady] 使用设置页 pomTemplate 生成 pom（已注入 sourceDirectory/bloop 或跳过若已存在）');
     } else {
-        pomContent = `<?xml version="1.0" encoding="UTF-8"?>
+        pomContent = ensureBloopPlugin(`<?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
@@ -221,7 +265,7 @@ ${depsXml.trimEnd()}
     </dependencies>
 
     <build>
-        <sourceDirectory>warehouse</sourceDirectory>
+        <sourceDirectory>${escapeXml(sourceDir)}</sourceDirectory>
         <plugins>
             <plugin>
                 <groupId>net.alchim31.maven</groupId>
@@ -241,7 +285,7 @@ ${depsXml.trimEnd()}
             </plugin>
         </plugins>
     </build>
-</project>`;
+</project>`);
         console.log('[ensurePomReady] 未提供 pomTemplate，回退到 LSP 硬编码模板');
     }
 
@@ -254,10 +298,9 @@ ${depsXml.trimEnd()}
     );
 
     // 复用既有索引：pom 内容未变化且 .bloop 工程配置仍在 → 跳过 mvn bloop:install。
-    // 之前每次 app 重启（模块内缓存丢失）都会重跑两次 Maven（bloopInstall +
-    // dependency:sources，数十秒），且 .bloop 被重建导致 Metals/Bloop 无法复用
-    // 上一次的导入与 zinc 分析缓存，悬停要等整个流程重来。比对落在磁盘上，
-    // 跨 app 重启依然命中，重启后 LSP 秒级就绪、悬停立即可用。
+    // 之前每次 app 重启（模块内缓存丢失）都会重跑 Maven（bloop:bloopInstall，数十秒），
+    // 且 .bloop 被重建导致 Metals/Bloop 无法复用上一次的导入与 zinc 分析缓存，
+    // 悬停要等整个流程重来。比对落在磁盘上，跨 app 重启依然命中，重启后 LSP 秒级就绪、悬停立即可用。
     if (!pomStatus.changed && pomStatus.bloopReady) {
       console.log('[ensurePomReady] pom.xml 与 .bloop 均未变化，跳过 mvn bloop:install（复用既有索引）');
       lastWorkspaceRoot = workspaceRoot;

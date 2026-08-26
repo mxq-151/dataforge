@@ -27,7 +27,7 @@ import LoginPage from './views/login/LoginPage';
 import EditorTestPage from './views/editor-test/EditorTestPage';
 import type { ProjectInfo } from './api/devProject';
 import disableAutoCapitalize from './utils/disableAutoCapitalize';
-import { gitClone, gitPull, checkGitRepoExists } from './api/git';
+import { gitClone, gitPull, checkGitRepoExists, ensureGitWorktree } from './api/git';
 import { setApiHost } from './api/index';
 import { Store } from '@tauri-apps/plugin-store';
 import { joinPath, hostToDirName } from './utils/pathUtils';
@@ -65,11 +65,12 @@ const workspaceClassMap: Record<string, string> = {
 
 function DevAssistantClientSlot({
   config, project,
-  projectCwd, dsApiUrl, dsToken, onBack,
+  projectCwd, workspaceRoot, dsApiUrl, dsToken, onBack,
 }: {
   config: OpenCodeConfig;
   project: ProjectInfo;
   projectCwd?: string;
+  workspaceRoot?: string;
   dsApiUrl?: string;
   dsToken?: string;
   onBack: () => void;
@@ -97,6 +98,7 @@ function DevAssistantClientSlot({
       chatBackend={backend}
       project={project}
       projectCwd={projectCwd}
+      workspaceRoot={workspaceRoot}
       dsApiUrl={dsApiUrl}
       dsToken={dsToken}
       config={config}
@@ -252,7 +254,12 @@ const AppContent: React.FC = () => {
         if (cancelled) return;
         const home = await getPlatformDefaultWorkspace();
         const hostDir = hostToDirName(backendHost);
-        const base = joinPath(home, hostDir, user.username);
+        // 目录结构（按需求统一）：
+        //   基准（hostBase）= ~/.dataforge/{后端host目录}/
+        //   bloop/metals 工作目录 = {hostBase}/code/{project_code}
+        //   智能体/文件浏览器     = {hostBase}/code/{project_code}/{project_code}
+        //   git 工作空间           = {hostBase}/{gitRepoDirName}/{project_code}
+        const base = joinPath(home, hostDir);
         if (cancelled) return;
         setBaseWorkspace(base);
         // 直接写 store 并保留其它字段（后端地址仍以 store 内最新值为准），
@@ -291,13 +298,26 @@ const AppContent: React.FC = () => {
     }
   }, [activeTab, config.javaHome, loaded]);
 
+  // 项目目录集合（统一结构，见上方 baseWorkspace 注释）：
+  //   projectDir = {hostBase}/code/{project_code}            → bloop/metals 工作目录
+  //   agentDir   = {hostBase}/code/{project_code}/{project_code} → 智能体/文件浏览器目录（源码真身）
+  //   repoRoot   = {hostBase}/{gitRepoDirName}               → git 全局工作空间
+  //   gitProj    = {hostBase}/{gitRepoDirName}/{project_code} → 软链 → agentDir（git 读取 agentDir 数据）
+  const projectDirs = useCallback((pc: string) => {
+    const projectDir = joinPath(baseWorkspace, 'code', pc);
+    const agentDir = joinPath(projectDir, pc);
+    const repoRoot = config.gitRepoDirName
+      ? joinPath(baseWorkspace, config.gitRepoDirName)
+      : '';
+    const gitProj = repoRoot ? joinPath(repoRoot, pc) : agentDir;
+    return { projectDir, agentDir, gitProj, repoRoot };
+  }, [baseWorkspace, config.gitRepoDirName]);
+
+  // 智能体工作目录 & 文件浏览器根目录 = code/{project_code}/{project_code}（源码真身，gitProj 软链指向它）
   const getProjectCwd = useCallback((project: ProjectInfo) => {
     if (!baseWorkspace) return undefined;
-    const repoDir = config.gitRepoDirName || '';
-    return repoDir
-      ? joinPath(baseWorkspace, repoDir, project.projectCode)
-      : joinPath(baseWorkspace, project.projectCode);
-  }, [baseWorkspace, config.gitRepoDirName]);
+    return projectDirs(project.projectCode).agentDir;
+  }, [baseWorkspace, projectDirs]);
 
   const [gitSyncStatus, setGitSyncStatus] = useState<{
     syncing: boolean;
@@ -385,6 +405,36 @@ const AppContent: React.FC = () => {
     setSelectedProject(null);
     // 不 stop 服务，保持服务进程持续运行，以便下次切回时直接复用
   }, []);
+
+  // 为每个已访问项目建立「code/{project_code}」工作区目录：
+  //   - code/{pc}            → bloop/metals 工作目录（真实目录）
+  //   - code/{pc}/{pc}       → 智能体/文件浏览器目录（源码真身，真实目录）
+  //   - gitProj → agentDir   → hostBase/{gitRepoDirName}/{project_code} 软链指向 code/{pc}/{pc}，
+  //                            使 git 在该软链下读取/提交的与智能体看到的同一份源码。
+  // 未配置 gitRepoDirName 时，不建软链，智能体目录直接作为真实目录使用。
+  useEffect(() => {
+    if (!baseWorkspace || !loaded) return;
+    const ensureOne = async (project: ProjectInfo) => {
+      const { projectDir, agentDir, gitProj, repoRoot } = projectDirs(project.projectCode);
+      try {
+        if (repoRoot) {
+          await window.dataforge.fs('symlink', { linkPath: gitProj, target: agentDir });
+        } else {
+          await window.dataforge.fs('mkdir', { path: agentDir, recursive: true });
+        }
+        await window.dataforge.fs('mkdir', { path: projectDir, recursive: true });
+        // 挂载链接工作树：把 {project_code} 子树分支挂到 agentDir，使 git 直接读写/提交 agentDir 里的真实源码
+        await ensureGitWorktree(repoRoot, agentDir, project.projectCode);
+      } catch (err) {
+        console.error('[App] 建立项目目录/软链失败:', project.projectCode, err);
+      }
+    };
+    // hostBase 是 opencode 进程校验/启动的工作目录，先确保存在
+    window.dataforge.fs('mkdir', { path: baseWorkspace, recursive: true }).catch(() => {});
+    // 选择项目时同步建一次目录，避免 Provider 中的 opencode 后端先于软链启动
+    if (selectedProject) void ensureOne(selectedProject);
+    for (const project of Array.from(visitedProjects.values())) void ensureOne(project);
+  }, [visitedProjects, selectedProject, baseWorkspace, loaded, projectDirs]);
 
   // Log aggregation: since each client instance lives inside its own provider,
   // we cannot easily aggregate logs from all instances here.
@@ -524,6 +574,7 @@ const AppContent: React.FC = () => {
                     config={config}
                     project={project}
                     projectCwd={getProjectCwd(project)}
+                    workspaceRoot={projectDirs(project.projectCode).projectDir}
                     dsApiUrl={config.dolphinSchedulerApiUrl}
                     dsToken={config.dolphinSchedulerToken}
                     onBack={handleBackToProjectList}

@@ -390,7 +390,6 @@ const GitModal: React.FC<GitModalProps> = ({
                   ) : gitFiles.length === 0 ? (
                     <div className="git-modal__empty">
                       <span>没有检测到文件更改</span>
-                      {rootPath && <span className="git-modal__empty-path">目录: {rootPath}</span>}
                     </div>
                   ) : (
                     gitFiles.map(file => {

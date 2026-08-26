@@ -36,6 +36,17 @@ function createWindow(): void {
   });
 
   win.once('ready-to-show', () => win.show());
+  // 兜底：若首帧渲染迟迟不完成（渲染层卡住/白屏），ready-to-show 可能永不触发，
+  // 窗口会一直保持 show:false 而表现为"应用没启动"。加超时强制显示，便于看到真实界面或错误。
+  setTimeout(() => {
+    if (win.isDestroyed()) return;
+    if (!win.isVisible()) win.show();
+  }, 4000);
+
+  // 记录渲染失败原因（如 dev server 未就绪/NET 错误），便于排查窗口白屏、不显示等问题
+  win.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
+    console.error(`[renderer] did-fail-load code=${errorCode} ${errorDescription}`);
+  });
 
   // 拦截 window.open / target=_blank：任何在开发助手等模块触发的"新窗口打开"都改为在原窗口内处理。
   // 外部 http(s) 链接交给系统浏览器，其余一律拒绝新开窗口（保证单窗口应用形态）。

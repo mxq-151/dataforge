@@ -205,11 +205,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     await setAuthToken(loginRes.data.token);
 
-    // 计算并写入基础工作目录（$HOME/.dataforge/{后端host}/{登录用户名}/），
+    // 计算并写入基础工作目录（$HOME/.dataforge/{后端host}/），
     // 确保 opencode 服务启动时 cwd 使用新规则（无需用户配置）
     try {
       const home = await getPlatformDefaultWorkspace();
-      const base = joinPath(home, hostToDirName(backendHost || ''), username);
+      const base = joinPath(home, hostToDirName(backendHost || ''));
       const store = await Store.load(STORE_FILE);
       const cfg = (await store.get<Record<string, unknown>>('config')) || {};
       // 同步把本次登录使用的后端地址写入 store（await 后再触发 opencode 重启），

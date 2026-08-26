@@ -96,6 +96,42 @@ async function handleFs(req: FsRequest): Promise<unknown> {
       await fsp.rename(String(args.oldPath), String(args.newPath));
       return null;
     }
+    case 'symlink': {
+      // 创建/修复软链：linkPath -> target。
+      // 幂等：linkPath 已是指向 target 的软链则跳过；指向别处则先解除再重建；
+      // 已是普通目录/文件则视为数据目录，保留不动（不覆盖）。
+      // 注意：target 是数据真身，必须是真实目录；若它当前是符号链接（如翻转方向前的旧软链，
+      // 常为悬空链接），先解除再建真实目录。
+      const linkPath = String(args.linkPath);
+      const target = String(args.target);
+      try {
+        const tst = await fsp.lstat(target);
+        if (tst.isSymbolicLink()) {
+          await fsp.unlink(target);
+        }
+      } catch {
+        // target 不存在，稍后 mkdir
+      }
+      await fsp.mkdir(path.dirname(linkPath), { recursive: true });
+      await fsp.mkdir(target, { recursive: true });
+      try {
+        const st = await fsp.lstat(linkPath);
+        if (st.isSymbolicLink()) {
+          const [linkReal, targetReal] = await Promise.all([
+            fsp.realpath(linkPath).catch(() => ''),
+            fsp.realpath(target).catch(() => target),
+          ]);
+          if (linkReal && linkReal === targetReal) return null; // 已正确，幂等
+          await fsp.unlink(linkPath); // 指向别处，解除后重建
+        } else {
+          return null; // 已存在真实目录/文件，不覆盖
+        }
+      } catch {
+        // linkPath 不存在，直接创建
+      }
+      await fsp.symlink(target, linkPath);
+      return null;
+    }
     default:
       throw new Error(`未知 fs 操作: ${op}`);
   }

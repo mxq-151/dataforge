@@ -29,6 +29,12 @@ interface UseLspManagementParams {
   projectId?: number;
   projectCode?: string;
   rootPath?: string;
+  /** 项目源码目录（透传给 ensurePomReady，作为 pom <sourceDirectory> 与 bloop sourceDir） */
+  sourceDir?: string;
+  /** 覆盖 bloop 输出目录（透传给 ensurePomReady） */
+  bloopConfigDirectory?: string;
+  /** 是否在 bloop 导出时下载依赖源码（透传给 ensurePomReady） */
+  bloopDownloadSources?: boolean;
 }
 
 interface WsStartResult {
@@ -63,6 +69,9 @@ export function useLspManagement({
   projectId,
   projectCode,
   rootPath,
+  sourceDir,
+  bloopConfigDirectory,
+  bloopDownloadSources,
 }: UseLspManagementParams) {
   const javaWrapperRef = useRef<LanguageClientWrapper | null>(null);
   const scalaWrapperRef = useRef<LanguageClientWrapper | null>(null);
@@ -177,6 +186,9 @@ export function useLspManagement({
           projectId,
           projectCode,
           rootPath,
+          sourceDir,
+          bloopConfigDirectory,
+          bloopDownloadSources,
         });
 
         const cmd = languageId === 'java' ? 'start_java_lsp_ws' : 'start_scala_lsp_ws';
@@ -369,6 +381,9 @@ export function useLspManagement({
         projectId,
         projectCode,
         rootPath,
+        sourceDir,
+        bloopConfigDirectory,
+        bloopDownloadSources,
       });
       await updateLspClasspath();
     } catch (e) {
@@ -385,6 +400,9 @@ export function useLspManagement({
     projectId,
     projectCode,
     rootPath,
+    sourceDir,
+    bloopConfigDirectory,
+    bloopDownloadSources,
     updateLspClasspath,
   ]);
 

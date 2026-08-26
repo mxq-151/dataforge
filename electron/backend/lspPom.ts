@@ -126,34 +126,23 @@ export async function runMavenBloopInstall(javaHome: string, mavenHome: string, 
   if (!fs.existsSync(pomPath)) {
     throw new Error(`pom.xml 不存在: ${pomPath}`);
   }
-  console.log(`[LSP] 运行 mvn bloop:install, workspace=${workspaceRoot}`);
+  console.log(`[LSP] 运行 mvn bloop:bloopInstall, workspace=${workspaceRoot}`);
 
-  // 1) bloop:install（生成 .bloop 工程）
+  // 1) bloop:bloopInstall（生成 .bloop 工程）。
+  //    插件已声明在 workspace 的 pom.xml 中（含 downloadSources=true），
+  //    故依赖源码会在此导出时一并下载，无需单独的 dependency:sources 步骤。
   const bloopR = await runMvn(
     mvnBin,
-    ['ch.epfl.scala:bloop-maven-plugin:2.0.4:bloopInstall', '-q'],
+    ['bloop:bloopInstall', '-q'],
     workspace,
     { JAVA_HOME: javaHomeTrim },
   );
   if (bloopR.code !== 0) {
-    throw new Error(`mvn bloop:install 失败: ${bloopR.stderr}`);
+    throw new Error(`mvn bloop:bloopInstall 失败: ${bloopR.stderr}`);
   }
-  console.log('[LSP] mvn bloop:install 成功');
+  console.log('[LSP] mvn bloop:bloopInstall 成功');
 
-  // 2) 尽力下载依赖源码（-sources.jar），失败不阻塞
-  const sourcesR = await runMvn(
-    mvnBin,
-    ['dependency:sources', '-q', '-DincludeScope=compile'],
-    workspace,
-    { JAVA_HOME: javaHomeTrim },
-  );
-  if (sourcesR.code === 0) {
-    console.log('[LSP] mvn dependency:sources 成功（依赖源码已下载到 ~/.m2）');
-  } else {
-    console.log(`[LSP] mvn dependency:sources 未全部成功（可忽略）: ${sourcesR.stderr.slice(0, 300)}`);
-  }
-
-  // 3) 诊断 spark classpath / sources
+  // 2) 诊断 spark classpath / sources
   diagnoseBloopClasspath(workspace);
 
   return bloopR.stdout;
