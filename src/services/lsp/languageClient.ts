@@ -449,14 +449,20 @@ function createNavigationMiddleware(languageId: LspLanguageId): Middleware {
     // 但无法覆盖文件中所有符号，用户 hover 预热未覆盖的符号时仍会拿到不完整内容。
     //
     // 此处做同步重试稳定化：首次 hover 拿到内容较短（< 60 字符，疑似只有类型签名，即
-    // 可能处于 PC 冷启动 / scaladoc 解压窗口）时，按递增退避 [400ms, 800ms, 1600ms,
-    // 3200ms] 再次请求，覆盖 Metals 冷启动所需的数秒窗口。原来的固定 [300,600]ms 窗口
-    // 太短——文件刚打开 ~2s 内 hover 时冷启动还没完成，重试就结束，导致"打开文件 2s 内
-    // hover 简单、5s 后 hover 完整"的抖动。改进点：
-    //   1) 退避拉长并自适应：内容仍在增长就继续等，拿到完整结果或连续两次无增长即提前
-    //      结束，普通已温符号仍零额外延迟，冷符号最多多等 ~6s；
-    //   2) 不再因 token 取消而中断重试——鼠标移动/快速重复悬停不会把稳定化打回从零开始，
-    //      避免永远命中冷窗口拿到不完整内容。
+    // 可能处于 PC 冷启动 / scaladoc 解压窗口）时，按递增退避再次请求。
+    //
+    // 退避时长权衡（2026-08-26 调优）：
+    //   - 早期版本用 [400,800,1600,3200]ms + settleTime=5000，冷符号最多等 ~6s。
+    //     这对「无 scaladoc 的本地 val/var」极不友好——它们的类型签名就是最终内容，
+    //     不会增长，却要空等 6s（settleTime 门槛未过不允许提前退出）。
+    //   - 现改为 [300,600,1000,1500]ms + settleTime=1000：累计上限 ~3.4s，稳定短内容
+    //     在越过 1s settle 窗口后连续两次无增长即退出（实测 ~1.9s）。
+    //   - settleTime=1000 仍足以跨过 PC 冷启动常见的亚秒级平台期（内容短暂停滞几百 ms
+    //     后继续增长）；Spark 依赖 scaladoc 的多秒级解压本就不在此覆盖——由后台预热
+    //     （registerScalaHoverWarmup 三波错峰 + 4/8/12s 重试）负责，用户 hover 不到的
+    //     罕见符号可再次悬停即拿到完整内容。
+    //   - 已温符号（首次即完整）零额外延迟直接返回；内容仍在增长就继续等，拿到完整结果
+    //     即提前结束；不再因 token 取消而中断重试，避免冷窗口内反复从零重试。
     // 不做结果缓存：每次 hover 都实时向 Metals 请求（Metals 温热后转手返回完整内容，
     // 零额外延迟），保证提示始终与服务端最新状态一致。
     provideHover: languageId === 'scala'
@@ -464,7 +470,11 @@ function createNavigationMiddleware(languageId: LspLanguageId): Middleware {
           // 同步重试稳定化：拿到内容后判断是否完整，不完整则按递增退避重试。
           // 完整性判定用 hoverIsComplete（要求 长度>=60 且含换行，避免把仅长类型签名判为完整），
           // 否则冷窗口的长签名会被当成最终结果固定。
-          const delays = [400, 800, 1600, 3200];
+          //
+          // delays/settleTime 选型见上方注释。noProgressLim=2 + settleTime=1000：
+          // 稳定短内容（本地 val，无 scaladoc）在累计等待越过 1s 后、连续两次无增长即退出
+          // （约 ~1.9s），不再空等 6s；PC 平台期（亚秒）未过 settle 不会提前退出。
+          const delays = [300, 600, 1000, 1500];
 
           // 首次请求；已完整则零额外延迟返回（已温符号），否则进入稳定化重试。
           // 注意 request 闭包刻意不理会 token 取消：鼠标移动会取消 hover 手势，
@@ -475,6 +485,8 @@ function createNavigationMiddleware(languageId: LspLanguageId): Middleware {
             hoverContentLen,
             hoverIsComplete,
             delays,
+            2,       // noProgressLim：连续 2 次无增长（且过 settle）才提前结束
+            1000,    // settleTime(ms)：未过此窗口不因无增长提前退出，跨 PC 平台期
           );
 
           return result;
