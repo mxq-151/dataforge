@@ -20,7 +20,11 @@ export interface EnsurePomOptions {
   mavenGroupId?: string;
   mavenArtifactId?: string;
   scalaVersion?: string;
-  /** 项目 ID，用于并入「项目级依赖配置」（/params jarDependencyCatalogs） */
+  /** 设置页的 POM 模板（与编译路径一致，支持 {group_id}/{artifact_id}/{scala_version}/{deps}/{scala_plugin}/{main_class}/{final_name} 占位符）。
+   *  提供时 LSP pom 按模板生成（缺 sourceDirectory 时自动注入 warehouse，Metals 才能索引源码）；
+   *  不提供时回退到下方 LSP 专用硬编码模板（含 sourceDirectory + scala-maven-plugin）。 */
+  pomTemplate?: string;
+  /** 项目 ID，用于并入「项目级依赖配置」（/params jarDependency Catalogs） */
   projectId?: number;
   /** 项目编码，作为项目级配置的 filePath 键 */
   projectCode?: string;
@@ -145,7 +149,56 @@ export async function ensurePomReady(
       );
     }
 
-    const pomContent = `<?xml version="1.0" encoding="UTF-8"?>
+    // scala-maven-plugin 片段：用于填充模板 {scala_plugin} 占位符（与编译路径语义一致）。
+    // 内部 ${scala.version} 是 Maven 属性引用（编译期由 <properties> 解析），不是 JS 模板。
+    const scalaPluginXml = `            <plugin>
+                <groupId>net.alchim31.maven</groupId>
+                <artifactId>scala-maven-plugin</artifactId>
+                <version>4.8.1</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>compile</goal>
+                            <goal>testCompile</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <scalaVersion>\${scala.version}</scalaVersion>
+                </configuration>
+            </plugin>
+`;
+
+    // 生成 pom 内容：优先使用设置页模板（占位符替换，与编译路径一致）；
+    // 未提供模板时回退到下方 LSP 专用硬编码模板。
+    // 注意：LSP pom 必须含 <sourceDirectory>warehouse</sourceDirectory>，否则 Metals/Bloop
+    // 会按 Maven 默认 src/main/scala 找源码，导致工作区 warehouse/ 下的 .scala 无法被索引
+    // （悬停/跳转失效）。模板若无此节点，此处自动注入。
+    const ensureSourceDirectory = (xml: string): string => {
+        if (/<sourceDirectory>/i.test(xml)) return xml;
+        // 在 <build> 之后、<plugins> 之前注入 sourceDirectory。
+        // $1 已含 <build> 后的换行+缩进，故不再额外加缩进，避免重复空格。
+        return xml.replace(
+            /(<build\b[^>]*>\s*)(<plugins>)/,
+            `$1<sourceDirectory>warehouse</sourceDirectory>\n        $2`,
+        );
+    };
+
+    let pomContent: string;
+    if (options?.pomTemplate?.trim()) {
+        pomContent = ensureSourceDirectory(
+            options.pomTemplate
+                .replace('{group_id}', groupId)
+                .replace('{artifact_id}', artifactId)
+                .replace('{main_class}', '') // LSP pom 为工作区级，无主类概念；留空不影响 bloop:install
+                .replace('{final_name}', artifactId)
+                .replace('{scala_version}', scalaVer)
+                .replace('{deps}', depsXml.trimEnd())
+                .replace('{scala_plugin}', scalaPluginXml.trimEnd()),
+        );
+        console.log('[ensurePomReady] 使用设置页 pomTemplate 生成 pom（已注入 sourceDirectory 若缺）');
+    } else {
+        pomContent = `<?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
@@ -189,6 +242,8 @@ ${depsXml.trimEnd()}
         </plugins>
     </build>
 </project>`;
+        console.log('[ensurePomReady] 未提供 pomTemplate，回退到 LSP 硬编码模板');
+    }
 
     const pomStatus = await invoke<{ changed: boolean; bloopReady: boolean }>(
       'write_workspace_pom',

@@ -80,6 +80,8 @@ interface EditorAreaProps {
   mavenGroupId?: string;
   mavenArtifactId?: string;
   scalaVersion?: string;
+  /** 设置页 POM 模板，透传给 LSP 生成与设置一致的 pom.xml */
+  pomTemplate?: string;
   /** 项目级依赖（默认依赖集合），与逐文件依赖合并后用于更新 LSP classpath（悬停提示） */
   projectDependencies?: DependencyItemLite[];
 }
@@ -116,6 +118,7 @@ const EditorArea = forwardRef<EditorAreaHandle, EditorAreaProps>(({
   mavenGroupId,
   mavenArtifactId,
   scalaVersion,
+  pomTemplate,
   projectDependencies,
 }, ref) => {
   const editorRef = useRef<any>(null);
@@ -174,6 +177,7 @@ const EditorArea = forwardRef<EditorAreaHandle, EditorAreaProps>(({
     mavenGroupId,
     mavenArtifactId,
     scalaVersion,
+    pomTemplate,
     projectDependencies,
     projectId,
     projectCode,

@@ -21,6 +21,8 @@ interface UseLspManagementParams {
   mavenGroupId?: string;
   mavenArtifactId?: string;
   scalaVersion?: string;
+  /** 设置页 POM 模板，透传给 ensurePomReady 生成与设置一致的 LSP pom */
+  pomTemplate?: string;
   /** 项目级依赖（默认依赖集合），用于驱动 LSP classpath（悬停提示） */
   projectDependencies?: DependencyItemLite[];
   /** 项目 ID / 编码 / 根路径：用于把「项目级依赖配置」并入 LSP 的 pom（与编译一致） */
@@ -56,6 +58,7 @@ export function useLspManagement({
   mavenGroupId,
   mavenArtifactId,
   scalaVersion,
+  pomTemplate,
   projectDependencies,
   projectId,
   projectCode,
@@ -170,6 +173,7 @@ export function useLspManagement({
           mavenGroupId,
           mavenArtifactId,
           scalaVersion,
+          pomTemplate,
           projectId,
           projectCode,
           rootPath,
@@ -264,7 +268,7 @@ export function useLspManagement({
     if (!javaWrapperRef.current) launch('java');
     // Scala 仅在项目配置了 scalaVersion（即 Scala 工程）时启动，避免纯 Java 工程无谓拉起 Metals
     if (scalaVersion && !scalaWrapperRef.current) launch('scala');
-  }, [javaHome, workspaceRoot, scalaVersion, startWrapper]);
+  }, [javaHome, workspaceRoot, scalaVersion, pomTemplate, startWrapper]);
 
   // 卸载时显式停止两个语言客户端：调用后端 stop_* 回收 JVM（释放 -data 锁），再 dispose 前端 wrapper。
   useEffect(() => {
@@ -361,6 +365,7 @@ export function useLspManagement({
         mavenGroupId,
         mavenArtifactId,
         scalaVersion,
+        pomTemplate,
         projectId,
         projectCode,
         rootPath,
@@ -376,6 +381,7 @@ export function useLspManagement({
     mavenGroupId,
     mavenArtifactId,
     scalaVersion,
+    pomTemplate,
     projectId,
     projectCode,
     rootPath,

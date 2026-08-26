@@ -963,6 +963,7 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
           mavenGroupId={config.mavenGroupId}
           mavenArtifactId={config.mavenArtifactId}
           scalaVersion={config.scalaVersion}
+          pomTemplate={config.pomTemplate}
           projectDependencies={projectDepConfig.dependencies}
         />
         <div
