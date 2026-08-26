@@ -596,7 +596,7 @@ const AppContent: React.FC = () => {
               roleType={roleType}
               projectId="__data_explore__"
               directory={user?.username && baseWorkspace
-                ? joinPath(baseWorkspace, 'individual')
+                ? joinPath(baseWorkspace, user.username, 'individual')
                 : null}
             >
               <DataExploreClientSlot

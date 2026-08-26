@@ -228,12 +228,12 @@ const DataExploreEditor: React.FC<DataExploreEditorProps> = ({ selectedDataSourc
       try {
         // 跟随新基础工作目录：$HOME/.dataforge/{后端host}/{登录用户名}/individual
         let dirPath: string;
-        if (baseWorkspace) {
-          dirPath = joinPath(baseWorkspace, 'individual');
+        if (baseWorkspace && user.username) {
+          dirPath = joinPath(baseWorkspace, user.username, 'individual');
         } else {
           const workspacePath = await getPlatformDefaultWorkspace();
           const separator = workspacePath.includes('\\') ? '\\' : '/';
-          dirPath = `${workspacePath}${separator}individual${separator}${user.username}`;
+          dirPath = `${workspacePath}${separator}${user.username}${separator}individual`;
         }
         const separator = dirPath.includes('\\') ? '\\' : '/';
         const filePath = `${dirPath}${separator}user_${user.username}.sql`;
