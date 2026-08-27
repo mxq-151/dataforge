@@ -149,31 +149,6 @@ const EditorArea = forwardRef<EditorAreaHandle, EditorAreaProps>(({
   const [contextMenuPos, setContextMenuPos] = useState<{ lineNumber: number; column: number } | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
 
-  // Monaco overflow widgets 容器：将 hover / suggest / parameter hints 等弹出层
-  // 渲染到 body 级别的固定定位容器中，避免被父级 overflow:hidden 裁剪，
-  // 使其可以显示在右侧文件浏览器面板上方，不再被遮挡。
-  // 使用 useState 懒初始化确保容器在编辑器创建前已存在并挂载到 body。
-  const [overflowWidgetsDomNode] = useState(() => {
-    const el = document.createElement('div');
-    el.className = 'monaco-overflow-widgets-container';
-    document.body.appendChild(el);
-    return el;
-  });
-
-  // 组件卸载时移除容器
-  // StrictMode 下 useEffect 会经历 挂载→卸载→再挂载：cleanup 会把 div 从 body
-  // 移除，再挂载时若不重新 append，div 会脱离 DOM 树，Monaco 的 hover/suggest
-  // 等 overflow widget 会被渲染到这个游离节点中，导致悬停提示不可见。
-  // setup 时确保 div 在 body 中（若已被 cleanup 移除则重新挂回）。
-  useEffect(() => {
-    if (overflowWidgetsDomNode.parentNode !== document.body) {
-      document.body.appendChild(overflowWidgetsDomNode);
-    }
-    return () => {
-      overflowWidgetsDomNode.remove();
-    };
-  }, [overflowWidgetsDomNode]);
-
   const monaco = useMonaco();
 
   // 提取的 hooks
@@ -819,13 +794,10 @@ const EditorArea = forwardRef<EditorAreaHandle, EditorAreaProps>(({
     // 词出现处的高亮污染。
     selectionHighlight: false,
     wordHighlight: false,
-    // 将 hover / suggest / parameter hints 等浮层渲染到 body 级容器，
-    // 避免被父级 overflow:hidden 裁剪，使其可以显示在文件浏览器面板上方。
-    overflowWidgetsDomNode,
-    // 启用 fixedOverflowWidgets：使 Monaco 使用 position: fixed + 视口坐标定位浮层，
-    // 确保浮层在 body 级容器中位置正确，并始终位于最顶层。
-    fixedOverflowWidgets: true,
-  }), [overflowWidgetsDomNode]);
+    // hover / suggest / parameter hints 等浮层使用 Monaco 默认容器渲染
+    // （与数据探索模块一致）。原 overflowWidgetsDomNode + fixedOverflowWidgets
+    // 自定义 body 容器方案在 WKWebView 下会导致 suggest 浮层内容不绘制。
+  }), []);
 
   // ========== 渲染 ==========
 

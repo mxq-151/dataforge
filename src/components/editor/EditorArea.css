@@ -36,8 +36,6 @@
 .monaco-editor .suggest-widget,
 .monaco-editor .suggest-widget .monaco-list,
 .monaco-editor .suggest-widget .monaco-list .monaco-list-rows,
-.monaco-editor .suggest-widget .monaco-list-row.focused,
-.monaco-editor .suggest-widget .monaco-list-row:hover,
 .monaco-editor .zone-widget,
 .monaco-editor .zone-widget .zone-widget-container,
 .monaco-editor .peek-view-widget,
@@ -55,6 +53,22 @@
   background-color: #252526 !important;
   color: #cccccc !important;
   border-color: #3c3c3c !important;
+}
+
+/* 补全列表选中/hover 行高对比度：
+   上面的组规则把 .focused 行也强制成 #252526（与普通行同色，选中态不可见），
+   VS Code Dark Modern 主题默认的 focused 背景(#2c2c2d)与普通行也几乎无差别。
+   这里为选中行使用 Dark Modern 的 activeSelection 蓝 + 白字，hover 用稍亮灰，
+   保证键盘/鼠标选中时对比清晰。相同特异性下后定义者胜出。 */
+.monaco-editor .suggest-widget .monaco-list-row.focused,
+.monaco-overflow-widgets-container .suggest-widget .monaco-list-row.focused {
+  background-color: #04395e !important;
+  color: #ffffff !important;
+}
+
+.monaco-editor .suggest-widget .monaco-list-row:hover,
+.monaco-overflow-widgets-container .suggest-widget .monaco-list-row:hover {
+  background-color: #2a2d2e !important;
 }
 
 /* 项目当前不需要 VS Code workbench hover（与原先逻辑保持一致）。
