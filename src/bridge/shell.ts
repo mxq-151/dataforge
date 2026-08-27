@@ -1,5 +1,5 @@
 /**
- * @tauri-apps/plugin-shell 兼容垫片：Command.execute 走主进程 child_process。
+ * 命令执行桥：Command.execute 走主进程 child_process。
  * 当前使用面仅为 git.ts 的 Command.create(...).execute()。
  */
 export interface CommandOptions {
@@ -44,6 +44,6 @@ export class Command {
   }
 
   async spawn(): Promise<never> {
-    throw new Error('[Electron] Command.spawn 尚未移植（迁移步骤 2/3）');
+    throw new Error('[Electron] Command.spawn 尚未移植');
   }
 }

@@ -5,11 +5,11 @@
  * 补全 / 签名帮助 / 诊断 / 格式化 等全部由客户端根据服务器能力自动注册到 Monaco，
  * 与 VS Code 行为完全一致。我们不再自研任何 JSON-RPC、provider 映射或能力协商逻辑。
  *
- * 与语言服务器的传输使用 WebSocket（由 Tauri 后端把 JVM 子进程的 stdio 透传为
+ * 与语言服务器的传输使用 WebSocket（由 Electron 主进程把 JVM 子进程的 stdio 透传为
  * ws://127.0.0.1:<port>），这正是 monaco-languageclient 的标准连接范式。
  */
 import * as vscode from 'vscode';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../../bridge/ipc';
 import { LogLevel } from '@codingame/monaco-vscode-api';
 import {
   LanguageClientWrapper,
@@ -67,7 +67,7 @@ const SCALA_INITIALIZATION_OPTIONS = {
 /**
  * 创建一个语言客户端包装器（尚未启动）。
  * @param languageId 'java' | 'scala'
- * @param wsUrl Tauri 后端提供的语言服务器 WebSocket 地址
+ * @param wsUrl Electron 主进程提供的语言服务器 WebSocket 地址
  * @param workspaceRoot 工作区根目录（作为 LSP rootUri / workspaceFolder）
  */
 export function createLanguageClient(
@@ -259,8 +259,8 @@ function isMetalsReadonlyUri(uri: vscode.Uri): boolean {
 /**
  * 预热 Metals 依赖源码的内存缓存。
  *
- * 调用 Tauri 命令 `read_metals_source`：该命令从 JAR 内**纯内存**读取源码
- * （不再提取/写盘到磁盘），并缓存在 Rust 端内存中。此处的预热只是提前触发一次读取，
+ * 调用 `read_metals_source`：该命令从 JAR 内**纯内存**读取源码
+ * （不再提取/写盘到磁盘），并缓存在主进程内存中。此处的预热只是提前触发一次读取，
  * 使后续定义跳转打开 Tab 时可直接命中缓存、零延迟。真正的「打开」由
  * createMetalsMiddleware 把外部目标交给 registerDefinitionOpener（React 层以新 Tab 形式打开）。
  */
@@ -304,7 +304,7 @@ async function processMetalsLocation(loc: any): Promise<any> {
 
 // 定义跳转结果交由 React 层以「新 Tab」形式打开的回调。
 // 因为本应用是「单编辑器 + Tab」体系，VS Code EditorService 打开的外部文档无处渲染，
-// 所以由 React 层接管：依赖源码（.metals/readonly）通过 Tauri 读取并新建只读 Tab，
+// 所以由 React 层接管：依赖源码（.metals/readonly）通过主进程读取并新建只读 Tab，
 // 项目内文件则走现有的 handleFileSelect 打开为普通 Tab。
 type DefinitionOpener = (locations: Array<{ uri: string; range?: any }>) => void;
 let definitionOpener: DefinitionOpener | null = null;
@@ -750,7 +750,7 @@ export function resetLspWarmupCache(): void {
 /**
  * 注册 Metals 依赖源码提供器（后备）。
  *
- * 主路径是中间件把外部目标交给 React 层，由 React 以新 Tab 打开：Tab 内容通过 Tauri 命令
+ * 主路径是中间件把外部目标交给 React 层，由 React 以新 Tab 打开：Tab 内容通过主进程命令
  * `read_metals_source` 从 JAR 内**纯内存**读取（不落盘）。此处注册的 `metals:` scheme
  * TextDocumentContentProvider 仅作为后备（若 React 桥接未命中时的降级方案），同样走
  * read_metals_source 内存读取。
@@ -777,13 +777,13 @@ export function registerMetalsSourceProvider(metalsClient: MonacoLanguageClient)
       console.log(`[LSP:scala] 请求依赖源码: ${filePath}`);
 
       try {
-        // 优先尝试 Tauri 命令 read_metals_source：
-        // 它从 JAR 内纯内存读取源码（不落盘），并按完整路径缓存在 Rust 端内存中。
+        // 优先尝试主进程命令 read_metals_source：
+        // 它从 JAR 内纯内存读取源码（不落盘），并按完整路径缓存在主进程内存中。
         const content = await invoke<string>('read_metals_source', { path: filePath });
-        console.log(`[LSP:scala] 依赖源码获取成功 (Tauri), 长度=${content.length}`);
+        console.log(`[LSP:scala] 依赖源码获取成功, 长度=${content.length}`);
         return content;
-      } catch (tauriErr) {
-        console.warn(`[LSP:scala] Tauri read_metals_source 失败:`, tauriErr);
+      } catch (ipcErr) {
+        console.warn(`[LSP:scala] read_metals_source 失败:`, ipcErr);
         // 后备：尝试 Metals 的 metals/textDocumentContent 请求
         // （某些 Metals 版本可能支持）
         if (currentMetalsClient) {
@@ -798,7 +798,7 @@ export function registerMetalsSourceProvider(metalsClient: MonacoLanguageClient)
             console.warn('[LSP:scala] metals/textDocumentContent 也失败:', lspErr);
           }
         }
-        return `// 无法加载依赖源码: ${filePath}\n// Tauri 错误: ${tauriErr}\n// LSP 错误: 请求方法不支持`;
+        return `// 无法加载依赖源码: ${filePath}\n// IPC 错误: ${ipcErr}\n// LSP 错误: 请求方法不支持`;
       }
     },
   });

@@ -775,7 +775,7 @@
   pointer-events: auto;
 }
 
-/* ═══ WebKit / WKWebView（Tauri app）选区渲染差异修复 ═══
+/* ═══ WebKit / WKWebView 选区渲染差异修复 ═══
  * WebKit 有一个已知 Bug：选区高亮会按“整个 line-box 块盒”绘制，而不是按字符
  * 字形宽度，因此多行选区的背景会外溢到相邻的【未选中】行（表现为下一行开头
  * 背景被染色）。这在 Chromium/Blink 中不会出现，所以只在 app（WKWebView）复现，

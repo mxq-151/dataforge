@@ -1,4 +1,4 @@
-import { Store } from '@tauri-apps/plugin-store';
+import { Store } from '../bridge/store';
 
 const API_CONFIG = {
   // 开发默认值：仅在用户未在登录页设置后端地址时作为 fallback，实际地址由用户在登录页配置
@@ -17,7 +17,7 @@ export const setApiHost = (host: string) => {
 
 export const getApiHost = (): string => API_CONFIG.host;
 
-// auth_token 存入 Tauri Store（secure-store.json）
+// auth_token 存入 Store（secure-store.json）
 const AUTH_TOKEN_KEY = 'auth_token';
 const STORE_FILE = 'secure-store.json';
 

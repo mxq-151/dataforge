@@ -6,19 +6,19 @@
     <title>DataForge</title>
     <style>
       /*
-       * Tauri 版 TitleBar 用 data-tauri-drag-region 属性做窗口拖拽；
-       * Electron 不识别该属性，需用 -webkit-app-region 复刻同样的拖拽行为。
+       * TitleBar 用 data-electron-drag-region 属性做窗口拖拽，
+       * 通过 -webkit-app-region 实现（Electron 支持该 CSS 属性）。
        * 交互元素（按钮/输入框等）必须 no-drag，否则无法点击。
        */
-      [data-tauri-drag-region] {
+      [data-electron-drag-region] {
         -webkit-app-region: drag;
       }
-      [data-tauri-drag-region] button,
-      [data-tauri-drag-region] input,
-      [data-tauri-drag-region] select,
-      [data-tauri-drag-region] textarea,
-      [data-tauri-drag-region] a,
-      [data-tauri-drag-region] [role="button"] {
+      [data-electron-drag-region] button,
+      [data-electron-drag-region] input,
+      [data-electron-drag-region] select,
+      [data-electron-drag-region] textarea,
+      [data-electron-drag-region] a,
+      [data-electron-drag-region] [role="button"] {
         -webkit-app-region: no-drag;
       }
       html, body, #root { height: 100%; margin: 0; }

@@ -1,4 +1,4 @@
-import { fetch } from '@tauri-apps/plugin-http';
+import { fetch } from '../bridge/http';
 import type {
   MarquezApi,
   Lineage,

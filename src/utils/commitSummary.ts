@@ -11,6 +11,7 @@
 
 import { createOpencodeClient, type OpencodeClient } from '@opencode-ai/sdk/v2/client';
 import { getAuthToken, getApiHost } from '../api/index';
+import { tempDir } from '../bridge/path';
 
 /** diff 截断上限（字符），避免大 diff 撑爆模型上下文 */
 const MAX_DIFF_CHARS = 30000;
@@ -129,10 +130,9 @@ export async function generateCommitSummary(options: CommitSummaryOptions): Prom
     // 该会话的 SSE 事件会被目录过滤规则拦截，不会污染任何对话 UI。
     let scratchDir = '/tmp';
     try {
-      const { tempDir } = await import('@tauri-apps/api/path');
       scratchDir = await tempDir();
     } catch {
-      // 非 Tauri 环境兜底
+      // 无法获取系统临时目录时的兜底
     }
 
     const token = await getAuthToken();

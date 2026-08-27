@@ -161,7 +161,7 @@ function normalizeApiHost(host: string | undefined): string {
     const h = host.trim();
     return h.endsWith('/api') ? h : `${h.replace(/\/+$/, '')}/api`;
   }
-  // 与 Rust 一致：仅在某用户未配置 backend_host 时的 fallback
+  // 仅在某用户未配置 backend_host 时的 fallback
   return 'http://localhost:8082/api';
 }
 
@@ -300,7 +300,7 @@ async function handleSqlValidate(
   return resp.json();
 }
 
-/** 解析包名：首个 `package xxx;` 声明（与 Rust extract_package_name 一致）。 */
+/** 解析包名：首个 `package xxx;` 声明。 */
 function extractPackageName(code: string): string {
   for (const lineRaw of code.split('\n')) {
     const trimmed = lineRaw.trim();

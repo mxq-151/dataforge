@@ -1,65 +1,22 @@
 /// <reference types="node" />
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { resolve, dirname } from 'node:path';
+import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readFile as fsReadFile } from 'node:fs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-
-// dev-only：为编辑器测试页提供本地文件读取通道（与 Tauri 版相同）
-function devLocalFileReadPlugin() {
-  return {
-    name: 'dev-local-file-read-testpage',
-    configureServer(server: { middlewares: { use: (path: string, h: (req: any, res: any) => void) => void } }) {
-      server.middlewares.use('/__testfile__/', (req, res) => {
-        try {
-          const query = new URL(req.url || '', 'http://localhost').searchParams;
-          const filePath = query.get('path');
-          if (!filePath) {
-            res.statusCode = 400;
-            res.end('missing path');
-            return;
-          }
-          fsReadFile(filePath, (err, data) => {
-            if (err) {
-              res.statusCode = 404;
-              res.end(String(err));
-              return;
-            }
-            res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-            res.setHeader('Cache-Control', 'no-store');
-            res.end(data);
-          });
-        } catch (e) {
-          res.statusCode = 500;
-          res.end(String(e));
-        }
-      });
-    },
-  };
-}
 
 const isProduction = process.env.NODE_ENV === 'production' || process.argv.includes('build');
 
 export default defineConfig({
   // base: './' 是关键——生产构建由 Electron 通过 file:// 加载，必须用相对路径
   base: './',
-  plugins: [react(), devLocalFileReadPlugin()],
+  plugins: [react()],
 
-  // === Tauri 兼容垫片：把所有 @tauri-apps/* 导入映射到本地 compat/ 实现 ===
   // vscode 别名：与原工程一致，指向 @codingame/monaco-vscode-extension-api
   resolve: {
     alias: {
       vscode: '@codingame/monaco-vscode-extension-api',
-      '@tauri-apps/api/core': resolve(__dirname, 'compat/tauri-core.ts'),
-      '@tauri-apps/api/event': resolve(__dirname, 'compat/tauri-event.ts'),
-      '@tauri-apps/api/path': resolve(__dirname, 'compat/tauri-path.ts'),
-      '@tauri-apps/api/app': resolve(__dirname, 'compat/tauri-app.ts'),
-      '@tauri-apps/plugin-store': resolve(__dirname, 'compat/tauri-plugin-store.ts'),
-      '@tauri-apps/plugin-fs': resolve(__dirname, 'compat/tauri-plugin-fs.ts'),
-      '@tauri-apps/plugin-shell': resolve(__dirname, 'compat/tauri-plugin-shell.ts'),
-      '@tauri-apps/plugin-http': resolve(__dirname, 'compat/tauri-plugin-http.ts'),
     },
     dedupe: ['react', 'react-dom', '@codingame/monaco-vscode-api'],
   },

@@ -21,7 +21,7 @@ export { emitToRenderer } from './eventBus';
 const execFileAsync = promisify(execFile);
 
 // ────────────────────────────────────────────────────────────────
-// Rust 后端命令注册表（按模块逐个移植到 electron/backend/）
+// Electron 后端命令注册表（electron/backend/）
 // 调用方均可安全兜底（调用点均有 try/catch / 失败降级）
 // ────────────────────────────────────────────────────────────────
 const BACKEND_COMMANDS: Record<string, (args: Record<string, unknown>) => Promise<unknown>> = {
@@ -47,7 +47,7 @@ const BACKEND_COMMANDS: Record<string, (args: Record<string, unknown>) => Promis
 };
 
 // ────────────────────────────────────────────────────────────────
-// 文件系统（对应 @tauri-apps/plugin-fs）
+// 文件系统（主进程 Node fs）
 // ────────────────────────────────────────────────────────────────
 interface FsRequest {
   op: string;
@@ -138,7 +138,7 @@ async function handleFs(req: FsRequest): Promise<unknown> {
 }
 
 // ────────────────────────────────────────────────────────────────
-// shell 执行（对应 @tauri-apps/plugin-shell Command.execute）
+// shell 执行（主进程 child_process）
 // ────────────────────────────────────────────────────────────────
 interface ShellExecuteRequest {
   program: string;
@@ -161,7 +161,7 @@ async function handleShell(req: ShellExecuteRequest): Promise<{ code: number; st
   } catch (err) {
     const e = err as NodeJS.ErrnoException & { stdout?: string; stderr?: string; code?: unknown };
     if (typeof e.code === 'number') {
-      // 子进程以非零码退出：与 Tauri CommandOutput 语义一致
+      // 子进程以非零码退出：与 CommandOutput 语义一致
       return { code: e.code, stdout: e.stdout ?? '', stderr: e.stderr ?? '' };
     }
     throw err;
@@ -169,7 +169,7 @@ async function handleShell(req: ShellExecuteRequest): Promise<{ code: number; st
 }
 
 // ────────────────────────────────────────────────────────────────
-// 跨域 HTTP（对应 @tauri-apps/plugin-http，主进程代理绕过 CORS）
+// 跨域 HTTP（主进程代理绕过 CORS）
 // ────────────────────────────────────────────────────────────────
 interface HttpFetchRequest {
   id: number;
@@ -210,7 +210,7 @@ async function handleHttpFetch(req: HttpFetchRequest): Promise<{
 }
 
 // ────────────────────────────────────────────────────────────────
-// Store 持久化（对应 @tauri-apps/plugin-store，userData/df-stores/）
+// Store 持久化（userData/df-stores/）
 // 实现统一在 backend/store.ts（主进程与 opencode 模块共用同一路径）
 // ────────────────────────────────────────────────────────────────
 
@@ -225,6 +225,8 @@ export function registerIpcHandlers(): void {
   });
 
   ipcMain.handle('df:homeDir', () => app.getPath('home'));
+
+  ipcMain.handle('df:tempDir', () => app.getPath('temp'));
 
   ipcMain.handle('df:fs', (_e, req: FsRequest) => handleFs(req));
 

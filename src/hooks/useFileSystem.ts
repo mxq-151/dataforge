@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { FileNode } from '../types';
 import { generateId, generateFileHeader } from '../utils';
 import { isWindows as checkIsWindows } from '../utils/pathUtils';
-import { homeDir } from '@tauri-apps/api/path';
+import { homeDir } from '../bridge/path';
 
 const getPlatformFallbackWorkspace = (): string => {
   const isWin = checkIsWindows();
@@ -60,17 +60,7 @@ export const initFileSystemAPI = async (): Promise<FileSystemAPI> => {
   }
 
   try {
-    const hasTauriGlobal = '__TAURI__' in window;
-    const hasTauriInternals = '__TAURI_INTERNALS__' in window;
-    const isTauri = hasTauriGlobal || hasTauriInternals;
-
-    if (!isTauri) {
-      return createWebFSAPI();
-    }
-
-    const [fsModule] = await Promise.all([
-      import('@tauri-apps/plugin-fs'),
-    ]);
+    const fsModule = await import('../bridge/fs');
 
     try {
       const workspacePath = await getPlatformDefaultWorkspace();
@@ -137,7 +127,7 @@ export const initFileSystemAPI = async (): Promise<FileSystemAPI> => {
 
     return fsAPI;
   } catch (error) {
-    console.error('❌ [FS] 初始化 Tauri FS API 失败，回退到 Web FS:', error);
+    console.error('❌ [FS] 初始化文件系统桥失败，回退到 Web FS:', error);
     return createWebFSAPI();
   }
 };

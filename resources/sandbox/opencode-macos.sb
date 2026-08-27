@@ -1,6 +1,6 @@
 ;; DataForge — opencode macOS Seatbelt 沙箱配置
 ;;
-;; 由 src-tauri/src/opencode_manager.rs 在启动 opencode sidecar 时自动套用：
+;; 由 electron/backend/opencode.ts 在启动 opencode 进程时自动套用：
 ;;   sandbox-exec -f opencode-macos.sb \
 ;;     -D PROJECT="$CWD" -D HOME="$HOME" -D TMPDIR="$TMPDIR" \
 ;;     -D JAVA_HOME="$JAVA_HOME" -D MAVEN_HOME="$MAVEN_HOME" \
@@ -20,7 +20,7 @@
 ;;   sandbox-exec 无法按域名做白名单（那需要额外本地代理），故出站网络不限制。
 ;;
 ;; 注：sandbox-exec 已被 Apple 标记为 deprecated，但在 macOS 15 仍可用。
-;;     所有 -D 变量必须由调用方保证非空（Rust 侧已做 fallback），否则 subpath ""
+;;     所有 -D 变量必须由调用方保证非空（主进程已做 fallback），否则 subpath ""
 ;;     会错误地匹配文件系统根。
 
 (version 1)
@@ -92,7 +92,7 @@
 ;; 项目内脚本
 (allow process-exec (subpath (param "PROJECT")))
 
-;; opencode 自身二进制目录（由 Rust 侧 -D OPENCODE_BIN_DIR 注入）。
+;; opencode 自身二进制目录（由主进程 -D OPENCODE_BIN_DIR 注入）。
 ;; 显式放行，确保无论 PROJECT/cwd 落在何处，opencode 进程及其直接加载均不被
 ;; process-exec 默认拒绝误伤（否则报 Operation not permitted）。
 (allow process-exec (subpath (param "OPENCODE_BIN_DIR")))

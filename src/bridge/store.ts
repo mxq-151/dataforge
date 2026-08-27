@@ -1,8 +1,8 @@
 /**
- * @tauri-apps/plugin-store 兼容垫片。
+ * 持久化 Store（对应主进程 userData/df-stores/<file>.json）。
  *
- * 语义与 Tauri 版一致：Store.load(file) 返回缓存单例；get/set/delete 操作
- * 内存数据，set 时自动持久化（写入主进程 userData/df-stores/<file>.json）。
+ * Store.load(file) 返回缓存单例；get/set/delete 操作内存数据，
+ * set 时自动持久化。
  */
 type StoreData = Record<string, unknown>;
 
@@ -43,7 +43,7 @@ export class Store {
 
   async set(key: string, value: unknown): Promise<void> {
     this.data[key] = value;
-    // Tauri 版在 set 后会异步持久化；这里 fire-and-forget，失败静默
+    // fire-and-forget 持久化，失败静默
     window.dataforge.storeWrite(this.key, this.data).catch(() => {});
   }
 

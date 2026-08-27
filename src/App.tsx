@@ -29,7 +29,7 @@ import type { ProjectInfo } from './api/devProject';
 import disableAutoCapitalize from './utils/disableAutoCapitalize';
 import { gitClone, gitPull, checkGitRepoExists, ensureGitWorktree } from './api/git';
 import { setApiHost } from './api/index';
-import { Store } from '@tauri-apps/plugin-store';
+import { Store } from './bridge/store';
 import { joinPath, hostToDirName } from './utils/pathUtils';
 import { getPlatformDefaultWorkspace } from './hooks/useFileSystem';
 import './App.css';
@@ -444,7 +444,7 @@ const AppContent: React.FC = () => {
 
   useEffect(() => {
     // 窗口初始尺寸/居中/聚焦已由主进程 createWindow 原生实现（工作区 70%），
-    // 不再通过渲染层 Tauri 兼容垫片设置。
+    // 不再通过渲染层桥接垫片设置。
     disableAutoCapitalize();
   }, []);
 

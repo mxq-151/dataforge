@@ -73,7 +73,7 @@ app.whenReady().then(() => {
   // 确保 opencode 工具能拿到 DATAFORGE_COMPILE_PORT/TOKEN。
   startCompileServer();
 
-  // 与 Rust 版 auto_start_opencode 一致：配置完整（model + auth_token）时自动启动
+  // 配置完整（model + auth_token）时自动启动 opencode
   void autoStartOpencode();
 
   app.on('activate', () => {

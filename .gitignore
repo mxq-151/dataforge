@@ -44,7 +44,7 @@ lerna-debug.log*
 *~
 .projectile
 
-# Bundled LSP servers（体积过大，不入库；构建/发布时从 src-tauri 侧资源获取）
+# Bundled LSP servers（体积过大，不入库；构建/发布时从 resources/ 侧资源获取）
 resources/metals/metals.jar
 resources/metals/metals-1.6.8.jar.bak
 resources/jdtls/

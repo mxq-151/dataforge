@@ -1,7 +1,7 @@
 /**
- * compile_java_scala 移植（lib.rs compile_java_scala_sync）。
+ * compile_java_scala 实现。
  * 流程：生成临时编译工程（源码 + utils 公共源 + pom.xml）→ mvn clean package -DskipTests →
- * 定位生成的 JAR。与 Rust 版行为保持一致。
+ * 定位生成的 JAR。
  */
 import * as fs from 'node:fs';
 import * as fsp from 'node:fs/promises';

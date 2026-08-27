@@ -15,7 +15,7 @@
     "skipLibCheck": true,
     "types": ["vite/client"]
   },
-  "include": ["src", "compat"],
+  "include": ["src"],
   "exclude": [
     "src/**/*.test.ts",
     "src/**/*.test.tsx",

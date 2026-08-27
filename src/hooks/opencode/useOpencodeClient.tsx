@@ -13,7 +13,7 @@
  */
 
 import { useCallback, useMemo, useEffect, useRef, useState, createContext, useContext, type ReactNode } from 'react';
-import { listen } from '@tauri-apps/api/event';
+import { listen } from '../../bridge/event';
 import { useOpencodeBackend } from './useOpencodeBackend';
 import { useOpencodeEvents } from './useOpencodeEvents';
 import { useOpencodeChat } from './useOpencodeChat';
@@ -320,7 +320,7 @@ function useOpencodeClientImpl(
   const [fileChanges, setFileChanges] = useState<FileChange[]>([]);
   const [fileChangesApproved, setFileChangesApproved] = useState<Set<string>>(new Set());
   const [fileChangesRejected, setFileChangesRejected] = useState<Set<string>>(new Set());
-  // 异步加载标记：Tauri Store 读取是异步的，加载完成前不触发 status 计算
+  // 异步加载标记：Store 读取是异步的，加载完成前不触发 status 计算
   const [reviewStateLoaded, setReviewStateLoaded] = useState(false);
 
   /**
@@ -385,7 +385,7 @@ function useOpencodeClientImpl(
     return Array.from(changeMap.values());
   }, []);
 
-  // session 变化时，从 Tauri Store 异步加载审批状态，然后提取文件变更
+  // session 变化时，从 Store 异步加载审批状态，然后提取文件变更
   useEffect(() => {
     if (!currentSessionId) {
       setFileChangesApproved(new Set());
@@ -413,9 +413,9 @@ function useOpencodeClientImpl(
         setFileChangesRejected(rejected);
         setReviewStateLoaded(true);
 
-        console.log(`[file-review] 从 Tauri Store 加载完成: approved=${approved.size}, rejected=${rejected.size}`);
+        console.log(`[file-review] 从 Store 加载完成: approved=${approved.size}, rejected=${rejected.size}`);
       } catch (e) {
-        console.warn('[file-review] Tauri Store 加载失败，使用空状态:', e);
+        console.warn('[file-review] Store 加载失败，使用空状态:', e);
         setFileChangesApproved(new Set());
         setFileChangesRejected(new Set());
         setReviewStateLoaded(true);
@@ -630,18 +630,15 @@ function useOpencodeClientImpl(
       // 确保工作目录存在，不存在则自动创建（递归）
       if (dir) {
         try {
-          const isTauri = '__TAURI_INTERNALS__' in window || '__TAURI__' in window;
-          if (isTauri) {
-            const fsModule = await import('@tauri-apps/plugin-fs');
-            if (!(await fsModule.exists(dir))) {
-              await fsModule.mkdir(dir, { recursive: true });
-              addLog({
-                source: 'opencode',
-                text: `工作目录不存在，已自动创建: ${dir}`,
-                timestamp: new Date(),
-                level: 'info',
-              });
-            }
+          const fsModule = await import('../../bridge/fs');
+          if (!(await fsModule.exists(dir))) {
+            await fsModule.mkdir(dir, { recursive: true });
+            addLog({
+              source: 'opencode',
+              text: `工作目录不存在，已自动创建: ${dir}`,
+              timestamp: new Date(),
+              level: 'info',
+            });
           }
         } catch (e) {
           addLog({
@@ -697,7 +694,7 @@ function useOpencodeClientImpl(
   }, [connected, subscribe]);
 
   // ── 监听 sidecar 进程崩溃事件 ──
-  // 后端在 sidecar 运行中退出（崩溃/被杀）时通过 Tauri event 通知前端。
+  // 后端在 sidecar 运行中退出（崩溃/被杀）时通过主进程事件通知前端。
   // 若不监听，前端只会看到 SSE 流反复断开重连，但永远无法成功（进程已不在），
   // 用户会困惑于"思考过程意外中断"却不知道根本原因是 sidecar 崩溃。
   useEffect(() => {
@@ -726,7 +723,7 @@ function useOpencodeClientImpl(
         unlisten = fn;
       }
     }).catch(() => {
-      // 非 Tauri 环境（如纯浏览器开发）listen 会失败，忽略
+      // 事件监听失败时忽略（不影响客户端连接）
     });
     return () => {
       cancelled = true;

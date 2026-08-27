@@ -1,8 +1,5 @@
 /**
- * @tauri-apps/plugin-http 兼容垫片。
- *
- * Tauri 版 plugin-http 通过 Rust 侧转发请求以绕过 WebView CORS 限制。
- * Electron 版同样由主进程（Node 全局 fetch）代理，保持跨域行为一致。
+ * 跨域 HTTP 桥：由主进程（Node 全局 fetch）代理，绕过 WebView CORS 限制。
  * 返回对象提供调用方所需的最小 Response 语义（ok/status/text()/json()…）。
  */
 export interface HttpResult {

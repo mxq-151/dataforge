@@ -49,7 +49,6 @@ export function resolveJdtlsPath(): string {
     process.env.DATAFORGE_JDTLS_PATH ?? '',
     app.isPackaged ? path.join(process.resourcesPath, 'jdtls') : '',
     path.join(devAppPath, 'resources', 'jdtls'),
-    path.resolve(devAppPath, '..', 'src-tauri', 'resources', 'jdtls'), // 未搬运前兜底原 Tauri 工程资源
   ].filter(Boolean);
   for (const c of candidates) {
     if (hasJdtlsLauncher(c)) return c;
@@ -65,7 +64,6 @@ export function resolveMetalsPath(): string {
     process.env.DATAFORGE_METALS_PATH ?? '',
     app.isPackaged ? path.join(process.resourcesPath, 'metals') : '',
     path.join(devAppPath, 'resources', 'metals'),
-    path.resolve(devAppPath, '..', 'src-tauri', 'resources', 'metals'),
   ].filter(Boolean);
   for (const c of candidates) {
     if (hasMetalsArtifacts(c)) return c;
@@ -389,7 +387,7 @@ async function startLspWs(
   return { clientId, wsUrl: `ws://127.0.0.1:${port}` };
 }
 
-// ─── 对外命令（对应 tauri 命令）──────────────────────────────────
+// ─── 对外命令 ──────────────────────────────────────────────────
 
 export async function startJavaLspWs(args: { javaHome: string; workspaceRoot: string }): Promise<{ client_id: number; ws_url: string }> {
   const javaHome = cleanJavaHome(args.javaHome);

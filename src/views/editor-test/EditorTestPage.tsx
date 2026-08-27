@@ -23,34 +23,14 @@ const getBaseName = (filePath: string): string => {
   return filePath.split(/[/\\]/).pop() || filePath;
 };
 
-/** 判断当前是否运行在 Tauri 内（有真实文件系统） */
-const isTauriEnv = (): boolean => {
-  return typeof window !== 'undefined' && ('__TAURI__' in window || '__TAURI_INTERNALS__' in window);
-};
-
 /**
- * 读取本地文件内容。
- * - Tauri 环境：走 plugin-fs（真实磁盘）。
- * - 纯浏览器（无 Tauri）：initFileSystemAPI 会退化为 localStorage 虚拟文件系统，读不到
- *   磁盘文件，改为通过 Vite dev server 的 /__testfile__/ 中间件读取（见 vite.config.ts）。
+ * 读取本地文件内容（Electron 环境：经 initFileSystemAPI 读取真实磁盘）。
  */
 const readLocalFile = async (filePath: string): Promise<{ ok: boolean; content?: string; error?: string }> => {
-  if (isTauriEnv()) {
-    try {
-      const api = await initFileSystemAPI();
-      const data = await api.readFile(filePath);
-      return { ok: true, content: new TextDecoder().decode(data) };
-    } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) };
-    }
-  }
   try {
-    const resp = await fetch('/__testfile__/?path=' + encodeURIComponent(filePath));
-    if (!resp.ok) {
-      const text = (await resp.text()).slice(0, 200);
-      return { ok: false, error: `HTTP ${resp.status}: ${text}` };
-    }
-    return { ok: true, content: await resp.text() };
+    const api = await initFileSystemAPI();
+    const data = await api.readFile(filePath);
+    return { ok: true, content: new TextDecoder().decode(data) };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }

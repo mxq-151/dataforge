@@ -25,7 +25,7 @@ import { useProgramRunner } from '../../hooks/useProgramRunner';
 import { ArrowLeft, FolderKanban } from 'lucide-react';
 import GlobalSearch from './GlobalSearch';
 import { useToast } from '../../components/Toast';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../../bridge/ipc';
 import { registerDefinitionOpener, readJavaClassFileContent, uriToPath } from '../../services/lsp';
 import useProjectDependencyConfig from '../../hooks/useProjectDependencyConfig';
 import ProjectDependencyModal from './ProjectDependencyModal';

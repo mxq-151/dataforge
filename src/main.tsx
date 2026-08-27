@@ -6,60 +6,6 @@ import { loader } from "@monaco-editor/react";
 import { ensureVscodeApiStarted } from "./services/lsp/bootstrapVscode";
 import { registerAllTextmateLanguages } from "./services/textmate";
 
-// ═══════════════════════════════════════════════════════════════
-// 生产版关键修复：拦截全局 fetch，把绝对 tauri://localhost/... URL
-// 转换为相对路径。
-//
-// 根因：@codingame/monaco-vscode-theme-defaults 在 registerFileUrl 时用
-// `new URL("/assets/xxx.json", import.meta.url).toString()` 注册资源 URL。
-// 在 Tauri 2 生产版中 import.meta.url = "tauri://localhost/assets/index-xxx.js"，
-// 因此注册的 URL 变成绝对 "tauri://localhost/assets/dark_modern-xxx.json"。
-// WebKit 的 fetch API 不支持以绝对自定义协议 URL 发起请求（Load failed），
-// 但同样的文件用相对路径 fetch("/assets/xxx.json") 却可以正常加载（grammar
-// 文件就是用相对路径 fetch 的，全部 200 OK）。
-//
-// 这里在所有模块加载之前、ensureVscodeApiStarted 之前安装拦截器，确保
-// ThemeService / ExtensionResourceLoaderService / RegisteredUriFile.fetch
-// 产生的所有 tauri:// 绝对 URL 都被转换为相对路径。
-// ═══════════════════════════════════════════════════════════════
-(function installTauriFetchInterceptor() {
-  if (typeof window === 'undefined' || typeof window.fetch !== 'function') return;
-  const originalFetch = window.fetch.bind(window);
-  window.fetch = function patchedFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-    try {
-      let url: string | undefined;
-      if (typeof input === 'string') {
-        url = input;
-      } else if (input instanceof URL) {
-        url = input.toString();
-      } else if (input && typeof input === 'object' && 'url' in input) {
-        url = (input as Request).url;
-      }
-      if (url) {
-        // tauri://localhost/path → /path
-        // https://tauri.localhost/path → /path (Windows)
-        const tauriMatch = url.match(/^tauri:\/\/localhost\/(.*)$/) || url.match(/^https?:\/\/tauri\.localhost\/(.*)$/);
-        if (tauriMatch) {
-          const relativePath = '/' + tauriMatch[1];
-          if (typeof input === 'string') {
-            return originalFetch(relativePath, init);
-          } else if (input instanceof URL) {
-            return originalFetch(new URL(relativePath, window.location.origin), init);
-          } else {
-            // Request object: clone with new URL
-            const newReq = new Request(relativePath, init);
-            return originalFetch(newReq);
-          }
-        }
-      }
-    } catch {
-      // If interception fails, fall through to original fetch
-    }
-    return originalFetch(input as RequestInfo | URL, init);
-  } as typeof window.fetch;
-  console.log('[fetch-interceptor] 已安装 tauri:// → 相对路径 拦截器');
-})();
-
 // 使用「真正的 VS Code 编辑器」(@codingame/monaco-vscode-editor-api) 作为 Monaco 实例，
 // 而不是自带一份轻量 monaco。这与 VS Code 完全一致，也是 monaco-languageclient
 // （官方 LSP client，即 vscode-languageclient 的 Web 移植）所期望的运行时。
@@ -80,7 +26,7 @@ ensureVscodeApiStarted()
 
 initSecurity();
 
-// 标记 WKWebView（Tauri app / WebKit），供 CSS 做平台差异修复
+// 标记 WebKit（WKWebView / Safari）环境，供 CSS 做平台差异修复
 // （如选区高亮外溢到相邻行，见 EditorArea.css 的 .is-webkit 区块）。
 const isWebKit = /AppleWebKit\//.test(navigator.userAgent)
   && !/Chrome\//.test(navigator.userAgent)

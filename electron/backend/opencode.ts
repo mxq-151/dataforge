@@ -252,7 +252,7 @@ export function resolveOpencodeBin(): string | null {
     }
   }
   // 开发模式：process.resourcesPath 指向 Electron 框架自身的 Resources，不含本项目二进制；
-  // 改从项目 resources/binaries/ 查找（命名沿用 Tauri 规范，如 opencode-aarch64-apple-darwin）。
+  // 改从项目 resources/binaries/ 查找（命名沿用目标平台三元组，如 opencode-aarch64-apple-darwin）。
   if (!app.isPackaged) {
     const devBinDir = path.join(app.getAppPath(), 'resources', 'binaries');
     const devBin = resolveBinFromDir(devBinDir, name);
@@ -410,7 +410,7 @@ function makeSpawnSpec(config: OpenCodeServerConfig): { exe: string; args: strin
     }
     console.warn(`[opencode] 警告: 沙箱 profile 不存在 (${profile})，回退非沙箱启动`);
   } else if (process.platform === 'linux' && wantSandbox) {
-    // bubblewrap 实验性支持：与 Rust 版一致
+    // bubblewrap 实验性支持
     const bwrap = '/usr/bin/bwrap';
     if (fs.existsSync(bwrap)) {
       const home = os.homedir();

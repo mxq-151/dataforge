@@ -1,5 +1,5 @@
 /**
- * @tauri-apps/api/event 兼容垫片：listen / emit 走 window.dataforge IPC。
+ * 主进程 → 渲染层事件桥：listen / emit 走 window.dataforge IPC。
  * 主进程用 `df:event:<channel>` 通道把事件推送到渲染层。
  */
 export interface Event<T> {

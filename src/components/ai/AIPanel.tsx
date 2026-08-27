@@ -133,7 +133,7 @@ const AIPanel: React.FC<AIPanelProps> = ({ chatBackend, llmModels, onRollback, o
     loadSession(sessionID);
   }, [loadSession]);
 
-  // sessionHref：dataforge 是 Tauri 应用无 session 路由，返回 undefined
+  // sessionHref：dataforge 是桌面应用无 session 路由，返回 undefined
   // TaskTool 将使用 navigateToSession 进行 SPA 跳转（不支持新窗口打开）
   const sessionHref = useCallback((_sessionID: string): string | undefined => undefined, []);
 

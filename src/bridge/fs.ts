@@ -1,5 +1,5 @@
 /**
- * @tauri-apps/plugin-fs 兼容垫片：文件系统操作走主进程 Node fs。
+ * 文件系统桥：操作走主进程 Node fs。
  * 二进制数据以 base64 传输（IPC 结构化克隆无法传 Uint8Array 的 TypedArray 原型）。
  */
 export interface DirEntry {

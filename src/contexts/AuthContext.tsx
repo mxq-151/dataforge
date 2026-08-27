@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
-import { invoke } from '@tauri-apps/api/core';
-import { Store } from '@tauri-apps/plugin-store';
+import { invoke } from '../bridge/ipc';
+import { Store } from '../bridge/store';
 import { systemUserApi, CurrentUserInfo, SysRoleVO } from '../api/systemUser';
 import { getAuthToken, setAuthToken, setApiHost } from '../api/index';
 import { FIRST_LEVEL_MENU_CODES } from '../components/layout/ActivityBar';
@@ -41,9 +41,9 @@ function isTokenExpired(token: string): boolean {
   return nowMs >= expMs - TOKEN_EXPIRY_MARGIN;
 }
 
-/** 从 Tauri Store 或 localStorage 读取 backendHost */
+/** 从 Store 或 localStorage 读取 backendHost */
 async function restoreBackendHost(): Promise<string | null> {
-  // 1. 尝试 Tauri Store
+  // 1. 尝试 Store
   try {
     const store = await Store.load(STORE_FILE);
     const config = await store.get<Record<string, unknown>>('config');
@@ -140,7 +140,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     const restoreSession = async () => {
-      // 恢复后端服务地址（Tauri Store 优先，localStorage 兜底）
+      // 恢复后端服务地址（Store 优先，localStorage 兜底）
       const backendHost = await restoreBackendHost();
       if (backendHost) {
         setApiHost(backendHost);
@@ -181,7 +181,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = useCallback(async (username: string, password: string, hostOverride?: string) => {
     // 登录前同步最新的后端服务地址。
     // 优先使用登录页当前输入/已保存的 host（hostOverride），
-    // 否则回退到 Tauri Store 或 localStorage 中持久化的 backendHost。
+    // 否则回退到 Store 或 localStorage 中持久化的 backendHost。
     const backendHost = hostOverride || (await restoreBackendHost());
     if (backendHost) {
       setApiHost(backendHost);

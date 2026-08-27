@@ -1,12 +1,12 @@
 /**
  * useOpencodeBackend — OpenCode 后端服务就绪检测 + 客户端工厂（全局单例）
  *
- * 服务进程的启动由 Rust 后端在 Tauri setup hook 中自动完成（auto_start_opencode），
+ * 服务进程的启动由 Electron 主进程自动完成（auto_start_opencode），
  * 前端不再负责触发启动。此 hook 只做两件事：
  * 1. 检测服务是否就绪（健康检查轮询）
  * 2. 为客户端连接提供工厂方法（createClient）
  *
- * 配置变更由 useOpencodeConfig 写入 Tauri Store，下次应用启动时由
+ * 配置变更由 useOpencodeConfig 写入 Store，下次应用启动时由
  * auto_start_opencode 自动加载并启动服务。
  */
 

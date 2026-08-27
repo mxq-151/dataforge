@@ -1,6 +1,6 @@
 import { useEffect, useCallback, useRef, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
+import { invoke } from '../bridge/ipc';
+import { listen } from '../bridge/event';
 import type { LanguageClientWrapper } from 'monaco-languageclient/lcwrapper';
 import {
   createLanguageClient,
@@ -192,9 +192,9 @@ export function useLspManagement({
         });
 
         const cmd = languageId === 'java' ? 'start_java_lsp_ws' : 'start_scala_lsp_ws';
-        console.log(`[LSP:${languageId}] 调用 Tauri 命令 ${cmd}，javaHome=${javaHome}, workspaceRoot=${workspaceRoot}`);
+        console.log(`[LSP:${languageId}] 调用主进程命令 ${cmd}，javaHome=${javaHome}, workspaceRoot=${workspaceRoot}`);
         const res = await invoke<WsStartResult>(cmd, { javaHome, workspaceRoot });
-        console.log(`[LSP:${languageId}] Tauri 返回 ws_url=${res.ws_url}, client_id=${res.client_id}`);
+        console.log(`[LSP:${languageId}] 主进程返回 ws_url=${res.ws_url}, client_id=${res.client_id}`);
 
         // 监听 Metals 进程退出（带最后 N 行 stderr）：进程死亡时立即翻转错误，
         // 而不是让 wrapper.start() 永远阻塞在等待 initialize 响应上。
@@ -208,7 +208,7 @@ export function useLspManagement({
           });
           unlisteners.push(u1);
         } catch {
-          /* 非 Tauri 环境（纯浏览器）listen 会失败，忽略 */
+          /* 纯浏览器环境下 listen 会失败，忽略 */
         }
         // 实时转发 Metals stderr 到控制台，便于确认它是在导入 spark 工程还是已崩溃。
         try {

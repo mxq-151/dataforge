@@ -23,7 +23,7 @@ export function hostLabel(host: string): string {
   return cleaned || 'default';
 }
 
-/** 生成 YYYYMMDD_HHmmss（UTC，与 Rust format_timestamp 的 UTS 日历算法一致）。 */
+/** 生成 YYYYMMDD_HHmmss（UTC）。 */
 export function formatTimestamp(): string {
   const d = new Date();
   const p = (n: number, l = 2) => String(n).padStart(l, '0');
@@ -33,7 +33,7 @@ export function formatTimestamp(): string {
   );
 }
 
-/** 工作空间根目录（与 Rust 侧一致：$HOME/.dataforge）。 */
+/** 工作空间根目录（$HOME/.dataforge）。 */
 export function workspaceHome(): string {
   return path.join(os.homedir(), '.dataforge');
 }
@@ -50,7 +50,7 @@ export function resolveMvnBin(mavenHome: string): string {
   return mvnName;
 }
 
-/** canonicalize，失败时回退绝对路径（对应 Rust canonicalize().unwrap_or_else）。 */
+/** canonicalize，失败时回退绝对路径。 */
 function canonicalOrSelf(p: string): string {
   try {
     return fs.realpathSync(p);
@@ -65,7 +65,7 @@ function isWithin(base: string, target: string): boolean {
   return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
 }
 
-/** 运行命令，完整收集 stdout/stderr（等价 Rust Command::output()）。 */
+/** 运行命令，完整收集 stdout/stderr。 */
 export function runMvn(
   bin: string,
   args: string[],

@@ -1,5 +1,5 @@
 /**
- * df-stores 读写（主进程侧）。渲染层 plugin-store 垫片会把数据写入
+ * df-stores 读写（主进程侧）。渲染层 Store 桥会把数据写入
  * app.getPath('userData')/df-stores/<file>.json，主进程从同一位置读取，
  * 保证 opencode 服务读取的配置与前端看到的一致。
  */

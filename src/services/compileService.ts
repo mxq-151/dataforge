@@ -64,7 +64,7 @@ export async function compileJavaScala(req: CompileRequest): Promise<CompileResu
   console.log('[compileService] fileName 解析:', { raw: req.fileName, filePath: req.filePath, resolved: resolvedFileName });
 
   try {
-    const { invoke } = await import('@tauri-apps/api/core');
+    const { invoke } = await import('../bridge/ipc');
     const result = await invoke<CompileResult>('compile_java_scala', {
       javaHome,
       scalaHome,

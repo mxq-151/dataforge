@@ -820,8 +820,8 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
     let uploadedJarResourcePath: string | null = null;
     if (compiledJarPath && dsApi) {
       try {
-        const fsModule = await import('@tauri-apps/plugin-fs');
-        const jarUint8Array = await fsModule.readFile(compiledJarPath);
+        const { readFile: fsReadFile } = await import('../../bridge/fs');
+        const jarUint8Array = await fsReadFile(compiledJarPath);
         const jarBlob = new Blob([jarUint8Array], { type: 'application/java-archive' });
 
         const codeFileBaseName = fileName.replace(/\.[^.]+$/, '');

@@ -36,17 +36,17 @@
         "filter": ["**/*"]
       },
       {
-        "from": "../src-tauri/resources/jdtls",
+        "from": "resources/jdtls",
         "to": "jdtls",
         "filter": ["**/*"]
       },
       {
-        "from": "../src-tauri/resources/metals",
+        "from": "resources/metals",
         "to": "metals",
         "filter": ["**/*"]
       },
       {
-        "from": "../src-tauri/binaries/opencode-aarch64-apple-darwin",
+        "from": "resources/binaries/opencode-aarch64-apple-darwin",
         "to": "binaries/opencode"
       }
     ],

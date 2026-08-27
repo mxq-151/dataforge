@@ -1,4 +1,5 @@
 import { isWindows as checkIsWindows, normalizePath } from '../utils/pathUtils';
+import { Command } from '../bridge/shell';
 
 export interface GitFileStatus {
   path: string;
@@ -31,15 +32,6 @@ export interface GitLogResult {
   entries: GitLogEntry[];
 }
 
-const isTauri = async (): Promise<boolean> => {
-  try {
-    await import('@tauri-apps/api/app');
-    return true;
-  } catch {
-    return false;
-  }
-};
-
 const isWindows = (): boolean => {
   return checkIsWindows();
 };
@@ -52,11 +44,7 @@ const buildSshCommand = (sshKeyPath: string): string => {
 };
 
 export const checkGitRepoExists = async (repoPath: string): Promise<boolean> => {
-  const tauriAvailable = await isTauri();
-  if (!tauriAvailable) return false;
-
   try {
-    const { Command } = await import('@tauri-apps/plugin-shell');
     const output = await Command.create('git', ['rev-parse', '--is-inside-work-tree'], {
       cwd: repoPath,
     }).execute();
@@ -71,12 +59,7 @@ export const gitClone = async (
   targetDir: string,
   sshKeyPath?: string
 ): Promise<GitCloneResult> => {
-  const tauriAvailable = await isTauri();
-  if (!tauriAvailable) return { success: false, message: 'Git operations require Tauri environment', authRequired: false };
-
   try {
-    const { Command } = await import('@tauri-apps/plugin-shell');
-
     const env: Record<string, string> = {};
     if (sshKeyPath) {
       env['SSH_ASKPASS'] = '';
@@ -126,12 +109,7 @@ export const gitPull = async (
   repoPath: string,
   sshKeyPath?: string
 ): Promise<GitCloneResult> => {
-  const tauriAvailable = await isTauri();
-  if (!tauriAvailable) return { success: false, message: 'Git operations require Tauri environment', authRequired: false };
-
   try {
-    const { Command } = await import('@tauri-apps/plugin-shell');
-
     const env: Record<string, string> = {};
     if (sshKeyPath) {
       env['SSH_ASKPASS'] = '';
@@ -179,79 +157,68 @@ export const gitPull = async (
 };
 
 export const gitStatus = async (rootPath: string): Promise<GitStatusResult> => {
-  const tauriAvailable = await isTauri();
+  try {
+    const output = await Command.create('git', ['-c', 'core.quotePath=false', 'status', '--porcelain=v2', '--branch', '-uall'], {
+      cwd: rootPath,
+    }).execute();
 
-  if (tauriAvailable) {
-    try {
-      const { Command } = await import('@tauri-apps/plugin-shell');
-      const output = await Command.create('git', ['-c', 'core.quotePath=false', 'status', '--porcelain=v2', '--branch', '-uall'], {
-        cwd: rootPath,
-      }).execute();
-
-      if (output.code !== 0) {
-        throw new Error(output.stderr || 'git status failed');
-      }
-
-      const lines = output.stdout.split('\n').filter(Boolean);
-      const files: GitFileStatus[] = [];
-      let branch = '';
-      let ahead = 0;
-      let behind = 0;
-
-      for (const line of lines) {
-        if (line.startsWith('# branch.head')) {
-          branch = line.split(' ').pop() || '';
-        } else if (line.startsWith('# branch.ab')) {
-          const parts = line.split(' ');
-          ahead = Math.abs(parseInt(parts.find(p => p.startsWith('+'))?.slice(1) || '0', 10));
-          behind = Math.abs(parseInt(parts.find(p => p.startsWith('-'))?.slice(1) || '0', 10));
-        } else if (line.startsWith('1 ') || line.startsWith('2 ') || line.startsWith('u ')) {
-          const parts = line.split(' ');
-          const xy = parts[1];
-          const filePath = parts.slice(-1)[0];
-
-          let status: GitFileStatus['status'] = 'modified';
-          let staged = false;
-
-          if (xy) {
-            const indexStatus = xy[0];
-            const workTreeStatus = xy[1];
-
-            if (indexStatus === 'A') { status = 'added'; staged = true; }
-            else if (indexStatus === 'D') { status = 'deleted'; staged = true; }
-            else if (indexStatus === 'R') { status = 'renamed'; staged = true; }
-            else if (indexStatus === 'M') { status = 'modified'; staged = true; }
-            else if (workTreeStatus === 'M') { status = 'modified'; staged = false; }
-            else if (workTreeStatus === 'D') { status = 'deleted'; staged = false; }
-            else if (workTreeStatus === 'A' || indexStatus === '?') { status = 'untracked'; staged = false; }
-          }
-
-          files.push({ path: filePath, status, staged });
-        } else if (line.startsWith('? ')) {
-          files.push({
-            path: line.slice(2),
-            status: 'untracked',
-            staged: false,
-          });
-        }
-      }
-
-      return { branch, files, ahead, behind };
-    } catch (err) {
-      console.error('Git status via Tauri failed:', err);
-      throw err instanceof Error ? err : new Error('git status failed');
+    if (output.code !== 0) {
+      throw new Error(output.stderr || 'git status failed');
     }
-  }
 
-  return { branch: '', files: [], ahead: 0, behind: 0 };
+    const lines = output.stdout.split('\n').filter(Boolean);
+    const files: GitFileStatus[] = [];
+    let branch = '';
+    let ahead = 0;
+    let behind = 0;
+
+    for (const line of lines) {
+      if (line.startsWith('# branch.head')) {
+        branch = line.split(' ').pop() || '';
+      } else if (line.startsWith('# branch.ab')) {
+        const parts = line.split(' ');
+        ahead = Math.abs(parseInt(parts.find(p => p.startsWith('+'))?.slice(1) || '0', 10));
+        behind = Math.abs(parseInt(parts.find(p => p.startsWith('-'))?.slice(1) || '0', 10));
+      } else if (line.startsWith('1 ') || line.startsWith('2 ') || line.startsWith('u ')) {
+        const parts = line.split(' ');
+        const xy = parts[1];
+        const filePath = parts.slice(-1)[0];
+
+        let status: GitFileStatus['status'] = 'modified';
+        let staged = false;
+
+        if (xy) {
+          const indexStatus = xy[0];
+          const workTreeStatus = xy[1];
+
+          if (indexStatus === 'A') { status = 'added'; staged = true; }
+          else if (indexStatus === 'D') { status = 'deleted'; staged = true; }
+          else if (indexStatus === 'R') { status = 'renamed'; staged = true; }
+          else if (indexStatus === 'M') { status = 'modified'; staged = true; }
+          else if (workTreeStatus === 'M') { status = 'modified'; staged = false; }
+          else if (workTreeStatus === 'D') { status = 'deleted'; staged = false; }
+          else if (workTreeStatus === 'A' || indexStatus === '?') { status = 'untracked'; staged = false; }
+        }
+
+        files.push({ path: filePath, status, staged });
+      } else if (line.startsWith('? ')) {
+        files.push({
+          path: line.slice(2),
+          status: 'untracked',
+          staged: false,
+        });
+      }
+    }
+
+    return { branch, files, ahead, behind };
+  } catch (err) {
+    console.error('Git status failed:', err);
+    throw err instanceof Error ? err : new Error('git status failed');
+  }
 };
 
 export const gitAdd = async (rootPath: string, filePaths: string[]): Promise<void> => {
-  const tauriAvailable = await isTauri();
-  if (!tauriAvailable) return;
-
   try {
-    const { Command } = await import('@tauri-apps/plugin-shell');
     const output = await Command.create('git', ['add', ...filePaths], {
       cwd: rootPath,
     }).execute();
@@ -266,11 +233,7 @@ export const gitAdd = async (rootPath: string, filePaths: string[]): Promise<voi
 };
 
 export const gitCommit = async (rootPath: string, message: string): Promise<string> => {
-  const tauriAvailable = await isTauri();
-  if (!tauriAvailable) throw new Error('Git operations require Tauri environment');
-
   try {
-    const { Command } = await import('@tauri-apps/plugin-shell');
     const output = await Command.create('git', ['commit', '-m', message], {
       cwd: rootPath,
     }).execute();
@@ -287,11 +250,7 @@ export const gitCommit = async (rootPath: string, message: string): Promise<stri
 };
 
 export const gitDiff = async (rootPath: string, filePath: string): Promise<string> => {
-  const tauriAvailable = await isTauri();
-  if (!tauriAvailable) return '';
-
   try {
-    const { Command } = await import('@tauri-apps/plugin-shell');
     const output = await Command.create('git', ['diff', filePath], {
       cwd: rootPath,
     }).execute();
@@ -307,12 +266,7 @@ export const gitPush = async (
   rootPath: string,
   sshKeyPath?: string
 ): Promise<GitCloneResult> => {
-  const tauriAvailable = await isTauri();
-  if (!tauriAvailable) return { success: false, message: 'Git operations require Tauri environment', authRequired: false };
-
   try {
-    const { Command } = await import('@tauri-apps/plugin-shell');
-
     const env: Record<string, string> = {};
     if (sshKeyPath) {
       env['SSH_ASKPASS'] = '';
@@ -347,11 +301,7 @@ export const gitPush = async (
 };
 
 export const gitLog = async (rootPath: string, maxCount = 50): Promise<GitLogResult> => {
-  const tauriAvailable = await isTauri();
-  if (!tauriAvailable) return { entries: [] };
-
   try {
-    const { Command } = await import('@tauri-apps/plugin-shell');
     // 使用 || 作为字段分隔符，避免 commit message 中的空格影响解析
     const format = '%H||%h||%an||%ad||%s';
     const output = await Command.create('git', ['-c', 'core.quotePath=false', 'log', `--max-count=${maxCount}`, `--pretty=format:${format}`, '--date=short'], {
@@ -384,11 +334,7 @@ export const gitLog = async (rootPath: string, maxCount = 50): Promise<GitLogRes
 };
 
 export const gitReset = async (rootPath: string, commitHash: string, mode: 'hard' | 'soft' = 'hard'): Promise<void> => {
-  const tauriAvailable = await isTauri();
-  if (!tauriAvailable) return;
-
   try {
-    const { Command } = await import('@tauri-apps/plugin-shell');
     const output = await Command.create('git', ['reset', `--${mode}`, commitHash], {
       cwd: rootPath,
     }).execute();
@@ -405,7 +351,6 @@ export const gitReset = async (rootPath: string, commitHash: string, mode: 'hard
 /** 判断某目录是否位于（仓库或链接工作树的）git 工作树内 */
 const isInsideWorkTree = async (dir: string): Promise<boolean> => {
   try {
-    const { Command } = await import('@tauri-apps/plugin-shell');
     const output = await Command.create('git', ['-C', dir, 'rev-parse', '--is-inside-work-tree']).execute();
     return output.code === 0;
   } catch {
@@ -431,18 +376,14 @@ export const ensureGitWorktree = async (
   agentDir: string,
   projectCode: string,
 ): Promise<void> => {
-  const tauriAvailable = await isTauri();
-  if (!tauriAvailable) return;
   if (!repoRoot || !agentDir || !projectCode) return;
-  // 仓库未就绪（未配置 gitRepoDirName / 尚未 clone）时不做处理
+  // 仓库未就绪（未配置 gitRepoDirName / 尚未 clone）时不处理
   if (!(await checkGitRepoExists(repoRoot))) return;
   // 已是链接工作树 → 复用
   if (await isInsideWorkTree(agentDir)) return;
 
   const branch = `dataforge/${sanitizeBranchSegment(projectCode)}`;
   try {
-    const { Command } = await import('@tauri-apps/plugin-shell');
-
     // 1) 确保 per-project 分支存在（根 = 项目源码）。分支已存在则跳过切分。
     const listRes = await Command.create('git', ['-C', repoRoot, 'branch', '--list', branch]).execute();
     if (listRes.code !== 0 || !listRes.stdout.trim()) {

@@ -1,9 +1,9 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Store } from '@tauri-apps/plugin-store';
+import { Store } from '../bridge/store';
 import { DEFAULT_CONFIG } from '../types/opencode-backend';
 import type { OpenCodeConfig } from '../types/opencode-backend';
 
-/** Tauri Store 中的配置文件名（与 Rust 侧 auto_start_opencode 对应） */
+/** Store 中的配置文件名 */
 const STORE_FILE = 'opencode-config.json';
 const STORE_KEY = 'config';
 
@@ -12,13 +12,13 @@ export default function useOpenCodeConfig() {
   const [loaded, setLoaded] = useState(false);
   const storeRef = useRef<Store | null>(null);
 
-  // 异步加载配置（从 Tauri Store 读取，兼容 localStorage 旧数据）
+  // 异步加载配置（从 Store 读取，兼容 localStorage 旧数据）
   useEffect(() => {
     let cancelled = false;
 
     async function loadConfig() {
       try {
-        // 1. 尝试从 Tauri Store 读取
+        // 1. 尝试从 Store 读取
         const store = await Store.load(STORE_FILE);
         if (cancelled) return;
         storeRef.current = store;
@@ -59,7 +59,7 @@ export default function useOpenCodeConfig() {
           try {
             const oldConfig = { ...DEFAULT_CONFIG, ...JSON.parse(raw) };
             setConfig(oldConfig);
-            // 迁移到 Tauri Store
+            // 迁移到 Store
             await store.set(STORE_KEY, oldConfig);
             await store.save();
             // 清除旧数据
@@ -69,7 +69,7 @@ export default function useOpenCodeConfig() {
           } catch { /* ignore parse error */ }
         }
       } catch {
-        // Tauri Store 不可用（非 Tauri 环境），不降级到 localStorage
+        // Store 不可用时不降级到 localStorage
         // 避免含 API Key 的配置被 XSS 窃取
       }
       if (!cancelled) setLoaded(true);
@@ -82,7 +82,7 @@ export default function useOpenCodeConfig() {
   const updateConfig = useCallback((partial: Partial<OpenCodeConfig>) => {
     setConfig(prev => {
       const next = { ...prev, ...partial };
-      // 持久化到 Tauri Store
+      // 持久化到 Store
       if (storeRef.current) {
         storeRef.current.set(STORE_KEY, next).then(() => {
           storeRef.current?.save();

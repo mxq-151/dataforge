@@ -1,6 +1,6 @@
 # DataForge
 
-面向数据开发的一体化桌面端平台，基于 **Electron + React 19 + TypeScript** 重构实现（由 Tauri 版迁移而来），内置 **AI 开发助手（opencode）**、**Monaco 代码编辑器 + LSP 智能提示（Java/Scala）**、数据探索、指标管理、知识库、调度管理（DolphinScheduler）、数据血缘（Marquez）与系统管理等能力。
+面向数据开发的一体化桌面端平台，基于 **Electron + React 19 + TypeScript** 实现，内置 **AI 开发助手（opencode）**、**Monaco 代码编辑器 + LSP 智能提示（Java/Scala）**、数据探索、指标管理、知识库、调度管理（DolphinScheduler）、数据血缘（Marquez）与系统管理等能力。
 
 ## 功能特性
 
@@ -28,7 +28,7 @@
 | 图可视化 | `@xyflow/react`（React Flow） |
 | 其它 | `react-markdown`、`@tanstack/react-virtual`、`lucide-react`、`ws`、`adm-zip` 等 |
 
-> 说明：项目由 Tauri 版重构而来，渲染层仍保留少量 `@tauri-apps/*` 导入，通过 [compat/](compat/) 兼容垫片在 Vite 层做别名映射，`vite.config.mts` 中已有配置，无需安装 Tauri 依赖。
+> 说明：渲染层通过 [src/bridge/](src/bridge/) 与 Electron 主进程通信（IPC 封装文件系统、Shell、HTTP、Store、路径、事件等能力），无任何 `@tauri-apps/*` 依赖。
 
 ## 架构概览
 
@@ -65,14 +65,14 @@ dataforge/
 │   ├── preload.ts       # 预加载脚本（contextIsolation）
 │   ├── eventBus.ts      # 主进程 → 渲染层事件桥
 │   └── backend/         # opencode、compileServer、lspBridge、compile、maven、lspPom、store
-├── compat/              # @tauri-apps/* 兼容垫片（Tauri → Electron 迁移层）
 ├── public/
 │   ├── grammars/        # TextMate 语法定义（java/scala/sql/markdown 等）
 │   └── wasm/onig.wasm   # 正则引擎（oniguruma）
 ├── resources/
 │   ├── sandbox/         # macOS 沙箱 profile（opencode-macos.sb）
-│   └── binaries/        # opencode 平台二进制（不入库，构建时从 src-tauri 侧获取）
+│   └── binaries/        # opencode 平台二进制（不入库，需单独准备）
 └── src/
+    ├── bridge/          # 渲染层 ↔ 主进程 IPC 桥接（fs / shell / http / store / path / event）
     ├── api/             # 业务后端 REST API 封装
     ├── components/      # AI 面板、编辑器、布局（ActivityBar/TitleBar）等组件
     ├── contexts/        # Auth / DataSource / DolphinScheduler 上下文
@@ -93,7 +93,7 @@ dataforge/
 - **LSP 服务器资源**（体积较大，未纳入 Git）：
   - `resources/jdtls/` —— JDT.LS（Java），需要包含 `plugins/org.eclipse.equinox.launcher_*`
   - `resources/metals/` —— `metals.jar` 或 `coursier.jar`（Scala/Metals）
-  - 以上资源从 `src-tauri` 侧资源获取（`../src-tauri/resources/...`），详见 [electron-builder 配置](package.json#L32-L52) 的 `extraResources`
+  - 以上资源需单独准备至 `resources/` 对应目录，详见 [electron-builder 配置](package.json#L32-L52) 的 `extraResources`
 - **业务后端服务**：登录页配置后端地址（默认 `http://localhost:8080`），并提供 DolphinScheduler / Marquez 服务地址与 Token
 
 ## 快速开始

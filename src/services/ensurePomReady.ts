@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../bridge/ipc';
 import { fetchDependencyList } from '../api/dependency';
 import { fetchProjectConfigByFilePath } from '../api/devProject';
 import { trimTrailingSlash, getBaseName } from '../utils/pathUtils';
