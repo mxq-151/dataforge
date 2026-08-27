@@ -13,7 +13,7 @@ import {
   MonacoVscodeApiWrapper,
   type MonacoVscodeApiConfig,
 } from 'monaco-languageclient/vscodeApiWrapper';
-import { configureDefaultWorkerFactory } from 'monaco-languageclient/workerFactory';
+import { useWorkerFactory, Worker } from 'monaco-languageclient/workerFactory';
 
 // 显式加载 gotoSymbol 编辑器贡献（VS Code 同款 Go To Definition / References 等）。
 // @codingame/monaco-vscode-editor-api 是可摇树的 edcore 发行版，默认不包含这些贡献，
@@ -40,6 +40,48 @@ import '@codingame/monaco-vscode-api/vscode/vs/editor/contrib/rename/browser/ren
 import '@codingame/monaco-vscode-api/vscode/vs/editor/contrib/suggest/browser/suggestController';
 
 let started: Promise<typeof monaco> | null = null;
+
+/**
+ * 自定义 Monaco worker 工厂（editorWorkerService / TextMateWorker / extensionHostWorkerMain）。
+ *
+ * 为什么不能直接用 monaco-languageclient 的 configureDefaultWorkerFactory：
+ * 它内部在 node_modules/monaco-languageclient/lib/worker/index.js 里用
+ * `new Worker(new URL('@codingame/...', import.meta.url), ...)` 声明 worker 路径。
+ * Vite 依赖预打包（rolldown）阶段会把这种「裸模块名」的 URL 字符串错误重写成不存在的相对路径
+ * （../../monaco-languageclient/lib/worker/@codingame/...），于是 dev 模式下 worker 请求 404：
+ *   Failed to fetch dynamically imported module:
+ *   .../node_modules/monaco-languageclient/lib/worker/@codingame/.../editor.worker.js?worker_file&type=module?worker_file=&type=module
+ *
+ * 改在应用源码里声明相同的 URL 即可修复：应用源码不参与依赖预打包，Vite 的
+ * worker-import-meta-url 插件会正确把 `@codingame/...` 裸模块说明符解析到
+ * node_modules 下的真实文件，dev 模式下 worker 能正常加载。
+ *
+ * 注意：这里的 `Worker` 是从 monaco-languageclient/workerFactory 导入的「URL/options 描述类」，
+ * 不是浏览器全局 Worker——useWorkerFactory 通过它拿到每个 worker 的 url 与 options 注册进
+ * MonacoEnvironment（getWorkerUrl / getWorkerOptions）。
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function configureMonacoWorkers(logger?: any): void {
+  useWorkerFactory({
+    logger,
+    workerLoaders: {
+      editorWorkerService: () =>
+        new Worker(
+          new URL('@codingame/monaco-vscode-editor-api/esm/vs/editor/editor.worker.js', import.meta.url),
+          { type: 'module' }
+        ),
+      extensionHostWorkerMain: () =>
+        new Worker(new URL('@codingame/monaco-vscode-api/workers/extensionHost.worker', import.meta.url), {
+          type: 'module',
+        }),
+      TextMateWorker: () =>
+        new Worker(
+          new URL('@codingame/monaco-vscode-textmate-service-override/worker', import.meta.url),
+          { type: 'module' }
+        ),
+    },
+  });
+}
 
 /**
  * 启动 VS Code 编辑器运行时（幂等）。
@@ -74,7 +116,7 @@ export function ensureVscodeApiStarted(): Promise<typeof monaco> {
           },
         }),
       },
-      monacoWorkerFactory: configureDefaultWorkerFactory,
+      monacoWorkerFactory: configureMonacoWorkers,
     };
 
     const apiWrapper = new MonacoVscodeApiWrapper(config);
