@@ -115,7 +115,7 @@ export interface OpenCodeConfig {
   /** MAVEN_HOME 路径 */
   mavenHome: string;
   /** 基准工作目录（自动计算：$HOME/.dataforge/{后端host}/，无需用户配置）。
-   *  项目目录见 App.tsx projectDirs：bloop/metals=code/{pc}，智能体=code/{pc}/{pc}，git={gitRepoDirName}/{pc}） */
+   *  项目目录见 App.tsx projectDirs：项目源码根=code/{pc}，git={gitRepoDirName}/{pc}） */
   cwd: string;
   /** Git 仓库 URL */
   gitRepoUrl: string;

@@ -29,8 +29,6 @@ interface UseLspManagementParams {
   projectId?: number;
   projectCode?: string;
   rootPath?: string;
-  /** 项目源码目录（透传给 ensurePomReady，作为 pom <sourceDirectory> 与 bloop sourceDir） */
-  sourceDir?: string;
   /** 覆盖 bloop 输出目录（透传给 ensurePomReady） */
   bloopConfigDirectory?: string;
   /** 是否在 bloop 导出时下载依赖源码（透传给 ensurePomReady） */
@@ -69,7 +67,6 @@ export function useLspManagement({
   projectId,
   projectCode,
   rootPath,
-  sourceDir,
   bloopConfigDirectory,
   bloopDownloadSources,
 }: UseLspManagementParams) {
@@ -186,7 +183,6 @@ export function useLspManagement({
           projectId,
           projectCode,
           rootPath,
-          sourceDir,
           bloopConfigDirectory,
           bloopDownloadSources,
         });
@@ -381,7 +377,6 @@ export function useLspManagement({
         projectId,
         projectCode,
         rootPath,
-        sourceDir,
         bloopConfigDirectory,
         bloopDownloadSources,
       });
@@ -400,7 +395,6 @@ export function useLspManagement({
     projectId,
     projectCode,
     rootPath,
-    sourceDir,
     bloopConfigDirectory,
     bloopDownloadSources,
     updateLspClasspath,

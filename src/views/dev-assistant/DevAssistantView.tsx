@@ -138,13 +138,15 @@ interface DevAssistantViewProps {
   projectCwd?: string;
   /** bloop/metals 工作目录（code/{project_code}）。缺省回退到 config.cwd。 */
   workspaceRoot?: string;
+  /** git 每次拉取/挂载源码完成后递增，用于在拉完代码后刷新文件浏览器（首进常有打开空目录的竞态） */
+  gitRefreshSeq?: number;
   dsApiUrl?: string;
   dsToken?: string;
   config: OpenCodeConfig;
   onBack: () => void;
 }
 
-const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, project, projectCwd, workspaceRoot, dsApiUrl, dsToken, config, onBack }) => {
+const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, project, projectCwd, workspaceRoot, gitRefreshSeq, dsApiUrl, dsToken, config, onBack }) => {
   const { user } = useAuth();
   const { refresh } = useDataSourceCache();
   const toast = useToast();
@@ -354,6 +356,15 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
     renameNode,
     refreshTree,
   } = useFileSystem(projectCwd);
+
+  // git 拉取/挂载源码完成（gitRefreshSeq 递增）后刷新文件浏览器，
+  // 解决首次进入项目时文件浏览器先于 git 拉取完成、看到空目录的问题。
+  useEffect(() => {
+    if (gitRefreshSeq !== undefined && gitRefreshSeq > 0) {
+      refreshTree();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gitRefreshSeq]);
 
   // AI 修改文件后自动刷新编辑器和文件树
   useEffect(() => {
@@ -955,7 +966,6 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
           onCancelExecution={handleCancelExecution}
           runningLogs={runningLogs}
           rootPath={projectCwd}
-          sourceDir={projectCwd}
           projectId={project.id}
           projectCode={project.projectCode}
           javaHome={config.javaHome}

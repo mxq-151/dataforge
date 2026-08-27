@@ -21,8 +21,8 @@ export interface EnsurePomOptions {
   mavenArtifactId?: string;
   scalaVersion?: string;
   /** 设置页的 POM 模板（与编译路径一致，支持 {group_id}/{artifact_id}/{scala_version}/{deps}/{scala_plugin}/{main_class}/{final_name} 占位符）。
-   *  提供时 LSP pom 按模板生成（缺 sourceDirectory 时自动注入 warehouse，Metals 才能索引源码）；
-   *  不提供时回退到下方 LSP 专用硬编码模板（含 sourceDirectory + scala-maven-plugin）。 */
+   *  提供时 LSP pom 按模板生成；不提供时回退到下方 LSP 专用硬编码模板（含 scala-maven-plugin）。
+   *  源码统一采用 Maven 标准目录布局（默认 src/main/scala），不设置 <sourceDirectory> 覆盖。 */
   pomTemplate?: string;
   /** 项目 ID，用于并入「项目级依赖配置」（/params jarDependency Catalogs） */
   projectId?: number;
@@ -30,12 +30,6 @@ export interface EnsurePomOptions {
   projectCode?: string;
   /** 工作区根路径，用于把相对文件路径换算成后端存储路径 */
   rootPath?: string;
-  /**
-   * 项目源码目录（Maven <sourceDirectory> 与 bloop sourceDir 共同使用）。
-   * 支持相对工作区根的目录名（默认 'warehouse'）或绝对路径（如项目 cwd）。
-   * 缺省时沿用仓库内的默认源码位置 'warehouse'。
-   */
-  sourceDir?: string;
   /** 覆盖 bloop 输出目录（bloop.configDirectory）。缺省让 Maven 使用 <workspace>/.bloop。 */
   bloopConfigDirectory?: string;
   /** 是否在 bloop 导出时下载依赖源码（缺省 true，与以往 mvn dependency:sources 等价）。 */
@@ -179,17 +173,15 @@ export async function ensurePomReady(
             </plugin>
 `;
 
-    // ── 按项目解析 bloop 三参数 ──────────────────────────────
-    // sourceDir：项目源码目录（相对工作区根或绝对路径），缺省沿用仓库默认 'warehouse'。
-    const sourceDir = options?.sourceDir?.trim() || 'warehouse';
+    // ── 按项目解析 bloop 参数 ──────────────────────────────
     // bloop.configDirectory：缺省让 Maven 输出到 <workspace>/.bloop（与 lspPom 诊断目录一致）。
     const bloopConfigDir = options?.bloopConfigDirectory?.trim();
     // downloadSources：缺省 true，与以往 mvn dependency:sources 行为一致。
     const bloopDownloadSources = options?.bloopDownloadSources !== false;
 
     // bloop-maven-plugin 片段：声明在 pom.xml 中，bloop:install 生成 .bloop 工程，
-    // 并按项目动态生成 bloop.configDirectory / downloadSources / sourceDir
-    // （downloadSources=true 时导出一并下载依赖源码，替代原先独立的 dependency:sources 步骤）。
+    // 并按项目动态生成 bloop.configDirectory / downloadSources。
+    // 源码统一采用 Maven 标准目录布局（默认 src/main/scala），故不设置 sourceDir 覆盖。
     // 版本与 lspPom.ts 保持一致。
     const bloopPluginLines = [
         `            <plugin>`,
@@ -200,7 +192,6 @@ export async function ensurePomReady(
     ];
     if (bloopConfigDir) bloopPluginLines.push(`                    <bloop.configDirectory>${escapeXml(bloopConfigDir)}</bloop.configDirectory>`);
     bloopPluginLines.push(`                    <downloadSources>${bloopDownloadSources}</downloadSources>`);
-    bloopPluginLines.push(`                    <sourceDir>${escapeXml(sourceDir)}</sourceDir>`);
     bloopPluginLines.push(`                    </configuration>`, `            </plugin>`);
     const bloopPluginXml = bloopPluginLines.join('\n');
 
@@ -213,34 +204,21 @@ export async function ensurePomReady(
 
     // 生成 pom 内容：优先使用设置页模板（占位符替换，与编译路径一致）；
     // 未提供模板时回退到下方 LSP 专用硬编码模板。
-    // 注意：LSP pom 必须含 <sourceDirectory>（值取项目 sourceDir），否则 Metals/Bloop
-    // 会按 Maven 默认 src/main/scala 找源码，导致项目源码目录下的 .scala 无法被索引
-    // （悬停/跳转失效）。模板若无此节点，此处自动注入。
-    const ensureSourceDirectory = (xml: string): string => {
-        if (/<sourceDirectory>/i.test(xml)) return xml;
-        // 在 <build> 之后、<plugins> 之前注入 sourceDirectory。
-        // $1 已含 <build> 后的换行+缩进，故不再额外加缩进，避免重复空格。
-        return xml.replace(
-            /(<build\b[^>]*>\s*)(<plugins>)/,
-            `$1<sourceDirectory>${escapeXml(sourceDir)}</sourceDirectory>\n        $2`,
-        );
-    };
+    // 源码采用 Maven 标准目录布局（默认 src/main/scala），不注入 <sourceDirectory> 覆盖。
 
     let pomContent: string;
     if (options?.pomTemplate?.trim()) {
         pomContent = ensureBloopPlugin(
-            ensureSourceDirectory(
-                options.pomTemplate
-                    .replace('{group_id}', groupId)
-                    .replace('{artifact_id}', artifactId)
-                    .replace('{main_class}', '') // LSP pom 为工作区级，无主类概念；留空不影响 bloop:install
-                    .replace('{final_name}', artifactId)
-                    .replace('{scala_version}', scalaVer)
-                    .replace('{deps}', depsXml.trimEnd())
-                    .replace('{scala_plugin}', scalaPluginXml.trimEnd()),
-            ),
+            options.pomTemplate
+                .replace('{group_id}', groupId)
+                .replace('{artifact_id}', artifactId)
+                .replace('{main_class}', '') // LSP pom 为工作区级，无主类概念；留空不影响 bloop:install
+                .replace('{final_name}', artifactId)
+                .replace('{scala_version}', scalaVer)
+                .replace('{deps}', depsXml.trimEnd())
+                .replace('{scala_plugin}', scalaPluginXml.trimEnd()),
         );
-        console.log('[ensurePomReady] 使用设置页 pomTemplate 生成 pom（已注入 sourceDirectory/bloop 或跳过若已存在）');
+        console.log('[ensurePomReady] 使用设置页 pomTemplate 生成 pom（已注入 bloop 或跳过若已存在）');
     } else {
         pomContent = ensureBloopPlugin(`<?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
@@ -265,7 +243,6 @@ ${depsXml.trimEnd()}
     </dependencies>
 
     <build>
-        <sourceDirectory>${escapeXml(sourceDir)}</sourceDirectory>
         <plugins>
             <plugin>
                 <groupId>net.alchim31.maven</groupId>

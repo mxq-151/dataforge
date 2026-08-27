@@ -65,12 +65,14 @@ const workspaceClassMap: Record<string, string> = {
 
 function DevAssistantClientSlot({
   config, project,
-  projectCwd, workspaceRoot, dsApiUrl, dsToken, onBack,
+  projectCwd, workspaceRoot, gitRefreshSeq, dsApiUrl, dsToken, onBack,
 }: {
   config: OpenCodeConfig;
   project: ProjectInfo;
   projectCwd?: string;
   workspaceRoot?: string;
+  /** git 每次拉取/挂载源码完成后递增，通知文件浏览器重新刷新 */
+  gitRefreshSeq?: number;
   dsApiUrl?: string;
   dsToken?: string;
   onBack: () => void;
@@ -99,6 +101,7 @@ function DevAssistantClientSlot({
       project={project}
       projectCwd={projectCwd}
       workspaceRoot={workspaceRoot}
+      gitRefreshSeq={gitRefreshSeq}
       dsApiUrl={dsApiUrl}
       dsToken={dsToken}
       config={config}
@@ -187,6 +190,8 @@ const AppContent: React.FC = () => {
   const [selectedProject, setSelectedProject] = useState<ProjectInfo | null>(null);
   // 跟踪所有访问过的项目，为每个项目保持 OpencodeClientProvider 挂载
   const [visitedProjects, setVisitedProjects] = useState<Map<string, ProjectInfo>>(new Map());
+  // 每个项目拉取/挂载源码的次数，递增后用于通知文件浏览器在 git 拉完代码后再刷新一次
+  const [gitRefreshSeq, setGitRefreshSeq] = useState<Record<string, number>>({});
 
   const handleTabChange = useCallback((tab: ActiveTab) => {
     setActiveTab(tab);
@@ -256,9 +261,9 @@ const AppContent: React.FC = () => {
         const hostDir = hostToDirName(backendHost);
         // 目录结构（按需求统一）：
         //   基准（hostBase）= ~/.dataforge/{后端host目录}/
-        //   bloop/metals 工作目录 = {hostBase}/code/{project_code}
-        //   智能体/文件浏览器     = {hostBase}/code/{project_code}/{project_code}
-        //   git 工作空间           = {hostBase}/{gitRepoDirName}/{project_code}
+        //   项目源码根        = {hostBase}/code/{project_code}（pom.xml + bloop/metals 工作目录）
+        //   源码目录          = {hostBase}/code/{project_code}/src/main/java/{project_code}（文件浏览器 & opencode 工作目录）
+        //   git 工作空间      = {hostBase}/{gitRepoDirName}/{project_code}
         const base = joinPath(home, hostDir);
         if (cancelled) return;
         setBaseWorkspace(base);
@@ -299,24 +304,24 @@ const AppContent: React.FC = () => {
   }, [activeTab, config.javaHome, loaded]);
 
   // 项目目录集合（统一结构，见上方 baseWorkspace 注释）：
-  //   projectDir = {hostBase}/code/{project_code}            → bloop/metals 工作目录
-  //   agentDir   = {hostBase}/code/{project_code}/{project_code} → 智能体/文件浏览器目录（源码真身）
-  //   repoRoot   = {hostBase}/{gitRepoDirName}               → git 全局工作空间
-  //   gitProj    = {hostBase}/{gitRepoDirName}/{project_code} → 软链 → agentDir（git 读取 agentDir 数据）
+  //   projectDir = {hostBase}/code/{project_code}         → 项目源码根（源码 src/、pom.xml、bloop/metals 工作目录 + 智能体/文件浏览器目录）
+  //   repoRoot   = {hostBase}/{gitRepoDirName}            → git 全局工作空间
+  //   gitProj    = {hostBase}/{gitRepoDirName}/{project_code} → 软链 → projectDir（git 读取 projectDir 数据）
   const projectDirs = useCallback((pc: string) => {
     const projectDir = joinPath(baseWorkspace, 'code', pc);
-    const agentDir = joinPath(projectDir, pc);
     const repoRoot = config.gitRepoDirName
       ? joinPath(baseWorkspace, config.gitRepoDirName)
       : '';
-    const gitProj = repoRoot ? joinPath(repoRoot, pc) : agentDir;
-    return { projectDir, agentDir, gitProj, repoRoot };
+    const gitProj = repoRoot ? joinPath(repoRoot, pc) : projectDir;
+    return { projectDir, gitProj, repoRoot };
   }, [baseWorkspace, config.gitRepoDirName]);
 
-  // 智能体工作目录 & 文件浏览器根目录 = code/{project_code}/{project_code}（源码真身，gitProj 软链指向它）
+  // 文件浏览器根目录 & opencode 工作目录 = 项目 Java 源码目录（Maven 标准 src/main/java/{pc}）
   const getProjectCwd = useCallback((project: ProjectInfo) => {
     if (!baseWorkspace) return undefined;
-    return projectDirs(project.projectCode).agentDir;
+    const pc = project.projectCode;
+    const { projectDir } = projectDirs(pc);
+    return joinPath(projectDir, 'src', 'main', 'java', pc);
   }, [baseWorkspace, projectDirs]);
 
   const [gitSyncStatus, setGitSyncStatus] = useState<{
@@ -406,27 +411,32 @@ const AppContent: React.FC = () => {
     // 不 stop 服务，保持服务进程持续运行，以便下次切回时直接复用
   }, []);
 
-  // 为每个已访问项目建立「code/{project_code}」工作区目录：
-  //   - code/{pc}            → bloop/metals 工作目录（真实目录）
-  //   - code/{pc}/{pc}       → 智能体/文件浏览器目录（源码真身，真实目录）
-  //   - gitProj → agentDir   → hostBase/{gitRepoDirName}/{project_code} 软链指向 code/{pc}/{pc}，
-  //                            使 git 在该软链下读取/提交的与智能体看到的同一份源码。
-  // 未配置 gitRepoDirName 时，不建软链，智能体目录直接作为真实目录使用。
+  // 为每个已访问项目建立源码目录与 git 关联：
+  //   - code/{pc}                            → 项目源码根（pom.xml、bloop/metals 工作目录，真实目录）
+  //   - code/{pc}/src/main/java/{pc}         → 项目 Java 源码目录（智能体/文件浏览器/opencode 工作目录）
+  //   - gitProj → srcDir                     → hostBase/{gitRepoDirName}/{project_code} 软链指向该 Java 源码目录
+  //   - git 工作树挂载于 Java 源码目录        → 把仓库 {project_code} 子树内容与 src/main/java/{project_code} 关联，
+  //                                            使 git 在该目录直接读写/提交的源码与智能体看到的一致。
+  // 未配置 gitRepoDirName 时，不建软链/不挂工作树，源码目录作为真实目录直接创建。
   useEffect(() => {
     if (!baseWorkspace || !loaded) return;
     const ensureOne = async (project: ProjectInfo) => {
-      const { projectDir, agentDir, gitProj, repoRoot } = projectDirs(project.projectCode);
+      const { gitProj, repoRoot } = projectDirs(project.projectCode);
+      const pc = project.projectCode;
+      const srcDir = joinPath(baseWorkspace, 'code', pc, 'src', 'main', 'java', pc);
       try {
+        await window.dataforge.fs('mkdir', { path: srcDir, recursive: true });
+        const hadRepo = !!repoRoot;
         if (repoRoot) {
-          await window.dataforge.fs('symlink', { linkPath: gitProj, target: agentDir });
-        } else {
-          await window.dataforge.fs('mkdir', { path: agentDir, recursive: true });
+          await window.dataforge.fs('symlink', { linkPath: gitProj, target: srcDir });
+          await ensureGitWorktree(repoRoot, srcDir, pc);
         }
-        await window.dataforge.fs('mkdir', { path: projectDir, recursive: true });
-        // 挂载链接工作树：把 {project_code} 子树分支挂到 agentDir，使 git 直接读写/提交 agentDir 里的真实源码
-        await ensureGitWorktree(repoRoot, agentDir, project.projectCode);
+        // git 拉取/挂载源码完成后，递增序列，通知文件浏览器重新刷新（首次进入常有竞态：浏览器先于拉取完成打开空目录）
+        if (hadRepo) {
+          setGitRefreshSeq(prev => ({ ...prev, [pc]: (prev[pc] || 0) + 1 }));
+        }
       } catch (err) {
-        console.error('[App] 建立项目目录/软链失败:', project.projectCode, err);
+        console.error('[App] 建立项目目录/软链失败:', pc, err);
       }
     };
     // hostBase 是 opencode 进程校验/启动的工作目录，先确保存在
@@ -575,6 +585,7 @@ const AppContent: React.FC = () => {
                     project={project}
                     projectCwd={getProjectCwd(project)}
                     workspaceRoot={projectDirs(project.projectCode).projectDir}
+                    gitRefreshSeq={gitRefreshSeq[project.projectCode] || 0}
                     dsApiUrl={config.dolphinSchedulerApiUrl}
                     dsToken={config.dolphinSchedulerToken}
                     onBack={handleBackToProjectList}
