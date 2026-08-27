@@ -30,6 +30,14 @@ import '@codingame/monaco-vscode-api/vscode/vs/editor/contrib/gotoSymbol/browser
 // 无需单独引入样式。LSP 的 renameProvider 由 monaco-languageclient（vscode-languageclient 的
 // RenameFeature）按服务器能力自动注册，此处只负责补齐编辑器侧的重命名控制器。
 import '@codingame/monaco-vscode-api/vscode/vs/editor/contrib/rename/browser/rename';
+// 补全列表（SuggestController / SuggestWidget）：edcore 发行版默认同样不包含 suggest
+// 贡献。不导入则 SuggestController 永远不会被 registerEditorContribution 注册——
+// LSP 的 completionProvider 照常由 monaco-languageclient 注册（服务器有返回），
+// 但编辑器内没有任何组件消费它，表现为「悬停提示正常、自动补全弹窗完全不出现」，
+// Ctrl+Space（editor.action.triggerSuggest）也无响应。
+// suggestController.js 内部会连带导入 suggestWidget.js（通过 registerCss 注入样式）
+// 与 snippetController2.js（snippet 格式的 insertText 展开依赖它）。
+import '@codingame/monaco-vscode-api/vscode/vs/editor/contrib/suggest/browser/suggestController';
 
 let started: Promise<typeof monaco> | null = null;
 
@@ -73,6 +81,62 @@ export function ensureVscodeApiStarted(): Promise<typeof monaco> {
     console.log('[bootstrapVscode] 开始 MonacoVscodeApiWrapper.start()，$type=extended（将自动注册 textmate + languages + theme service override）');
     await apiWrapper.start();
     console.log('[bootstrapVscode] MonacoVscodeApiWrapper.start() 完成 —— VS Code 编辑器运行时就绪');
+
+    // ========== SuggestWidget 深度诊断（临时）==========
+    // 现象矛盾：suggest-watch 显示 widget 渲染正常（h=252 rows=12）但用户看不到列表。
+    // 本诊断区分三种可能：僵尸 widget / 列表透明 / CSS 未注入。
+    // 用法：触发补全、弹窗应显示时（或小条可见时）在 Console 执行 dfDiag.deepCheck()
+    (window as any).dfDiag = Object.assign((window as any).dfDiag ?? {}, {
+      deepCheck: () => {
+        const widgets = [...document.querySelectorAll('.suggest-widget')];
+        const info: any = { widgetCount: widgets.length, widgets: [] };
+        for (const w of widgets) {
+          const el = w as HTMLElement;
+          const r = el.getBoundingClientRect();
+          const tree = el.querySelector('.tree') as HTMLElement | null;
+          const cs = tree ? getComputedStyle(tree) : null;
+          const rows = el.querySelectorAll('.monaco-list-row');
+          const rowCs = rows[0] ? getComputedStyle(rows[0] as HTMLElement) : null;
+          (info.widgets as any[]).push({
+            className: el.className,
+            rect: {
+              top: Math.round(r.top), left: Math.round(r.left),
+              width: Math.round(r.width), height: Math.round(r.height),
+            },
+            inlineStyle: el.getAttribute('style')?.slice(0, 120),
+            parentCls: el.parentElement?.className,
+            tree: tree
+              ? {
+                  h: tree.offsetHeight,
+                  bg: cs!.backgroundColor,
+                  color: cs!.color,
+                  display: cs!.display,
+                  visibility: cs!.visibility,
+                  opacity: cs!.opacity,
+                  overflow: cs!.overflow,
+                }
+              : null,
+            row0: rowCs
+              ? { h: (rows[0] as HTMLElement).offsetHeight, color: rowCs.color, bg: rowCs.backgroundColor }
+              : null,
+            rowCount: rows.length,
+          });
+        }
+        // VS Code suggest 布局样式是否注入（registerCss → adoptedStyleSheets）
+        let suggestSheets = 0;
+        for (const s of document.adoptedStyleSheets) {
+          try {
+            for (const rule of s.cssRules) {
+              const sel = (rule as any).selectorText ?? '';
+              if (typeof sel === 'string' && sel.includes('suggest-widget')) { suggestSheets++; break; }
+            }
+          } catch { /* cross-origin */ }
+        }
+        info.adoptedSheets = document.adoptedStyleSheets.length;
+        info.adoptedSheetsWithSuggestRules = suggestSheets;
+        return info;
+      },
+    });
 
     // 说明：@monaco-editor/react 的 `theme` prop 会在编辑器挂载时调用
     // `monaco.editor.setTheme("Default Dark Modern")`。在扩展运行时下，standalone

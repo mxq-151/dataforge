@@ -465,6 +465,27 @@ function createNavigationMiddleware(languageId: LspLanguageId): Middleware {
     //     即提前结束；不再因 token 取消而中断重试，避免冷窗口内反复从零重试。
     // 不做结果缓存：每次 hover 都实时向 Metals 请求（Metals 温热后转手返回完整内容，
     // 零额外延迟），保证提示始终与服务端最新状态一致。
+    // ========== Completion 日志 ==========
+    // 打印 completion 请求/响应的 item 数量与触发方式，便于排查「补全不显示」类问题：
+    // 响应 items=0 说明服务端未返回（如 Metals 版本 bug）；items>0 但弹窗不显示则问题
+    // 在 Monaco 渲染侧（SuggestController / widget CSS）。
+    provideCompletionItem: async (document, position, context, token, next) => {
+      const t0 = performance.now();
+      try {
+        const result = await next(document, position, context, token);
+        const items = Array.isArray(result) ? result : result?.items ?? [];
+        console.log(
+          `[LSP:${languageId}] Completion(${context?.triggerKind}${
+            context?.triggerCharacter ? ` '${context.triggerCharacter}'` : ''
+          }) @${position.line}:${position.character}: ` +
+            `${items.length} 项, ${Math.round(performance.now() - t0)}ms`,
+        );
+        return result;
+      } catch (e) {
+        console.error(`[LSP:${languageId}] Completion 异常:`, e);
+        throw e;
+      }
+    },
     provideHover: languageId === 'scala'
       ? async (document, position, token, next) => {
           // 同步重试稳定化：拿到内容后判断是否完整，不完整则按递增退避重试。

@@ -109,6 +109,9 @@ export default defineConfig({
   clearScreen: false,
 
   server: {
+    // 显式绑定 IPv4：Node ≥17 下默认 localhost 可能只解析到 ::1（仅 IPv6 监听），
+    // 导致 wait-on tcp:127.0.0.1:5173 永远连不上、Electron 无法启动。
+    host: '127.0.0.1',
     port: 5173,
     strictPort: true,
     watch: {
