@@ -451,6 +451,17 @@ function createNavigationMiddleware(languageId: LspLanguageId): Middleware {
     // 此处做同步重试稳定化：首次 hover 拿到内容较短（< 60 字符，疑似只有类型签名，即
     // 可能处于 PC 冷启动 / scaladoc 解压窗口）时，按递增退避再次请求。
     //
+    // 关键设计（2026-08-27 重构，对齐 VS Code 源码）：
+    //   完全绕过 vscode-languageclient 的 HoverFeature（即不调用 next），直接调用
+    //   client.sendRequest('textDocument/hover') + protocol2CodeConverter.asHover()。
+    //
+    //   原因：vscode-languageclient 的 hover.js 在响应返回后检查
+    //   token.isCancellationRequested，若手势已取消（鼠标移动/新手势开始）则丢弃结果
+    //   返回 null，并对已取消 token 的请求补发 $/cancelRequest（可能打断 Metals 的
+    //   scaladoc 解压）。而 VS Code 源码的 executeProvider（getHover.ts:27-34）在
+    //   provider 返回后只检查结果有效性（isValid），不检查 token 取消。直接调用
+    //   sendRequest 不涉及 token，与 VS Code 行为一致。
+    //
     // 退避时长权衡（2026-08-26 调优）：
     //   - 早期版本用 [400,800,1600,3200]ms + settleTime=5000，冷符号最多等 ~6s。
     //     这对「无 scaladoc 的本地 val/var」极不友好——它们的类型签名就是最终内容，
@@ -459,10 +470,10 @@ function createNavigationMiddleware(languageId: LspLanguageId): Middleware {
     //     在越过 1s settle 窗口后连续两次无增长即退出（实测 ~1.9s）。
     //   - settleTime=1000 仍足以跨过 PC 冷启动常见的亚秒级平台期（内容短暂停滞几百 ms
     //     后继续增长）；Spark 依赖 scaladoc 的多秒级解压本就不在此覆盖——由后台预热
-    //     （registerScalaHoverWarmup 三波错峰 + 4/8/12s 重试）负责，用户 hover 不到的
-    //     罕见符号可再次悬停即拿到完整内容。
+    //     （registerScalaHoverWarmup 三波错峰 + 4/8/12s 重试）与悬停失败后的
+    //     scheduleHoverPositionWarmup 后台补拉负责。
     //   - 已温符号（首次即完整）零额外延迟直接返回；内容仍在增长就继续等，拿到完整结果
-    //     即提前结束；不再因 token 取消而中断重试，避免冷窗口内反复从零重试。
+    //     即提前结束。
     // 不做结果缓存：每次 hover 都实时向 Metals 请求（Metals 温热后转手返回完整内容，
     // 零额外延迟），保证提示始终与服务端最新状态一致。
     // ========== Completion 日志 ==========
@@ -488,29 +499,61 @@ function createNavigationMiddleware(languageId: LspLanguageId): Middleware {
     },
     provideHover: languageId === 'scala'
       ? async (document, position, token, next) => {
-          // 同步重试稳定化：拿到内容后判断是否完整，不完整则按递增退避重试。
-          // 完整性判定用 hoverIsComplete（要求 长度>=60 且含换行，避免把仅长类型签名判为完整），
-          // 否则冷窗口的长签名会被当成最终结果固定。
-          //
-          // delays/settleTime 选型见上方注释。noProgressLim=2 + settleTime=1000：
-          // 稳定短内容（本地 val，无 scaladoc）在累计等待越过 1s 后、连续两次无增长即退出
-          // （约 ~1.9s），不再空等 6s；PC 平台期（亚秒）未过 settle 不会提前退出。
-          const delays = [300, 600, 1000, 1500];
+          const client = currentMetalsClient;
+          // Metals 客户端未就绪时，fallback 到 vscode-languageclient 默认 provider
+          if (!client) {
+            return next(document, position, token);
+          }
+
+          const uri = document?.uri
+            ? (typeof document.uri === 'string' ? document.uri : document.uri.toString?.() ?? '')
+            : '';
+          const params = {
+            textDocument: { uri },
+            position: { line: position.line, character: position.character },
+          };
+
+          // 直接调用 client.sendRequest，绕过 vscode-languageclient 的 HoverFeature。
+          // 不涉及 token，结果只要有效就返回，与 VS Code 的 executeProvider 行为一致。
+          const rawRequest = async (): Promise<any> => {
+            try {
+              return await client.sendRequest('textDocument/hover', params);
+            } catch (e) {
+              console.warn('[LSP:scala] hover 请求失败:', e);
+              return null;
+            }
+          };
 
           // 首次请求；已完整则零额外延迟返回（已温符号），否则进入稳定化重试。
-          // 注意 request 闭包刻意不理会 token 取消：鼠标移动会取消 hover 手势，
-          // 但稳定化不因此打断，否则冷窗口内反复从零重试永远拿不到完整内容。
-          const result = await stabilizeIncompleteResult(
-            await Promise.resolve(next(document, position, token)),
-            () => Promise.resolve(next(document, position, token)),
+          const initial = await rawRequest();
+
+          const lspResult = await stabilizeIncompleteResult(
+            initial,
+            rawRequest,
             hoverContentLen,
             hoverIsComplete,
-            delays,
+            [300, 600, 1000, 1500],
             2,       // noProgressLim：连续 2 次无增长（且过 settle）才提前结束
             1000,    // settleTime(ms)：未过此窗口不因无增长提前退出，跨 PC 平台期
           );
 
-          return result;
+          // 仍未拿到完整内容 → 后台延迟补拉该位置（0/4s/8s/12s，最多 3 次），
+          // 直接向 Metals 请求把该符号的 scaladoc 焐热。打开文件的三波预热只覆盖前 15
+          // 个大写符号；预热未覆盖的符号首次悬停失败后若不补拉，Metals 可能一直未就绪，
+          // 用户再次悬停也拿不到文档（表现为「永远只有类型签名」）。补拉成功后，用户
+          // 下次悬停同一符号即可立即拿到完整内容。
+          if (lspResult && !hoverIsComplete(lspResult)) {
+            scheduleHoverPositionWarmup(uri, position);
+          }
+
+          // LSP Hover → vscode.Hover 协议转换（同步，由 protocol2CodeConverter 完成）
+          if (!lspResult) return null;
+          try {
+            return client.protocol2CodeConverter.asHover(lspResult);
+          } catch (e) {
+            console.warn('[LSP:scala] hover 协议转换失败:', e);
+            return null;
+          }
         }
       : undefined,
   };
@@ -524,6 +567,71 @@ let currentMetalsClient: MonacoLanguageClient | null = null;
 let hoverWarmupRegistered = false;
 // 记录已预热过的文档 URI，避免重复预热（用户切 Tab 来回切同一文件时）
 const warmupDoneUris = new Set<string>();
+
+// 对指定位置发送一次 hover 请求，返回是否附带文档（长度 > 60）。
+// 与 provideHover 的 hoverIsComplete 不同：这里判定的是协议层原始结果（string / 数组 /
+// MarkupContent），供预热与后台补拉共用。
+const sendHover = (client: MonacoLanguageClient, uri: string, pos: { line: number; character: number }) =>
+  client
+    .sendRequest('textDocument/hover', {
+      textDocument: { uri },
+      position: { line: pos.line, character: pos.character },
+    })
+    .then(
+      (r: any) => {
+        const hasDoc = r?.contents && (typeof r.contents === 'string'
+          ? r.contents.length > 60
+          : Array.isArray(r.contents)
+            ? r.contents.some((c: any) => (typeof c === 'string' ? c : c?.value)?.length > 60)
+            : r.contents?.value?.length > 60);
+        return hasDoc;
+      },
+      () => false,
+    );
+
+// 对单个符号做带重试的预热：首次失败后按 [4s, 8s, 12s] 递增间隔重试，
+// 最多 3 次。覆盖 Metals scaladoc 异步解析较慢的情况。
+const warmupSymbolWithRetry = (
+  client: MonacoLanguageClient,
+  uri: string,
+  pos: { line: number; character: number },
+  attempt = 0,
+) => {
+  const delays = [0, 4000, 8000, 12000];
+  const delay = delays[attempt] ?? 0;
+  setTimeout(() => {
+    // 客户端可能已被替换（工作区切换），取最新引用
+    const c = currentMetalsClient;
+    if (!c || c !== client) return;
+    sendHover(c, uri, pos).then((hasDoc) => {
+      if (hasDoc) return; // 拿到文档，停止重试
+      if (attempt < 3) {
+        warmupSymbolWithRetry(client, uri, pos, attempt + 1);
+      }
+    });
+  }, delay);
+};
+
+// 用户悬停过但未拿到完整文档的位置 → 上次安排后台补拉的时间戳。
+// 冷却 60s（补拉链 0/4s/8s/12s 最长 ~24s，60s 保证链结束后可再次安排），
+// 既覆盖「很久之后再悬停仍失败」的场景，又避免无文档符号被无限补拉。
+const hoverPositionWarmupAt = new Map<string, number>();
+const HOVER_WARMUP_COOLDOWN = 60_000;
+
+/**
+ * 对用户悬停过但未拿到完整内容的位置安排后台补拉（带 60s 冷却去重）。
+ * 由 provideHover 在返回不完整结果时调用：三波文件级预热只覆盖前 15 个符号，
+ * 预热未覆盖的符号靠这里兜底，保证用户再次悬停时 Metals 已焐热、能拿到完整文档。
+ */
+function scheduleHoverPositionWarmup(uri: string, pos: { line: number; character: number }): void {
+  const client = currentMetalsClient;
+  if (!client) return;
+  const key = `${uri}#${pos.line}:${pos.character}`;
+  const last = hoverPositionWarmupAt.get(key);
+  if (last !== undefined && Date.now() - last < HOVER_WARMUP_COOLDOWN) return;
+  hoverPositionWarmupAt.set(key, Date.now());
+  warmupSymbolWithRetry(client, uri, pos, 0);
+}
 
 /**
  * 注册 hover 预热（仅 Scala / Metals）。
@@ -569,47 +677,6 @@ function registerScalaHoverWarmup(): void {
       }
     }
     return positions;
-  };
-
-  const sendHover = (client: MonacoLanguageClient, uri: string, pos: { line: number; character: number }) =>
-    client
-      .sendRequest('textDocument/hover', {
-        textDocument: { uri },
-        position: { line: pos.line, character: pos.character },
-      })
-      .then(
-        (r: any) => {
-          const hasDoc = r?.contents && (typeof r.contents === 'string'
-            ? r.contents.length > 60
-            : Array.isArray(r.contents)
-              ? r.contents.some((c: any) => (typeof c === 'string' ? c : c?.value)?.length > 60)
-              : r.contents?.value?.length > 60);
-          return hasDoc;
-        },
-        () => false,
-      );
-
-  // 对单个符号做带重试的预热：首次失败后按 [4s, 8s, 12s] 递增间隔重试，
-  // 最多 3 次。覆盖 Metals scaladoc 异步解析较慢的情况。
-  const warmupSymbolWithRetry = (
-    client: MonacoLanguageClient,
-    uri: string,
-    pos: { line: number; character: number },
-    attempt = 0,
-  ) => {
-    const delays = [0, 4000, 8000, 12000];
-    const delay = delays[attempt] ?? 0;
-    setTimeout(() => {
-      // 客户端可能已被替换（工作区切换），取最新引用
-      const c = currentMetalsClient;
-      if (!c || c !== client) return;
-      sendHover(c, uri, pos).then((hasDoc) => {
-        if (hasDoc) return; // 拿到文档，停止重试
-        if (attempt < 3) {
-          warmupSymbolWithRetry(client, uri, pos, attempt + 1);
-        }
-      });
-    }, delay);
   };
 
   const scheduleWarmup = (doc: any) => {
@@ -677,6 +744,7 @@ function registerScalaHoverWarmup(): void {
  */
 export function resetLspWarmupCache(): void {
   warmupDoneUris.clear();
+  hoverPositionWarmupAt.clear();
 }
 
 /**
