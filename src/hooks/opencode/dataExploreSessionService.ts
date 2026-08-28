@@ -18,7 +18,7 @@ export interface DeSessionDir {
 }
 
 /** 新建会话目录时写入的默认 SQL 内容 */
-export const DE_DEFAULT_SQL = '-- 输入 SQL 查询语句\nSELECT * FROM users LIMIT 10;';
+export const DE_DEFAULT_SQL = '-- 输入 SQL 查询语句\n';
 
 /** 计算数据探索 individual/ 基础目录；缺少宿主/用户名时返回 null */
 export function buildDeBaseDir(baseWorkspace?: string, username?: string): string | null {

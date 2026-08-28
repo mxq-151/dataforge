@@ -922,20 +922,21 @@ function useOpencodeClientImpl(
       }
     }
 
-    const userMsgId = `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    addMessage({
-      info: {
-        id: userMsgId,
-        sessionID: currentSessionId || '',
-        role: 'user',
-        time: { created: Date.now() },
-        agent: '',
-        model: { providerID: '', modelID: '' },
-      } as any,
-      parts: [{ type: 'text', text: line, id: `part-${userMsgId}`, sessionID: currentSessionId || '', messageID: userMsgId } as any],
-    });
-
     let sessionId: string | null = currentSessionId;
+
+    // 数据探索：续聊「已存在的会话」时必须先把连接切到该会话的独立工作目录。
+    // 每个会话 = individual/{ts} 独立目录；若沿 base 目录发送，SSE 事件发往会话
+    // 自己的工作目录，与本模块订阅目录不一致 → 事件被目录过滤，只能看到本地临时
+    // 消息、看不到智能体回复（开发助手是固定目录，不受影响）。
+    if (isDataExplore && dataExploreService && sessionId) {
+      const mappedDir = deDirMapRef.current[sessionId];
+      if (mappedDir && mappedDir !== currentDirectory) {
+        await setWorkingDirectory(mappedDir);
+        // setWorkingDirectory 内部会 setCurrentSessionId(null)，这里恢复为当前会话
+        setCurrentSessionId(sessionId);
+      }
+    }
+
     if (!sessionId) {
       // 通过对话创建会话：与「新建会话按钮」保持一致——
       // 若先前未新建会话目录（未点击新建按钮），则为本次对话创建一个独立目录并打开其标签页。
@@ -970,12 +971,60 @@ function useOpencodeClientImpl(
           }
         }
       } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
         console.error('[opencode-client] session create failed:', err);
+        addLog({ source: 'opencode', text: `创建会话失败：${msg}`, timestamp: new Date(), level: 'error' });
         return;
       }
     }
 
-    sendChatMessage(clientRef.current, line, sessionId, activeLLMModelRef.current ?? undefined);
+    // 本地回显用户消息。注意必须在会话/工作目录建立完成之后再添加：
+    // 数据探索首次通过对话创建会话时，会调用 setWorkingDirectory 重建客户端连接，
+    // 其内部执行 resetState() 会清空 messages —— 若在此之前添加临时消息即会被清掉，
+    // 导致用户输入不回显在对话列表（开发助手固定目录不受影响）。
+    const userMsgId = `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    addMessage({
+      info: {
+        id: userMsgId,
+        sessionID: sessionId || '',
+        role: 'user',
+        time: { created: Date.now() },
+        agent: '',
+        model: { providerID: '', modelID: '' },
+      } as any,
+      parts: [{ type: 'text', text: line, id: `part-${userMsgId}`, sessionID: sessionId || '', messageID: userMsgId } as any],
+    });
+
+    // 注意：sendChatMessage 失败时会 rethrow（见 useOpencodeChat.sendMessage）。
+    // 原先这里直接丢弃返回的 Promise，失败既无人捕获也不会进应用内日志，
+    // 界面表现为「发送后毫无反应」，是最难排查的一类故障。这里补上 catch 并落日志。
+    const modelSnapshot = activeLLMModelRef.current ?? undefined;
+    addLog({
+      source: 'opencode',
+      text: `发送消息：session=${sessionId ?? '(将新建)'} 目录=${currentDirectory ?? '(未设置)'} 模型=${modelSnapshot ? modelSnapshot.providerID + '/' + modelSnapshot.modelID : '(默认)'} 长度=${line.length}`,
+      timestamp: new Date(),
+      level: 'info',
+    });
+
+    sendChatMessage(clientRef.current, line, sessionId, modelSnapshot)
+      .then((res) => {
+        addLog({
+          source: 'opencode',
+          text: `消息已提交（session=${sessionId ?? '新建'}，服务端返回=${res ?? 'ok'}）。若长时间无回复，请看是否有「未收到本目录事件」告警。`,
+          timestamp: new Date(),
+          level: 'info',
+        });
+      })
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error('[useOpencodeClient] 发送消息失败:', err);
+        addLog({
+          source: 'opencode',
+          text: `发送消息失败：${msg}`,
+          timestamp: new Date(),
+          level: 'error',
+        });
+      });
 
     // 消息发送后异步刷新任务列表（新 session 创建后列表需要更新）
     refreshTasks();

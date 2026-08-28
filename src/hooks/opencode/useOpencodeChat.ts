@@ -97,8 +97,18 @@ export function useOpencodeChat(options: UseOpencodeChatOptions): UseOpencodeCha
         ...(model ? { model } : {}),
       });
     } catch (err) {
-      console.error('[useOpencodeChat] Failed to send prompt:', err);
-      throw err;
+      // 带上请求上下文：光看 message 很难判断是模型配置问题、鉴权问题还是服务不可达
+      const detail = err instanceof Error ? err.message : String(err);
+      const status = (err as { status?: number } | null)?.status;
+      console.error(
+        '[useOpencodeChat] Failed to send prompt:',
+        { sessionId, moduleId, roleType, hasSystem: !!systemInstructions, model, status, detail },
+        err,
+      );
+      // 包装后抛出，让上层 catch 后能直接展示可读原因（原错误常是 SDK 内部对象）
+      throw new Error(
+        `发送 prompt 失败${status ? ` (HTTP ${status})` : ''}：${detail}`,
+      );
     }
 
     return sessionId || null;

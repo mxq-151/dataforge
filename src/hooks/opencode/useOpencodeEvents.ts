@@ -536,7 +536,29 @@ export function useOpencodeEvents(
     // 比较结果永远不相等，会导致本目录的事件被全部过滤 → 无回复。
     const normalizedDir = directory ? trimTrailingSlash(normalizePath(directory)) : null;
 
+    // ── 事件流诊断（排查「能发送但收不到回复」用）──────────────
+    // 典型故障：SSE 已连上、事件也在推，但每条事件的 directory 都和订阅目录
+    // 对不上，于是被全部过滤 → 界面毫无反应。这里统计匹配/过滤数量并给出
+    // 双方目录样本，便于一眼看出是否是目录比对不一致。
+    /** 诊断输出：同时进控制台（DevTools）与应用内日志面板 */
+    const emitDiag = (title: string, detail: string, level: 'info' | 'warn' | 'error' = 'info') => {
+      const line = `[opencode-events] ${title} — ${detail}`;
+      if (level === 'warn') console.warn(line);
+      else if (level === 'error') console.error(line);
+      else console.log(line);
+      try {
+        addLog({ source: 'opencode', text: `${title}：${detail}`, timestamp: new Date(), level });
+      } catch { /* 日志不可用不影响主流程 */ }
+    };
+
     let filteredCount = 0;
+    let matchedCount = 0;
+    let sampleEventDir: string | null = null;
+    let lastDiagAt = Date.now();
+    const DIAG_INTERVAL_MS = 10_000;
+    let everConnected = false;
+
+    emitDiag('订阅 SSE 事件流', `directory=${directory ?? '(null)'} normalizedDir=${normalizedDir ?? '(null)'}`, 'info');
 
     const run = async () => {
       let reconnectDelay = sse.initialReconnectDelay;
@@ -554,6 +576,10 @@ export function useOpencodeEvents(
           const result = await client.global.event();
           // 连接成功，重置退避延迟
           reconnectDelay = sse.initialReconnectDelay;
+          if (!everConnected) {
+            everConnected = true;
+            emitDiag('SSE 连接已建立', `正在消费事件流（订阅目录 ${normalizedDir ?? '(无)'}）`, 'info');
+          }
 
           // ── 重连成功后的恢复处理 ──
           // 1. 立即 flushDeltas：将 accumDelta 中累积的文本同步到 part.text，
@@ -608,9 +634,25 @@ export function useOpencodeEvents(
               const eventDir = trimTrailingSlash(normalizePath(String(globalEvent.directory)));
               if (eventDir !== normalizedDir) {
                 filteredCount++;
+                if (!sampleEventDir) sampleEventDir = eventDir;
+                // 只在「连上了却一条本目录事件都没收到」时告警：这几乎必是目录比对
+                // 不一致（分隔符/尾部斜杠/cwd 不同）。正常时保持安静，避免刷屏。
+                const now = Date.now();
+                if (matchedCount === 0 && now - lastDiagAt > DIAG_INTERVAL_MS) {
+                  lastDiagAt = now;
+                  emitDiag(
+                    '未收到本目录事件',
+                    `已过滤 ${filteredCount} 条。订阅目录="${normalizedDir}"，事件目录样本="${sampleEventDir ?? '未知'}"（两者不一致时界面将毫无反应）`,
+                    'warn',
+                  );
+                }
                 continue;
               }
             }
+            if (matchedCount === 0) {
+              emitDiag('开始收到本目录事件', `订阅目录=${normalizedDir ?? '(无)'}，此前过滤 ${filteredCount} 条`, 'info');
+            }
+            matchedCount++;
             handleEvent(globalEvent.payload);
           }
 
