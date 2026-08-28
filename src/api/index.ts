@@ -95,9 +95,10 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     const data = (await res.json()) as T;
     if (data && typeof data === 'object' && 'code' in data && (data as Record<string, unknown>).code !== 200) {
       const msg = (data as Record<string, unknown>).message as string | undefined;
-      if (msg) {
-        if (!options.suppressError) apiErrorHandler?.(msg);
-      }
+      if (msg && !options.suppressError) apiErrorHandler?.(msg);
+      // 业务错误：HTTP 虽为 200，但后端返回非成功码。必须抛异常，
+      // 否则调用方会把失败当成成功继续执行（例如指标保存仍提示"提交成功"）。
+      throw new Error(msg || `业务处理失败 (code: ${(data as Record<string, unknown>).code})`);
     }
     return data;
   } finally {

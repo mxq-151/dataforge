@@ -19,11 +19,15 @@ const ToastContext = createContext<ToastContextValue | null>(null);
 
 let toastId = 0;
 
+// 错误提示停留时间更长，便于用户看清报错内容
+const ERROR_TOAST_DURATION = 3500;
+const DEFAULT_DURATION = 2000;
+
 export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const timersRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
 
-  const addToast = useCallback((message: string, type: ToastItem['type'] = 'error', duration = 2000) => {
+  const addToast = useCallback((message: string, type: ToastItem['type'] = 'error', duration = type === 'error' ? ERROR_TOAST_DURATION : DEFAULT_DURATION) => {
     const id = ++toastId;
     setToasts(prev => [...prev, { id, message, type }]);
 
