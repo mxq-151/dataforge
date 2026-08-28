@@ -175,6 +175,17 @@
   position: relative;
 }
 
+/* 切换文件标签 / 布局重排时，Monaco 会以默认浅色主题重绘一帧导致顶部"白色闪现"。
+   这里强制所有 Monaco 表面为深色背景，保证任何瞬时重绘也不出现白色。 */
+.de-editor .monaco-editor,
+.de-editor .monaco-editor-background,
+.de-editor .monaco-editor .margin,
+.de-editor .monaco-editor .monaco-scroll-virtual-element,
+.de-editor .monaco-editor .overflow-guard,
+.de-editor .monaco-editor .view-lines {
+  background-color: #1e1e1e !important;
+}
+
 .de-editor__result-panel {
   height: 240px;
   min-height: 120px;

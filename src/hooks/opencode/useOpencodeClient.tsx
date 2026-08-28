@@ -21,6 +21,13 @@ import { useOpencodeSessions } from './useOpencodeSessions';
 import type { DataExploreSessionService } from './dataExploreSessionService';
 import { joinPath } from '../../utils/pathUtils';
 import { buildScopedStorageKey } from '../../utils/historyIsolation';
+import {
+  buildSessionHistoryKey,
+  loadSessionHistory,
+  saveSessionHistory,
+  upsertSessionHistory,
+  removeSessionHistoryEntry,
+} from './sessionHistoryStore';
 /** 任务历史记录（从 SDK Session 映射） */
 export interface TaskRecord {
   /** OpenCode session ID */
@@ -280,7 +287,7 @@ function useOpencodeClientImpl(
   username?: string,
   moduleId?: string,
   roleType?: string,
-  _projectId?: string,
+  projectId?: string,
   directory?: string | null,
   dataExploreService?: DataExploreSessionService | null,
 ): OpencodeClientBackend {
@@ -541,8 +548,20 @@ function useOpencodeClientImpl(
     }
   }, [fileChanges, fileChangesApproved, messages, extractFileChangesFromMessages, currentSessionId]);
 
-  // ── 任务历史（从 SDK session.list() 获取，替代本地存储） ──
+  // ── 任务历史（本地存储持久化，按 backend_host/user/model_id/project_id 隔离） ──
   const [tasks, setTasks] = useState<TaskRecord[]>([]);
+
+  // 会话历史存储 key：{backend_host}/{user}/{model_id}/{project_id}
+  // model_id 为模块标识（数据探索=data-explore / 开发助手=dev-assistant），host 由
+  // buildSessionHistoryKey 内部从当前全局 apiHost 读取
+  const sessionHistoryKey = useMemo(
+    () => buildSessionHistoryKey({ username, modelId: moduleId, projectId }),
+    [username, moduleId, projectId],
+  );
+
+  // 已从服务端做过初始播种的存储 key：本地被清空（如删除全部会话）后不再从
+  // 服务端回填，避免把已删除但服务端仍存在（尤其 data-explore 按目录隔离）的会话复活。
+  const seededHistoryKeysRef = useRef<Set<string>>(new Set());
 
   /** 从 SDK Session[] 映射为 TaskRecord[] */
   const mapSessionsToTasks = useCallback((sessions: any[]): TaskRecord[] => {
@@ -554,17 +573,37 @@ function useOpencodeClientImpl(
     })).sort((a, b) => b.updatedAt - a.updatedAt); // 按更新时间降序
   }, []);
 
-  /** 从 SDK 刷新任务列表 */
+  /** 刷新任务列表：优先读取本地会话历史；仅当本地为空且该 key 尚未播种时才回退服务端 */
   const refreshTasks = useCallback(async () => {
+    const key = sessionHistoryKey;
+    const local = loadSessionHistory(key);
+    if (local.length > 0) {
+      setTasks(local);
+      return;
+    }
+    // 本地为空：若该 key 已播种过（曾真实出现过历史），一律视为「已删空/无历史」，
+    // 不再回退服务端，防止复用已删除会话。
+    if (seededHistoryKeysRef.current.has(key)) {
+      setTasks([]);
+      return;
+    }
     const c = clientRef.current;
     if (!c) return;
     try {
       const sessions = await listSessions(c);
-      setTasks(mapSessionsToTasks(sessions));
+      const mapped = mapSessionsToTasks(sessions);
+      setTasks(mapped);
+      saveSessionHistory(key, mapped);
+      seededHistoryKeysRef.current.add(key);
     } catch (err) {
       addLog({ source: 'opencode', text: `刷新任务列表失败: ${err instanceof Error ? err.message : String(err)}`, timestamp: new Date(), level: 'warn' });
     }
-  }, [listSessions, mapSessionsToTasks, addLog]);
+  }, [sessionHistoryKey, listSessions, mapSessionsToTasks, addLog]);
+
+  // 存储 key（模型/host/用户/项目变化）变化时重新加载对应维度的会话历史
+  useEffect(() => {
+    refreshTasks();
+  }, [sessionHistoryKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 连接成功后自动加载任务列表
   useEffect(() => {
@@ -963,6 +1002,13 @@ function useOpencodeClientImpl(
         if (result.data) {
           sessionId = result.data.id;
           setCurrentSessionId(sessionId);
+          // 新增的会话写入本地历史（{backend_host}/{user}/{model_id}/{project_id}）
+          setTasks(upsertSessionHistory(sessionHistoryKey, {
+            sessionId,
+            title: trimmed.slice(0, 80),
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          }));
           // 数据探索：将新形成的会话与当前新建的会话目录关联（用于删除会话时清理目录）
           if (isDataExplore && sessionId && pendingDeDirRef.current) {
             deDirMapRef.current[sessionId] = pendingDeDirRef.current;
@@ -1028,7 +1074,7 @@ function useOpencodeClientImpl(
 
     // 消息发送后异步刷新任务列表（新 session 创建后列表需要更新）
     refreshTasks();
-  }, [sendChatMessage, addMessage, addLog, currentSessionId, setCurrentSessionId, connected, currentDirectory, refreshTasks, isDataExplore, dataExploreService, setWorkingDirectory, setDataExploreDirs, bumpDeVersion]);
+  }, [sendChatMessage, addMessage, addLog, currentSessionId, setCurrentSessionId, connected, currentDirectory, refreshTasks, isDataExplore, dataExploreService, setWorkingDirectory, setDataExploreDirs, bumpDeVersion, sessionHistoryKey]);
 
   const sendInterrupt = useCallback(async () => {
     await sendChatInterrupt(clientRef.current);
@@ -1174,13 +1220,12 @@ function useOpencodeClientImpl(
     if (sid && clientRef.current) {
       try {
         await deleteSession(clientRef.current, sid);
-        setTasks(prev => prev.filter(t => t.sessionId !== sid));
-        refreshTasks();
+        setTasks(removeSessionHistoryEntry(sessionHistoryKey, sid));
       } catch (err) {
         console.warn('[useOpencodeClient] 删除数据探索会话失败:', err);
       }
     }
-  }, [isDataExplore, dataExploreService, currentSessionId, setCurrentSessionId, deleteSession, refreshTasks]);
+  }, [isDataExplore, dataExploreService, currentSessionId, setCurrentSessionId, deleteSession, sessionHistoryKey]);
 
   /** 数据探索：打开/关闭指定目录的文件标签（仅操作编辑器标签，不动 AI 工作目录） */
   const setDeDirOpen = useCallback((dir: string, open: boolean) => {
@@ -1282,19 +1327,22 @@ function useOpencodeClientImpl(
       if (sessionId === currentSessionId) setCurrentSessionId(null);
     }
     await deleteSession(clientRef.current, sessionId);
-    // 删除后从列表中移除（乐观更新），同时异步刷新确保同步
-    setTasks(prev => prev.filter(t => t.sessionId !== sessionId));
-    refreshTasks();
-  }, [deleteSession, refreshTasks, isDataExplore, dataExploreService, currentSessionId, setCurrentSessionId]);
+    // 删除后从本地历史移除（乐观更新，同时持久化）
+    setTasks(removeSessionHistoryEntry(sessionHistoryKey, sessionId));
+  }, [deleteSession, isDataExplore, dataExploreService, currentSessionId, setCurrentSessionId, sessionHistoryKey]);
 
   /** 重命名任务（通过 SDK session.update 更新标题） */
   const renameTask = useCallback(async (sessionId: string, newTitle: string) => {
     const trimmed = newTitle.trim();
     if (!trimmed) return;
-    // 乐观更新
-    setTasks(prev => prev.map(t =>
-      t.sessionId === sessionId ? { ...t, title: trimmed, updatedAt: Date.now() } : t
-    ));
+    // 乐观更新（同时持久化到本地历史）
+    setTasks(prev => {
+      const next = prev.map(t =>
+        t.sessionId === sessionId ? { ...t, title: trimmed, updatedAt: Date.now() } : t
+      );
+      saveSessionHistory(sessionHistoryKey, next);
+      return next;
+    });
     // 通过 SDK 更新服务端标题
     const c = clientRef.current;
     if (c) {
@@ -1305,7 +1353,7 @@ function useOpencodeClientImpl(
         refreshTasks(); // 回滚乐观更新
       }
     }
-  }, [addLog, refreshTasks]);
+  }, [addLog, refreshTasks, sessionHistoryKey]);
 
   return useMemo(() => ({
     messages,

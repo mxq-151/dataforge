@@ -67,7 +67,14 @@ const DataExploreView: React.FC<DataExploreViewProps> = ({ chatBackend, llmModel
         sessionDirs={chatBackend.dataExploreDirs}
         sessionDirsVersion={chatBackend.dataExploreDirsVersion}
         currentDirectory={chatBackend.currentDirectory}
-        onSwitchSessionDir={(dir) => { chatBackend.setWorkingDirectory(dir); }}
+        onSwitchSessionDir={(dir) => {
+          // 点击文件名标签：仅切换对应会话的对话历史，不触发客户端重连/resetState。
+          // 与当前会话相同则跳过，避免清空正在进行的对话消息。
+          const tf = (chatBackend.dataExploreTaskFiles || []).find(t => t.dir === dir);
+          if (!tf) return;
+          if (chatBackend.currentSessionId === tf.sessionId) return;
+          chatBackend.loadSession(tf.sessionId);
+        }}
         onCloseFile={(dir) => { chatBackend.dataExploreCloseFile?.(dir); }}
         sessionTitles={sessionTitles}
       />
