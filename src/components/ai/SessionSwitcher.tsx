@@ -5,9 +5,17 @@
  * 用户选中任务后通过 session id 从 OpenCode 加载对话内容回显。
  */
 
-import React, { useState, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
 import { ChevronDown, Plus, Trash2, MessageSquare, Pencil, Check, X } from 'lucide-react';
 import type { TaskRecord } from '../../hooks/opencode/useOpencodeClient';
+
+/** 数据探索：任务（用户对话）→ 工作目录 SQL 文件（供下拉勾选打开，仅已关联会话） */
+export interface DataExploreTaskFile {
+  sessionId: string;
+  dir: string;
+  filePath: string;
+  title: string;
+}
 
 interface SessionSwitcherProps {
   currentSessionId: string | null;
@@ -18,6 +26,12 @@ interface SessionSwitcherProps {
   onRenameSession: (sessionId: string, newTitle: string) => void;
   /** 未连接时禁用交互（防止服务未就绪时选中会话导致静默失败） */
   disabled?: boolean;
+  /** 数据探索：已打开的文件标签目录列表（用于判断勾选状态） */
+  dataExploreDirs?: Array<{ dir: string; filePath: string }>;
+  /** 数据探索：任务下拉可勾选打开的文件（仅 data-explore 模块注入） */
+  dataExploreTaskFiles?: DataExploreTaskFile[];
+  /** 数据探索：勾选/取消勾选任务 → 打开/关闭对应文件（与 AI 对话无关） */
+  dataExploreToggleSession?: (sessionId: string) => void;
 }
 
 const SessionSwitcher: React.FC<SessionSwitcherProps> = ({
@@ -28,6 +42,9 @@ const SessionSwitcher: React.FC<SessionSwitcherProps> = ({
   onDeleteSession,
   onRenameSession,
   disabled = false,
+  dataExploreDirs,
+  dataExploreTaskFiles,
+  dataExploreToggleSession,
 }) => {
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -152,6 +169,18 @@ const SessionSwitcher: React.FC<SessionSwitcherProps> = ({
     return `${date.getMonth() + 1}/${date.getDate()} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
   };
 
+  // ── 数据探索：任务 → 文件勾选（仅 data-explore 生效，与 AI 对话无关） ──
+  const deTaskFileMap = useMemo(() => {
+    const m = new Map<string, DataExploreTaskFile>();
+    (dataExploreTaskFiles ?? []).forEach(tf => m.set(tf.sessionId, tf));
+    return m;
+  }, [dataExploreTaskFiles]);
+  const openDeDirs = useMemo(() => new Set((dataExploreDirs ?? []).map(d => d.dir)), [dataExploreDirs]);
+  const handleToggleFile = useCallback((e: React.MouseEvent, taskFile: DataExploreTaskFile | undefined) => {
+    e.stopPropagation();
+    if (taskFile) dataExploreToggleSession?.(taskFile.sessionId);
+  }, [dataExploreToggleSession]);
+
   return (
     <div className="ai-panel__session-switcher" ref={dropdownRef}>
       <button
@@ -192,64 +221,78 @@ const SessionSwitcher: React.FC<SessionSwitcherProps> = ({
             {tasks.length === 0 && (
               <div className="ai-panel__session-empty">暂无历史任务</div>
             )}
-            {tasks.map(task => (
-              <div
-                key={task.sessionId}
-                className={`ai-panel__session-item ${task.sessionId === currentSessionId ? 'ai-panel__session-item--active' : ''}`}
-                onClick={() => editingId !== task.sessionId && handleSwitch(task.sessionId)}
-              >
-                <MessageSquare size={14} className="ai-panel__session-item-icon" />
-                {editingId === task.sessionId ? (
-                  <div className="ai-panel__session-item-edit">
-                    <input
-                      ref={editInputRef}
-                      className="ai-panel__session-edit-input"
-                      value={editText}
-                      onChange={e => setEditText(e.target.value)}
-                      onKeyDown={handleEditKeyDown}
-                      onClick={e => e.stopPropagation()}
-                    />
-                    <button
-                      className="ai-panel__session-edit-confirm"
-                      onClick={e => { e.stopPropagation(); handleConfirmRename(); }}
-                      title="确认"
+            {tasks.map(task => {
+              const taskFile = deTaskFileMap.get(task.sessionId);
+              const deMode = !!dataExploreTaskFiles;
+              const checked = !!taskFile && openDeDirs.has(taskFile.dir);
+              return (
+                <div
+                  key={task.sessionId}
+                  className={`ai-panel__session-item ${task.sessionId === currentSessionId ? 'ai-panel__session-item--active' : ''}`}
+                  onClick={() => editingId !== task.sessionId && handleSwitch(task.sessionId)}
+                >
+                  {deMode && taskFile && (
+                    <span
+                      className={`ai-panel__session-check ${checked ? 'ai-panel__session-check--checked' : ''}`}
+                      onClick={e => handleToggleFile(e, taskFile)}
+                      title={checked ? '已打开：点击关闭文件' : '点击打开文件'}
                     >
-                      <Check size={12} />
-                    </button>
-                    <button
-                      className="ai-panel__session-edit-cancel"
-                      onClick={e => { e.stopPropagation(); handleCancelRename(); }}
-                      title="取消"
-                    >
-                      <X size={12} />
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    <span className="ai-panel__session-item-title">
-                      {task.title}
+                      {checked ? <Check size={12} /> : null}
                     </span>
-                    <span className="ai-panel__session-item-time">
-                      {formatTime(task.updatedAt)}
-                    </span>
-                    <button
-                      className="ai-panel__session-rename-btn"
-                      onClick={e => handleStartRename(e, task)}
-                      title="重命名"
-                    >
-                      <Pencil size={12} />
-                    </button>
-                    <button
-                      className="ai-panel__session-delete-btn"
-                      onClick={e => handleDelete(e, task.sessionId)}
-                      title="删除"
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                  </>
-                )}
-              </div>
-            ))}
+                  )}
+                  <MessageSquare size={14} className="ai-panel__session-item-icon" />
+                  {editingId === task.sessionId ? (
+                    <div className="ai-panel__session-item-edit">
+                      <input
+                        ref={editInputRef}
+                        className="ai-panel__session-edit-input"
+                        value={editText}
+                        onChange={e => setEditText(e.target.value)}
+                        onKeyDown={handleEditKeyDown}
+                        onClick={e => e.stopPropagation()}
+                      />
+                      <button
+                        className="ai-panel__session-edit-confirm"
+                        onClick={e => { e.stopPropagation(); handleConfirmRename(); }}
+                        title="确认"
+                      >
+                        <Check size={12} />
+                      </button>
+                      <button
+                        className="ai-panel__session-edit-cancel"
+                        onClick={e => { e.stopPropagation(); handleCancelRename(); }}
+                        title="取消"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <span className="ai-panel__session-item-title">
+                        {task.title}
+                      </span>
+                      <span className="ai-panel__session-item-time">
+                        {formatTime(task.updatedAt)}
+                      </span>
+                      <button
+                        className="ai-panel__session-rename-btn"
+                        onClick={e => handleStartRename(e, task)}
+                        title="重命名"
+                      >
+                        <Pencil size={12} />
+                      </button>
+                      <button
+                        className="ai-panel__session-delete-btn"
+                        onClick={e => handleDelete(e, task.sessionId)}
+                        title="删除"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

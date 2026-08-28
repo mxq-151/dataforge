@@ -18,6 +18,9 @@ import { useOpencodeBackend } from './useOpencodeBackend';
 import { useOpencodeEvents } from './useOpencodeEvents';
 import { useOpencodeChat } from './useOpencodeChat';
 import { useOpencodeSessions } from './useOpencodeSessions';
+import type { DataExploreSessionService } from './dataExploreSessionService';
+import { joinPath } from '../../utils/pathUtils';
+import { buildScopedStorageKey } from '../../utils/historyIsolation';
 /** 任务历史记录（从 SDK Session 映射） */
 export interface TaskRecord {
   /** OpenCode session ID */
@@ -33,6 +36,25 @@ import * as fileReviewStore from './fileReviewStore';
 import type { OpenCodeConfig, Todo, MessageEntry, LogEntry } from '../../types/opencode-backend';
 import type { FileChange } from '../../components/ai/FileReviewPanel';
 import type { OpencodeClient } from '@opencode-ai/sdk/v2/client';
+
+/** 读取「会话ID → 独立工作目录」映射（localStorage，按 host+user 隔离键） */
+function loadDeDirMap(key: string): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+/** 持久化「会话ID → 独立工作目录」映射 */
+function saveDeDirMap(key: string, map: Record<string, string>): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(map));
+  } catch {
+    // localStorage 不可用时静默忽略
+  }
+}
 
 export interface OpencodeClientBackend {
   messages: MessageEntry[];
@@ -61,6 +83,19 @@ export interface OpencodeClientBackend {
   contextUsage: import('./useOpencodeEvents').ContextUsage;
   /** 本地任务历史列表 */
   tasks: TaskRecord[];
+
+  /** 数据探索：会话工作目录标签页列表（会话=标签页，仅"已打开"的目录） */
+  dataExploreDirs?: Array<{ dir: string; filePath: string }>;
+  /** 数据探索：会话目录版本号（打开/关闭/新建/删除会话时递增，驱动编辑器标签页同步） */
+  dataExploreDirsVersion?: number;
+  /** 数据探索：删除会话（同时删除其 individual/{timestamp} 目录与 opencode 会话） */
+  dataExploreDeleteSession?: (dir: string) => Promise<void>;
+  /** 数据探索：任务（用户对话）→ 工作目录 SQL 文件（供任务下拉勾选打开，仅已关联会话） */
+  dataExploreTaskFiles?: Array<{ sessionId: string; dir: string; filePath: string; title: string }>;
+  /** 数据探索：勾选/取消勾选任务 → 打开/关闭对应文件标签（不动 AI 工作目录） */
+  dataExploreToggleSession?: (sessionId: string) => void;
+  /** 数据探索：关闭指定目录的文件标签（编辑器关标签用，不删会话/目录） */
+  dataExploreCloseFile?: (dir: string) => void;
 
   sendMessage: (line: string) => Promise<void>;
   sendInterrupt: () => Promise<void>;
@@ -192,6 +227,8 @@ export interface OpencodeClientProviderProps {
   projectId: string;
   /** 工作目录（项目路径），用于创建 OpencodeClient 时指定 directory */
   directory?: string | null;
+  /** 数据探索会话目录服务（各模块计算好独立工作目录路径后注入，实现解耦） */
+  dataExploreService?: DataExploreSessionService | null;
 }
 
 /**
@@ -208,8 +245,9 @@ export function OpencodeClientProvider({
   roleType,
   projectId,
   directory,
+  dataExploreService,
 }: OpencodeClientProviderProps) {
-  const client = useOpencodeClientImpl(config, username, moduleId, roleType, projectId, directory);
+  const client = useOpencodeClientImpl(config, username, moduleId, roleType, projectId, directory, dataExploreService);
 
   return (
     <OpencodeClientContext.Provider value={client}>
@@ -238,6 +276,7 @@ function useOpencodeClientImpl(
   roleType?: string,
   _projectId?: string,
   directory?: string | null,
+  dataExploreService?: DataExploreSessionService | null,
 ): OpencodeClientBackend {
   // ── 全局后端实例（仅用于服务进程管理和客户端创建） ──
   const backend = useOpencodeBackend();
@@ -265,6 +304,21 @@ function useOpencodeClientImpl(
   // 数据探索模块默认数据分析，其他模块默认数仓设计
   const [taskType, setTaskType] = useState<string>(moduleId === 'data-explore' ? 'DATA_ANALYST' : 'DATA_ARCHITECT');
   const activeLLMModelRef = useRef<{ providerID: string; modelID: string } | null>(null);
+
+  // ── 数据探索：会话 ↔ 独立工作目录 ──
+  // 仅 data-explore 模块启用；路径（individual/{timestamp}/user_{user}.sql）由模块层
+  // 通过 dataExploreService 注入计算，这里只做会话目录状态管理与映射持久化。
+  const isDataExplore = moduleId === 'data-explore';
+  const [dataExploreDirs, setDataExploreDirs] = useState<Array<{ dir: string; filePath: string }>>([]);
+  const [dataExploreDirsVersion, setDataExploreDirsVersion] = useState(0);
+  const bumpDeVersion = useCallback(() => setDataExploreDirsVersion(v => v + 1), []);
+  // 会话ID → 工作目录 映射（持久化，按 host+user 隔离）
+  const deDirMapKeyRef = useRef<string>(buildScopedStorageKey('dataforge_dataexplore_sessiondirs', username || ''));
+  const deDirMapRef = useRef<Record<string, string>>(loadDeDirMap(deDirMapKeyRef.current));
+  // 待关联目录：新建会话后首个形成的 opencode 会话归属该目录
+  const pendingDeDirRef = useRef<string | null>(null);
+  // 首次扫描守卫（避免 effect 重复触发重连）
+  const scannedDeDirsRef = useRef(false);
 
   const setActiveLLMModel = useCallback((model: { providerID: string; modelID: string } | null) => {
     activeLLMModelRef.current = model;
@@ -884,6 +938,12 @@ function useOpencodeClientImpl(
         if (result.data) {
           sessionId = result.data.id;
           setCurrentSessionId(sessionId);
+          // 数据探索：将新形成的会话与当前新建的会话目录关联（用于删除会话时清理目录）
+          if (isDataExplore && sessionId && pendingDeDirRef.current) {
+            deDirMapRef.current[sessionId] = pendingDeDirRef.current;
+            pendingDeDirRef.current = null;
+            saveDeDirMap(deDirMapKeyRef.current, deDirMapRef.current);
+          }
         }
       } catch (err) {
         console.error('[opencode-client] session create failed:', err);
@@ -970,7 +1030,129 @@ function useOpencodeClientImpl(
   const handleNewSession = useCallback(async () => {
     resetState();
     setCurrentSessionId(null);
-  }, [resetState, setCurrentSessionId]);
+
+    // 数据探索：新建会话 = 新建独立时间戳工作目录并切过去（会话=标签页）
+    if (isDataExplore && dataExploreService) {
+      try {
+        const created = await dataExploreService.createDir();
+        if (!created) return;
+        pendingDeDirRef.current = created.dir;
+        await setWorkingDirectory(created.dir);
+        setDataExploreDirs(prev => {
+          const rest = (prev || []).filter(d => d.dir !== created.dir);
+          return [created, ...rest];
+        });
+        bumpDeVersion();
+      } catch (err) {
+        console.error('[useOpencodeClient] 新建数据探索会话失败:', err);
+      }
+    }
+  }, [resetState, setCurrentSessionId, isDataExplore, dataExploreService, setWorkingDirectory]);
+
+  /**
+   * 首次进入数据探索时兜底：若 individual/ 下没有任何会话目录，
+   * 自动创建第一个（保证首次进入即有可编辑的 SQL 文件并让智能体工作目录落到该目录）。
+   */
+  const ensureFirstDataExploreDir = useCallback(async () => {
+    if (!isDataExplore || !dataExploreService || scannedDeDirsRef.current) return;
+    const dirs = await dataExploreService.listDirs();
+    scannedDeDirsRef.current = true;
+    if (dirs.length > 0) {
+      // 默认仅打开最新的一个会话文件；其余由任务下拉勾选再打开
+      setDataExploreDirs([dirs[0]]);
+      return;
+    }
+    const created = await dataExploreService.createDir();
+    if (!created) return;
+    pendingDeDirRef.current = created.dir;
+    await setWorkingDirectory(created.dir);
+    setDataExploreDirs([created]);
+    bumpDeVersion();
+  }, [isDataExplore, dataExploreService, setWorkingDirectory]);
+
+  // data-explore 连接就绪后执行首次 scan（含兜底创建）
+  useEffect(() => {
+    if (isDataExplore && connected && !scannedDeDirsRef.current) {
+      ensureFirstDataExploreDir();
+    }
+  }, [isDataExplore, connected, ensureFirstDataExploreDir]);
+
+  /** 删除数据探索会话：撤映射 → 删目录 → 删 opencode 会话 */
+  const handleDataExploreDeleteSession = useCallback(async (dir: string) => {
+    if (!isDataExplore) return;
+    let sid: string | null = null;
+    for (const [k, v] of Object.entries(deDirMapRef.current)) {
+      if (v === dir) { sid = k; break; }
+    }
+    if (sid) {
+      delete deDirMapRef.current[sid];
+      saveDeDirMap(deDirMapKeyRef.current, deDirMapRef.current);
+    }
+    if (sid && sid === currentSessionId) setCurrentSessionId(null);
+    if (dataExploreService) {
+      try {
+        await dataExploreService.removeDir(dir);
+      } catch (err) {
+        console.warn('[useOpencodeClient] 删除数据探索会话目录失败:', err);
+      }
+    }
+    setDataExploreDirs(prev => (prev || []).filter(d => d.dir !== dir));
+    bumpDeVersion();
+    if (sid && clientRef.current) {
+      try {
+        await deleteSession(clientRef.current, sid);
+        setTasks(prev => prev.filter(t => t.sessionId !== sid));
+        refreshTasks();
+      } catch (err) {
+        console.warn('[useOpencodeClient] 删除数据探索会话失败:', err);
+      }
+    }
+  }, [isDataExplore, dataExploreService, currentSessionId, setCurrentSessionId, deleteSession, refreshTasks]);
+
+  /** 数据探索：打开/关闭指定目录的文件标签（仅操作编辑器标签，不动 AI 工作目录） */
+  const setDeDirOpen = useCallback((dir: string, open: boolean) => {
+    if (!dir) return;
+    setDataExploreDirs(prev => {
+      const list = prev || [];
+      const exists = list.some(d => d.dir === dir);
+      if (open && !exists) {
+        const filePath = list.find(d => d.dir === dir)?.filePath || joinPath(dir, `user_${username || 'user'}.sql`);
+        return [{ dir, filePath }, ...list];
+      }
+      if (!open && exists) {
+        return list.filter(d => d.dir !== dir);
+      }
+      return prev;
+    });
+    bumpDeVersion();
+  }, [username]);
+
+  /** 数据探索：任务下拉勾选 → 打开/关闭该会话文件标签（与 AI 对话无关） */
+  const handleDataExploreToggleSession = useCallback((sessionId: string) => {
+    if (!isDataExplore) return;
+    const dir = deDirMapRef.current[sessionId];
+    if (!dir) return;
+    const currentlyOpen = (dataExploreDirs || []).some(d => d.dir === dir);
+    setDeDirOpen(dir, !currentlyOpen);
+  }, [isDataExplore, dataExploreDirs, setDeDirOpen]);
+
+  /** 数据探索：编辑器关标签 → 关闭该目录文件（不删会话/目录） */
+  const handleDataExploreCloseFile = useCallback((dir: string) => {
+    if (!isDataExplore) return;
+    setDeDirOpen(dir, false);
+  }, [isDataExplore, setDeDirOpen]);
+
+  /** 数据探索：任务（用户对话）→ 工作目录 SQL 文件（供下拉勾选展示，仅已关联会话） */
+  const dataExploreTaskFiles = useMemo(() => {
+    if (!isDataExplore) return [];
+    const list: Array<{ sessionId: string; dir: string; filePath: string; title: string }> = [];
+    for (const t of tasks) {
+      const dir = deDirMapRef.current[t.sessionId];
+      if (!dir) continue;
+      list.push({ sessionId: t.sessionId, dir, filePath: joinPath(dir, `user_${username || 'user'}.sql`), title: t.title || '新对话' });
+    }
+    return list;
+  }, [isDataExplore, tasks, username, dataExploreDirsVersion]);
 
   const handleLoadSession = useCallback(async (sessionId: string) => {
     if (!clientRef.current) {
@@ -1008,11 +1190,29 @@ function useOpencodeClientImpl(
   }, [listSessions]);
 
   const handleDeleteSession = useCallback(async (sessionId: string) => {
+    // 数据探索：删除会话时一并删除其独立工作目录
+    if (isDataExplore) {
+      const dir = deDirMapRef.current[sessionId];
+      if (dir) {
+        delete deDirMapRef.current[sessionId];
+        saveDeDirMap(deDirMapKeyRef.current, deDirMapRef.current);
+        if (dataExploreService) {
+          try {
+            await dataExploreService.removeDir(dir);
+          } catch (err) {
+            console.warn('[useOpencodeClient] 删除数据探索会话目录失败:', err);
+          }
+        }
+        setDataExploreDirs(prev => (prev || []).filter(d => d.dir !== dir));
+        bumpDeVersion();
+      }
+      if (sessionId === currentSessionId) setCurrentSessionId(null);
+    }
     await deleteSession(clientRef.current, sessionId);
     // 删除后从列表中移除（乐观更新），同时异步刷新确保同步
     setTasks(prev => prev.filter(t => t.sessionId !== sessionId));
     refreshTasks();
-  }, [deleteSession, refreshTasks]);
+  }, [deleteSession, refreshTasks, isDataExplore, dataExploreService, currentSessionId, setCurrentSessionId]);
 
   /** 重命名任务（通过 SDK session.update 更新标题） */
   const renameTask = useCallback(async (sessionId: string, newTitle: string) => {
@@ -1077,6 +1277,13 @@ function useOpencodeClientImpl(
 
     setWorkingDirectory,
     currentDirectory,
+
+    dataExploreDirs,
+    dataExploreDirsVersion,
+    dataExploreDeleteSession: handleDataExploreDeleteSession,
+    dataExploreTaskFiles,
+    dataExploreToggleSession: handleDataExploreToggleSession,
+    dataExploreCloseFile: handleDataExploreCloseFile,
     starting,
     setActiveLLMModel,
     activeLLMModel,
@@ -1092,7 +1299,10 @@ function useOpencodeClientImpl(
     handleNewSession, handleLoadSession, handleListSessions, handleDeleteSession, renameTask,
     approveFileChange, rejectFileChange, approveAllFileChanges,
     start, connect, disconnect,
-    setWorkingDirectory, currentDirectory, starting,
+    setWorkingDirectory, currentDirectory,
+    dataExploreDirs, dataExploreDirsVersion, handleDataExploreDeleteSession,
+    dataExploreTaskFiles, handleDataExploreToggleSession, handleDataExploreCloseFile,
+    starting,
     setActiveLLMModel, activeLLMModel,
     taskType,
     client, readPartText,

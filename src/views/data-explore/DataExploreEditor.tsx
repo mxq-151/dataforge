@@ -3,14 +3,14 @@ import Editor, { useMonaco } from '@monaco-editor/react';
 import { Play, ChevronDown, Square } from 'lucide-react';
 import ExecutionResultTabs from '../../components/editor/ExecutionResultTabs';
 import type { ResultItem, HistoryItem, TabKey } from '../../components/editor/ExecutionResultTabs';
+import TabBar from '../../components/editor/TabBar';
 import { useDataSourceCache } from '../../contexts/DataSourceContext';
 import { getEngineTypeByDatasourceType, parseSQLResultData } from '../../api/codeExecution';
 import type { CodeExecutionResult } from '../../api/codeExecution';
 import { useSqlCompletion } from '../../hooks/useSqlCompletion';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../components/Toast';
-import { initFileSystemAPI, getPlatformDefaultWorkspace } from '../../hooks/useFileSystem';
-import { joinPath } from '../../utils/pathUtils';
+import { initFileSystemAPI } from '../../hooks/useFileSystem';
 import { buildScopedStorageKey } from '../../utils/historyIsolation';
 import { TaskExecutionService, parseSqlStatements } from '../../services/taskExecutionService';
 import type { TaskDefinition, TaskItem } from '../../services/taskExecutionService';
@@ -43,11 +43,24 @@ interface DataExploreEditorProps {
   onDataSourceChange: (id: number | null) => void;
   lastFileChangeSeq?: number;
   lastFileChangePaths?: string[];
-  /** 基础工作目录（$HOME/.dataforge/{后端host}/{登录用户名}/），用于定位数据探索个人工作区 */
-  baseWorkspace?: string;
-}
+  /** 会话目录列表（会话=标签页），每项为 individual/{timestamp}/user_{user}.sql */
+  sessionDirs?: Array<{ dir: string; filePath: string }>;
+  /** 会话目录版本号（新建/删除会话时递增，驱动标签页同步） */
+  sessionDirsVersion?: number;
+  /** 当前激活工作目录（对应激活标签） */
+  currentDirectory?: string | null;
+  /** 切换工作目录（切换标签） */
+  onSwitchSessionDir?: (dir: string) => void;
+  /** 关闭指定会话目录的文件标签（仅关闭标签，不删会话/目录） */
+  onCloseFile?: (dir: string) => void;
+  /** 会话目录 → 会话标题 映射（标签页显示与任务下拉的会话名称一致） */
+  sessionTitles?: Record<string, string>;
+} 
 
 // ─── 工具函数 ────────────────────────────────────────────────
+
+/** 已保存到 individual 时间戳目录的默认 SQL（与 backend 新建会话目录写入内容一致） */
+const DEFAULT_SQL = '-- 输入 SQL 查询语句\nSELECT * FROM users LIMIT 10;';
 
 const SESSION_KEYWORDS = /^(USE|SET|SHOW|DESC|DESCRIBE|EXPLAIN|HELP)$/i;
 
@@ -168,7 +181,18 @@ function saveHistoryToStorage(key: string, records: ExecutionHistoryItem[]): voi
 
 // ─── 组件 ────────────────────────────────────────────────────
 
-const DataExploreEditor: React.FC<DataExploreEditorProps> = ({ selectedDataSourceId, onDataSourceChange, lastFileChangeSeq, lastFileChangePaths, baseWorkspace }) => {
+const DataExploreEditor: React.FC<DataExploreEditorProps> = ({
+  selectedDataSourceId,
+  onDataSourceChange,
+  lastFileChangeSeq,
+  lastFileChangePaths,
+  sessionDirs,
+  sessionDirsVersion,
+  currentDirectory,
+  onSwitchSessionDir,
+  onCloseFile,
+  sessionTitles,
+}) => {
   const { user } = useAuth();
   const toast = useToast();
 
@@ -178,7 +202,14 @@ const DataExploreEditor: React.FC<DataExploreEditorProps> = ({ selectedDataSourc
     const allowedRoleTypes = ['OPS_ENGINEER', 'DATA_DEV_ENGINEER'];
     return user.roles.some(r => allowedRoleTypes.includes(r.roleType));
   }, [user]);
-  const [sqlValue, setSqlValue] = useState('-- 输入 SQL 查询语句\nSELECT * FROM users LIMIT 10;');
+  // 每个会话目录的编辑器内容（dir → SQL）
+  const [sqlContents, setSqlContents] = useState<Record<string, string>>({});
+  // 每个会话目录最近已保存内容（dir → SQL），用于自动保存 diff
+  const lastSavedRef = useRef<Record<string, string>>({});
+  // 每个会话目录对应的 SQL 文件路径（dir → filePath）
+  const sqlFilePathsRef = useRef<Record<string, string>>({});
+  // 本地激活目录（标签即时高亮；与 backend currentDirectory 同步）
+  const [localActiveDir, setLocalActiveDir] = useState<string | null>(null);
   const [isExecuting, setIsExecuting] = useState(false);
   const [activeResultTab, setActiveResultTab] = useState<TabKey>('results');
   const [queryResults, setQueryResults] = useState<QueryResult[]>([]);
@@ -187,8 +218,6 @@ const DataExploreEditor: React.FC<DataExploreEditorProps> = ({ selectedDataSourc
   const [_currentStatementIndex, setCurrentStatementIndex] = useState(-1);
   const editorRef = useRef<any>(null);
   const [cursorPosition, setCursorPosition] = useState({ line: 1, column: 1 });
-  const sqlFilePathRef = useRef<string | null>(null);
-  const lastSavedSqlRef = useRef<string>('');
   const handleExecuteRef = useRef<() => void>(() => {});
 
   // 任务执行服务
@@ -220,121 +249,124 @@ const DataExploreEditor: React.FC<DataExploreEditorProps> = ({ selectedDataSourc
   const [tables, setTables] = useState<any[]>([]);
   const monaco = useMonaco();
 
-  // 初始化用户 SQL 文件路径并加载内容
-  useEffect(() => {
-    if (!user?.username) return;
+  // ── 多标签：激活标签 = backend.currentDirectory，本地切换即时高亮 ──
+  const activeDir = useMemo(() => {
+    const dirs = sessionDirs || [];
+    // 本地显式切换优先（标签即时高亮，不等后端异步重建连接）
+    if (localActiveDir && dirs.some(d => d.dir === localActiveDir)) return localActiveDir;
+    // 否则跟随后端 currentDirectory
+    if (currentDirectory && dirs.some(d => d.dir === currentDirectory)) return currentDirectory;
+    // 回退到首个会话目录（新建/删除后 currentDirectory 短暂指向已不存在目录时兜底）
+    return dirs[0]?.dir || null;
+  }, [currentDirectory, sessionDirs, localActiveDir]);
 
-    const initUserFile = async () => {
-      try {
-        // 跟随新基础工作目录：$HOME/.dataforge/{后端host}/{登录用户名}/individual
-        let dirPath: string;
-        if (baseWorkspace && user.username) {
-          dirPath = joinPath(baseWorkspace, user.username, 'individual');
-        } else {
-          const workspacePath = await getPlatformDefaultWorkspace();
-          const separator = workspacePath.includes('\\') ? '\\' : '/';
-          dirPath = `${workspacePath}${separator}${user.username}${separator}individual`;
-        }
-        const separator = dirPath.includes('\\') ? '\\' : '/';
-        const filePath = `${dirPath}${separator}user_${user.username}.sql`;
+  // TabBar 标签模型（标签名 = 会话名称，与会话重命名保持一致；无映射时回退时间戳目录名）
+  const tabs = useMemo(() => (sessionDirs || []).map(d => {
+    const name = sessionTitles?.[d.dir] || d.dir.split(/[\\/]/).pop() || d.filePath;
+    const content = sqlContents[d.dir];
+    const isModified = content !== undefined && content !== lastSavedRef.current[d.dir];
+    return { id: d.dir, name, path: d.filePath, isModified };
+  }), [sessionDirs, sqlContents, sessionTitles]);
 
-        sqlFilePathRef.current = filePath;
-
-        const api = await initFileSystemAPI();
-
-        try {
-          await api.createDir(dirPath);
-        } catch {
-          // 目录可能已存在
-        }
-
-        const fileExists = await api.exists(filePath);
-        if (fileExists) {
-          const content = await api.readFile(filePath);
-          const text = new TextDecoder().decode(content);
-          if (text) {
-            setSqlValue(text);
-            lastSavedSqlRef.current = text;
-          }
-        } else {
-          const defaultContent = '-- 输入 SQL 查询语句\nSELECT * FROM users LIMIT 10;';
-          const encoder = new TextEncoder();
-          await api.writeFile(filePath, encoder.encode(defaultContent));
-          lastSavedSqlRef.current = defaultContent;
-        }
-      } catch (error) {
-        console.error('[DataExploreEditor] 初始化用户文件失败:', error);
+  // 加载指定会话目录内容（尚未加载时），并注册文件路径
+  const loadSqlContent = useCallback(async (dir: string, filePath: string) => {
+    try {
+      const api = await initFileSystemAPI();
+      const encoder = new TextEncoder();
+      let text = '';
+      if (await api.exists(filePath)) {
+        const buf = await api.readFile(filePath);
+        text = new TextDecoder().decode(buf);
       }
-    };
+      const content = text || DEFAULT_SQL;
+      if (!text) {
+        await api.writeFile(filePath, encoder.encode(content));
+      }
+      setSqlContents(prev => (prev[dir] === content ? prev : { ...prev, [dir]: content }));
+      lastSavedRef.current[dir] = content;
+    } catch (error) {
+      console.error('[DataExploreEditor] 加载会话文件失败:', error);
+      setSqlContents(prev => (prev[dir] === DEFAULT_SQL ? prev : { ...prev, [dir]: DEFAULT_SQL }));
+      lastSavedRef.current[dir] = DEFAULT_SQL;
+    }
+  }, []);
 
-    initUserFile();
-  }, [user?.username, baseWorkspace]);
-
-  // 每秒自动保存编辑器内容到文件
+  // 激活目录变化：注册文件路径并加载内容（幂等，已在内存则跳过）
   useEffect(() => {
+    if (!activeDir) return;
+    const dirs = sessionDirs || [];
+    const item = dirs.find(d => d.dir === activeDir);
+    if (!item) return;
+    sqlFilePathsRef.current[activeDir] = item.filePath;
+    if (sqlContents[activeDir] === undefined) {
+      loadSqlContent(activeDir, item.filePath);
+    }
+  }, [activeDir, sessionDirs, sqlContents, loadSqlContent]);
+
+  // 会话目录列表变化：清理已删除会话的缓存内容；新建会话后重置本地激活跟随后端
+  useEffect(() => {
+    const dirs = new Set((sessionDirs || []).map(d => d.dir));
+    setSqlContents(prev => {
+      let changed = false;
+      const next: Record<string, string> = {};
+      for (const k of Object.keys(prev)) {
+        if (dirs.has(k)) { next[k] = prev[k]; } else { changed = true; }
+      }
+      return changed ? next : prev;
+    });
+    for (const ref of [lastSavedRef.current, sqlFilePathsRef.current]) {
+      for (const k of Object.keys(ref)) {
+        if (!dirs.has(k)) delete ref[k];
+      }
+    }
+    setLocalActiveDir(null);
+  }, [sessionDirs]);
+
+  // 每秒自动保存当前激活会话的内容
+  useEffect(() => {
+    if (!activeDir) return;
+    const filePath = sqlFilePathsRef.current[activeDir];
+    if (!filePath) return;
     const timer = setInterval(async () => {
-      const filePath = sqlFilePathRef.current;
-      if (!filePath) return;
-
-      const currentSql = sqlValue;
-      if (currentSql === lastSavedSqlRef.current) return;
-
+      const content = sqlContents[activeDir];
+      if (content === undefined) return;
+      if (content === lastSavedRef.current[activeDir]) return;
       try {
         const api = await initFileSystemAPI();
-        const encoder = new TextEncoder();
-        await api.writeFile(filePath, encoder.encode(currentSql));
-        lastSavedSqlRef.current = currentSql;
+        await api.writeFile(filePath, new TextEncoder().encode(content));
+        lastSavedRef.current[activeDir] = content;
       } catch (error) {
         console.error('[DataExploreEditor] 自动保存失败:', error);
       }
     }, 1000);
-
     return () => clearInterval(timer);
-  }, [sqlValue]);
+  }, [activeDir, sqlContents]);
 
-  // 监听 AI 智能体文件变更，刷新 SQL 编辑器内容
+  // 监听 AI 智能体文件变更，刷新当前激活编辑器内容
   useEffect(() => {
-    console.log('[DF::DataExploreEditor] fileChange effect triggered: lastFileChangeSeq=', lastFileChangeSeq, 'lastFileChangePaths=', lastFileChangePaths, 'sqlFilePath=', sqlFilePathRef.current);
-
-    if (!lastFileChangeSeq || !lastFileChangePaths?.length || !sqlFilePathRef.current) {
-      console.log('[DF::DataExploreEditor] fileChange effect skipped: seq=', lastFileChangeSeq, 'paths=', lastFileChangePaths?.length, 'sqlFile=', sqlFilePathRef.current);
-      return;
-    }
-
-    const currentFilePath = sqlFilePathRef.current;
-    const normalizedCurrent = currentFilePath.replace(/\\/g, '/');
-    const isAffected = lastFileChangePaths.some(p => {
-      const normalizedP = p.replace(/\\/g, '/');
-      console.log('[DF::DataExploreEditor] comparing: file=', normalizedP, 'vs current=', normalizedCurrent, 'match=', normalizedP === normalizedCurrent);
-      return normalizedP === normalizedCurrent;
-    });
-    console.log('[DF::DataExploreEditor] isAffected=', isAffected);
-
+    if (!activeDir) return;
+    const filePath = sqlFilePathsRef.current[activeDir];
+    if (!lastFileChangeSeq || !lastFileChangePaths?.length || !filePath) return;
+    const normalized = filePath.replace(/\\/g, '/');
+    const isAffected = lastFileChangePaths.some(p => p.replace(/\\/g, '/') === normalized);
     if (!isAffected) return;
-
-    // 立即同步更新 lastSavedSqlRef，防止自动保存定时器在异步读取文件期间
-    // 将编辑器旧内容写回文件，覆盖 AI 的修改（竞态条件修复）
-    const editorContentBeforeReload = sqlValue;
-    lastSavedSqlRef.current = editorContentBeforeReload;
-
-    const reloadFile = async () => {
+    const before = sqlContents[activeDir];
+    // 同步 lastSaved，防止自动保存定时器在异步读取期间将旧内容写回覆盖 AI 修改（竞态修复）
+    lastSavedRef.current[activeDir] = before;
+    (async () => {
       try {
         const api = await initFileSystemAPI();
-        const content = await api.readFile(currentFilePath);
-        const text = new TextDecoder().decode(content);
-        console.log('[DF::DataExploreEditor] reloaded file content length=', text.length, 'current editor length=', editorContentBeforeReload.length, 'same=', text === editorContentBeforeReload);
-        if (text && text !== editorContentBeforeReload) {
-          setSqlValue(text);
-          lastSavedSqlRef.current = text;
-          console.log('[DataExploreEditor] AI 修改文件后刷新编辑器内容');
+        const buf = await api.readFile(filePath);
+        const text = new TextDecoder().decode(buf);
+        if (text && text !== before) {
+          setSqlContents(prev => ({ ...prev, [activeDir]: text }));
+          lastSavedRef.current[activeDir] = text;
         }
       } catch (error) {
         console.error('[DataExploreEditor] 刷新文件内容失败:', error);
       }
-    };
-
-    reloadFile();
-  }, [lastFileChangeSeq, lastFileChangePaths]);
+    })();
+  }, [lastFileChangeSeq, lastFileChangePaths, activeDir, sqlContents]);
 
   // SQL 补全（统一使用 useSqlCompletion hook）
   const { setupSQLCompletion, disposeCompletion } = useSqlCompletion({
@@ -516,8 +548,13 @@ const DataExploreEditor: React.FC<DataExploreEditorProps> = ({ selectedDataSourc
       }
       return model?.getValue()?.trim() || '';
     }
-    return sqlValue.trim();
-  }, [sqlValue]);
+    return ((activeDir && sqlContents[activeDir]) || '').trim();
+  }, [sqlContents, activeDir]);
+
+  /** 关闭标签页 = 仅关闭该会话目录的文件标签（不删会话/目录，与任务下拉勾选取消等价） */
+  const handleTabClose = useCallback((id: string) => {
+    onCloseFile?.(id);
+  }, [onCloseFile]);
 
   /** 统一执行入口：单条/多条语句均通过 TaskExecutionService 提交 */
   const handleExecute = useCallback(async () => {
@@ -800,13 +837,28 @@ const DataExploreEditor: React.FC<DataExploreEditorProps> = ({ selectedDataSourc
         </div>
       </div>
 
+      <TabBar
+        tabs={tabs}
+        activeTabId={activeDir}
+        onTabSelect={(id) => {
+          setLocalActiveDir(id);
+          onSwitchSessionDir?.(id);
+        }}
+        onTabClose={handleTabClose}
+        rootPath=""
+      />
+
       <div className="de-editor__editor-area" ref={editorAreaRef}>
         <Editor
           height="100%"
           language="sql"
           theme="Default Dark Modern"
-          value={sqlValue}
-          onChange={(val) => setSqlValue(val || '')}
+          value={activeDir ? (sqlContents[activeDir] ?? DEFAULT_SQL) : DEFAULT_SQL}
+          onChange={(val) => {
+            if (activeDir) {
+              setSqlContents(prev => ({ ...prev, [activeDir]: val || '' }));
+            }
+          }}
           beforeMount={handleBeforeMount}
           onMount={handleEditorMount}
           options={editorOptions}

@@ -16,6 +16,7 @@ import { DolphinSchedulerProvider } from './contexts/DolphinSchedulerContext';
 import useOpencodeConfig from './hooks/useOpencodeConfig';
 import { OpencodeBackendProvider } from './hooks/opencode/useOpencodeBackend';
 import { OpencodeClientProvider, useOpencodeClient } from './hooks/opencode/useOpencodeClient';
+import { createDeSessionService, buildDeBaseDir } from './hooks/opencode/dataExploreSessionService';
 import type { LogEntry } from './types/opencode-backend';
 import type { OpenCodeConfig } from './types/opencode-backend';
 import { ActiveTab } from './types';
@@ -243,6 +244,16 @@ const AppContent: React.FC = () => {
 
   // 基础工作目录自动计算：$HOME/.dataforge/{后端host}/{登录用户名}/，无需用户配置
   const [baseWorkspace, setBaseWorkspace] = useState<string>('');
+  // 数据探索：各模块计算好完整工作目录路径（individual/）与服务，注入 opencode client（解耦）
+  const deBaseDir = useMemo(
+    () => buildDeBaseDir(baseWorkspace || undefined, user?.username),
+    [baseWorkspace, user?.username],
+  );
+  const deSessionService = useMemo(() => (
+    deBaseDir && user?.username
+      ? createDeSessionService(deBaseDir, user.username)
+      : null
+  ), [deBaseDir, user?.username]);
   useEffect(() => {
     if (!user?.username) {
       setBaseWorkspace('');
@@ -606,9 +617,8 @@ const AppContent: React.FC = () => {
               moduleId="data-explore"
               roleType={roleType}
               projectId="__data_explore__"
-              directory={user?.username && baseWorkspace
-                ? joinPath(baseWorkspace, user.username, 'individual')
-                : null}
+              directory={deBaseDir}
+              dataExploreService={deSessionService}
             >
               <DataExploreClientSlot
                 llmModels={config.llmModels}

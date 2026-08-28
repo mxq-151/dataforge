@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import AIPanel from '../../components/ai/AIPanel';
 import DataExploreEditor from './DataExploreEditor';
 import DBTableBrowser from './DBTableBrowser';
@@ -47,6 +47,15 @@ const DataExploreView: React.FC<DataExploreViewProps> = ({ chatBackend, llmModel
     setSelectedTableName('');
   };
 
+  // 会话目录 → 会话标题 映射（编辑器标签名与任务下拉的会话名称保持一致）
+  const sessionTitles = useMemo(() => {
+    const map: Record<string, string> = {};
+    (chatBackend.dataExploreTaskFiles || []).forEach(tf => {
+      if (tf.dir && tf.title) map[tf.dir] = tf.title;
+    });
+    return map;
+  }, [chatBackend.dataExploreTaskFiles]);
+
   return (
     <>
       <AIPanel chatBackend={chatBackend} llmModels={llmModels} moduleId="data-explore" projectId="__data_explore__" />
@@ -55,7 +64,12 @@ const DataExploreView: React.FC<DataExploreViewProps> = ({ chatBackend, llmModel
         onDataSourceChange={setSelectedDataSourceId}
         lastFileChangeSeq={chatBackend.lastFileChangeSeq}
         lastFileChangePaths={chatBackend.lastFileChangePaths}
-        baseWorkspace={baseWorkspace}
+        sessionDirs={chatBackend.dataExploreDirs}
+        sessionDirsVersion={chatBackend.dataExploreDirsVersion}
+        currentDirectory={chatBackend.currentDirectory}
+        onSwitchSessionDir={(dir) => { chatBackend.setWorkingDirectory(dir); }}
+        onCloseFile={(dir) => { chatBackend.dataExploreCloseFile?.(dir); }}
+        sessionTitles={sessionTitles}
       />
       <DBTableBrowser
         dataSourceId={selectedDataSourceId}

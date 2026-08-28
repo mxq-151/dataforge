@@ -180,6 +180,36 @@
   white-space: nowrap;
 }
 
+/* 数据探索：任务下拉勾选（打开/关闭文件） */
+.ai-panel__session-check {
+  flex-shrink: 0;
+  width: 15px;
+  height: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #555;
+  border-radius: 3px;
+  cursor: pointer;
+  color: #fff;
+  box-sizing: border-box;
+}
+
+.ai-panel__session-check:hover {
+  border-color: #888;
+  background-color: #333;
+}
+
+.ai-panel__session-check--checked {
+  background-color: #2483e0;
+  border-color: #2483e0;
+}
+
+.ai-panel__session-check--checked:hover {
+  background-color: #2a93f0;
+  border-color: #2a93f0;
+}
+
 .ai-panel__session-delete-btn {
   flex-shrink: 0;
   padding: 2px;

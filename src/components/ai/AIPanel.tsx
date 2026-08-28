@@ -210,6 +210,9 @@ const AIPanel: React.FC<AIPanelProps> = ({ chatBackend, llmModels, onRollback, o
             onDeleteSession={deleteSession}
             onRenameSession={renameTask}
             disabled={!connected}
+            dataExploreDirs={chatBackend.dataExploreDirs}
+            dataExploreTaskFiles={chatBackend.dataExploreTaskFiles}
+            dataExploreToggleSession={chatBackend.dataExploreToggleSession}
           />
           <button
             className={`ai-panel__compress-btn ${compressing ? 'ai-panel__compress-btn--loading' : ''}`}
