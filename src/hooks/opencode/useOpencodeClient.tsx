@@ -937,6 +937,24 @@ function useOpencodeClientImpl(
 
     let sessionId: string | null = currentSessionId;
     if (!sessionId) {
+      // 通过对话创建会话：与「新建会话按钮」保持一致——
+      // 若先前未新建会话目录（未点击新建按钮），则为本次对话创建一个独立目录并打开其标签页。
+      if (isDataExplore && dataExploreService && !pendingDeDirRef.current) {
+        try {
+          const created = await dataExploreService.createDir();
+          if (created) {
+            pendingDeDirRef.current = created.dir;
+            await setWorkingDirectory(created.dir);
+            setDataExploreDirs(prev => {
+              const rest = (prev || []).filter(d => d.dir !== created.dir);
+              return [created, ...rest];
+            });
+            bumpDeVersion();
+          }
+        } catch (err) {
+          console.error('[useOpencodeClient] 通过对话新建数据探索目录失败:', err);
+        }
+      }
       try {
         const result = await clientRef.current!.session.create({
           title: trimmed.slice(0, 80),
@@ -961,7 +979,7 @@ function useOpencodeClientImpl(
 
     // 消息发送后异步刷新任务列表（新 session 创建后列表需要更新）
     refreshTasks();
-  }, [sendChatMessage, addMessage, addLog, currentSessionId, setCurrentSessionId, connected, currentDirectory, refreshTasks]);
+  }, [sendChatMessage, addMessage, addLog, currentSessionId, setCurrentSessionId, connected, currentDirectory, refreshTasks, isDataExplore, dataExploreService, setWorkingDirectory, setDataExploreDirs, bumpDeVersion]);
 
   const sendInterrupt = useCallback(async () => {
     await sendChatInterrupt(clientRef.current);
