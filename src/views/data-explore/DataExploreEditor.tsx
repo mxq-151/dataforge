@@ -830,6 +830,32 @@ const DataExploreEditor: React.FC<DataExploreEditorProps> = ({
         onTabSelect={(id) => {
           setLocalActiveDir(id);
           onSwitchSessionDir?.(id);
+          // 【临时定位】切换文件名后 300ms 内逐帧采样编辑器区域的白色元素并输出到 console，
+          // 用于定位"点击文件名闪白"。定位完成后请删除本段代码。
+          const diagStart = performance.now();
+          const diagTimer = window.setInterval(() => {
+            if (performance.now() - diagStart > 300) { window.clearInterval(diagTimer); return; }
+            const area = editorAreaRef.current;
+            if (!area) return;
+            const rect = area.getBoundingClientRect();
+            for (let x = rect.left + 4; x < rect.right - 4; x += 20) {
+              for (let y = rect.top + 4; y < rect.bottom - 4; y += 20) {
+                const el = document.elementFromPoint(x, y);
+                if (!el) continue;
+                const cs = getComputedStyle(el);
+                const m = cs?.backgroundColor?.match(/\d+/g);
+                if (!m || m.length < 3) continue;
+                const r = +m[0], g = +m[1], b = +m[2];
+                if (r > 235 && g > 235 && b > 235) {
+                  const cls = typeof el.className === 'string' ? el.className.trim().replace(/\s+/g, '.') : '';
+                  const path = (() => { const a: string[] = []; let n: any = el; while (n && n !== document.body) { a.unshift(n.tagName + (typeof n.className === 'string' && n.className ? '.' + n.className.trim().split(/\s+/).join('.') : '')); n = n.parentElement; } return a.join(' -> '); })();
+                  console.log('[白色闪元素] bg=', cs.backgroundColor, 'tag.class=', el.tagName + (cls ? '.' + cls : ''), 'path=', path);
+                  window.clearInterval(diagTimer);
+                  return;
+                }
+              }
+            }
+          }, 16);
         }}
         onTabClose={handleTabClose}
         rootPath=""

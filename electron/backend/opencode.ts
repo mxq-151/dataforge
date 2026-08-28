@@ -324,6 +324,18 @@ function buildSdkConfig(config: OpenCodeServerConfig): Record<string, unknown> {
       'spark-sql*': 'deny',
       'pyspark*': 'deny',
       'flink*': 'deny',
+      // git 危险操作：禁止智能体清空/重置/丢弃源码（可导致仓库文件丢失）
+      'git reset*': 'deny',
+      'git clean*': 'deny',
+      'git checkout --*': 'deny',
+      'git checkout .*': 'deny',
+      'git restore*': 'deny',
+      'git rm*': 'deny',
+      'git stash*': 'deny',
+      'git push --force*': 'deny',
+      'git push -f*': 'deny',
+      'git branch -D*': 'deny',
+      'git branch --delete*': 'deny',
     },
   };
 

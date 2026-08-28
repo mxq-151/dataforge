@@ -21,7 +21,10 @@
       [data-electron-drag-region] [role="button"] {
         -webkit-app-region: no-drag;
       }
-      html, body, #root { height: 100%; margin: 0; }
+      /* 全局深色背景：应用为深色主题，页面底层必须是深色，
+         否则 Monaco 在切换文件/内容时某表面瞬时透明的一帧会露出白色 body，
+         表现为点击文件名时"闪白" */
+      html, body, #root { height: 100%; margin: 0; background-color: #1e1e1e; }
     </style>
   </head>
   <body>
