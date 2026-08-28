@@ -822,7 +822,10 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
       try {
         const { readFile: fsReadFile } = await import('../../bridge/fs');
         const jarUint8Array = await fsReadFile(compiledJarPath);
-        const jarBlob = new Blob([jarUint8Array], { type: 'application/java-archive' });
+        // readFile 返回的类型是 Uint8Array<ArrayBufferLike>，直接传入 Blob 会导致 TS 报错
+        // （BlobPart 仅接受由 ArrayBuffer 支持的视图）。复制一份即可保证底层为 ArrayBuffer。
+        const jarBytes = new Uint8Array(jarUint8Array);
+        const jarBlob = new Blob([jarBytes], { type: 'application/java-archive' });
 
         const codeFileBaseName = fileName.replace(/\.[^.]+$/, '');
         const jarExt = '.jar';

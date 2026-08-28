@@ -388,6 +388,32 @@
   background-color: #2a2d2e;
 }
 
+.exec-tabs__col-idx {
+  position: sticky;
+  left: 0;
+  text-align: right !important;
+  color: #858585 !important;
+  background-color: #252526;
+  user-select: none;
+  font-weight: 400 !important;
+  z-index: 1;
+}
+
+thead .exec-tabs__col-idx {
+  background-color: #2d2d30 !important;
+  z-index: 2;
+  min-width: 40px;
+  width: 40px;
+  max-width: 40px;
+  padding-right: 6px !important;
+}
+
+tbody .exec-tabs__col-idx {
+  background-color: #252526 !important;
+  padding-right: 6px !important;
+  z-index: 1;
+}
+
 /* ========== 执行历史 ========== */
 .exec-tabs__history-list {
   display: flex;
@@ -548,4 +574,90 @@
   line-height: 1.5;
   word-break: break-word;
   white-space: pre-wrap;
+}
+
+/* ========== 图表分析：勾选复选框 ========== */
+.exec-tabs__results {
+  min-height: 100%;
+}
+
+.exec-tabs__select-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.exec-tabs__select-box input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid #5a5a5a;
+  border-radius: 3px;
+  background-color: transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+  position: relative;
+  transition: all 0.12s;
+}
+
+.exec-tabs__select-box input[type="checkbox"]:hover {
+  border-color: #8a8a8a;
+}
+
+.exec-tabs__select-box input[type="checkbox"]:checked {
+  background-color: #4EC9B0;
+  border-color: #4EC9B0;
+}
+
+.exec-tabs__select-box input[type="checkbox"]:checked::after {
+  content: '';
+  position: absolute;
+  top: 1px;
+  left: 3.5px;
+  width: 4px;
+  height: 8px;
+  border: solid white;
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+
+/* ========== 图表分析：结果区右键菜单 ========== */
+.exec-tabs__context-menu {
+  background-color: #252526;
+  border: 1px solid #454545;
+  border-radius: 6px;
+  padding: 4px 0;
+  min-width: 200px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  font-size: 13px;
+  color: #cccccc;
+}
+
+.exec-tabs__context-item {
+  padding: 6px 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #cccccc;
+}
+
+.exec-tabs__context-item:hover {
+  color: #ffffff;
+}
+
+.exec-tabs__context-item--disabled {
+  color: #6a6a6a;
+  cursor: not-allowed;
+}
+
+.exec-tabs__context-item--disabled:hover {
+  color: #6a6a6a;
+  background-color: transparent;
 }

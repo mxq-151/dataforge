@@ -33,17 +33,23 @@
       {
         "from": "resources/sandbox",
         "to": "sandbox",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "resources/jdtls",
         "to": "jdtls",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "resources/metals",
         "to": "metals",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "resources/binaries/opencode-aarch64-apple-darwin",
@@ -71,6 +77,7 @@
     "@xyflow/react": "^12.11.3",
     "adm-zip": "^0.6.0",
     "crypto-js": "^4.2.0",
+    "echarts": "^6.1.0",
     "lucide-react": "^1.34.0",
     "monaco-languageclient": "^10.7.0",
     "react": "^19.2.8",

@@ -1,5 +1,6 @@
-import { Table2, History, Trash2, CheckCircle, XCircle, Loader2, AlertCircle, ChevronRight, ChevronDown, GripVertical, Square } from 'lucide-react';
+import { Table2, History, Trash2, CheckCircle, XCircle, Loader2, AlertCircle, ChevronRight, ChevronDown, GripVertical, Square, ChartPie } from 'lucide-react';
 import { useState, useCallback, useRef, useEffect } from 'react';
+import ChartAnalysisModal from './ChartAnalysisModal';
 import './ExecutionResultTabs.css';
 
 /** 执行结果条目 */
@@ -81,6 +82,12 @@ export default function ExecutionResultTabs({
   const [expandedErrorId, setExpandedErrorId] = useState<string | null>(null);
   // 多结果项折叠状态：仅当结果数 > 1 时启用，默认全部展开
   const [collapsedResultIds, setCollapsedResultIds] = useState<Set<string>>(new Set());
+  // 勾选用于图表分析的结果项（可多选）
+  const [selectedResultIds, setSelectedResultIds] = useState<Set<string>>(new Set());
+  // 图表分析模态框
+  const [chartVisible, setChartVisible] = useState(false);
+  // 执行结果区域的右键菜单
+  const [resultContextMenu, setResultContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [panelHeight, setPanelHeight] = useState(() => {
     const saved = localStorage.getItem('exec-panel-height');
     return saved ? Number(saved) : 220;
@@ -105,6 +112,29 @@ export default function ExecutionResultTabs({
     });
   }, []);
 
+  // 勾选 / 取消勾选结果项（用于图表分析）
+  const toggleSelectResult = useCallback((id: string) => {
+    setSelectedResultIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
+  // 被勾选且可图表化的结果
+  const chartableResults = resultItems.filter(i => i.success && i.columns.length > 0);
+  const selectedResults = chartableResults.filter(i => selectedResultIds.has(i.id));
+
+  const handleResultsContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setResultContextMenu({ x: e.pageX, y: e.pageY });
+  }, []);
+
+  const openChartAnalysis = useCallback(() => {
+    setChartVisible(true);
+    setResultContextMenu(null);
+  }, []);
+
   // 当 resultItems 变化（新的执行批次）时，重置折叠状态
   // 依据：resultItems 的首项 ID 变化即视为新一轮执行
   const firstResultId = resultItems[0]?.id ?? null;
@@ -117,8 +147,23 @@ export default function ExecutionResultTabs({
     }
     // 新一轮执行：默认全部展开
     setCollapsedResultIds(new Set());
+    setSelectedResultIds(new Set());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firstResultId, isMultiResult]);
+
+  // 关闭结果区右键菜单（点击其他处 / Esc）
+  useEffect(() => {
+    const closeMenu = () => setResultContextMenu(null);
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setResultContextMenu(null);
+    };
+    document.addEventListener('click', closeMenu);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('click', closeMenu);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, []);
 
   const busy = isExecuting || isCompiling;
 
@@ -261,7 +306,7 @@ export default function ExecutionResultTabs({
       <div className="exec-tabs__content">
         {/* ========== 执行结果 Tab ========== */}
         {activeTab === 'results' && (
-          <>
+          <div className="exec-tabs__results" onContextMenu={handleResultsContextMenu}>
             {/* 执行/编译中：显示日志 */}
             {busy && (
               <>
@@ -282,6 +327,19 @@ export default function ExecutionResultTabs({
                               onClick={() => toggleResultCollapse(item.id)}
                               title={collapsed ? '展开结果' : '折叠结果'}
                             >
+                              {item.success && item.columns.length > 0 && (
+                                <label
+                                  className="exec-tabs__select-box"
+                                  title="勾选用于图表分析"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedResultIds.has(item.id)}
+                                    onChange={() => toggleSelectResult(item.id)}
+                                  />
+                                </label>
+                              )}
                               {collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
                               {item.sqlSnippet && (
                                 <span className="exec-tabs__result-toggle-label" title={item.sqlSnippet}>
@@ -297,9 +355,6 @@ export default function ExecutionResultTabs({
                                   {(item.sqlSnippet).length > 50 ? (item.sqlSnippet).slice(0, 50) + '...' : item.sqlSnippet}
                                 </div>
                               )}
-                              {item.rowCount > 0 && (
-                                <div className="exec-tabs__result-info">{item.rowCount} 行</div>
-                              )}
                               {item.errorMessage && (
                                 <pre className="exec-tabs__error-msg">{item.errorMessage}</pre>
                               )}
@@ -308,6 +363,7 @@ export default function ExecutionResultTabs({
                                   <table className="exec-tabs__table">
                                     <thead>
                                       <tr>
+                                        <th className="exec-tabs__col-idx">#</th>
                                         {item.columns.map((col, ci) => (
                                           <th key={ci}>{col}</th>
                                         ))}
@@ -316,6 +372,7 @@ export default function ExecutionResultTabs({
                                     <tbody>
                                       {item.rows.map((row, ri) => (
                                         <tr key={ri}>
+                                          <td className="exec-tabs__col-idx">{ri + 1}</td>
                                           {row.map((cell, cj) => (
                                             <td key={cj}>{cell}</td>
                                           ))}
@@ -363,6 +420,19 @@ export default function ExecutionResultTabs({
                         onClick={isMultiResult ? () => toggleResultCollapse(item.id) : undefined}
                         title={isMultiResult ? (collapsed ? '展开结果' : '折叠结果') : undefined}
                       >
+                        {item.success && item.columns.length > 0 && (
+                          <label
+                            className="exec-tabs__select-box"
+                            title="勾选用于图表分析"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedResultIds.has(item.id)}
+                              onChange={() => toggleSelectResult(item.id)}
+                            />
+                          </label>
+                        )}
                         {isMultiResult && (
                           collapsed
                             ? <ChevronRight size={12} className="exec-tabs__result-chevron" />
@@ -380,9 +450,6 @@ export default function ExecutionResultTabs({
                       </div>
                       {!collapsed && (
                         <>
-                          {item.rowCount > 0 && (
-                            <div className="exec-tabs__result-meta">{item.rowCount} 行</div>
-                          )}
                           {item.errorMessage && (
                             <pre className="exec-tabs__error-msg">{item.errorMessage}</pre>
                           )}
@@ -391,6 +458,7 @@ export default function ExecutionResultTabs({
                               <table className="exec-tabs__table">
                                 <thead>
                                   <tr>
+                                    <th className="exec-tabs__col-idx">#</th>
                                     {item.columns.map((col, ci) => (
                                       <th key={ci}>{col}</th>
                                     ))}
@@ -399,6 +467,7 @@ export default function ExecutionResultTabs({
                                 <tbody>
                                   {item.rows.map((row, ri) => (
                                     <tr key={ri}>
+                                      <td className="exec-tabs__col-idx">{ri + 1}</td>
                                       {row.map((cell, cj) => (
                                         <td key={cj}>{cell}</td>
                                       ))}
@@ -418,7 +487,7 @@ export default function ExecutionResultTabs({
                 })}
               </div>
             )}
-          </>
+          </div>
         )}
 
         {/* ========== 执行历史 Tab ========== */}
@@ -507,6 +576,44 @@ export default function ExecutionResultTabs({
           </>
         )}
       </div>
+
+      {/* 结果区右键菜单：图表分析 */}
+      {resultContextMenu && chartableResults.length > 0 && (
+        <div
+          className="exec-tabs__context-menu"
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            position: 'fixed',
+            left: resultContextMenu.x,
+            top: resultContextMenu.y,
+            zIndex: 10000,
+          }}
+        >
+          <div
+            className={`exec-tabs__context-item ${selectedResults.length === 0 ? 'exec-tabs__context-item--disabled' : ''}`}
+            onMouseDown={(e) => { e.preventDefault(); if (selectedResults.length > 0) openChartAnalysis(); }}
+            onMouseEnter={(e) => {
+              if (selectedResults.length > 0) ((e.currentTarget as HTMLDivElement).style.backgroundColor = 'rgba(255,255,255,0.04)');
+            }}
+            onMouseLeave={(e) => ((e.currentTarget as HTMLDivElement).style.backgroundColor = 'transparent')}
+            title={selectedResults.length === 0 ? '请先在执行结果中勾选数据结果' : undefined}
+          >
+            <ChartPie size={14} />
+            <span>
+              {selectedResults.length > 0
+                ? `图表分析（已选 ${selectedResults.length} 个结果）`
+                : '图表分析（请先勾选结果）'}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* 图表分析模态框 */}
+      <ChartAnalysisModal
+        visible={chartVisible}
+        onClose={() => { setChartVisible(false); }}
+        results={selectedResults}
+      />
     </div>
   );
 }
