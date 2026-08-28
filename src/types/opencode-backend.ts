@@ -229,43 +229,6 @@ export interface LogEntry {
   level?: string;
 }
 
-// ─── 选择请求（保留向后兼容） ──────────────────────────────────
-
-export interface SelectRequest {
-  title: string;
-  questions: Array<{
-    id: string;
-    header: string;
-    question: string;
-    options: Array<{ label: string; description: string }> | null;
-  }>;
-  requestId: string | number;
-  threadId: string;
-  turnId: string;
-}
-
-// ─── 会话状态（基于 SDK 原生 Message→Part 模型） ──────────────
-
-export interface OpenCodeSessionState {
-  /** 消息列表，每条消息包含 info(元信息) + parts(内容片段) */
-  messages: MessageEntry[];
-  busy: boolean;
-  busyLabel: string | undefined;
-  /** retry 状态（session.status 事件 type==='retry' 时设置，idle/busy 时清空） */
-  retry: RetryState | null;
-  ready: boolean;
-  connected: boolean;
-  error: string | null;
-  modals: ModalRequest[];
-  logs: LogEntry[];
-  /** 当前服务器会话 ID（SDK 原生，由 session.create() 返回） */
-  currentSessionId: string | null;
-  lastFileChangeSeq: number;
-  lastFileChangePaths: string[];
-  /** 任务列表（来自 todo.updated 事件） */
-  todos: Todo[];
-}
-
 /**
  * AI 改动的文件变更项。
  *

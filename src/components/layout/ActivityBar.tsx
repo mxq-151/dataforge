@@ -1,32 +1,11 @@
 import React, { useMemo, useEffect, useState, useRef } from 'react';
 import { MessageSquare, Settings, User, Database, BookOpen, FolderOpen, Calendar, Shield, LogOut, X, GitBranch, Check, BarChart3 } from 'lucide-react';
-import { ActiveTab } from '../../types';
+import { ActiveTab, MENU_CODE_MAP, FIRST_LEVEL_MENU_CODES } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
 import './ActivityBar.css';
 
-export const MENU_CODE_MAP: Record<string, string> = {
-  devAssist: 'dev_assist',
-  dataExplore: 'data_explore',
-  indicatorManagement: 'indicator_management',
-  knowledgeBase: 'knowledge_base',
-  fileBrowser: 'file_browser',
-  scheduleManagement: 'schedule_management',
-  dataLineage: 'data_lineage',
-  systemManagement: 'system_management',
-  settings: 'settings',
-};
-
-export const FIRST_LEVEL_MENU_CODES: string[] = [
-  'dev_assist',
-  'data_explore',
-  'indicator_management',
-  'knowledge_base',
-  'file_browser',
-  'schedule_management',
-  'data_lineage',
-  'system_management',
-  'settings',
-];
+// 菜单权限常量已迁至 types/index（供 contexts 等下层模块引用，避免循环依赖），此处 re-export
+export { MENU_CODE_MAP, FIRST_LEVEL_MENU_CODES };
 
 interface ActivityBarProps {
   activeTab: ActiveTab;

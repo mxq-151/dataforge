@@ -1,58 +1,14 @@
-import { Store } from '../bridge/store';
 // httpCore 是零依赖纯工具模块（不反向依赖本文件），可安全引入
 import { buildQuery, createTimeout, statusMessage } from './httpCore';
+import { getApiHost, getAuthToken } from '../session';
+
+// 会话配置（后端地址、鉴权凭据）已迁至 src/session.ts——它比 api 层更底层，
+// utils 等模块需要读取 host/token 时不应依赖整个 api 层。
+// 这里原样 re-export，既有引用无需改动。
+export { getApiHost, setApiHost, getAuthToken, setAuthToken } from '../session';
 
 const API_CONFIG = {
-  // 开发默认值：仅在用户未在登录页设置后端地址时作为 fallback，实际地址由用户在登录页配置
-  host: 'http://localhost:8080',
   timeout: 30000,
-};
-
-export const setApiHost = (host: string) => {
-  // 安全校验：非 localhost 地址必须使用 HTTPS，防止凭证明文传输
-  const isLocal = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/.test(host);
-  if (!isLocal && !host.startsWith('https://')) {
-    console.warn('[security] 非 localhost 后端地址应使用 HTTPS，当前为 HTTP，凭据可能明文传输:', host);
-  }
-  API_CONFIG.host = host;
-};
-
-export const getApiHost = (): string => API_CONFIG.host;
-
-// auth_token 存入 Store（secure-store.json）
-const AUTH_TOKEN_KEY = 'auth_token';
-const STORE_FILE = 'secure-store.json';
-
-let storeInstance: Store | null = null;
-
-async function getStore(): Promise<Store> {
-  if (!storeInstance) {
-    storeInstance = await Store.load(STORE_FILE);
-  }
-  return storeInstance;
-}
-
-export const getAuthToken = async (): Promise<string | null> => {
-  try {
-    const store = await getStore();
-    const value = await store.get<string>(AUTH_TOKEN_KEY);
-    return value ?? null;
-  } catch {
-    return null;
-  }
-};
-
-export const setAuthToken = async (token: string | null) => {
-  try {
-    const store = await getStore();
-    if (token) {
-      await store.set(AUTH_TOKEN_KEY, token);
-    } else {
-      await store.delete(AUTH_TOKEN_KEY);
-    }
-  } catch {
-    // Store 不可用时不降级到 localStorage，避免 token 被 XSS 窃取
-  }
 };
 
 async function generateRequestSignature(
@@ -92,7 +48,7 @@ interface RequestOptions extends RequestInit {
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { params, ...init } = options;
 
-  const url = `${API_CONFIG.host}${path}${buildQuery(params)}`;
+  const url = `${getApiHost()}${path}${buildQuery(params)}`;
 
   const timestamp = Date.now();
   const nonce = generateNonce();

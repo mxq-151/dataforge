@@ -7,12 +7,6 @@ export interface Message {
 
 export * from './opencode-backend';
 
-export interface EditorState {
-  language: string;
-  value: string;
-  cursorPosition: { line: number; column: number };
-}
-
 export interface FileNode {
   id: string;
   name: string;
@@ -21,22 +15,30 @@ export interface FileNode {
   path: string;
 }
 
-export interface PanelConfig {
-  aiPanel: {
-    isOpen: boolean;
-    width: number;
-  };
-  editorPanel: {
-    isMinimapVisible: boolean;
-    fontSize: number;
-  };
-  explorerPanel: {
-    isOpen: boolean;
-    width: number;
-  };
-}
-
 export type ActiveTab = 'devAssist' | 'dataExplore' | 'indicatorManagement' | 'knowledgeBase' | 'fileBrowser' | 'scheduleManagement' | 'dataLineage' | 'systemManagement' | 'settings';
+
+/**
+ * 一级菜单 TabId → 后端权限码 的映射。
+ *
+ * 原定义在 components/layout/ActivityBar.tsx，但 AuthContext 需要用它判断超级管理员
+ * 的默认菜单权限，导致 contexts 层反向依赖具体 UI 组件，并构成
+ * ActivityBar ↔ AuthContext 的模块级循环依赖。下沉到 types 供各层共用，
+ * ActivityBar 仍 re-export 以保持既有引用可用。
+ */
+export const MENU_CODE_MAP: Record<string, string> = {
+  devAssist: 'dev_assist',
+  dataExplore: 'data_explore',
+  indicatorManagement: 'indicator_management',
+  knowledgeBase: 'knowledge_base',
+  fileBrowser: 'file_browser',
+  scheduleManagement: 'schedule_management',
+  dataLineage: 'data_lineage',
+  systemManagement: 'system_management',
+  settings: 'settings',
+};
+
+/** 全部一级菜单权限码（由 MENU_CODE_MAP 派生，避免两处各写一份字符串） */
+export const FIRST_LEVEL_MENU_CODES: string[] = Object.values(MENU_CODE_MAP);
 
 export interface StatusBarInfo {
   line: number;

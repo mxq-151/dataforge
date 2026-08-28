@@ -1,4 +1,4 @@
-import type { IndicatorDTO, IndicatorFieldDTO } from '../api/indicator';
+import type { IndicatorDTO, IndicatorFieldDTO } from '../types/indicator';
 
 /**
  * 指标提取器

@@ -4,7 +4,7 @@ import { indicatorApi, type IndicatorVO, type IndicatorFieldVO } from '../../api
 import { fetchProjectList, type ProjectInfo } from '../../api/devProject';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../contexts/AuthContext';
-import { FIRST_LEVEL_MENU_CODES } from '../../components/layout/ActivityBar';
+import { FIRST_LEVEL_MENU_CODES } from '../../types';
 import './IndicatorManagementPanel.css';
 
 const PAGE_SIZE = 15;

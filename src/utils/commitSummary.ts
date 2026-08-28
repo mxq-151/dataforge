@@ -10,7 +10,8 @@
  */
 
 import { createOpencodeClient, type OpencodeClient } from '@opencode-ai/sdk/v2/client';
-import { getAuthToken, getApiHost } from '../api/index';
+// 从 session 而非 api 读取 host/token：utils 属于基础设施层，不应反向依赖 api 层
+import { getAuthToken, getApiHost } from '../session';
 import { tempDir } from '../bridge/path';
 
 /** diff 截断上限（字符），避免大 diff 撑爆模型上下文 */

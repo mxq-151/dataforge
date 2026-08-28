@@ -16,18 +16,18 @@
 
 import type { Part, SessionStatus, SnapshotFileDiff, UserMessage, AssistantMessage } from '@opencode-ai/sdk/v2/client';
 import type { MessageEntry } from '../../../types/opencode-backend';
-import { TimelineRow, rowKey, rowEquals, type TimelineRow as TimelineRowType, type SummaryDiff } from './rows';
+import {
+  TimelineRow,
+  rowKey,
+  rowEquals,
+  type TimelineRow as TimelineRowType,
+  type SummaryDiff,
+  type PartRef,
+  type PartGroup,
+} from './rows';
 
-// ── PartGroup 类型（对齐桌面版 message-part.tsx PartGroup） ────
-
-export type PartRef = {
-  messageID: string;
-  partID: string;
-};
-
-export type PartGroup =
-  | { key: string; type: 'part'; ref: PartRef }
-  | { key: string; type: 'context'; refs: PartRef[] };
+// PartRef / PartGroup 已迁至 rows.ts（消除两文件的循环依赖），此处 re-export 保持兼容
+export type { PartRef, PartGroup };
 
 // ── 常量 ──────────────────────────────────────────────────────
 

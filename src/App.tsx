@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import ActivityBar from './components/layout/ActivityBar';
 import TitleBar from './components/layout/TitleBar';
-import { MENU_CODE_MAP, FIRST_LEVEL_MENU_CODES } from './components/layout/ActivityBar';
+import { MENU_CODE_MAP, FIRST_LEVEL_MENU_CODES } from './types';
 import DevAssistantView from './views/dev-assistant/DevAssistantView';
 import ProjectList from './views/dev-assistant/ProjectList';
 import DataExploreView from './views/data-explore/DataExploreView';

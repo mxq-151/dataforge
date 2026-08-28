@@ -34,10 +34,17 @@ export class SyncedStore {
   private async doInit(): Promise<void> {
     try {
       this.store = await Store.load(this.file);
-      this.cache = await this.store.snapshot();
+      const disk = await this.store.snapshot();
+      // init 是异步的，期间可能已经有同步写入（那时 store 尚未就绪，只落到了 cache）。
+      // 若直接整体覆盖 cache，这些早期写入会被静默丢弃——合并时以内存写入为准，
+      // 并把它们补写回磁盘，保证不丢。
+      const pending = this.cache;
+      this.cache = { ...disk, ...pending };
+      for (const [k, v] of Object.entries(pending)) {
+        void this.store.set(k, v);
+      }
     } catch {
-      // Store 不可用时降级为纯内存，不影响主流程
-      this.cache = {};
+      // Store 不可用时降级为纯内存，不影响主流程（保留 init 期间已写入的 cache）
     }
     this.ready = true;
   }

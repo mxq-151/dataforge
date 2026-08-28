@@ -6,9 +6,22 @@
  */
 
 import type { SnapshotFileDiff } from '@opencode-ai/sdk/v2/client';
-import type { PartGroup } from './projection';
 
 export type SummaryDiff = SnapshotFileDiff & { file: string };
+
+// ── PartRef / PartGroup（对齐桌面版 message-part.tsx PartGroup） ──
+// 原先定义在 projection.ts，而 projection 又要从本文件导入 rowKey/rowEquals，
+// 构成 rows ↔ projection 的循环依赖。类型定义下移到本文件（行模型的组成部分），
+// projection 改为从此处导入并 re-export。
+
+export type PartRef = {
+  messageID: string;
+  partID: string;
+};
+
+export type PartGroup =
+  | { key: string; type: 'part'; ref: PartRef }
+  | { key: string; type: 'context'; refs: PartRef[] };
 
 // ── TimelineRow 判别联合 ──────────────────────────────────────
 

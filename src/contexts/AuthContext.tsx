@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useCallback, useEffect, use
 import { Store } from '../bridge/store';
 import { systemUserApi, CurrentUserInfo, SysRoleVO } from '../api/systemUser';
 import { getAuthToken, setAuthToken, setApiHost } from '../api/index';
-import { FIRST_LEVEL_MENU_CODES } from '../components/layout/ActivityBar';
+import { FIRST_LEVEL_MENU_CODES } from '../types';
 import {
   OPENCODE_CONFIG_STORE as STORE_FILE,
   startOpencodeAfterLogin,

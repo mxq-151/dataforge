@@ -46,11 +46,6 @@ export function buildQuery(params?: Record<string, unknown>): string {
   return qs ? `?${qs}` : '';
 }
 
-/** 拼接完整 URL：base + path + query */
-export function buildUrl(base: string, path: string, params?: Record<string, unknown>): string {
-  return `${base}${path}${buildQuery(params)}`;
-}
-
 /**
  * 生成 Bearer 鉴权头。token 为空时不设置 Authorization，由服务端决定匿名行为。
  * extra 中的自定义头会覆盖同名默认头。

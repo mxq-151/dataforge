@@ -383,7 +383,7 @@ describe('expandCalcExprBatch', () => {
     const indicators = [
       { projectCode: 'P', topic: 'T', name: '指标1', code: 'X_0001', calcExpr: 'sum(amount)' },
       { projectCode: 'P', topic: 'T', name: '指标2', code: 'X_0002', calcExpr: 'X_0001 / 100' },
-    ] as import('../api/indicator').IndicatorDTO[];
+    ] as import('../types/indicator').IndicatorDTO[];
 
     const existingLookup = new Map<string, string>();
     const result = expandCalcExprBatch(indicators, existingLookup);
@@ -395,7 +395,7 @@ describe('expandCalcExprBatch', () => {
   it('已有指标查找表与当前批次合并', () => {
     const indicators = [
       { projectCode: 'P', topic: 'T', name: '指标3', code: 'Y_0003', calcExpr: 'Y_0001 + Y_0002' },
-    ] as import('../api/indicator').IndicatorDTO[];
+    ] as import('../types/indicator').IndicatorDTO[];
 
     const existingLookup = new Map([
       ['Y_0001', 'count(*)'],
@@ -409,7 +409,7 @@ describe('expandCalcExprBatch', () => {
   it('无 calcExpr 的指标不受影响', () => {
     const indicators = [
       { projectCode: 'P', topic: 'T', name: '指标1', code: 'Z_0001' },
-    ] as import('../api/indicator').IndicatorDTO[];
+    ] as import('../types/indicator').IndicatorDTO[];
 
     const result = expandCalcExprBatch(indicators, new Map());
     expect(result[0].calcExpr).toBeUndefined();

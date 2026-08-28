@@ -32,32 +32,9 @@ export interface IndicatorVO {
   fields?: IndicatorFieldVO[];
 }
 
-export interface IndicatorFieldDTO {
-  datasourceName: string;
-  dbName: string;
-  tblName: string;
-  fieldName: string;
-  fieldType: string;
-}
-
-export interface IndicatorDTO {
-  id?: number;
-  projectCode: string;
-  topic: string;
-  name: string;
-  code?: string;
-  businessDefinition?: string;
-  calcExpr?: string;
-  defaultFilter?: string;
-  alertConfig?: string;
-  businessOwner?: string;
-  techOwner?: string;
-  refreshInterval?: number;
-  refreshUnit?: string;
-  refreshDesc?: string;
-  visibility?: string;
-  fields?: IndicatorFieldDTO[];
-}
+// DTO 定义已迁至 types/indicator（供 utils 等下层模块引用，避免反向依赖 api），此处 re-export
+import type { IndicatorFieldDTO, IndicatorDTO } from '../types/indicator';
+export type { IndicatorFieldDTO, IndicatorDTO };
 
 interface IndicatorListParams {
   current?: number;

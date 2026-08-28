@@ -29,20 +29,3 @@ export function mergeDependencyNames(
   }
   return Array.from(names);
 }
-
-/**
- * 合并为完整依赖项列表（保留版本/来源信息），同名时逐文件项优先。
- */
-export function mergeDependencyItems(
-  projectDeps: DependencyItemLite[] = [],
-  fileDeps: DependencyItemLite[] = []
-): DependencyItemLite[] {
-  const byName = new Map<string, DependencyItemLite>();
-  for (const d of projectDeps) {
-    if (d.name) byName.set(d.name, d);
-  }
-  for (const d of fileDeps) {
-    if (d.name) byName.set(d.name, d);
-  }
-  return Array.from(byName.values());
-}
