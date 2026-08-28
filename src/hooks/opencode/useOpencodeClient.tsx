@@ -33,11 +33,17 @@ export interface TaskRecord {
   updatedAt: number;
 }
 import * as fileReviewStore from './fileReviewStore';
-import type { OpenCodeConfig, Todo, MessageEntry, LogEntry } from '../../types/opencode-backend';
-import type { FileChange } from '../../components/ai/FileReviewPanel';
+import type { OpenCodeConfig, Todo, MessageEntry, LogEntry, FileChange } from '../../types/opencode-backend';
 import type { OpencodeClient } from '@opencode-ai/sdk/v2/client';
 
-/** 读取「会话ID → 独立工作目录」映射（localStorage，按 host+user 隔离键） */
+/**
+ * 读取「会话ID → 独立工作目录」映射（按 host+user 隔离键）。
+ *
+ * 注：这里仍用 localStorage 而非 SyncedStore，是刻意为之而非遗漏——
+ * 该映射被 useRef 当作初始值**同步**读取，改成异步加载会让首帧恢复会话目录时
+ * 拿到空映射，导致已建立的「会话 ↔ 目录」关联丢失；且它是不含凭据的小体积
+ * 元数据，迁移到磁盘存储没有安全或容量收益。
+ */
 function loadDeDirMap(key: string): Record<string, string> {
   try {
     const raw = localStorage.getItem(key);

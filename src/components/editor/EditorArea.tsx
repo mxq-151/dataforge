@@ -7,7 +7,7 @@ import TabBar from './TabBar';
 import ConfigParamsModal from './ConfigParamsModal';
 import ExecutionResultTabs from './ExecutionResultTabs';
 import type { ResultItem, HistoryItem, TabKey } from './ExecutionResultTabs';
-import { StatusBarInfo, Tab } from '../../types';
+import { StatusBarInfo, Tab, EditorAreaHandle } from '../../types';
 import type { CodeExecutionResult } from '../../api/codeExecution';
 import { parseSQLResultData } from '../../api/codeExecution';
 import { parseFileHeader } from '../../utils';
@@ -32,10 +32,8 @@ interface ExecutionRecord {
   sqlSnippet?: string;
 }
 
-export interface EditorAreaHandle {
-  validateDataSource: () => { valid: boolean; message: string | null };
-  blurEditor: () => void;
-}
+// 类型定义已迁至 types/index（供 hooks 等下层模块引用，避免反向依赖组件），此处 re-export
+export type { EditorAreaHandle };
 
 interface EditorAreaProps {
   tabs: Tab[];

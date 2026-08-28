@@ -5,12 +5,12 @@ import type { CodeExecutionResult } from '../api/codeExecution';
 import { unifiedCompile } from '../services/unifiedCompile';
 import { TaskExecutionService } from '../services/taskExecutionService';
 import type { TaskDefinition, TaskSet } from '../services/taskExecutionService';
-import type { Tab } from '../types';
-import type { EditorAreaHandle } from '../components/editor/EditorArea';
+import type { Tab, EditorAreaHandle } from '../types';
 import type { ProjectInfo } from '../api/devProject';
 import type { OpenCodeConfig } from '../types/opencode-backend';
 import type { DependencyItemLite } from '../utils/dependencyMerge';
 import { buildScopedStorageKey } from '../utils/historyIsolation';
+import { ensureHistoryStore, readHistory, writeHistory } from '../utils/historyStore';
 
 interface SavedConfigLike {
   dependencies: { id: string; name: string; version: string; source?: string }[];
@@ -175,10 +175,9 @@ function taskSetToExecutionRecords(taskSet: TaskSet, filePath: string): Executio
     }));
 }
 
-// ─── localStorage 持久化 ──────────────────────────────────────
+// ─── 执行历史持久化（统一走 utils/historyStore，落盘到主进程磁盘） ──
 
 const HISTORY_STORAGE_KEY = 'dataforge_execution_history';
-const MAX_HISTORY_ITEMS = 2000;
 
 interface SerializedRecord {
   id: string;
@@ -190,36 +189,12 @@ interface SerializedRecord {
   sqlSnippet?: string;
 }
 
-function deserializeHistory(json: string): ExecutionRecord[] {
-  try {
-    const raw: SerializedRecord[] = JSON.parse(json);
-    if (!Array.isArray(raw)) return [];
-    return raw.map(r => ({ ...r, time: new Date(r.time) }));
-  } catch {
-    return [];
-  }
-}
-
-function serializeHistory(records: ExecutionRecord[]): string {
-  const trimmed = records.slice(0, MAX_HISTORY_ITEMS);
-  return JSON.stringify(trimmed);
-}
-
-function loadHistoryFromStorage(key: string): ExecutionRecord[] {
-  try {
-    const json = localStorage.getItem(key);
-    return json ? deserializeHistory(json) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveHistoryToStorage(key: string, records: ExecutionRecord[]): void {
-  try {
-    localStorage.setItem(key, serializeHistory(records));
-  } catch {
-    // localStorage 不可用时静默忽略
-  }
+/** 把磁盘中的原始记录还原成领域对象（ISO 字符串 → Date） */
+function reviveRecord(raw: unknown): ExecutionRecord | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as SerializedRecord;
+  if (typeof r.id !== 'string') return null;
+  return { ...r, time: new Date(r.time) };
 }
 
 // ─── hook ────────────────────────────────────────────────────
@@ -261,11 +236,16 @@ export function useProgramRunner({
   const historyStorageKeyRef = useRef(historyStorageKey);
   historyStorageKeyRef.current = historyStorageKey;
 
-  // 首次加载 / 切换 host+用户+项目时：从 localStorage 恢复对应作用域的历史
+  // 首次加载 / 切换 host+用户+项目时：从统一历史库恢复对应作用域的历史
   useEffect(() => {
-    const stored = loadHistoryFromStorage(historyStorageKeyRef.current);
-    accumulatedHistoryRef.current = stored;
-    setExecutionHistory(stored);
+    let cancelled = false;
+    void ensureHistoryStore().then(() => {
+      if (cancelled) return;
+      const stored = readHistory(historyStorageKeyRef.current, reviveRecord);
+      accumulatedHistoryRef.current = stored;
+      setExecutionHistory(stored);
+    });
+    return () => { cancelled = true; };
   }, [historyStorageKey]);
 
   // 初始化服务并订阅状态变更
@@ -299,7 +279,7 @@ export function useProgramRunner({
         if (currentItems.length > 0 && lastMergedTaskSetIdRef.current !== taskSet.id) {
           lastMergedTaskSetIdRef.current = taskSet.id;
           accumulatedHistoryRef.current = [...currentItems, ...accumulatedHistoryRef.current];
-          saveHistoryToStorage(historyStorageKeyRef.current, accumulatedHistoryRef.current);
+          writeHistory(historyStorageKeyRef.current, accumulatedHistoryRef.current);
         }
         setExecutionHistory([...accumulatedHistoryRef.current]);
       }

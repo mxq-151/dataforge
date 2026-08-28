@@ -7,20 +7,10 @@
 
 import React, { useState, useMemo } from 'react';
 import { FileCode, Plus, Minus, ChevronDown, ChevronRight, ExternalLink, GitCompare } from 'lucide-react';
+import type { FileChange } from '../../types/opencode-backend';
 
-export interface FileChange {
-  filePath: string;
-  /** diff 内容（unified format） */
-  patch?: string;
-  additions: number;
-  deletions: number;
-  type: 'edit' | 'write' | 'apply_patch';
-  status: 'pending' | 'approved' | 'rejected';
-  /** 变更所属的消息 ID（用于 SDK revert API） */
-  messageID?: string;
-  /** 变更所属的 part ID（用于 SDK revert API，支持单 part 级别回滚） */
-  partID?: string;
-}
+// 类型定义已迁至 types/opencode-backend（供 hooks 等下层模块引用，避免反向依赖组件），此处 re-export
+export type { FileChange };
 
 interface FileReviewPanelProps {
   changes: FileChange[];

@@ -2,9 +2,14 @@ import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { LogIn, User, Lock, AlertCircle, Server, Pencil, Check, X, ChevronDown } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import useOpencodeConfig from '../../hooks/useOpencodeConfig';
+import { getSyncedStore } from '../../utils/syncedStore';
 import TitleBar from '../../components/layout/TitleBar';
 import './LoginPage.css';
 
+// 记住的主机/账号密码改由 SyncedStore 持久化到主进程磁盘（userData/df-stores/），
+// 不再写入 localStorage——明文凭据暴露给页面脚本存在 XSS 窃取风险。
+// 与 token / API Key 的处理保持一致（见 api/index.ts、useOpencodeConfig.ts）。
+const CRED_STORE_FILE = 'login-credentials.json';
 const REMEMBERED_CREDENTIALS_KEY = 'dataforge-remembered-credentials';
 const REMEMBERED_HOSTS_KEY = 'dataforge-remembered-hosts';
 
@@ -14,12 +19,40 @@ interface SavedCredential {
   password: string;
 }
 
+const credStore = getSyncedStore(CRED_STORE_FILE);
+
+/**
+ * 一次性迁移：把旧版本留在 localStorage 的主机/凭据搬到 SyncedStore 后清除，
+ * 避免用户升级后「记住密码」因换了存储介质而失效。
+ * 已在 SyncedStore 中存在的数据优先，不做覆盖。
+ */
+function migrateLegacyCredentials(): void {
+  try {
+    const rawHosts = localStorage.getItem(REMEMBERED_HOSTS_KEY);
+    if (rawHosts) {
+      const arr = JSON.parse(rawHosts) as unknown;
+      if (Array.isArray(arr) && credStore.get(REMEMBERED_HOSTS_KEY) === undefined) {
+        credStore.set(REMEMBERED_HOSTS_KEY, arr);
+      }
+      localStorage.removeItem(REMEMBERED_HOSTS_KEY);
+    }
+    const rawCreds = localStorage.getItem(REMEMBERED_CREDENTIALS_KEY);
+    if (rawCreds) {
+      const parsed = JSON.parse(rawCreds) as unknown;
+      if (parsed != null && credStore.get(REMEMBERED_CREDENTIALS_KEY) === undefined) {
+        credStore.set(REMEMBERED_CREDENTIALS_KEY, parsed);
+      }
+      localStorage.removeItem(REMEMBERED_CREDENTIALS_KEY);
+    }
+  } catch {
+    // 迁移失败不影响登录流程
+  }
+}
+
 /** 加载已登录过的主机列表（最近一次在前） */
 const loadRememberedHosts = (): string[] => {
   try {
-    const raw = localStorage.getItem(REMEMBERED_HOSTS_KEY);
-    if (!raw) return [];
-    const arr = JSON.parse(raw);
+    const arr = credStore.get<string[]>(REMEMBERED_HOSTS_KEY);
     if (!Array.isArray(arr)) return [];
     return arr.filter((h): h is string => typeof h === 'string' && !!h.trim());
   } catch { return []; }
@@ -27,9 +60,9 @@ const loadRememberedHosts = (): string[] => {
 
 const persistRememberedHosts = (list: string[]) => {
   if (list.length === 0) {
-    localStorage.removeItem(REMEMBERED_HOSTS_KEY);
+    credStore.delete(REMEMBERED_HOSTS_KEY);
   } else {
-    localStorage.setItem(REMEMBERED_HOSTS_KEY, JSON.stringify(list));
+    credStore.set(REMEMBERED_HOSTS_KEY, list);
   }
 };
 
@@ -44,18 +77,19 @@ const recordHost = (list: string[], host: string): string[] => {
 
 const loadSavedCredentials = (fallbackHost: string): SavedCredential[] => {
   try {
-    const saved = localStorage.getItem(REMEMBERED_CREDENTIALS_KEY);
-    if (!saved) return [];
-    const parsed = JSON.parse(saved);
+    const parsed = credStore.get<unknown>(REMEMBERED_CREDENTIALS_KEY);
+    if (parsed == null) return [];
     // 兼容旧版本的单账号对象格式 { username, password }（归属当前 host）
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      && typeof parsed.username === 'string' && typeof parsed.password === 'string') {
-      const migrated: SavedCredential[] = [{ host: fallbackHost, username: parsed.username, password: parsed.password }];
-      persistSavedCredentials(migrated);
-      return migrated;
+    if (typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const legacy = parsed as Partial<SavedCredential>;
+      if (typeof legacy.username === 'string' && typeof legacy.password === 'string') {
+        const migrated: SavedCredential[] = [{ host: fallbackHost, username: legacy.username, password: legacy.password }];
+        persistSavedCredentials(migrated);
+        return migrated;
+      }
     }
     if (!Array.isArray(parsed)) return [];
-    return parsed
+    return (parsed as Partial<SavedCredential>[])
       .filter((c): c is SavedCredential => !!c && typeof c.username === 'string' && typeof c.password === 'string')
       .map(c => ({
         host: typeof c.host === 'string' && c.host ? c.host : fallbackHost,
@@ -67,9 +101,9 @@ const loadSavedCredentials = (fallbackHost: string): SavedCredential[] => {
 
 const persistSavedCredentials = (list: SavedCredential[]) => {
   if (list.length === 0) {
-    localStorage.removeItem(REMEMBERED_CREDENTIALS_KEY);
+    credStore.delete(REMEMBERED_CREDENTIALS_KEY);
   } else {
-    localStorage.setItem(REMEMBERED_CREDENTIALS_KEY, JSON.stringify(list));
+    credStore.set(REMEMBERED_CREDENTIALS_KEY, list);
   }
 };
 
@@ -95,29 +129,40 @@ const LoginPage: React.FC = () => {
   // 当前选中的后端地址：以 store 中的 backendHost 为准
   const selectedHost = config.backendHost || '';
 
-  // 挂载时加载已登录过的主机列表
+  // 挂载时加载已登录过的主机列表（需等 SyncedStore 从磁盘预热完成）
   useEffect(() => {
-    setRememberedHosts(loadRememberedHosts());
+    let cancelled = false;
+    void credStore.init().then(() => {
+      if (cancelled) return;
+      migrateLegacyCredentials();
+      setRememberedHosts(loadRememberedHosts());
+    });
+    return () => { cancelled = true; };
   }, []);
 
   // 配置加载完成后读取记住的账号（旧格式迁移到当前 host），
   // 并确保当前 host 一定出现在主机列表里（否则选择器里看不到当前项）
   useEffect(() => {
     if (!loaded) return;
-    const current = config.backendHost || '';
-    setRememberedHosts(prev => {
-      if (current && !prev.includes(current)) {
-        persistRememberedHosts([current, ...prev]);
-        return [current, ...prev];
+    let cancelled = false;
+    void credStore.init().then(() => {
+      if (cancelled) return;
+      const current = config.backendHost || '';
+      setRememberedHosts(prev => {
+        if (current && !prev.includes(current)) {
+          persistRememberedHosts([current, ...prev]);
+          return [current, ...prev];
+        }
+        return prev;
+      });
+      const list = loadSavedCredentials(current);
+      setSavedCredentials(list);
+      if (list.length > 0) {
+        setRemember(true);
+        setAccountDropdownOpen(true);
       }
-      return prev;
     });
-    const list = loadSavedCredentials(current);
-    setSavedCredentials(list);
-    if (list.length > 0) {
-      setRemember(true);
-      setAccountDropdownOpen(true);
-    }
+    return () => { cancelled = true; };
   }, [loaded, config.backendHost]);
 
   useEffect(() => {

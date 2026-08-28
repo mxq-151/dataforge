@@ -5,11 +5,12 @@
 import { useState, useCallback, useRef, useEffect, type MutableRefObject } from 'react';
 import type { OpencodeClient, MessageEntry, Part, Todo, ModalRequest, LogEntry, RetryState } from '../../types/opencode-backend';
 import { normalizePath, trimTrailingSlash } from '../../utils/pathUtils';
+import { useSseConnection, RECOVERY_FALLBACK_MS } from './useSseConnection';
 
 /** 过滤掉不需要处理的噪音事件
  *
- * 注意：server.heartbeat 不在此列表中。心跳事件用于更新 lastEventTimeRef，
- * 作为连接健康检测的依据（见 subscribe 中的心跳超时检测）。
+ * 注意：server.heartbeat 不在此列表中。心跳事件用于刷新「最后活动时间」，
+ * 作为连接健康检测的依据（见 useSseConnection 中的心跳看护）。
  *
  * SDK 1.18.x 变化：原 session.next / session.agent / session.model.switched
  * 已拆分为 session.next.agent.switched / session.next.model.switched /
@@ -173,20 +174,10 @@ export function useOpencodeEvents(
 
   const abortRef = useRef<AbortController | null>(null);
 
-  // ── 连接健康检测 ──
-  // 记录最后一次收到任何 SSE 事件（含心跳）的时间戳。
-  // subscribe 中的心跳超时定时器会定期检查此值，超过 HEARTBEAT_TIMEOUT_MS
-  // 未收到任何事件时主动 abort 当前 SSE 流并重连，避免在 LLM 生成长思考内容
-  // 期间连接被中间网络层/服务端静默关闭后前端长时间无感知。
-  const lastEventTimeRef = useRef<number>(Date.now());
-
-  // 心跳超时标记：setInterval 与 for await 之间的通信桥梁。
-  // setInterval 检测到超时后置为 true，for await 下一次迭代检查后重置。
-  const heartbeatAbortFlagRef = useRef<boolean>(false);
-
-  // 重连恢复定时器集合：重连成功后如果 busy=true，设置 15s 超时兜底清除 busy。
-  // 每次 SSE 流断开时清理上一批未触发的定时器，避免内存泄漏。
-  const recoveryTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  // ── SSE 传输层（心跳健康检测、重连退避、恢复定时器）──
+  // 这些是纯机械的定时器/标记位逻辑，与业务无关，已抽到 useSseConnection：
+  // 记录最后一次收到事件的时间戳、超时置位、定时器的登记与批量清理。
+  const sse = useSseConnection();
 
   // ── 内部 user 消息过滤 ──
   // OpenCode 的 sub-agent 工具会在主 session 推送 role:"user" 的消息，
@@ -319,11 +310,8 @@ export function useOpencodeEvents(
     knownMessageIdsRef.current.clear();
     knownPartIdsRef.current.clear();
     // 清理重连恢复定时器
-    for (const t of recoveryTimersRef.current) {
-      clearTimeout(t);
-    }
-    recoveryTimersRef.current = [];
-  }, []);
+    sse.clearRecoveryTimers();
+  }, [sse]);
 
   /** 清除 busy 状态（用于 sendInterrupt 兜底，SSE 流可能已断开收不到 idle 事件） */
   const clearBusy = useCallback(() => {
@@ -549,48 +537,23 @@ export function useOpencodeEvents(
     const normalizedDir = directory ? trimTrailingSlash(normalizePath(directory)) : null;
 
     let filteredCount = 0;
-    const RECONNECT_DELAY_MS = 1000;
-    const MAX_RECONNECT_DELAY_MS = 30000;
-    // 心跳超时：超过此时间未收到任何事件（含心跳）时主动 abort 并重连。
-    // 默认 90s，足以覆盖 LLM 生成长思考内容时的正常间隔，又能及时检测被静默关闭的连接。
-    const HEARTBEAT_TIMEOUT_MS = 90_000;
-    const HEARTBEAT_CHECK_MS = 15_000;
 
     const run = async () => {
-      let reconnectDelay = RECONNECT_DELAY_MS;
+      let reconnectDelay = sse.initialReconnectDelay;
 
       while (!abortController.signal.aborted) {
-        // 心跳超时定时器：定期检查 lastEventTimeRef，超时则主动 abort 当前流
-        lastEventTimeRef.current = Date.now();
-        const heartbeatTimer = setInterval(() => {
-          const elapsed = Date.now() - lastEventTimeRef.current;
-          if (elapsed > HEARTBEAT_TIMEOUT_MS && !abortController.signal.aborted) {
-            console.warn(`[opencode-events] 心跳超时 ${elapsed}ms，主动断开 SSE 流以触发重连`);
-            // abort 当前 SSE 流，让 for await 退出进入重连逻辑
-            // 注意：不能 abortController.abort()，否则会跳出整个重连循环
-            // 这里通过 result.stream.return() 或抛出异常来中断当前流
-            // 由于 SDK 的 stream 是 async iterator，我们用 abort 一个独立的 controller
-            // 简化做法：直接抛异常让 catch 处理
-            try {
-              // 触发 for await 退出：调用 stream 的 return 方法
-              // 但 stream 引用在 for await 作用域内，这里用自定义事件通知
-              heartbeatAbortFlagRef.current = true;
-            } catch (e) {
-              // ignore
-            }
-          }
-        }, HEARTBEAT_CHECK_MS);
-
-        // 用 ref 标记心跳超时，for await 内部检查
-        // （避免 setInterval 闭包与 for await 作用域通信复杂）
-        // 已在上方设置 heartbeatAbortFlagRef
+        // 心跳看护：定期检查最后活动时间，超时则置位标记，由 for await 主动跳出重连
+        // （不能 abortController.abort()，否则会跳出整个重连循环）
+        const stopHeartbeatWatch = sse.startHeartbeatWatch(
+          () => !abortController.signal.aborted,
+        );
 
         try {
           // v2 SDK: client.global.event() 返回 ServerSentEventsResult<GlobalEvent>
           // 其中 GlobalEvent = { directory, payload: Event }
           const result = await client.global.event();
           // 连接成功，重置退避延迟
-          reconnectDelay = RECONNECT_DELAY_MS;
+          reconnectDelay = sse.initialReconnectDelay;
 
           // ── 重连成功后的恢复处理 ──
           // 1. 立即 flushDeltas：将 accumDelta 中累积的文本同步到 part.text，
@@ -626,16 +589,15 @@ export function useOpencodeEvents(
                   flushDeltas();
                 }
               }
-            }, 15_000);
-            // 退出当前作用域时清理定时器（finally 块的 clearInterval 不会清理这个）
-            recoveryTimersRef.current.push(recoveryTimer);
+            }, RECOVERY_FALLBACK_MS);
+            // 退出当前作用域时清理定时器（finally 的停止心跳看护不会清理这个）
+            sse.trackRecoveryTimer(recoveryTimer);
           }
 
           for await (const globalEvent of result.stream) {
             if (abortController.signal.aborted) break;
             // 心跳超时标记：主动跳出 for await，进入重连
-            if (heartbeatAbortFlagRef.current) {
-              heartbeatAbortFlagRef.current = false;
+            if (sse.consumeHeartbeatTimeout()) {
               console.warn('[opencode-events] 心跳超时，主动中断当前 SSE 流');
               break;
             }
@@ -654,7 +616,7 @@ export function useOpencodeEvents(
 
           // for await 正常退出（流结束，非 abort）
           if (abortController.signal.aborted) {
-            clearInterval(heartbeatTimer);
+            stopHeartbeatWatch();
             break;
           }
 
@@ -694,7 +656,7 @@ export function useOpencodeEvents(
           }
         } catch (err: any) {
           if (abortController.signal.aborted) {
-            clearInterval(heartbeatTimer);
+            stopHeartbeatWatch();
             return;
           }
 
@@ -711,12 +673,9 @@ export function useOpencodeEvents(
           setBusyLabel(undefined);
           setRetry(null);
         } finally {
-          clearInterval(heartbeatTimer);
+          stopHeartbeatWatch();
           // 清理重连恢复定时器（无论是否触发，都不再需要）
-          for (const t of recoveryTimersRef.current) {
-            clearTimeout(t);
-          }
-          recoveryTimersRef.current = [];
+          sse.clearRecoveryTimers();
         }
 
         // 退避延迟后重连（指数退避，上限 30s）
@@ -729,7 +688,7 @@ export function useOpencodeEvents(
             resolve();
           }, { once: true });
         });
-        reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY_MS);
+        reconnectDelay = sse.nextBackoffDelay(reconnectDelay);
 
         // 重连成功后会进入下一次 while 循环，在 client.global.event() 成功后
         // 立即 flushDeltas（见上方"重连成功后的恢复处理"），
@@ -754,7 +713,7 @@ export function useOpencodeEvents(
       abortController.abort();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [addLog]);
+  }, [addLog, sse]);
 
   /**
    * 检查并过滤内部 user 消息
@@ -834,8 +793,8 @@ export function useOpencodeEvents(
     const type = event?.type as string;
     if (!type) return;
     // 任何事件（含心跳）都更新最后活动时间，用于连接健康检测
-    lastEventTimeRef.current = Date.now();
-    // 心跳事件仅用于刷新 lastEventTimeRef，不需要进一步处理
+    sse.noteActivity();
+    // 心跳事件仅用于刷新活动时间，不需要进一步处理
     if (type === 'server.heartbeat') return;
     if (IGNORED_EVENTS.has(type)) return;
     const props = event.properties || {};
@@ -1406,12 +1365,9 @@ export function useOpencodeEvents(
         deltaFlushTimerRef.current = null;
       }
       // 清理重连恢复定时器
-      for (const t of recoveryTimersRef.current) {
-        clearTimeout(t);
-      }
-      recoveryTimersRef.current = [];
+      sse.clearRecoveryTimers();
     };
-  }, []);
+  }, [sse]);
 
   return {
     messages,

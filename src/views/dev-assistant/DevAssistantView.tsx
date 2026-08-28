@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import AIPanel from '../../components/ai/AIPanel';
 import EditorArea from '../../components/editor/EditorArea';
-import type { EditorAreaHandle } from '../../components/editor/EditorArea';
+import type { EditorAreaHandle } from '../../types';
 import ExplorerPanel from './ExplorerPanel';
 import SubmitToSchedulerModal from './SubmitToSchedulerModal';
 import ExtractMetricsModal from './ExtractMetricsModal';

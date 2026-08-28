@@ -13,7 +13,7 @@ import * as net from 'node:net';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { readStoreJSON } from './store';
-import { getCompileServerEndpoint } from './compileServer';
+import { getCompileServerEndpoint } from './serviceEndpoints';
 import { emitToRenderer, getMainWindow } from '../eventBus';
 
 const SERVER_PORT = 4096;

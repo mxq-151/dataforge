@@ -266,6 +266,27 @@ export interface OpenCodeSessionState {
   todos: Todo[];
 }
 
+/**
+ * AI 改动的文件变更项。
+ *
+ * 原定义在 components/ai/FileReviewPanel.tsx，但 hooks/opencode/useOpencodeClient
+ * 需要它，导致 hooks 层反向依赖具体 UI 组件。下沉到 types 供各层共用，
+ * FileReviewPanel 仍 re-export 以保持既有引用可用。
+ */
+export interface FileChange {
+  filePath: string;
+  /** diff 内容（unified format） */
+  patch?: string;
+  additions: number;
+  deletions: number;
+  type: 'edit' | 'write' | 'apply_patch';
+  status: 'pending' | 'approved' | 'rejected';
+  /** 变更所属的消息 ID（用于 SDK revert API） */
+  messageID?: string;
+  /** 变更所属的 part ID（用于 SDK revert API，支持单 part 级别回滚） */
+  partID?: string;
+}
+
 // ─── 默认 POM 模板 ───────────────────────────────────────────────
 
 export const DEFAULT_POM_TEMPLATE = `<?xml version="1.0" encoding="UTF-8"?>

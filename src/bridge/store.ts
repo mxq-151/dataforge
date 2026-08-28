@@ -41,6 +41,16 @@ export class Store {
     return this.data[key] as T | undefined;
   }
 
+  /**
+   * 返回当前全部数据的浅拷贝快照。
+   * 供需要一次性预热本地缓存的调用方（如 SyncedStore）使用；
+   * 返回副本以免外部改动绕过持久化直接污染内部数据。
+   */
+  async snapshot(): Promise<Record<string, unknown>> {
+    await this.ensureLoaded();
+    return { ...this.data };
+  }
+
   async set(key: string, value: unknown): Promise<void> {
     this.data[key] = value;
     // fire-and-forget 持久化，失败静默

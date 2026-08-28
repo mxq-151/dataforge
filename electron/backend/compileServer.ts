@@ -17,6 +17,7 @@ import { randomUUID } from 'node:crypto';
 import { compileJavaScala } from './compile';
 import { validatePathWithinWorkspace } from './maven';
 import { readStoreJSON } from './store';
+import { setCompileEndpointProvider } from './serviceEndpoints';
 
 let server: http.Server | null = null;
 let serverPort = 0;
@@ -29,6 +30,9 @@ export function getCompileServerEndpoint(): { port: number; token: string } | nu
 
 export function startCompileServer(): void {
   if (server) return;
+  // 登记端点提供者：其他模块经 serviceEndpoints 读取，不再直接 import 本模块。
+  // 注册的是函数而非快照，因此端口在下面的 listen 回调里才确定也无妨。
+  setCompileEndpointProvider(getCompileServerEndpoint);
   serverToken = randomUUID();
   server = http.createServer((req, res) => {
     void route(req, res).catch((e) => {
@@ -54,6 +58,7 @@ export function stopCompileServer(): void {
   }
   serverPort = 0;
   serverToken = '';
+  setCompileEndpointProvider(null);
 }
 
 function sendJson(res: http.ServerResponse, status: number, body: unknown): void {
