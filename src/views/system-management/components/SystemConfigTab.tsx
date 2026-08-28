@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Plus, Edit3, Trash2, Plug, Database, HardDrive, Package, RefreshCw } from 'lucide-react';
-import type { DataSource } from '../../../api/datasource';
+import type { DataSource, DatasourceTypeMeta } from '../../../api/datasource';
 import { fetchDatasourceList, fetchDatasourceTypes, fetchConnectionTypes, createDatasource, updateDatasource, deleteDatasource, syncDatasourceMetadata, fetchDatabasesByDatasourceConfig, testDatasourceConnectionByConfig } from '../../../api/datasource';
 import type { StorageConfig } from '../../../api/fileExplorer';
 import { fileExplorerApi } from '../../../api/fileExplorer';
@@ -21,14 +21,8 @@ const DATASOURCE_TYPE_MAP: Record<string, string> = {
   elasticsearch: 'Elasticsearch', starrocks: 'StarRocks', postgresql: 'PostgreSQL', hive: 'Hive',
 };
 
-// 存储引擎类型列表（与后端 StorageEngineType 枚举名一致，大写）
-const STORAGE_ENGINE_TYPES: string[] = ['HIVE', 'DORIS', 'STARROCKS', 'HBASE', 'MYSQL', 'ES', 'CLICKHOUSE', 'HUDI', 'ICEBERG'];
-const STORAGE_ENGINE_NAME_MAP: Record<string, string> = {
-  HIVE: 'Hive', DORIS: 'Doris', STARROCKS: 'StarRocks', HBASE: 'HBase',
-  MYSQL: 'MySQL', ES: 'Elasticsearch', CLICKHOUSE: 'ClickHouse',
-  HUDI: 'Apache Hudi', ICEBERG: 'Apache Iceberg',
-};
-
+// 存储引擎已合并为统一的 DatasourceType，由 /types 返回的 exec/store 描述「计算 / 存储」能力，
+// 不再有独立的 storageEngine 字段（见 frontend-integration-changes.md）。
 const SCOPE_MAP: Record<string, string> = { compile: '编译', runtime: '运行时', provided: '提供', test: '测试' };
 const SOURCE_MAP: Record<string, string> = { system: '系统内置', custom: '自定义' };
 
@@ -59,11 +53,11 @@ const SystemConfigTab: React.FC = () => {
   const [dsTotal, setDsTotal] = useState(0);
   const [dsPage, setDsPage] = useState(1);
   const [dsLoading, setDsLoading] = useState(false);
-  const [dsTypes, setDsTypes] = useState<string[]>([]);
+  const [dsTypes, setDsTypes] = useState<DatasourceTypeMeta[]>([]);
   const [connectionTypes, setConnectionTypes] = useState<string[]>([]);
   const [dsDialogOpen, setDsDialogOpen] = useState(false);
   const [dsDialogTitle, setDsDialogTitle] = useState('新增数据源');
-  const [dsForm, setDsForm] = useState<DataSourceFormData>({ datasourceName: '', datasourceType: '', connectionType: '', storageEngine: '', url: '', databaseName: [], username: '', password: '', extraParams: '', description: '' });
+  const [dsForm, setDsForm] = useState<DataSourceFormData>({ datasourceName: '', datasourceType: '', connectionType: '', url: '', databaseName: [], username: '', password: '', extraParams: '', description: '' });
   // 可访问数据库选择模态（从列表"可访问数据库"列打开）
   const [availableDatabasesFromApi, setAvailableDatabasesFromApi] = useState<string[]>([]);
   const [loadingDatabases, setLoadingDatabases] = useState(false);
@@ -209,7 +203,7 @@ const SystemConfigTab: React.FC = () => {
 
   const handleDsAdd = () => {
     setDsDialogTitle('新增数据源');
-    setDsForm({ datasourceName: '', datasourceType: '', connectionType: '', storageEngine: '', url: '', databaseName: [], username: '', password: '', extraParams: '', description: '' });
+    setDsForm({ datasourceName: '', datasourceType: '', connectionType: '', url: '', databaseName: [], username: '', password: '', extraParams: '', description: '' });
     setDsTestStatus('idle');
     setDsTestMessage('');
     setDsDialogOpen(true);
@@ -217,16 +211,42 @@ const SystemConfigTab: React.FC = () => {
 
   const handleDsEdit = (row: DataSource) => {
     setDsDialogTitle('编辑数据源');
-    setDsForm({ id: row.id, datasourceName: row.datasourceName, datasourceType: row.datasourceType, connectionType: row.connectionType || '', storageEngine: row.storageEngine, url: row.url, databaseName: row.databaseName || [], username: row.username, password: '', extraParams: row.extraParams || '', description: row.description });
+    setDsForm({ id: row.id, datasourceName: row.datasourceName, datasourceType: row.datasourceType, connectionType: row.connectionType || '', url: row.url, databaseName: row.databaseName || [], username: row.username, password: '', extraParams: row.extraParams || '', description: row.description });
     setDsTestStatus('idle');
     setDsTestMessage('');
     setDsDialogOpen(true);
   };
 
+  // 由 /types 富结构构建 code → 元数据 的映射，用于渲染「计算/存储」能力标签
+  const dsTypeMetaMap = useMemo(() => {
+    const map: Record<string, DatasourceTypeMeta> = {};
+    for (const t of dsTypes) map[t.code] = t;
+    return map;
+  }, [dsTypes]);
+
+  const getTypeDisplayName = (code?: string): string => {
+    if (!code) return '请选择类型';
+    return DATASOURCE_TYPE_MAP[code] || dsTypeMetaMap[code]?.description || code;
+  };
+
+  /** 依据 datasourceType 的 exec/store 渲染「可计算 / 可存储」能力标签 */
+  const renderCapability = (datasourceType?: string): React.ReactNode => {
+    if (!datasourceType) return '-';
+    const meta = dsTypeMetaMap[datasourceType];
+    if (!meta) return '-';
+    return (
+      <div className="sys-mgmt__capability">
+        {meta.exec && <span className="sys-mgmt__tag sys-mgmt__tag--success">可计算</span>}
+        {meta.store && <span className="sys-mgmt__tag sys-mgmt__tag--info">可存储</span>}
+        {!meta.exec && !meta.store && <span className="sys-mgmt__tag">其他</span>}
+      </div>
+    );
+  };
+
   // 编辑模态"测试连接"：基于当前表单内容测试连接
   const handleDsFormTest = async () => {
-    if (!dsForm.datasourceType || !dsForm.connectionType || !dsForm.storageEngine || !dsForm.url || !dsForm.username || !dsForm.password) {
-      toast.warning('请先填写必填项（类型、连接方式、存储引擎、连接URL、用户名、密码）');
+    if (!dsForm.datasourceType || !dsForm.connectionType || !dsForm.url || !dsForm.username || !dsForm.password) {
+      toast.warning('请先填写必填项（类型、连接方式、连接URL、用户名、密码）');
       return;
     }
     setDsTestStatus('testing');
@@ -275,7 +295,7 @@ const SystemConfigTab: React.FC = () => {
   };
 
   const handleDsSubmit = async () => {
-    if (!dsForm.datasourceName || !dsForm.datasourceType || !dsForm.connectionType || !dsForm.storageEngine || !dsForm.url || !dsForm.username || !dsForm.password) { toast.warning('请填写必填项（数据源名称、类型、连接方式、存储引擎、连接URL、用户名、密码）'); return; }
+    if (!dsForm.datasourceName || !dsForm.datasourceType || !dsForm.connectionType || !dsForm.url || !dsForm.username || !dsForm.password) { toast.warning('请填写必填项（数据源名称、类型、连接方式、连接URL、用户名、密码）'); return; }
     // 测试连接未通过不允许保存
     if (dsTestStatus !== 'success') {
       toast.warning('请先进行连接测试，测试通过后方可保存');
@@ -424,16 +444,16 @@ const SystemConfigTab: React.FC = () => {
           </div>
           <div className="sys-mgmt__table-wrap">
             <table className="sys-mgmt__table">
-              <thead><tr><th>数据源名称</th><th>类型</th><th>连接方式</th><th>存储引擎</th><th>连接地址</th><th>可访问数据库</th><th>状态</th><th>最后测试</th><th>操作</th></tr></thead>
+              <thead><tr><th>数据源名称</th><th>类型</th><th>连接方式</th><th>能力</th><th>连接地址</th><th>可访问数据库</th><th>状态</th><th>最后测试</th><th>操作</th></tr></thead>
               <tbody>
                 {dsLoading ? <tr><td colSpan={9} className="sys-mgmt__table-empty">加载中...</td></tr> :
                 dsList.length === 0 ? <tr><td colSpan={9} className="sys-mgmt__table-empty">暂无数据</td></tr> :
                 dsList.map(row => (
                   <tr key={row.id}>
                     <td>{row.datasourceName}</td>
-                    <td><span className="sys-mgmt__tag">{DATASOURCE_TYPE_MAP[row.datasourceType || ''] || row.datasourceType}</span></td>
+                    <td><span className="sys-mgmt__tag">{getTypeDisplayName(row.datasourceType)}</span></td>
                     <td><span className="sys-mgmt__tag sys-mgmt__tag--info">{CONNECTION_TYPE_MAP[row.connectionType || ''] || row.connectionType || '-'}</span></td>
-                    <td>{row.storageEngine ? <span className="sys-mgmt__tag">{STORAGE_ENGINE_NAME_MAP[row.storageEngine] || row.storageEngine}</span> : '-'}</td>
+                    <td>{renderCapability(row.datasourceType)}</td>
                     <td className="sys-mgmt__td-ellipsis" title={row.url}>{row.url || '-'}</td>
                     <td>
                       <button
@@ -540,10 +560,12 @@ const SystemConfigTab: React.FC = () => {
             <div className="sys-mgmt__modal-body">
               <div className="sys-mgmt__form-group"><label>数据源名称 <span className="sys-mgmt__required">*</span></label><input className="sys-mgmt__input" value={dsForm.datasourceName || ''} onChange={e => setDsForm(f => ({ ...f, datasourceName: e.target.value }))} placeholder="请输入数据源名称" /></div>
               <div className="sys-mgmt__form-row">
-                <div className="sys-mgmt__form-group"><label>类型 <span className="sys-mgmt__required">*</span></label><select className="sys-mgmt__select" value={dsForm.datasourceType || ''} onChange={e => setDsForm(f => ({ ...f, datasourceType: e.target.value }))}><option value="">请选择类型</option>{dsTypes.map(t => <option key={t} value={t}>{DATASOURCE_TYPE_MAP[t] || t}</option>)}</select></div>
+                <div className="sys-mgmt__form-group"><label>类型 <span className="sys-mgmt__required">*</span></label><select className="sys-mgmt__select" value={dsForm.datasourceType || ''} onChange={e => setDsForm(f => ({ ...f, datasourceType: e.target.value }))}><option value="">请选择类型</option>{dsTypes.map(t => <option key={t.code} value={t.code}>{getTypeDisplayName(t.code)}</option>)}</select></div>
                 <div className="sys-mgmt__form-group"><label>连接方式 <span className="sys-mgmt__required">*</span></label><select className="sys-mgmt__select" value={dsForm.connectionType || ''} onChange={e => setDsForm(f => ({ ...f, connectionType: e.target.value }))}><option value="">请选择连接方式</option>{connectionTypes.map(t => <option key={t} value={t}>{CONNECTION_TYPE_MAP[t] || t}</option>)}</select></div>
               </div>
-              <div className="sys-mgmt__form-group"><label>存储引擎 <span className="sys-mgmt__required">*</span></label><select className="sys-mgmt__select" value={dsForm.storageEngine || ''} onChange={e => setDsForm(f => ({ ...f, storageEngine: e.target.value }))}><option value="">请选择存储引擎</option>{STORAGE_ENGINE_TYPES.map(t => <option key={t} value={t}>{STORAGE_ENGINE_NAME_MAP[t] || t}</option>)}</select></div>
+              {dsForm.datasourceType && dsTypeMetaMap[dsForm.datasourceType] && (
+                <div className="sys-mgmt__form-group"><label>能力</label>{renderCapability(dsForm.datasourceType)}</div>
+              )}
               <div className="sys-mgmt__form-group"><label>连接URL <span className="sys-mgmt__required">*</span></label><input className="sys-mgmt__input" maxLength={255} value={dsForm.url || ''} onChange={e => setDsForm(f => ({ ...f, url: e.target.value }))} placeholder="请输入连接URL" /></div>
               <div className="sys-mgmt__form-row">
                 <div className="sys-mgmt__form-group"><label>用户名 <span className="sys-mgmt__required">*</span></label><input className="sys-mgmt__input" value={dsForm.username || ''} onChange={e => setDsForm(f => ({ ...f, username: e.target.value }))} placeholder="请输入用户名" /></div>

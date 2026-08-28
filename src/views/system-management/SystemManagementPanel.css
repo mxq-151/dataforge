@@ -193,6 +193,13 @@
   color: #cccccc;
 }
 
+/* 「可计算 / 可存储」能力标签容器 */
+.sys-mgmt__capability {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .sys-mgmt__tag--success {
   background-color: #1e4d1e;
   color: #89d185;

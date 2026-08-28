@@ -1,12 +1,24 @@
 import { request } from './index';
 import type { ApiResponse, PageResult } from './types';
 
+/**
+ * 统一的数据源类型元数据（DatasourceTypeMetaVO）。
+ * EngineType 与 StorageEngineType 已合并为 DatasourceType，
+ * 通过 exec / store / language 描述能力。
+ */
+export interface DatasourceTypeMeta {
+  code: string;
+  description?: string;
+  exec: boolean;
+  store: boolean;
+  language: string[];
+}
+
 export interface DataSource {
   id: number;
   datasourceName: string;
   datasourceType?: string;
   connectionType?: string;
-  storageEngine?: string;
   url?: string;
   databaseName?: string[];
   username?: string;
@@ -73,11 +85,22 @@ export const fetchDatasourceList = (current = 1, size = 10) =>
     params: { current: String(current), size: String(size) },
   });
 
+/** /types 现返回富结构对象数组（DatasourceTypeMetaVO），含 exec/store/language */
 export const fetchDatasourceTypes = () =>
-  request<ApiResponse<string[]>>('/api/devops/datasource/types');
+  request<ApiResponse<DatasourceTypeMeta[]>>('/api/devops/datasource/types');
 
 export const fetchConnectionTypes = () =>
   request<ApiResponse<string[]>>('/api/devops/datasource/connection-types');
+
+/** 当前已注册执行引擎列表（GET /devops/execution/engines），结构与 /types 一致 */
+export const fetchExecutionEngines = () =>
+  request<ApiResponse<DatasourceTypeMeta[]>>('/api/devops/execution/engines');
+
+/** 校验「引擎 + 语言」组合是否可执行（GET /devops/execution/engines/supported） */
+export const checkExecutionSupported = (engineCode: string, codeType: string) =>
+  request<ApiResponse<boolean>>('/api/devops/execution/engines/supported', {
+    params: { engineCode, codeType },
+  });
 
 export const createDatasource = (data: Partial<DataSource>) =>
   request<ApiResponse<void>>('/api/devops/datasource', {
