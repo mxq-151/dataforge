@@ -1,44 +1,10 @@
 import { useState, useCallback, useEffect } from 'react';
 import { FileNode } from '../types';
 import { generateId, generateFileHeader } from '../utils';
-import { isWindows as checkIsWindows } from '../utils/pathUtils';
-import { homeDir } from '../bridge/path';
 
-const getPlatformFallbackWorkspace = (): string => {
-  const isWin = checkIsWindows();
-  const isMac = navigator.platform?.includes('Mac') || navigator.userAgent.includes('Mac');
-
-  if (isWin) {
-    return 'C:\\Users\\.dataforge';
-  }
-
-  if (isMac) {
-    return '/Users/.dataforge';
-  }
-
-  return '/home/.dataforge';
-};
-
-const DEFAULT_WORKSPACE = getPlatformFallbackWorkspace();
-
-let cachedWorkspace: string | null = null;
-
-export const getPlatformDefaultWorkspace = async (): Promise<string> => {
-  if (cachedWorkspace) {
-    return cachedWorkspace;
-  }
-
-  try {
-    const home = await homeDir();
-    const separator = home.includes('\\') ? '\\' : '/';
-    cachedWorkspace = `${home}${separator}.dataforge`;
-    return cachedWorkspace;
-  } catch (error) {
-    console.warn('[FS] 无法获取用户主目录，使用回退方案:', error);
-    cachedWorkspace = DEFAULT_WORKSPACE;
-    return cachedWorkspace;
-  }
-};
+// 纯函数实现已迁至 utils/workspacePath，此处 re-export 保持既有引用可用
+export { getPlatformDefaultWorkspace } from '../utils/workspacePath';
+import { getPlatformDefaultWorkspace, DEFAULT_WORKSPACE } from '../utils/workspacePath';
 
 interface FileSystemAPI {
   readDir: (path: string) => Promise<any[]>;

@@ -1,15 +1,16 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
-import { invoke } from '../bridge/ipc';
 import { Store } from '../bridge/store';
 import { systemUserApi, CurrentUserInfo, SysRoleVO } from '../api/systemUser';
 import { getAuthToken, setAuthToken, setApiHost } from '../api/index';
 import { FIRST_LEVEL_MENU_CODES } from '../components/layout/ActivityBar';
-import { getPlatformDefaultWorkspace } from '../hooks/useFileSystem';
-import { joinPath, hostToDirName } from '../utils/pathUtils';
+import {
+  OPENCODE_CONFIG_STORE as STORE_FILE,
+  startOpencodeAfterLogin,
+  stopOpencode,
+} from '../services/opencodeLifecycle';
 
 const AUTH_CHECK_TIMEOUT = 10000;
 const CONFIG_STORAGE_KEY = 'dataforge_opencode_config';
-const STORE_FILE = 'opencode-config.json';
 
 // M2 修复：JWT 过期检查间隔（每 5 分钟检查一次）
 const TOKEN_EXPIRY_CHECK_INTERVAL = 5 * 60 * 1000;
@@ -205,28 +206,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     await setAuthToken(loginRes.data.token);
 
-    // 计算并写入基础工作目录（$HOME/.dataforge/{后端host}/），
-    // 确保 opencode 服务启动时 cwd 使用新规则（无需用户配置）
-    try {
-      const home = await getPlatformDefaultWorkspace();
-      const base = joinPath(home, hostToDirName(backendHost || ''));
-      const store = await Store.load(STORE_FILE);
-      const cfg = (await store.get<Record<string, unknown>>('config')) || {};
-      // 同步把本次登录使用的后端地址写入 store（await 后再触发 opencode 重启），
-      // 确保 start_opencode_after_login 拿到的是最新 host，DATAFORGE_API_HOST 随之更新。
-      await store.set('config', { ...cfg, cwd: base, backendHost: backendHost || cfg.backendHost });
-      await store.save();
-    } catch {
-      // 写入失败不阻塞登录流程
-    }
-
-    // 登录成功后尝试启动 opencode 服务
-    try {
-      await invoke<string>('start_opencode_after_login');
-    } catch (err) {
-      // 启动失败不阻塞登录流程，仅打印警告
-      console.warn('[opencode] 登录后启动失败:', err);
-    }
+    // 登录成功后启动 opencode sidecar（内部先同步工作区配置与 backendHost，再拉起进程）
+    await startOpencodeAfterLogin(backendHost || '');
 
     let infoRes;
     try {
@@ -247,7 +228,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = useCallback(() => {
     // M2 修复：登出时停止 opencode sidecar 进程（清理子进程环境中的凭据）
-    invoke('stop_opencode').catch(() => { /* sidecar 可能未运行，忽略 */ });
+    stopOpencode();
     setAuthToken(null);
     setUser(null);
   }, []);

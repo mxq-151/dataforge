@@ -1,3 +1,4 @@
+import { createTimeout, ensureOkWithBody } from './httpCore';
 import type {
   DolphinSchedulerResponse,
   DSWorkflowDefinition,
@@ -150,21 +151,17 @@ export function createRealDolphinSchedulerApi(apiUrl: string, token: string): Do
       reqBody = JSON.stringify(body);
     }
 
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 30000);
+    const { signal, dispose } = createTimeout();
 
     try {
       const res = await fetch(fullUrl, {
         method,
         headers,
-        signal: controller.signal,
+        signal,
         body: method !== 'GET' ? reqBody : undefined,
       });
 
-      if (!res.ok) {
-        const errorText = await res.text().catch(() => 'Unable to read error response');
-        throw new Error(`HTTP ${res.status}: ${res.statusText} - ${errorText.substring(0, 200)}`);
-      }
+      await ensureOkWithBody(res);
 
       const contentType = res.headers.get('content-type') || '';
       if (!contentType.includes('application/json')) {
@@ -174,10 +171,8 @@ export function createRealDolphinSchedulerApi(apiUrl: string, token: string): Do
 
       const jsonData = await res.json();
       return jsonData as T;
-    } catch (error) {
-      throw error;
     } finally {
-      clearTimeout(timer);
+      dispose();
     }
   };
 
@@ -554,25 +549,22 @@ export function createRealDolphinSchedulerApi(apiUrl: string, token: string): Do
         formData.append('file', data.file);
         formData.append('currentDir', data.currentDir);
 
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 120000);
+        // 上传资源耗时较长，放宽超时到 120s
+        const { signal, dispose } = createTimeout(120_000);
 
         try {
           const res = await fetch(`${baseUrl}/resources`, {
             method: 'POST',
             headers: { token: trimmedToken },
             body: formData,
-            signal: controller.signal,
+            signal,
           });
 
-          if (!res.ok) {
-            const errorText = await res.text().catch(() => 'Unable to read error response');
-            throw new Error(`HTTP ${res.status}: ${res.statusText} - ${errorText.substring(0, 200)}`);
-          }
+          await ensureOkWithBody(res);
 
           return await res.json();
         } finally {
-          clearTimeout(timer);
+          dispose();
         }
       },
 
@@ -597,25 +589,21 @@ export function createRealDolphinSchedulerApi(apiUrl: string, token: string): Do
           formData.append('description', data.description);
         }
 
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 30000);
+        const { signal, dispose } = createTimeout();
 
         try {
           const res = await fetch(`${baseUrl}/resources/directory`, {
             method: 'POST',
             headers: { token: trimmedToken },
             body: formData,
-            signal: controller.signal,
+            signal,
           });
 
-          if (!res.ok) {
-            const errorText = await res.text().catch(() => 'Unable to read error response');
-            throw new Error(`HTTP ${res.status}: ${res.statusText} - ${errorText.substring(0, 200)}`);
-          }
+          await ensureOkWithBody(res);
 
           return await res.json();
         } finally {
-          clearTimeout(timer);
+          dispose();
         }
       },
     },
@@ -627,11 +615,10 @@ export async function testDolphinSchedulerConnection(apiUrl: string, token: stri
     const baseUrl = apiUrl.replace(/\/+$/, '');
     const trimmedToken = token.trim();
     const url = `${baseUrl}/projects?pageSize=1&pageNo=1`;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 10000);
+    const { signal, dispose } = createTimeout(10_000);
     try {
       const res = await fetch(url, {
-        signal: controller.signal,
+        signal,
         headers: { token: trimmedToken },
       });
       if (!res.ok) {
@@ -643,7 +630,7 @@ export async function testDolphinSchedulerConnection(apiUrl: string, token: stri
       }
       return { success: false, message: data.msg || `API 返回错误码: ${data.code}` };
     } finally {
-      clearTimeout(timer);
+      dispose();
     }
   } catch (e: any) {
     if (e.name === 'AbortError') {

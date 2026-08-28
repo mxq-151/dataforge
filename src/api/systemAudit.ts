@@ -1,4 +1,5 @@
 import { request, getAuthToken, getApiHost } from './index';
+import { bearerHeader, ensureOk } from './httpCore';
 import type { ApiResponse, PageResult } from './types';
 
 export interface AuditLog {
@@ -114,11 +115,9 @@ export const systemAuditApi = {
 
     try {
       const res = await fetch(fetchUrl, {
-        headers: {
-          'Authorization': token ? `Bearer ${token}` : '',
-        },
+        headers: bearerHeader(token),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      ensureOk(res);
       const blob = await res.blob();
       const contentDisposition = res.headers.get('Content-Disposition');
       let filename = `audit_log_${new Date().toISOString().slice(0, 10)}.csv`;

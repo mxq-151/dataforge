@@ -1,4 +1,6 @@
 import { Store } from '../bridge/store';
+// httpCore 是零依赖纯工具模块（不反向依赖本文件），可安全引入
+import { buildQuery, createTimeout, statusMessage } from './httpCore';
 
 const API_CONFIG = {
   // 开发默认值：仅在用户未在登录页设置后端地址时作为 fallback，实际地址由用户在登录页配置
@@ -90,14 +92,7 @@ interface RequestOptions extends RequestInit {
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { params, ...init } = options;
 
-  let url = `${API_CONFIG.host}${path}`;
-  if (params) {
-    const qs = Object.entries(params)
-      .filter(([, v]) => v !== undefined && v !== '')
-      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
-      .join('&');
-    if (qs) url += `?${qs}`;
-  }
+  const url = `${API_CONFIG.host}${path}${buildQuery(params)}`;
 
   const timestamp = Date.now();
   const nonce = generateNonce();
@@ -118,28 +113,13 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), API_CONFIG.timeout);
+  const { signal, dispose } = createTimeout(API_CONFIG.timeout);
 
   try {
-    const res = await fetch(url, { ...init, headers, signal: controller.signal });
+    const res = await fetch(url, { ...init, headers, signal });
     if (!res.ok) {
       // L13 修复：不直接暴露 statusText（可能含服务器版本信息），映射为通用消息
-      const statusMessages: Record<number, string> = {
-        400: '请求参数错误',
-        401: '认证失败，请重新登录',
-        403: '无权限执行此操作',
-        404: '请求的资源不存在',
-        408: '请求超时',
-        409: '数据冲突',
-        413: '请求数据过大',
-        429: '请求过于频繁，请稍后再试',
-        500: '服务器内部错误',
-        502: '网关错误',
-        503: '服务暂不可用',
-        504: '网关超时',
-      };
-      let errMsg = statusMessages[res.status] || `请求失败 (HTTP ${res.status})`;
+      let errMsg = statusMessage(res.status);
       try {
         const body = await res.json();
         if (body.message) {
@@ -165,7 +145,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     }
     return data;
   } finally {
-    clearTimeout(timer);
+    dispose();
   }
 }
 

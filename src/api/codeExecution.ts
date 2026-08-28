@@ -1,4 +1,5 @@
 import { getApiHost, getAuthToken } from './index';
+import { bearerHeader, ensureOk } from './httpCore';
 import type { ApiResponse } from './types';
 
 export interface CodeExecutionRequest {
@@ -139,11 +140,7 @@ export const executeCode = async (body: CodeExecutionRequest, signal?: AbortSign
 
   const url = `${getApiHost()}/api/development/execution/execute`;
 
-  const headers: Record<string, string> = { ...extraHeaders };
-  const token = await getAuthToken();
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
+  const headers = bearerHeader(await getAuthToken(), extraHeaders);
 
   const res = await fetch(url, {
     method: 'POST',
@@ -152,25 +149,21 @@ export const executeCode = async (body: CodeExecutionRequest, signal?: AbortSign
     signal,
   });
 
-  if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+  ensureOk(res);
   return res.json();
 };
 
 export const cancelExecution = async (executionId: string): Promise<ApiResponse<boolean>> => {
   const url = `${getApiHost()}/api/development/execution/cancel?executionId=${encodeURIComponent(executionId)}`;
 
-  const headers: Record<string, string> = {};
-  const token = await getAuthToken();
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
+  const headers = bearerHeader(await getAuthToken());
 
   const res = await fetch(url, {
     method: 'POST',
     headers,
   });
 
-  if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+  ensureOk(res);
   return res.json();
 };
 
@@ -182,11 +175,7 @@ export const submitCode = async (body: CodeExecutionRequest, signal?: AbortSigna
 
   const url = `${getApiHost()}/api/development/execution/submit`;
 
-  const headers: Record<string, string> = { ...extraHeaders };
-  const token = await getAuthToken();
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
+  const headers = bearerHeader(await getAuthToken(), extraHeaders);
 
   const res = await fetch(url, {
     method: 'POST',
@@ -195,7 +184,7 @@ export const submitCode = async (body: CodeExecutionRequest, signal?: AbortSigna
     signal,
   });
 
-  if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+  ensureOk(res);
   return res.json();
 };
 
@@ -215,11 +204,7 @@ export const submitCodeWithJar = async (
 
   const url = `${getApiHost()}/api/development/execution/submit`;
 
-  const headers: Record<string, string> = {};
-  const token = await getAuthToken();
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
+  const headers = bearerHeader(await getAuthToken());
 
   const res = await fetch(url, {
     method: 'POST',
@@ -228,18 +213,14 @@ export const submitCodeWithJar = async (
     signal,
   });
 
-  if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+  ensureOk(res);
   return res.json();
 };
 
 const getExecutionResult = async (executionId: string, signal?: AbortSignal, extraHeaders?: Record<string, string>): Promise<ApiResponse<CodeExecutionResult>> => {
   const url = `${getApiHost()}/api/development/execution/result/${encodeURIComponent(executionId)}`;
 
-  const headers: Record<string, string> = { ...extraHeaders };
-  const token = await getAuthToken();
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
+  const headers = bearerHeader(await getAuthToken(), extraHeaders);
 
   const res = await fetch(url, {
     method: 'GET',
@@ -247,7 +228,7 @@ const getExecutionResult = async (executionId: string, signal?: AbortSignal, ext
     signal,
   });
 
-  if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+  ensureOk(res);
   return res.json();
 };
 
@@ -269,11 +250,7 @@ const getExecutionLogs = async (
 ): Promise<ApiResponse<ExecutionLogsResult>> => {
   const url = `${getApiHost()}/api/development/execution/logs/${encodeURIComponent(executionId)}?offset=${offset}`;
 
-  const headers: Record<string, string> = { ...extraHeaders };
-  const token = await getAuthToken();
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
+  const headers = bearerHeader(await getAuthToken(), extraHeaders);
 
   const res = await fetch(url, {
     method: 'GET',
@@ -281,7 +258,7 @@ const getExecutionLogs = async (
     signal,
   });
 
-  if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+  ensureOk(res);
   return res.json();
 };
 

@@ -431,15 +431,19 @@ const AppContent: React.FC = () => {
   // 未配置 gitRepoDirName 时，不建软链/不挂工作树，源码目录作为真实目录直接创建。
   useEffect(() => {
     if (!baseWorkspace || !loaded) return;
+    // bridge/fs 在 useOpencodeClient / useFileSystem / SubmitToSchedulerModal 中均为按需动态载入，
+    // 此处沿用动态引入，避免把 fs 模块静态打进主 chunk（否则上述懒加载会失效）。
+    const fsPromise = import('./bridge/fs');
     const ensureOne = async (project: ProjectInfo) => {
       const { gitProj, repoRoot } = projectDirs(project.projectCode);
       const pc = project.projectCode;
       const srcDir = joinPath(baseWorkspace, 'code', pc, 'src', 'main', 'java', pc);
       try {
-        await window.dataforge.fs('mkdir', { path: srcDir, recursive: true });
+        const { mkdir, symlink } = await fsPromise;
+        await mkdir(srcDir, { recursive: true });
         const hadRepo = !!repoRoot;
         if (repoRoot) {
-          await window.dataforge.fs('symlink', { linkPath: gitProj, target: srcDir });
+          await symlink(gitProj, srcDir);
           await ensureGitWorktree(repoRoot, srcDir, pc);
         }
         // git 拉取/挂载源码完成后，递增序列，通知文件浏览器重新刷新（首次进入常有竞态：浏览器先于拉取完成打开空目录）
@@ -451,7 +455,7 @@ const AppContent: React.FC = () => {
       }
     };
     // hostBase 是 opencode 进程校验/启动的工作目录，先确保存在
-    window.dataforge.fs('mkdir', { path: baseWorkspace, recursive: true }).catch(() => {});
+    void fsPromise.then(fs => fs.mkdir(baseWorkspace, { recursive: true })).catch(() => {});
     // 选择项目时同步建一次目录，避免 Provider 中的 opencode 后端先于软链启动
     if (selectedProject) void ensureOne(selectedProject);
     for (const project of Array.from(visitedProjects.values())) void ensureOne(project);

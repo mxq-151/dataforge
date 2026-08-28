@@ -54,3 +54,15 @@ export async function remove(path: string, options?: { recursive?: boolean }): P
 export async function rename(oldPath: string, newPath: string): Promise<void> {
   await window.dataforge.fs('rename', { oldPath, newPath });
 }
+
+/**
+ * 创建/修复软链 linkPath -> target（幂等）。
+ *
+ * - target 是数据真身，必须是真实目录；若它当前是软链（如翻转方向前的旧悬空链接），
+ *   主进程会先解除再重建为真实目录。
+ * - linkPath 已是指向 target 的软链：跳过；指向别处：解除后重建；
+ *   已是普通目录/文件：视为数据目录，保留不覆盖。
+ */
+export async function symlink(linkPath: string, target: string): Promise<void> {
+  await window.dataforge.fs('symlink', { linkPath, target });
+}

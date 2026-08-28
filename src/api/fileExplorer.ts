@@ -1,4 +1,5 @@
 import { request, getApiHost, getAuthToken } from './index';
+import { bearerHeader, ensureOk } from './httpCore';
 import type { ApiResponse, PageResult } from './types';
 
 export interface StorageConfig {
@@ -77,11 +78,7 @@ export const fileExplorerApi = {
     let url = `${getApiHost()}${API_BASE}/file/explorer/file/upload?storageType=${encodeURIComponent(storageType)}&path=${encodeURIComponent(path)}`;
     if (configId) url += `&configId=${configId}`;
 
-    const headers: Record<string, string> = {};
-    const token = await getAuthToken();
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
+    const headers = bearerHeader(await getAuthToken());
 
     const res = await fetch(url, {
       method: 'POST',
@@ -89,7 +86,7 @@ export const fileExplorerApi = {
       headers,
     });
 
-    if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    ensureOk(res);
     return res.json();
   },
 
@@ -102,14 +99,10 @@ export const fileExplorerApi = {
       .join('&');
 
     const url = `${getApiHost()}${API_BASE}/file/explorer/file/preview?${qs}`;
-    const headers: Record<string, string> = {};
-    const token = await getAuthToken();
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
+    const headers = bearerHeader(await getAuthToken());
     const res = await fetch(url, { headers });
 
-    if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    ensureOk(res);
     return res.blob();
   },
 
@@ -122,14 +115,10 @@ export const fileExplorerApi = {
       .join('&');
 
     const url = `${getApiHost()}${API_BASE}/file/explorer/file/download?${qs}`;
-    const headers: Record<string, string> = {};
-    const token = await getAuthToken();
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
+    const headers = bearerHeader(await getAuthToken());
     const res = await fetch(url, { headers });
 
-    if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    ensureOk(res);
     return res.blob();
   },
 

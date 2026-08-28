@@ -1,4 +1,5 @@
 import { fetch } from '../bridge/http';
+import { buildQuery, createTimeout, ensureOkWithBody } from './httpCore';
 import type {
   MarquezApi,
   Lineage,
@@ -20,34 +21,22 @@ export function createMarquezApi(apiUrl: string, extraHeaders?: Record<string, s
     } = {},
   ): Promise<T> => {
     const { method = 'GET', params } = options;
-    let fullUrl = `${baseUrl}${path}`;
+    const fullUrl = `${baseUrl}${path}${buildQuery(params)}`;
 
-    if (params) {
-      const qs = Object.entries(params)
-        .filter(([, v]) => v !== undefined && v !== null && v !== '')
-        .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
-        .join('&');
-      if (qs) fullUrl += `?${qs}`;
-    }
-
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 30000);
+    const { signal, dispose } = createTimeout();
 
     try {
       const res = await fetch(fullUrl, {
         method,
         headers: { Accept: 'application/json', ...extraHeaders },
-        signal: controller.signal,
+        signal,
       });
 
-      if (!res.ok) {
-        const errorText = await res.text().catch(() => 'Unable to read error response');
-        throw new Error(`HTTP ${res.status}: ${res.statusText} - ${errorText.substring(0, 200)}`);
-      }
+      await ensureOkWithBody(res);
 
       return (await res.json()) as T;
     } finally {
-      clearTimeout(timer);
+      dispose();
     }
   };
 
@@ -103,11 +92,10 @@ export function createMarquezApi(apiUrl: string, extraHeaders?: Record<string, s
 export async function testMarquezConnection(apiUrl: string): Promise<{ success: boolean; message: string }> {
   try {
     const baseUrl = apiUrl.replace(/\/+$/, '');
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 10000);
+    const { signal, dispose } = createTimeout(10_000);
     try {
       const res = await fetch(`${baseUrl}/api/v1/namespaces?limit=1`, {
-        signal: controller.signal,
+        signal,
         headers: { Accept: 'application/json' },
       });
       if (!res.ok) {
@@ -119,7 +107,7 @@ export async function testMarquezConnection(apiUrl: string): Promise<{ success: 
       }
       return { success: false, message: '响应格式不符合 Marquez API 规范' };
     } finally {
-      clearTimeout(timer);
+      dispose();
     }
   } catch (e: any) {
     if (e.name === 'AbortError') {
