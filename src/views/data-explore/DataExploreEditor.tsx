@@ -701,11 +701,16 @@ const DataExploreEditor: React.FC<DataExploreEditorProps> = ({
       const target = e.target as HTMLElement | null;
       if (!target) return;
       const editorArea = editorAreaRef.current;
-      if (editorArea && editorArea.contains(target)) {
-        e.preventDefault();
-        e.stopPropagation();
-        setContextMenu({ x: e.pageX, y: e.pageY });
-      }
+      if (!editorArea || !editorArea.contains(target)) return;
+
+      const sel = editorRef.current?.getSelection();
+      const hasSelection = sel && !sel.isEmpty();
+      // 仅当有选中文本时才弹自定义菜单（选中执行）；否则不拦截默认右键菜单
+      if (!hasSelection) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+      setContextMenu({ x: e.pageX, y: e.pageY });
     };
     document.addEventListener('contextmenu', handler, true); // capture 阶段
     return () => document.removeEventListener('contextmenu', handler, true);
