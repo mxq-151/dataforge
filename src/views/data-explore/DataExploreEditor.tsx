@@ -618,57 +618,6 @@ const DataExploreEditor: React.FC<DataExploreEditorProps> = ({
     }
   }, [monaco]);
 
-  const pointerIsDownInEditorRef = useRef(false);
-  const lastPointerIdRef = useRef(-1);
-
-  useEffect(() => {
-    const handleGlobalPointerDown = (e: PointerEvent) => {
-      const editorDom = editorRef.current?.getDomNode();
-      if (editorDom && editorDom.contains(e.target as Node) && e.pointerType === 'mouse' && e.button === 0) {
-        pointerIsDownInEditorRef.current = true;
-        lastPointerIdRef.current = e.pointerId;
-      }
-    };
-
-    const handleGlobalPointerUp = () => {
-      if (pointerIsDownInEditorRef.current) {
-        pointerIsDownInEditorRef.current = false;
-      }
-    };
-
-    const handleGlobalPointerMove = (e: PointerEvent) => {
-      if (!pointerIsDownInEditorRef.current) return;
-      if (e.pressure === 0 && e.pointerType === 'mouse') {
-        pointerIsDownInEditorRef.current = false;
-        try {
-          const editorDom = editorRef.current?.getDomNode();
-          const target = editorDom || document.body;
-          target.dispatchEvent(new PointerEvent('pointerup', {
-            bubbles: true,
-            cancelable: true,
-            pointerId: lastPointerIdRef.current,
-            pointerType: 'mouse',
-            button: 0,
-            buttons: 0,
-            clientX: e.clientX,
-            clientY: e.clientY,
-            screenX: e.screenX,
-            screenY: e.screenY,
-          }));
-        } catch {}
-      }
-    };
-
-    document.addEventListener('pointerdown', handleGlobalPointerDown, true);
-    document.addEventListener('pointerup', handleGlobalPointerUp, true);
-    document.addEventListener('pointermove', handleGlobalPointerMove, true);
-    return () => {
-      document.removeEventListener('pointerdown', handleGlobalPointerDown, true);
-      document.removeEventListener('pointerup', handleGlobalPointerUp, true);
-      document.removeEventListener('pointermove', handleGlobalPointerMove, true);
-    };
-  }, []);
-
   // ─── 右键菜单 ─────────────────────────────────────────────────
 
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);

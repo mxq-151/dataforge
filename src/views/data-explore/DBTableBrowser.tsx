@@ -9,6 +9,7 @@ import {
   Columns3,
 } from 'lucide-react';
 import { useDataSourceCache } from '../../contexts/DataSourceContext';
+import { getEngineTypeByDatasourceType } from '../../api/codeExecution';
 import './DBTableBrowser.css';
 
 interface DBTableBrowserProps {
@@ -43,11 +44,13 @@ const DBTableBrowser: React.FC<DBTableBrowserProps> = ({ dataSourceId, onTableSe
     });
   }, []);
 
-  const handleTableClick = useCallback((datasourceId: number, schemaName: string, tableName: string, tableKey: string, table?: any) => {
+  const handleTableClick = useCallback((datasourceId: number, schemaName: string, tableName: string, tableKey: string, table?: any, datasourceType?: string) => {
     console.log('Table clicked:', { datasourceId, schemaName, tableName, tableKey, table });
     setSelectedTable(tableKey);
     if (onTableDetail && table) {
-      onTableDetail(datasourceId, table.storageEngine || '', schemaName, tableName);
+      // 表字段未提供 storageEngine 时，回退到数据源的引擎类型
+      const storageEngine = table.storageEngine || getEngineTypeByDatasourceType(datasourceType);
+      onTableDetail(datasourceId, storageEngine, schemaName, tableName);
     } else {
       console.warn('No table or onTableDetail callback');
     }
@@ -182,7 +185,7 @@ const DBTableBrowser: React.FC<DBTableBrowserProps> = ({ dataSourceId, onTableSe
                             <div key={table.tableName} className="db-table-browser__table">
                               <div
                                 className={`db-table-browser__table-header ${isSelected ? 'db-table-browser__table-header--selected' : ''}`}
-                                onClick={() => handleTableClick(ds.id, actualDatabaseName, table.tableName, tableKey, table)}
+                                onClick={() => handleTableClick(ds.id, actualDatabaseName, table.tableName, tableKey, table, ds.datasourceType)}
                               >
                                 <span className="db-table-browser__toggle">
                                   {isExpanded ? <ChevronRight size={12} className="db-table-browser__toggle--expanded" /> : <ChevronRight size={12} />}

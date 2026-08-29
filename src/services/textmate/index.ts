@@ -325,6 +325,7 @@ export async function registerAllTextmateLanguages(_monaco?: unknown): Promise<v
 export function warmUpTextmate(): Promise<void> {
   if (warmUpReadyPromise) return warmUpReadyPromise; // 幂等，只预热一次
   warmUpReadyPromise = (async () => {
+    const abort = backgroundAbortToken();
     const t0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
     try {
       const monacoMod = await import('@codingame/monaco-vscode-editor-api');
