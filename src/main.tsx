@@ -5,6 +5,7 @@ import { initSecurity } from "./utils/security";
 import { loader } from "@monaco-editor/react";
 import { ensureVscodeApiStarted } from "./services/lsp/bootstrapVscode";
 import { registerAllTextmateLanguages } from "./services/textmate";
+import { startPeriodicReporting } from "./api/report";
 
 // 使用「真正的 VS Code 编辑器」(@codingame/monaco-vscode-editor-api) 作为 Monaco 实例，
 // 而不是自带一份轻量 monaco。这与 VS Code 完全一致，也是 monaco-languageclient
@@ -25,6 +26,9 @@ ensureVscodeApiStarted()
   });
 
 initSecurity();
+
+// 定时上报：启动立即上报一次，随后每小时上报一次（fire-and-forget，失败静默，不阻塞渲染）
+startPeriodicReporting();
 
 // 标记 WebKit（WKWebView / Safari）环境，供 CSS 做平台差异修复
 // （如选区高亮外溢到相邻行，见 EditorArea.css 的 .is-webkit 区块）。

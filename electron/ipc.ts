@@ -277,6 +277,17 @@ export function registerIpcHandlers(): void {
     writeStoreJSON(payload.file, payload.data),
   );
 
+  // 数据上报所需的环境信息：操作系统版本 + 应用版本（应用版本以打包时 package.json version 为准）
+  ipcMain.handle('df:report:meta', (): { os_version: string; dataforge_version: string } => {
+    let osVersion = '';
+    try {
+      osVersion = (process.getSystemVersion && process.getSystemVersion()) || '';
+    } catch {
+      // ignore
+    }
+    return { os_version: osVersion, dataforge_version: app.getVersion() };
+  });
+
   // 应用退出：供渲染层在用户拒绝安装协议时调用（未同意协议前不进入任何界面）
   ipcMain.on('df:quit', () => app.quit());
 

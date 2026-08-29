@@ -40,6 +40,9 @@ const api = {
   storeWrite: (file: string, data: unknown): Promise<void> =>
     ipcRenderer.invoke('df:store:write', { file, data }),
 
+  systemInfo: (): Promise<{ os_version: string; dataforge_version: string }> =>
+    ipcRenderer.invoke('df:report:meta'),
+
   quitApp: (): void => {
     ipcRenderer.send('df:quit');
   },

@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Store } from '../../bridge/store';
+import { ensureClientId } from '../../api/report';
 import './LicenseGate.css';
 
 // 软件使用许可协议正文（单一来源：仓库根目录 软件使用许可协议.txt，全平台共用）
@@ -57,6 +58,8 @@ export default function LicenseGate({ children }: { children: ReactNode }): Reac
     try {
       // 生成并写入本次安装的同意标记；同步把标记 token 存入同意记录
       const installToken = (await window.dataforge?.markInstallToken?.()) ?? crypto.randomUUID();
+      // 同意协议时生成（或重装后复用本地）唯一安装标识 client_id，供数据上报使用
+      await ensureClientId();
       const store = await Store.load(LICENSE_STORE_FILE);
       await store.set('license', {
         version: LICENSE_VERSION,
