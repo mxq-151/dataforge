@@ -110,6 +110,12 @@ const AIPanel: React.FC<AIPanelProps> = ({ chatBackend, llmModels, onRollback, o
   // 仅当输入框为空时，将回滚目标用户消息的文本预填到输入框（nonce 触发 ChatInput effect）
   const [prefill, setPrefill] = useState<{ text: string; nonce: number }>({ text: '', nonce: 0 });
 
+  // 发送消息后清除 prefill，避免（因重挂载/effect 重跑）再次把回滚的旧文本回填到输入框
+  const handleSend = useCallback((text: string) => {
+    sendMessage(text);
+    setPrefill({ text: '', nonce: 0 });
+  }, [sendMessage]);
+
   // 回滚处理
   const handleRollback = useCallback(async (messageId: string) => {
     // 先回显用户消息文本到输入框（仅当输入框为空时生效）
@@ -300,7 +306,7 @@ const AIPanel: React.FC<AIPanelProps> = ({ chatBackend, llmModels, onRollback, o
           {!blocked && (
             <ChatInput
               busy={busy}
-              onSend={sendMessage}
+              onSend={handleSend}
               onInterrupt={sendInterrupt}
               fileTree={fileTree}
               llmModels={models}
