@@ -22,6 +22,16 @@ const getSupportedLang = (filename: string): SupportedLang | null => {
   return extMap[ext || ''] || null;
 };
 
+/**
+ * 代码头字段与书写顺序，所有支持的语言共用同一套。
+ *
+ * 代码头是机器解析契约（见 parseFileHeader），@引擎 与 @数据源 决定调度侧的
+ * 任务类型与数据依赖，缺一不可：例如未声明 @引擎 的 .java 会被默认判为 SPARK 任务。
+ * 因此这里不做按语言裁剪，任何语言新建文件都给出完整字段，避免再次出现
+ * 「SQL 有引擎、Java 没有引擎」这类漂移。
+ */
+const HEADER_FIELDS = ['备注', '数仓', '引擎', '用法', '数据源'] as const;
+
 export const generateFileHeader = (filePath: string, _rootPath?: string): string => {
   const fileName = filePath.split(/[/\\]/).pop() || filePath;
   const lang = getSupportedLang(fileName);
@@ -29,19 +39,7 @@ export const generateFileHeader = (filePath: string, _rootPath?: string): string
   if (!lang) return '';
 
   const prefix = COMMENT_PREFIX[lang];
-  const lines: string[] = [];
-
-
-  lines.push(`${prefix}@备注: `);
-
-  if (lang === 'sql') {
-    lines.push(`${prefix}@数仓: `);
-    lines.push(`${prefix}@引擎: `);
-    lines.push(`${prefix}@用法: `);
-    lines.push(`${prefix}@数据源: `);
-  } else {
-    lines.push(`${prefix}@用法: `);
-  }
+  const lines = HEADER_FIELDS.map(field => `${prefix}@${field}: `);
 
   lines.push('');
 

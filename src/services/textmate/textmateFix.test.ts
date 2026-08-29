@@ -141,11 +141,17 @@ describe('TextMate 高亮延迟修复', () => {
   });
 
   it('B) 注册完成后触发预热：为每个语言创建临时模型', async () => {
+    const __t0 = Date.now();
     const mod = await load();
+    const __t1 = Date.now();
     await mod.registerAllTextmateLanguages();
+    const __t2 = Date.now();
     // 预热是 fire-and-forget 的 async IIFE，需让 microtask 跑完
     await new Promise((r) => setTimeout(r, 0));
+    const __t3 = Date.now();
     await new Promise((r) => setTimeout(r, 0));
+    const __t4 = Date.now();
+    console.log('[TIMING-B] load=', __t1 - __t0, 'register=', __t2 - __t1, 'tick1=', __t3 - __t2, 'tick2=', __t4 - __t3, 'now=', Date.now());
 
     // warmUpTextmate 为 8 种语言各创建一个临时模型
     const langs = createModel.mock.calls.map((c) => c[1]);

@@ -15,7 +15,9 @@
     "build": "npm run build:main && npm run build:renderer",
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder",
-    "start": "electron ."
+    "start": "electron .",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "build": {
     "appId": "com.dataforge.electron",
@@ -90,6 +92,7 @@
   },
   "devDependencies": {
     "@codingame/esbuild-import-meta-url-plugin": "^1.0.3",
+    "@testing-library/react": "^16.3.3",
     "@types/crypto-js": "^4.2.2",
     "@types/node": "^26.3.0",
     "@types/react": "^19.2.18",
@@ -100,9 +103,11 @@
     "cross-env": "^10.1.0",
     "electron": "^44.0.0",
     "electron-builder": "^26.15.3",
+    "jsdom": "^30.0.1",
     "terser": "^5.50.0",
     "typescript": "^7.0.2",
     "vite": "^8.2.2",
+    "vitest": "^4.1.11",
     "wait-on": "^9.1.0"
   }
 }

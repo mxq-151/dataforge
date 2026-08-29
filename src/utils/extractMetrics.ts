@@ -19,13 +19,17 @@ import type { IndicatorDTO, IndicatorFieldDTO } from '../types/indicator';
  *    - 字段来源 → fields（格式 A.B:C,D;E.F:G,H，解析为 IndicatorFieldDTO[]）
  *    - 数据源   → 写入每个 IndicatorFieldDTO.datasourceName（兼容无此列的旧文档，缺省为空串）
  *
- * 2. 业务需求文档（业务需求方，4 列）：
- *    | 业务定义 | 计算口径 | 过滤条件 | 应用场景 |
- *    无单独"指标名称"列，以"业务定义"作为指标名（截断防止过长）。
- *    - 业务定义 → name（截断） + businessDefinition
- *    - 计算口径 → 拼入 businessDefinition
- *    - 应用场景 → 拼入 businessDefinition
+ * 2. 业务需求文档（业务需求方，6 列）：
+ *    | 指标名称 | 主题域 | 业务定义 | 计算口径 | 过滤条件 | 应用场景 |
+ *    - 指标名称 → name（业务语言，无需截断）
+ *    - 主题域   → topic（缺省"未分类"）
+ *    - 业务定义 → businessDefinition
+ *    - 计算口径 → calcExpr
  *    - 过滤条件 → defaultFilter
+ *    - 应用场景 → 以 "应用场景: xxx" 形式拼入 businessDefinition
+ *
+ * 兼容旧版 4 列业务需求文档：| 业务定义 | 计算口径 | 过滤条件 | 应用场景 |
+ * 无"指标名称"列时以"业务定义"作为指标名（截断防止过长），无"主题域"列时 topic 为"未分类"。
  */
 
 export interface MarkdownTable {
@@ -227,7 +231,7 @@ export function extractMetricsFromMarkdown(
     );
     if (nameIdx >= 0) used.add(nameIdx);
 
-    // 业务定义 / 指标含义 → businessDefinition（4 列格式下兼作 name）
+    // 业务定义 / 指标含义 → businessDefinition（旧版 4 列格式下兼作 name）
     // 注意：fuzzy 增加 "含义"/"指定含义"/"指标含义" 以识别数仓设计文档表头中的"指定含义"
     //       （提示词表头为"指标含义"；兼容历史文档表头"指定含义"，两者均命中同一列）
     const defIdx = findColumn(
@@ -294,13 +298,13 @@ export function extractMetricsFromMarkdown(
 
     // 判定是否为指标表格：
     // - 8 列格式：含"指标名/指标名称"列
-    // - 4 列格式：无"指标名"列但含"业务定义"列（业务定义兼作 name）
+    // - 旧版 4 列格式：无"指标名"列但含"业务定义"列（业务定义兼作 name）
     const isFormatA = nameIdx >= 0;
     const isFormatB = nameIdx < 0 && defIdx >= 0;
     if (!isFormatA && !isFormatB) continue;
 
     for (const row of table.rows) {
-      // 确定 name 来源：8 列格式取"指标名称"，4 列格式取"业务定义"（截断）
+      // 确定 name 来源：8 列与 6 列格式取"指标名称"，旧版 4 列格式取"业务定义"（截断）
       const nameRaw = isFormatA ? (row[nameIdx] || '') : (row[defIdx] || '');
       const name = isFormatA ? nameRaw.trim() : truncateName(nameRaw);
       if (!name) continue;

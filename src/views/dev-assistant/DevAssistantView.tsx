@@ -833,7 +833,7 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
     setSavedConfigParams(prev => ({ ...prev, [filePath]: data }));
   }, []);
 
-  // 从文档"数据指标"章节解析指标表格（支持 6 列数仓设计文档与 4 列业务需求文档两种格式）
+  // 从文档"数据指标"章节解析指标表格（支持 8 列数仓设计文档与 6 列业务需求文档，兼容旧版 4 列文档）
   const handleExtractMetrics = useCallback(async (_filePath: string, content: string) => {
     const indicators = extractMetricsFromMarkdown(content, project.projectCode);
     if (indicators.length === 0) {

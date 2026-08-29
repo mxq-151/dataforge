@@ -3,7 +3,7 @@
  *
  * 测试覆盖两种提示词规范的表格格式（见 src/hooks/opencode/opencodeInstructions.ts）：
  * - 8 列数仓设计文档格式（数据架构师，含数据源列）
- * - 4 列业务需求文档格式（业务需求方）
+ * - 6 列业务需求文档格式（业务需求方），兼容旧版 4 列文档
  * 以及章节提取、列识别（含"指定含义"/"指标编码"修复）、模糊匹配、兜底拼接等。
  */
 
@@ -17,7 +17,10 @@ import {
   expandCalcExprBatch,
   parseFieldSource,
 } from './extractMetrics';
-import { DATA_ARCHITECT_INSTRUCTIONS } from '../hooks/opencode/opencodeInstructions';
+import {
+  DATA_ARCHITECT_INSTRUCTIONS,
+  BUSINESS_REQUESTER_INSTRUCTIONS,
+} from '../hooks/opencode/opencodeInstructions';
 
 // ── 8 列数仓设计文档（数据架构师）──────────────────────────────
 
@@ -37,7 +40,7 @@ const DESIGN_DOC_8COL = `# 用户域数仓设计
 略
 `;
 
-// ── 4 列业务需求文档（业务需求方）──────────────────────────────
+// ── 旧版 4 列业务需求文档（业务需求方，无指标名称列）──────────────
 
 const BUSINESS_DOC_4COL = `# 用户增长业务需求
 
@@ -188,7 +191,51 @@ describe('extractMetricsFromMarkdown — 数仓设计提示词表头与解析器
   });
 });
 
-describe('extractMetricsFromMarkdown — 4 列业务需求文档', () => {
+// ── 业务需求提示词与解析器一致性 ──────────────────────────────
+
+/** 从业务需求提示词中取出"数据指标"章节的示例表头行与列数 */
+function businessPromptMetricHeader(): { header: string; colCount: number } {
+  const line = BUSINESS_REQUESTER_INSTRUCTIONS
+    .split('\n')
+    .map(l => l.trim())
+    .find(l => l.startsWith('| 指标名称'));
+  if (!line) throw new Error('业务需求提示词中未找到指标表头行');
+  const colCount = line.slice(1, -1).split('|').length;
+  return { header: line, colCount };
+}
+
+describe('extractMetricsFromMarkdown — 业务需求提示词表头与解析器一致', () => {
+  it('提示词给出的是 6 列表头', () => {
+    const { colCount } = businessPromptMetricHeader();
+    expect(colCount).toBe(6);
+  });
+
+  it('按提示词表头生成的文档可被完整解析', () => {
+    const { header } = businessPromptMetricHeader();
+    const sep = `|${'---|'.repeat(6)}`;
+    const row = '| 日活用户数 | 用户域 | 当日产生有效行为的去重用户数 '
+      + '| 登录且产生有效行为的用户按用户 ID 去重计数 | 仅统计正式渠道的用户 | 日常运营日报 |';
+    const doc = ['# 用户增长业务需求', '', '## 数据指标', '', header, sep, row, ''].join('\n');
+
+    const result = extractMetricsFromMarkdown(doc, 'BIZ');
+    expect(result).toHaveLength(1);
+
+    const [ind] = result;
+    // 有"指标名称"列时直接取其值作为指标名，不再用业务定义截断兜底
+    expect(ind.name).toBe('日活用户数');
+    expect(ind.topic).toBe('用户域');
+    // 业务定义 + 应用场景拼入 businessDefinition
+    expect(ind.businessDefinition).toBe('当日产生有效行为的去重用户数\n应用场景: 日常运营日报');
+    // 计算口径 → calcExpr（业务语言，非 SQL）
+    expect(ind.calcExpr).toBe('登录且产生有效行为的用户按用户 ID 去重计数');
+    expect(ind.defaultFilter).toBe('仅统计正式渠道的用户');
+    // 业务需求文档不定义指标编码与字段来源
+    expect(ind.code).toBeUndefined();
+    expect(ind.fields).toBeUndefined();
+  });
+});
+
+describe('extractMetricsFromMarkdown — 旧版 4 列业务需求文档（向后兼容）', () => {
   it('无"指标名"列时以"业务定义"作为指标名', () => {
     const result = extractMetricsFromMarkdown(BUSINESS_DOC_4COL, 'BIZ');
     expect(result).toHaveLength(2);
