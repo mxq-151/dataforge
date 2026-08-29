@@ -451,6 +451,37 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [contextMenu]);
 
+  // 右键菜单：渲染后按窗口边界校正位置，避免溢出 app 视口
+  const contextMenuAdjustedRef = useRef<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    if (!contextMenu || !contextMenuRef.current) return;
+    // 避免校正后 setState 再触发本 effect 导致循环
+    const last = contextMenuAdjustedRef.current;
+    if (last && last.x === contextMenu.x && last.y === contextMenu.y) return;
+
+    const el = contextMenuRef.current;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
+    const margin = 4;
+
+    let nx = contextMenu.x;
+    let ny = contextMenu.y;
+
+    if (nx + w > vw - margin) nx = Math.max(margin, vw - w - margin);
+    if (ny + h > vh - margin) ny = Math.max(margin, vh - h - margin);
+    if (nx < margin) nx = margin;
+    if (ny < margin) ny = margin;
+
+    if (nx !== contextMenu.x || ny !== contextMenu.y) {
+      contextMenuAdjustedRef.current = { x: nx, y: ny };
+      setContextMenu(prev => prev ? { ...prev, x: nx, y: ny } : prev);
+    } else {
+      contextMenuAdjustedRef.current = { x: nx, y: ny };
+    }
+  }, [contextMenu]);
+
   // 右键菜单：处理文件树节点上的右键事件
   // react-file-navigator 的 FileTree 渲染的 DOM 层级为：
   //   div[draggable] > div[draggable, 节点行] > div[tabIndex=1, 交互层] > div[内容层] > span(图标) + span(文件名)
@@ -459,8 +490,10 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
     const target = e.target as HTMLElement;
 
     // 空白区域（未命中任何节点）也弹出菜单：仅启用"新建文件/新建文件夹"，重命名/删除置灰
+    // 使用 clientX/clientY（视口坐标），与菜单 position: fixed 保持一致
     const openMenu = (node: TreeNode | null) => {
-      setContextMenu({ x: e.pageX, y: e.pageY, node });
+      contextMenuAdjustedRef.current = null;
+      setContextMenu({ x: e.clientX, y: e.clientY, node });
     };
 
     // 向上遍历找到有 tabIndex 的交互层 div
@@ -509,7 +542,8 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
 
     const node = findNodeByName(treeRef.current, nodeName);
     if (node) {
-      setContextMenu({ x: e.pageX, y: e.pageY, node });
+      contextMenuAdjustedRef.current = null;
+      setContextMenu({ x: e.clientX, y: e.clientY, node });
     } else {
       openMenu(null);
     }
