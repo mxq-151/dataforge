@@ -1,4 +1,5 @@
 import { app, ipcMain } from 'electron';
+import { randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as fsp from 'node:fs/promises';
@@ -218,6 +219,34 @@ async function handleHttpFetch(req: HttpFetchRequest): Promise<{
 // 实现统一在 backend/store.ts（主进程与 opencode 模块共用同一路径）
 // ────────────────────────────────────────────────────────────────
 
+// 安装协议同意标记
+// 该标记文件存放在应用自身安装目录（app.getAppPath()）下，而非持久化的 userData，
+// 因此在「全新安装/重装」时整个安装目录被替换、标记随之消失，用户必须重新同意协议。
+// 注：置于安装目录需该目录可写（当前未签名、asar 开启着 false，dev 与自分发目录通常可写）。
+function getInstallMarkerPath(): string {
+  return path.join(app.getAppPath(), '.df-install-token');
+}
+
+async function readInstallToken(): Promise<string | null> {
+  try {
+    const raw = await fsp.readFile(getInstallMarkerPath(), 'utf-8');
+    return raw.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+// 生成并写入安装标记；返回生成的 token。写入失败（目录不可写）返回 null。
+async function writeInstallToken(): Promise<string | null> {
+  const token = randomUUID();
+  try {
+    await fsp.writeFile(getInstallMarkerPath(), token, 'utf-8');
+    return token;
+  } catch {
+    return null;
+  }
+}
+
 // 注册全部 IPC handler
 export function registerIpcHandlers(): void {
   ipcMain.handle('df:invoke', async (_e, payload: { cmd: string; args: Record<string, unknown> }) => {
@@ -247,6 +276,14 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('df:store:write', (_e, payload: { file: string; data: unknown }) =>
     writeStoreJSON(payload.file, payload.data),
   );
+
+  // 应用退出：供渲染层在用户拒绝安装协议时调用（未同意协议前不进入任何界面）
+  ipcMain.on('df:quit', () => app.quit());
+
+  // 安装标记：读取当前安装的协议同意标记（无则视为全新安装，需重新同意）
+  ipcMain.handle('df:license:installToken', () => readInstallToken());
+  // 安装标记：写入本次同意的标记，返回生成的 token（写失败返回 null）
+  ipcMain.handle('df:license:markInstall', () => writeInstallToken());
 
   // 渲染层 → 主进程事件（预留：后续模块可能监听）
   ipcMain.on('df:emit:unknown', () => { /* noop */ });

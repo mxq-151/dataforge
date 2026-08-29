@@ -28,6 +28,7 @@ import LoginPage from './views/login/LoginPage';
 import EditorTestPage from './views/editor-test/EditorTestPage';
 import type { ProjectInfo } from './api/devProject';
 import disableAutoCapitalize from './utils/disableAutoCapitalize';
+import LicenseGate from './components/license/LicenseGate';
 import { gitClone, gitPull, checkGitRepoExists, ensureGitWorktree } from './api/git';
 import { setApiHost } from './api/index';
 import { Store } from './bridge/store';
@@ -158,19 +159,21 @@ const App: React.FC = () => {
   const [testMode] = useState(() => isEditorTestMode());
 
   return (
-    <AuthProvider>
-      <ToastProvider>
-        {testMode ? (
-          // 测试页仍需要 Auth / DataSource 上下文（EditorArea 依赖 useAuth / useDataSourceCache），
-          // 但不要求登录，user 为空时相关能力自动降级（数据源为空、无 LSP 客户端启动）。
-          <DataSourceProvider>
-            <EditorTestPage />
-          </DataSourceProvider>
-        ) : (
-          <AppContent />
-        )}
-      </ToastProvider>
-    </AuthProvider>
+    <LicenseGate>
+      <AuthProvider>
+        <ToastProvider>
+          {testMode ? (
+            // 测试页仍需要 Auth / DataSource 上下文（EditorArea 依赖 useAuth / useDataSourceCache），
+            // 但不要求登录，user 为空时相关能力自动降级（数据源为空、无 LSP 客户端启动）。
+            <DataSourceProvider>
+              <EditorTestPage />
+            </DataSourceProvider>
+          ) : (
+            <AppContent />
+          )}
+        </ToastProvider>
+      </AuthProvider>
+    </LicenseGate>
   );
 };
 

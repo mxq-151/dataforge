@@ -26,6 +26,12 @@ interface DataforgeBridge {
   storeRead(file: string): Promise<unknown>;
   /** 持久化 Store 文件 */
   storeWrite(file: string, data: unknown): Promise<void>;
+  /** 退出应用（用户拒绝安装协议时调用） */
+  quitApp(): void;
+  /** 读取当前安装在安装目录内的协议同意标记（无则视为全新安装） */
+  installToken(): Promise<string | null>;
+  /** 写入本次同意的安装标记，返回生成的 token（写失败返回 null） */
+  markInstallToken(): Promise<string | null>;
 }
 
 interface Window {

@@ -39,6 +39,16 @@ const api = {
 
   storeWrite: (file: string, data: unknown): Promise<void> =>
     ipcRenderer.invoke('df:store:write', { file, data }),
+
+  quitApp: (): void => {
+    ipcRenderer.send('df:quit');
+  },
+
+  installToken: (): Promise<string | null> =>
+    ipcRenderer.invoke('df:license:installToken'),
+
+  markInstallToken: (): Promise<string | null> =>
+    ipcRenderer.invoke('df:license:markInstall'),
 };
 
 contextBridge.exposeInMainWorld('dataforge', api);
