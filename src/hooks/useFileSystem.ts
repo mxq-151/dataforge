@@ -15,6 +15,7 @@ interface FileSystemAPI {
   removeFile: (path: string) => Promise<void>;
   removeDir: (path: string) => Promise<void>;
   rename: (oldPath: string, newPath: string) => Promise<void>;
+  copy: (src: string, dest: string) => Promise<void>;
 }
 
 let fsAPI: FileSystemAPI | null = null;
@@ -88,6 +89,10 @@ export const initFileSystemAPI = async (): Promise<FileSystemAPI> => {
 
       rename: async (oldPath: string, newPath: string) => {
         await fsModule.rename(oldPath, newPath);
+      },
+
+      copy: async (src: string, dest: string) => {
+        await fsModule.copy(src, dest);
       },
     };
 
@@ -310,6 +315,39 @@ function createWebFSAPI(): FileSystemAPI {
       const parentPath = oldPath.substring(0, oldPath.lastIndexOf(/[/\\]/.test(oldPath) ? oldPath.match(/[/\\]/)![0] : '/'));
       if (parentPath && fileSystemData[parentPath]) {
         fileSystemData[parentPath].children = (fileSystemData[parentPath].children || []).map(c => c === oldPath ? newPath : c);
+      }
+
+      saveToStorage();
+    },
+
+    copy: async (src: string, dest: string): Promise<void> => {
+      if (!fileSystemData[src]) {
+        throw new Error(`文件或目录不存在: ${src}`);
+      }
+
+      // 复制（保留源不变）：
+      const copyInto = (from: string, to: string) => {
+        fileSystemData[to] = { ...fileSystemData[from] };
+        const entry = fileSystemData[from];
+        if (entry?.type === 'folder' && entry.children) {
+          const newChildren: string[] = [];
+          for (const childPath of entry.children) {
+            const newChildPath = childPath.replace(from, to);
+            newChildren.push(newChildPath);
+            copyInto(childPath, newChildPath);
+          }
+          fileSystemData[to].children = newChildren;
+        }
+      };
+      copyInto(src, dest);
+
+      // 在父目录中登记（若父目录是已知 folder 且未包含该子路径）
+      const parentPath = dest.substring(0, dest.lastIndexOf(/[/\\]/.test(dest) ? dest.match(/[/\\]/)![0] : '/'));
+      if (parentPath && fileSystemData[parentPath]?.type === 'folder') {
+        const children = fileSystemData[parentPath].children || [];
+        if (!children.includes(dest)) {
+          fileSystemData[parentPath].children = [...children, dest];
+        }
       }
 
       saveToStorage();
@@ -621,6 +659,53 @@ const useFileSystem = (initialPath?: string) => {
     }
   }, [apiReady, refreshTree]);
 
+  const copyNode = useCallback(async (
+    srcPath: string,
+    targetDirPath: string,
+    nodeType: 'file' | 'folder'
+  ): Promise<boolean> => {
+    if (!apiReady) {
+      console.warn('⚠️ [copyNode] API 未就绪，跳过执行');
+      return false;
+    }
+
+    if (!srcPath.trim() || !targetDirPath.trim()) {
+      return false;
+    }
+
+    try {
+      const api = await initFileSystemAPI();
+      const srcName = srcPath.split(/[/\\]/).pop() || '';
+      if (!srcName) return false;
+
+      const separator = targetDirPath.includes('\\') ? '\\' : '/';
+      const targetBase = targetDirPath.replace(/[\\/]+$/, '');
+
+      // 防御：文件夹不能复制到自身或其子目录内（避免无限嵌套）
+      if (nodeType === 'folder') {
+        const tPrefix = targetBase.endsWith(separator) ? targetBase : targetBase + separator;
+        if (targetBase === srcPath || srcPath.startsWith(tPrefix)) return false;
+      }
+
+      // 目标已存在同名时自动追加"副本"后缀，避免覆盖
+      let destPath = `${targetBase}${separator}${srcName}`;
+      let counter = 1;
+      while (await api.exists(destPath)) {
+        destPath = `${targetBase}${separator}${makeCopyName(srcName, counter)}`;
+        counter++;
+      }
+
+      await api.copy(srcPath, destPath);
+
+      // 刷新文件树以反映复制结果
+      await refreshTree();
+      return true;
+    } catch (error) {
+      console.error('复制失败:', error);
+      return false;
+    }
+  }, [apiReady, refreshTree]);
+
   return {
     rootPath,
     fileTree,
@@ -634,6 +719,7 @@ const useFileSystem = (initialPath?: string) => {
     deleteNode,
     renameNode,
     moveNode,
+    copyNode,
     refreshTree,
     setFileTree,
   };
@@ -678,6 +764,16 @@ function removeFromTree(nodes: FileNode[], targetPath: string): FileNode[] {
       }
       return node;
     });
+}
+
+/** 生成副本文件名：保留扩展名，形如 a.ts → "a (副本).ts"、"a (副本 2).ts" */
+function makeCopyName(name: string, n: number): string {
+  const dot = name.lastIndexOf('.');
+  const hasExt = dot > 0;
+  const base = hasExt ? name.slice(0, dot) : name;
+  const ext = hasExt ? name.slice(dot) : '';
+  const suffix = n === 1 ? ' (副本)' : ` (副本 ${n})`;
+  return `${base}${suffix}${ext}`;
 }
 
 export default useFileSystem;

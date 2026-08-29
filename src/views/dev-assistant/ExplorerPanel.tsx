@@ -20,6 +20,7 @@ import {
   Image,
   Pencil,
   Move,
+  Copy,
 } from 'lucide-react';
 import { Explorer } from 'react-file-navigator';
 import type { Tree, TreeNode, IconMap, ExplorerConfig } from 'react-file-navigator';
@@ -47,6 +48,7 @@ interface ExplorerPanelProps {
   onDeleteNode?: (nodePath: string, nodeType: 'file' | 'folder') => Promise<boolean>;
   onRenameNode?: (oldPath: string, newName: string, nodeType: 'file' | 'folder') => Promise<boolean>;
   onMoveNode?: (srcPath: string, targetDirPath: string, nodeType: 'file' | 'folder') => Promise<boolean>;
+  onCopyNode?: (srcPath: string, targetDirPath: string, nodeType: 'file' | 'folder') => Promise<boolean>;
   onAISummarize?: (files: string[], diffs: string) => Promise<string>;
   onBeforeCommit?: () => { valid: boolean; message: string | null };
   style?: React.CSSProperties;
@@ -172,6 +174,7 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
   onDeleteNode,
   onRenameNode,
   onMoveNode,
+  onCopyNode,
   onAISummarize,
   onBeforeCommit,
   style,
@@ -212,6 +215,13 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
   const [isMoving, setIsMoving] = useState(false);
   const [moveError, setMoveError] = useState<string | null>(null);
   const moveTreeRef = useRef<HTMLDivElement>(null);
+
+  // 复制对话框状态（复用移动的目录树选择 UI）
+  const [copyTarget, setCopyTarget] = useState<{ node: TreeNode } | null>(null);
+  const [selectedCopyDir, setSelectedCopyDir] = useState<string | null>(null);
+  const [copyExpanded, setCopyExpanded] = useState<Set<string>>(new Set());
+  const [isCopying, setIsCopying] = useState(false);
+  const [copyError, setCopyError] = useState<string | null>(null);
 
   const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirmState>({
     visible: false,
@@ -669,6 +679,78 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
     setMoveError(null);
   }, [isMoving]);
 
+  // 右键菜单：选择"复制到 ..."
+  const handleCopyFromContext = useCallback(() => {
+    if (!contextMenu || !contextMenu.node || !onCopyNode) return;
+    const node = contextMenu.node;
+    const defaultTarget = getParentDir(node.filePath);
+    setCopyTarget({ node });
+    setSelectedCopyDir(rootPath && defaultTarget && rootPath !== defaultTarget && defaultTarget.startsWith(rootPath)
+      ? defaultTarget
+      : rootPath);
+    setCopyExpanded(new Set());
+    setCopyError(null);
+    setContextMenu(null);
+  }, [contextMenu, onCopyNode, rootPath]);
+
+  // 复制目录树：展开/折叠
+  const toggleCopyDir = useCallback((path: string) => {
+    setCopyExpanded(prev => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  }, []);
+
+  // 复制：选中目标目录
+  const handleCopySelectDir = useCallback((path: string) => {
+    setSelectedCopyDir(path);
+    setCopyError(null);
+  }, []);
+
+  // 复制：提交
+  const handleCopySubmit = useCallback(async () => {
+    if (!copyTarget || !onCopyNode) return;
+    const node = copyTarget.node;
+
+    if (!selectedCopyDir) {
+      setCopyError('请选择目标文件夹');
+      return;
+    }
+
+    setIsCopying(true);
+    setCopyError(null);
+    try {
+      const success = await onCopyNode(
+        node.filePath,
+        selectedCopyDir,
+        node.type === 'Folder' ? 'folder' : 'file'
+      );
+      if (success) {
+        toast.info(`已复制「${node.name}」`);
+        setCopyTarget(null);
+        setSelectedCopyDir(null);
+        setCopyExpanded(new Set());
+      } else {
+        setCopyError('复制失败：目标文件夹无效、不存在或与源位置冲突');
+      }
+    } catch {
+      setCopyError('复制时发生错误');
+    } finally {
+      setIsCopying(false);
+    }
+  }, [copyTarget, selectedCopyDir, onCopyNode, toast]);
+
+  // 复制：取消
+  const handleCopyCancel = useCallback(() => {
+    if (isCopying) return;
+    setCopyTarget(null);
+    setSelectedCopyDir(null);
+    setCopyExpanded(new Set());
+    setCopyError(null);
+  }, [isCopying]);
+
   const handleOpenGitModal = useCallback(() => {
     if (!rootPath) return;
     setGitModalVisible(true);
@@ -948,6 +1030,14 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
             <Move size={14} />
             <span>移动到 ...</span>
           </button>
+          <button
+            className="explorer-panel__context-menu-item"
+            onClick={handleCopyFromContext}
+            disabled={!onCopyNode || !contextMenu.node}
+          >
+            <Copy size={14} />
+            <span>复制到 ...</span>
+          </button>
           <div className="explorer-panel__context-menu-divider" />
           <button
             className="explorer-panel__context-menu-item explorer-panel__context-menu-item--danger"
@@ -1044,6 +1134,64 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
                   disabled={isMoving || !selectedMoveDir}
                 >
                   {isMoving ? '移动中...' : '移动'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 复制对话框（复用与移动相同的目录树选择 UI） */}
+      {copyTarget && (
+        <div className="explorer-panel__move-overlay" onClick={handleCopyCancel}>
+          <div className="explorer-panel__move-dialog" onClick={e => e.stopPropagation()}>
+            <div className="explorer-panel__move-dialog-header">
+              <Copy size={18} className="explorer-panel__move-dialog-icon explorer-panel__move-dialog-icon--copy" />
+              <span>复制到</span>
+            </div>
+            <div className="explorer-panel__move-dialog-body">
+              <div className="explorer-panel__move-dialog-node">
+                复制{copyTarget.node.type === 'Folder' ? '文件夹' : '文件'}
+                <strong> {copyTarget.node.name} </strong>
+              </div>
+              <p className="explorer-panel__move-dialog-tip">
+                请在下方选择目标文件夹（重名时自动追加"副本"后缀）：
+              </p>
+              <div className="explorer-panel__move-tree">
+                {renderMoveDirTree(
+                  fileTree,
+                  selectedCopyDir,
+                  copyTarget.node.filePath,
+                  copyExpanded,
+                  handleCopySelectDir,
+                  toggleCopyDir
+                )}
+                {fileTree.length === 0 && (
+                  <div className="explorer-panel__move-tree-empty">目录为空</div>
+                )}
+              </div>
+              {copyError && (
+                <p className="explorer-panel__move-dialog-error">{copyError}</p>
+              )}
+            </div>
+            <div className="explorer-panel__move-dialog-footer">
+              <span className="explorer-panel__move-target-path" title={selectedCopyDir || ''}>
+                {selectedCopyDir || '未选择目录'}
+              </span>
+              <div className="explorer-panel__move-dialog-actions">
+                <button
+                  className="explorer-panel__move-dialog-btn explorer-panel__move-dialog-btn--cancel"
+                  onClick={handleCopyCancel}
+                  disabled={isCopying}
+                >
+                  取消
+                </button>
+                <button
+                  className="explorer-panel__move-dialog-btn explorer-panel__move-dialog-btn--confirm"
+                  onClick={handleCopySubmit}
+                  disabled={isCopying || !selectedCopyDir}
+                >
+                  {isCopying ? '复制中...' : '复制'}
                 </button>
               </div>
             </div>

@@ -616,6 +616,10 @@ body.is-resizing-explorer .explorer-panel {
   flex-shrink: 0;
 }
 
+.explorer-panel__move-dialog-icon--copy {
+  color: #569cd6;
+}
+
 .explorer-panel__move-dialog-body {
   padding: 0 20px 16px;
   font-size: 13px;

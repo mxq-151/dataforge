@@ -355,6 +355,7 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
     deleteNode,
     renameNode,
     moveNode,
+    copyNode,
     refreshTree,
   } = useFileSystem(projectCwd);
 
@@ -999,6 +1000,7 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
           onDeleteNode={handleDeleteNode}
           onRenameNode={renameNode}
           onMoveNode={moveNode}
+          onCopyNode={copyNode}
           onBeforeCommit={() => {
             if (editorAreaRef.current) {
               return editorAreaRef.current.validateDataSource();

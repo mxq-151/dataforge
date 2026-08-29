@@ -96,6 +96,10 @@ async function handleFs(req: FsRequest): Promise<unknown> {
       await fsp.rename(String(args.oldPath), String(args.newPath));
       return null;
     }
+    case 'copy': {
+      await fsp.cp(String(args.src), String(args.dest), { recursive: true });
+      return null;
+    }
     case 'symlink': {
       // 创建/修复软链：linkPath -> target。
       // 幂等：linkPath 已是指向 target 的软链则跳过；指向别处则先解除再重建；

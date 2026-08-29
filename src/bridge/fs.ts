@@ -55,6 +55,11 @@ export async function rename(oldPath: string, newPath: string): Promise<void> {
   await window.dataforge.fs('rename', { oldPath, newPath });
 }
 
+/** 复制文件或目录（目录递归复制），src 保持不动，内容写至 dest */
+export async function copy(src: string, dest: string): Promise<void> {
+  await window.dataforge.fs('copy', { src, dest });
+}
+
 /**
  * 创建/修复软链 linkPath -> target（幂等）。
  *
