@@ -21,6 +21,7 @@ import {
   Pencil,
   Move,
   Copy,
+  History,
 } from 'lucide-react';
 import { Explorer } from 'react-file-navigator';
 import type { Tree, TreeNode, IconMap, ExplorerConfig } from 'react-file-navigator';
@@ -49,6 +50,8 @@ interface ExplorerPanelProps {
   onRenameNode?: (oldPath: string, newName: string, nodeType: 'file' | 'folder') => Promise<boolean>;
   onMoveNode?: (srcPath: string, targetDirPath: string, nodeType: 'file' | 'folder') => Promise<boolean>;
   onCopyNode?: (srcPath: string, targetDirPath: string, nodeType: 'file' | 'folder') => Promise<boolean>;
+  /** 请求查看某个文件的历史版本（仅文件） */
+  onShowHistory?: (filePath: string) => void;
   onAISummarize?: (files: string[], diffs: string) => Promise<string>;
   onBeforeCommit?: () => { valid: boolean; message: string | null };
   style?: React.CSSProperties;
@@ -175,6 +178,7 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
   onRenameNode,
   onMoveNode,
   onCopyNode,
+  onShowHistory,
   onAISummarize,
   onBeforeCommit,
   style,
@@ -578,6 +582,14 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
     setContextMenu(null);
     handleDeleteNodeRequest();
   }, [contextMenu, handleDeleteNodeRequest]);
+
+  // 右键菜单：查看文件历史版本
+  const handleShowHistoryFromContext = useCallback(() => {
+    if (!contextMenu || !contextMenu.node || !onShowHistory) return;
+    const node = contextMenu.node;
+    setContextMenu(null);
+    onShowHistory(node.filePath);
+  }, [contextMenu, onShowHistory]);
 
   // 重命名：提交
   const handleRenameSubmit = useCallback(async () => {
@@ -1039,6 +1051,16 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
             <span>复制到 ...</span>
           </button>
           <div className="explorer-panel__context-menu-divider" />
+          {contextMenu?.node?.type === 'File' && (
+            <button
+              className="explorer-panel__context-menu-item"
+              onClick={handleShowHistoryFromContext}
+              disabled={!onShowHistory}
+            >
+              <History size={14} />
+              <span>历史版本</span>
+            </button>
+          )}
           <button
             className="explorer-panel__context-menu-item explorer-panel__context-menu-item--danger"
             onClick={handleDeleteFromContext}

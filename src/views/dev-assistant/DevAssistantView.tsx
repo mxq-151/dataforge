@@ -5,6 +5,7 @@ import type { EditorAreaHandle } from '../../types';
 import ExplorerPanel from './ExplorerPanel';
 import SubmitToSchedulerModal from './SubmitToSchedulerModal';
 import ExtractMetricsModal from './ExtractMetricsModal';
+import FileHistoryModal from './FileHistoryModal';
 import useFileSystem from '../../hooks/useFileSystem';
 import { useAuth } from '../../contexts/AuthContext';
 import { useDataSourceCache } from '../../contexts/DataSourceContext';
@@ -533,6 +534,29 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
     await openFolder(rootPath || undefined);
   }, [openFolder, rootPath]);
 
+  // 文件历史版本：当前查看的文件
+  const [historyTarget, setHistoryTarget] = useState<{ filePath: string } | null>(null);
+
+  // 用指定提交的内容回滚文件：写盘 + 刷新文件树 + 同步已打开的编辑器标签
+  const handleRollbackFile = useCallback(async (commitHash: string, content: string): Promise<boolean> => {
+    if (!historyTarget) return false;
+    const fp = historyTarget.filePath;
+
+    const ok = await saveFile(fp, content);
+    if (!ok) return false;
+
+    await refreshTree();
+
+    const tab = tabs.find(t => t.path === fp);
+    if (tab) {
+      setEditorContent(prev => ({ ...prev, [tab.id]: content }));
+      setTabs(prev => prev.map(t => t.id === tab.id ? { ...t, isModified: false } : t));
+    }
+
+    console.log(`[DF] 文件已回滚: ${fp} <- ${commitHash}`);
+    return true;
+  }, [historyTarget, saveFile, refreshTree, tabs, setEditorContent]);
+
   const handleFileSelect = useCallback(async (filePath: string, revealRange?: { line: number; column: number }) => {
     if (isCodeFile(filePath) && !user?.isSuperAdmin && !isDeveloper(user?.roles || [])) {
       toast.warning(`当前角色无权编辑代码文件（.${filePath.split('.').pop()}），仅数据开发工程师可操作 Scala/SQL/Java/Python 文件`);
@@ -1001,6 +1025,7 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
           onRenameNode={renameNode}
           onMoveNode={moveNode}
           onCopyNode={copyNode}
+          onShowHistory={(fp) => setHistoryTarget({ filePath: fp })}
           onBeforeCommit={() => {
             if (editorAreaRef.current) {
               return editorAreaRef.current.validateDataSource();
@@ -1067,6 +1092,14 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
           }
         }}
       />
+      {historyTarget && (
+        <FileHistoryModal
+          filePath={historyTarget.filePath}
+          repoPath={projectCwd || ''}
+          onClose={() => setHistoryTarget(null)}
+          onRollback={handleRollbackFile}
+        />
+      )}
     </div>
   );
 };

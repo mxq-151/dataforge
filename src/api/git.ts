@@ -434,3 +434,70 @@ export const ensureGitWorktree = async (
     console.warn('[git] ensureGitWorktree 异常:', err);
   }
 };
+
+/**
+ * 列出某个文件在 git 历史中的提交记录（含删除/改名历史，--follow）。
+ * relPath 为相对仓库根的路径（POSIX 分隔符）。
+ */
+export const gitLogFile = async (
+  rootPath: string,
+  relPath: string,
+  maxCount = 200
+): Promise<GitLogResult> => {
+  try {
+    const format = '%H||%h||%an||%ad||%s';
+    const output = await Command.create(
+      'git',
+      ['-c', 'core.quotePath=false', 'log', '--follow', `--max-count=${maxCount}`, `--pretty=format:${format}`, '--date=format:%Y-%m-%d %H:%M:%S', '--', relPath],
+      { cwd: rootPath }
+    ).execute();
+
+    if (output.code !== 0) {
+      return { entries: [] };
+    }
+
+    const entries: GitLogEntry[] = output.stdout
+      .split('\n')
+      .filter(Boolean)
+      .map(line => {
+        const [hash, shortHash, author, date, ...messageParts] = line.split('||');
+        return {
+          hash: hash || '',
+          shortHash: shortHash || '',
+          author: author || '',
+          date: date || '',
+          message: (messageParts.join('||') || '').trim(),
+        };
+      });
+
+    return { entries };
+  } catch (err) {
+    console.error('Git file log failed:', err);
+    return { entries: [] };
+  }
+};
+
+/**
+ * 读取指定提交中某文件的完整内容。
+ * relPath 为相对仓库根的路径。若该提交中文件不存在（如提交时文件已被删除）则返回 null。
+ */
+export const gitShowFileContent = async (
+  rootPath: string,
+  commitHash: string,
+  relPath: string
+): Promise<string | null> => {
+  try {
+    const output = await Command.create(
+      'git',
+      ['-C', rootPath, 'show', `${commitHash}:${relPath}`]
+    ).execute();
+
+    if (output.code !== 0) {
+      return null;
+    }
+    return output.stdout;
+  } catch (err) {
+    console.error('Git show file content failed:', err);
+    return null;
+  }
+};

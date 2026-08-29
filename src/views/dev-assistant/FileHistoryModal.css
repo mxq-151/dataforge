@@ -1,0 +1,243 @@
+.fh-modal__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fh-modal {
+  width: 720px;
+  height: 520px;
+  background: #1e1e1e;
+  border: 1px solid #3c3c3c;
+  border-radius: 6px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.fh-modal__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: #2d2d2d;
+  border-bottom: 1px solid #3c3c3c;
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+  flex-shrink: 0;
+}
+
+.fh-modal__header-icon {
+  color: #569cd6;
+}
+
+.fh-modal__header-close {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  color: #858585;
+  cursor: pointer;
+  display: flex;
+  padding: 4px;
+  border-radius: 4px;
+}
+
+.fh-modal__header-close:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.fh-modal__file {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px 0;
+  color: #d1d5db;
+  font-size: 13px;
+}
+
+.fh-modal__file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fh-modal__body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  padding: 12px 16px 16px;
+  gap: 12px;
+}
+
+.fh-modal__list {
+  width: 300px;
+  flex-shrink: 0;
+  overflow-y: auto;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  background: #252526;
+}
+
+.fh-modal__empty {
+  padding: 20px;
+  text-align: center;
+  color: #858585;
+  font-size: 12px;
+}
+
+.fh-modal__row {
+  padding: 10px 12px;
+  border-bottom: 1px solid #333333;
+  cursor: pointer;
+}
+
+.fh-modal__row:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.fh-modal__row--active {
+  background: #094771;
+}
+
+.fh-modal__row--active .fh-modal__row-msg {
+  color: #ffffff;
+}
+
+.fh-modal__row-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #bababa;
+  margin-bottom: 6px;
+}
+
+.fh-modal__row--active .fh-modal__row-title {
+  color: #ffffff;
+}
+
+.fh-modal__row-msg {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fh-modal__row-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  color: #858585;
+}
+
+.fh-modal__row--active .fh-modal__row-meta {
+  color: #c5d5e8;
+}
+
+.fh-modal__row-hash {
+  color: #569cd6;
+  font-family: 'SF Mono', Consolas, monospace;
+}
+
+.fh-modal__row-date {
+  color: #858585;
+}
+
+.fh-modal__row-author {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100px;
+}
+
+.fh-modal__preview {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  background: #1b1b1b;
+}
+
+.fh-modal__preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #3c3c3c;
+  background: #252526;
+  flex-shrink: 0;
+}
+
+.fh-modal__preview-meta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 12px;
+  color: #858585;
+  min-width: 0;
+}
+
+.fh-modal__preview-meta span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fh-modal__rollback {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 5px 12px;
+  background: #0e639c;
+  border: none;
+  border-radius: 4px;
+  color: #ffffff;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.fh-modal__rollback:hover:not(:disabled) {
+  background: #1177bb;
+}
+
+.fh-modal__rollback:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.fh-modal__preview-content {
+  flex: 1;
+  overflow: auto;
+  padding: 10px 12px;
+}
+
+.fh-modal__preview-content pre {
+  margin: 0;
+  font-family: 'SF Mono', Consolas, 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #d4d4d4;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.fh-modal__preview-loading {
+  color: #858585;
+  font-size: 12px;
+  text-align: center;
+  padding-top: 40px;
+}
