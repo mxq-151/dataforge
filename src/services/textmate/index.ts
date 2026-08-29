@@ -66,6 +66,52 @@ let readyPromise: Promise<void> | null = null;
 // 与 readyPromise（仅代表扩展贡献点注入）不同，它代表「打开文件即可立即高亮」的就绪态。
 let warmUpReadyPromise: Promise<void> | null = null;
 
+/**
+ * 后台任务（预热 + 探针）的取消令牌。
+ *
+ * warmUpTextmate 与 probeTokenizationDiag 是 fire-and-forget 的：注册函数返回后它们仍在
+ * 后台跑，最长可挂 8×2s（预热每语言防御上限）+ 3s（探针）≈ 19s 的定时器。
+ * 应用退出、HMR 或测试结束时必须能立刻停掉，否则定时器会一直挂着——单元测试里表现为
+ * vitest 要等它们排空才能结束测试文件，凭空多出数秒且耗时落到随机某个用例上。
+ * 应用侧不调用 stopTextmateBackgroundTasks() 时，行为与加入本机制前完全一致。
+ */
+class BackgroundAbort {
+  aborted = false;
+  private callbacks = new Set<() => void>();
+
+  on(cb: () => void): void {
+    if (this.aborted) cb();
+    else this.callbacks.add(cb);
+  }
+
+  off(cb: () => void): void {
+    this.callbacks.delete(cb);
+  }
+
+  abort(): void {
+    if (this.aborted) return;
+    this.aborted = true;
+    for (const cb of [...this.callbacks]) cb();
+    this.callbacks.clear();
+  }
+}
+
+let backgroundAbort: BackgroundAbort | null = null;
+
+function backgroundAbortToken(): BackgroundAbort {
+  if (!backgroundAbort) backgroundAbort = new BackgroundAbort();
+  return backgroundAbort;
+}
+
+/**
+ * 停止正在进行的后台预热与探针任务，清理它们挂着的定时器与订阅。
+ * 供应用关闭 / HMR / 测试收尾调用；应用正常运行时无需调用。
+ */
+export function stopTextmateBackgroundTasks(): void {
+  backgroundAbort?.abort();
+  backgroundAbort = null;
+}
+
 const PREFIX = '[TextMate]';
 const log = (...args: unknown[]): void => console.log(PREFIX, ...args);
 const warn = (...args: unknown[]): void => console.warn(PREFIX, ...args);
@@ -349,10 +395,12 @@ export function warmUpTextmate(): Promise<void> {
           const ready = await new Promise<boolean>((resolve) => {
             let settled = false;
             let timer: ReturnType<typeof setTimeout> | undefined;
+            const onAbort = () => done(false);
             const done = (v: boolean) => {
               if (settled) return;
               settled = true;
               if (timer) clearTimeout(timer);
+              abort.off(onAbort);
               sub?.dispose?.();
               resolve(v);
             };
@@ -360,6 +408,8 @@ export function warmUpTextmate(): Promise<void> {
             const sub = model.onDidChangeTokens?.(() => done(true));
             // 防御上限：2s 内未收到 worker 着色回写，视为该语言预热未成功（不阻塞）
             timer = setTimeout(() => done(false), 2000);
+            // 放在 sub/timer 之后：若任务已被取消，此处立即回调 done(false) 并清掉刚挂的定时器
+            abort.on(onAbort);
           });
 
           if (!ready) {
