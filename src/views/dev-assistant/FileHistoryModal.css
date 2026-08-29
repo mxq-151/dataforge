@@ -214,6 +214,14 @@
   background: #1177bb;
 }
 
+.fh-modal__rollback--confirm {
+  background: #a1260d;
+}
+
+.fh-modal__rollback--confirm:hover:not(:disabled) {
+  background: #c03815;
+}
+
 .fh-modal__rollback:disabled {
   opacity: 0.4;
   cursor: not-allowed;

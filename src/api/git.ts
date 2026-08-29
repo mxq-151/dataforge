@@ -501,3 +501,58 @@ export const gitShowFileContent = async (
     return null;
   }
 };
+
+/**
+ * 撤销（还原）某个文件的所有未提交改动（含已暂存与未暂存），恢复到上次提交(HEAD)状态。
+ * relPath 为相对仓库根的 POSIX 路径。文件未被 git 跟踪或无可撤销改动时返回 false。
+ */
+export const gitRestoreFile = async (
+  rootPath: string,
+  relPath: string
+): Promise<boolean> => {
+  try {
+    const output = await Command.create(
+      'git',
+      ['-C', rootPath, 'restore', '--staged', '--worktree', '--', relPath]
+    ).execute();
+    return output.code === 0;
+  } catch (err) {
+    console.error('Git restore file failed:', err);
+    return false;
+  }
+};
+
+/** 判断文件是否有未提交的变更（已跟踪文件的改动；untracked/未纳入管理视为无可撤销变更） */
+export const gitFileHasChanges = async (
+  rootPath: string,
+  relPath: string
+): Promise<boolean> => {
+  try {
+    const output = await Command.create(
+      'git',
+      ['-C', rootPath, 'status', '--porcelain', '--', relPath]
+    ).execute();
+    if (output.code !== 0) return false;
+    const lines = output.stdout.split('\n').map(l => l.trim()).filter(Boolean);
+    return lines.some(l => !l.startsWith('??'));
+  } catch (err) {
+    console.error('Git check file changes failed:', err);
+    return false;
+  }
+};
+
+/** 计算磁盘绝对路径相对仓库根的 POSIX 相对路径 */
+export const toRepoRelativePath = (filePath: string, repoPath: string): string => {
+  const sep = filePath.includes('\\') ? '\\' : '/';
+  const parts = filePath.split(sep);
+  const repoParts = repoPath.split(sep);
+  const diff: string[] = [];
+  const max = Math.max(parts.length, repoParts.length);
+  for (let i = 0; i < max; i++) {
+    if (parts[i] !== repoParts[i]) {
+      for (let j = i; j < parts.length; j++) diff.push(parts[j]);
+      break;
+    }
+  }
+  return diff.length > 0 ? diff.join('/') : (filePath.split(/[/\\]/).pop() || filePath);
+};

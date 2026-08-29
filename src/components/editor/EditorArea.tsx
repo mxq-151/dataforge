@@ -2,7 +2,7 @@ import { useCallback, useRef, useEffect, useState, useImperativeHandle, forwardR
 import Editor, { useMonaco } from '@monaco-editor/react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Code, Eye, Edit3, AlertTriangle, Lightbulb, ArrowRight } from 'lucide-react';
+import { Code, Eye, Edit3, AlertTriangle, Lightbulb, ArrowRight, History, Undo2 } from 'lucide-react';
 import TabBar from './TabBar';
 import ConfigParamsModal from './ConfigParamsModal';
 import ExecutionResultTabs from './ExecutionResultTabs';
@@ -53,6 +53,12 @@ interface EditorAreaProps {
   onConfigureParams?: () => void;
   onSubmitToScheduler?: () => void;
   onExtractMetrics?: (filePath: string, content: string) => void;
+  /** 查看当前打开的文件的 Git 历史版本（仅真实磁盘文件） */
+  onShowHistory?: (filePath: string) => void;
+  /** 撤销当前文件的未提交修改 */
+  onRevertFile?: (filePath: string) => void;
+  /** 判断文件是否有未提交变更（用于是否置灰「撤销文件变更」） */
+  onCheckFileChanged?: (filePath: string) => Promise<boolean>;
   onSaveConfigParams?: (filePath: string, data: {
     dependencies: { id: string; name: string; version: string }[];
     programParams: { id: string; key: string; value: string }[];
@@ -102,6 +108,9 @@ const EditorArea = forwardRef<EditorAreaHandle, EditorAreaProps>(({
   onConfigureParams,
   onSubmitToScheduler,
   onExtractMetrics,
+  onShowHistory,
+  onRevertFile,
+  onCheckFileChanged,
   onSaveConfigParams,
   executionHistory = [],
   currentResults = [],
@@ -139,10 +148,14 @@ const EditorArea = forwardRef<EditorAreaHandle, EditorAreaProps>(({
   const [resultTab, setResultTab] = useState<TabKey>('results');
   const [dataSourceWarning, setDataSourceWarning] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  // 当前活动文件是否有未提交变更（用于置灰「撤销文件变更」）
+  const [canRevertActiveFile, setCanRevertActiveFile] = useState(true);
   // 右键菜单弹出时，记录右键落在编辑器中的位置（1-based），供「跳转到定义」使用。
   // Monaco 自带右键菜单禁用后，右键不会移动光标，因此需要显式记录并定位。
   const [contextMenuPos, setContextMenuPos] = useState<{ lineNumber: number; column: number } | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
+  const activeFilePathRef = useRef('');
+  activeFilePathRef.current = tabs.find(t => t.id === activeTabId)?.path || '';
 
   const monaco = useMonaco();
 
@@ -359,10 +372,28 @@ const EditorArea = forwardRef<EditorAreaHandle, EditorAreaProps>(({
   const onCompileDryRunRef = useRef(onCompileDryRun);
   const onSubmitToSchedulerRef = useRef(onSubmitToScheduler);
   const onExtractMetricsRef = useRef(onExtractMetrics);
+  const onShowHistoryRef = useRef(onShowHistory);
+  const onRevertFileRef = useRef(onRevertFile);
+  const onCheckFileChangedRef = useRef(onCheckFileChanged);
   onRunProgramRef.current = onRunProgram;
   onCompileDryRunRef.current = onCompileDryRun;
   onSubmitToSchedulerRef.current = onSubmitToScheduler;
   onExtractMetricsRef.current = onExtractMetrics;
+  onShowHistoryRef.current = onShowHistory;
+  onRevertFileRef.current = onRevertFile;
+  onCheckFileChangedRef.current = onCheckFileChanged;
+
+  // 查询活动文件是否有未提交变更，用于置灰「撤销文件变更」
+  const refreshCanRevertActiveFile = useCallback((fp: string) => {
+    if (!onCheckFileChangedRef.current || !fp) {
+      setCanRevertActiveFile(true);
+      return;
+    }
+    setCanRevertActiveFile(false);
+    onCheckFileChangedRef.current(fp)
+      .then(ok => setCanRevertActiveFile(ok))
+      .catch(() => setCanRevertActiveFile(true));
+  }, []);
 
   const onConfigureParamsRef = useRef(() => {
     onConfigureParams?.();
@@ -553,6 +584,7 @@ const EditorArea = forwardRef<EditorAreaHandle, EditorAreaProps>(({
         e.preventDefault();
         e.stopPropagation();
         setContextMenuPos(menuPos);
+        refreshCanRevertActiveFile(activeFilePathRef.current);
         setContextMenu({ x: e.pageX, y: e.pageY });
         return;
       }
@@ -563,6 +595,7 @@ const EditorArea = forwardRef<EditorAreaHandle, EditorAreaProps>(({
         e.preventDefault();
         e.stopPropagation();
         setContextMenuPos(menuPos);
+        refreshCanRevertActiveFile(activeFilePathRef.current);
         setContextMenu({ x: e.pageX, y: e.pageY });
       }
     };
@@ -1109,6 +1142,45 @@ const EditorArea = forwardRef<EditorAreaHandle, EditorAreaProps>(({
             onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
           >
             配置参数
+          </div>
+          <div
+            className="editor-area__context-item"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              const fp = tabs.find(t => t.id === activeTabId)?.path || '';
+              if (fp) onShowHistoryRef.current?.(fp);
+              setContextMenu(null);
+            }}
+            style={{ padding: '6px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
+            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#094771')}
+            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+          >
+            <History size={14} />
+            <span>查看历史版本</span>
+          </div>
+          <div
+            className="editor-area__context-item"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              if (!canRevertActiveFile) return;
+              const fp = tabs.find(t => t.id === activeTabId)?.path || '';
+              if (fp) onRevertFileRef.current?.(fp);
+              setContextMenu(null);
+            }}
+            title={!canRevertActiveFile ? '该文件没有未提交的变更' : undefined}
+            style={{
+              padding: '6px 16px',
+              cursor: canRevertActiveFile ? 'pointer' : 'default',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              color: canRevertActiveFile ? undefined : '#808080',
+            }}
+            onMouseEnter={(e) => { if (canRevertActiveFile) e.currentTarget.style.backgroundColor = '#094771'; }}
+            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+          >
+            <Undo2 size={14} />
+            <span>撤销文件变更</span>
           </div>
           </>
           )}

@@ -22,6 +22,7 @@ import {
   Move,
   Copy,
   History,
+  Undo2,
 } from 'lucide-react';
 import { Explorer } from 'react-file-navigator';
 import type { Tree, TreeNode, IconMap, ExplorerConfig } from 'react-file-navigator';
@@ -52,6 +53,10 @@ interface ExplorerPanelProps {
   onCopyNode?: (srcPath: string, targetDirPath: string, nodeType: 'file' | 'folder') => Promise<boolean>;
   /** 请求查看某个文件的历史版本（仅文件） */
   onShowHistory?: (filePath: string) => void;
+  /** 请求撤销某个文件的未提交修改（仅文件） */
+  onRevertFile?: (filePath: string) => void;
+  /** 判断文件是否有未提交变更（用于是否置灰「撤销文件变更」） */
+  onCheckFileChanged?: (filePath: string) => Promise<boolean>;
   onAISummarize?: (files: string[], diffs: string) => Promise<string>;
   onBeforeCommit?: () => { valid: boolean; message: string | null };
   style?: React.CSSProperties;
@@ -179,6 +184,8 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
   onMoveNode,
   onCopyNode,
   onShowHistory,
+  onRevertFile,
+  onCheckFileChanged,
   onAISummarize,
   onBeforeCommit,
   style,
@@ -203,6 +210,22 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
   // 右键菜单状态
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; node: TreeNode | null } | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
+
+  // 右键目标文件是否可撤销（有未提交变更），用于置灰「撤销文件变更」；非文件或未提供检查能力时视为可点
+  const [canRevertFile, setCanRevertFile] = useState(true);
+  useEffect(() => {
+    const node = contextMenu?.node;
+    if (!node || node.type !== 'File' || !onCheckFileChanged) {
+      setCanRevertFile(true);
+      return;
+    }
+    let cancelled = false;
+    setCanRevertFile(false);
+    onCheckFileChanged(node.filePath)
+      .then(ok => { if (!cancelled) setCanRevertFile(ok); })
+      .catch(() => { if (!cancelled) setCanRevertFile(true); });
+    return () => { cancelled = true; };
+  }, [contextMenu, onCheckFileChanged]);
 
   // 重命名状态
   const [isRenaming, setIsRenaming] = useState(false);
@@ -624,6 +647,14 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
     setContextMenu(null);
     onShowHistory(node.filePath);
   }, [contextMenu, onShowHistory]);
+
+  // 右键菜单：撤销文件变更
+  const handleRevertFromContext = useCallback(() => {
+    if (!contextMenu || !contextMenu.node || !onRevertFile) return;
+    const node = contextMenu.node;
+    setContextMenu(null);
+    onRevertFile(node.filePath);
+  }, [contextMenu, onRevertFile]);
 
   // 重命名：提交
   const handleRenameSubmit = useCallback(async () => {
@@ -1093,6 +1124,17 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
             >
               <History size={14} />
               <span>历史版本</span>
+            </button>
+          )}
+          {contextMenu?.node?.type === 'File' && (
+            <button
+              className="explorer-panel__context-menu-item"
+              onClick={handleRevertFromContext}
+              disabled={!onRevertFile || !canRevertFile || !onCheckFileChanged}
+              title={!canRevertFile && onCheckFileChanged ? '该文件没有未提交的变更' : undefined}
+            >
+              <Undo2 size={14} />
+              <span>撤销文件变更</span>
             </button>
           )}
           <button

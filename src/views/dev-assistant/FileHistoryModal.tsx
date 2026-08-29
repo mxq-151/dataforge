@@ -35,6 +35,7 @@ export default function FileHistoryModal({
   const [preview, setPreview] = useState<string>('');
   const [previewLoading, setPreviewLoading] = useState(false);
   const [rollingBack, setRollingBack] = useState(false);
+  const [confirmRollback, setConfirmRollback] = useState(false);
 
   const fileName = filePath.split(/[/\\]/).pop() || filePath;
 
@@ -80,6 +81,7 @@ export default function FileHistoryModal({
 
   const selectCommit = useCallback(async (hash: string) => {
     setSelectedHash(hash);
+    setConfirmRollback(false);
     setPreviewLoading(true);
     setPreview('');
     try {
@@ -94,8 +96,13 @@ export default function FileHistoryModal({
     loadHistory();
   }, [loadHistory]);
 
-  const handleRollback = useCallback(async () => {
-    if (!selectedHash || preview === '' ) return;
+  // 回滚二次确认：第一次点击进入确认态，再次点击才真正执行
+  const handleRollbackClick = useCallback(async () => {
+    if (!selectedHash || preview === '') return;
+    if (!confirmRollback) {
+      setConfirmRollback(true);
+      return;
+    }
     setRollingBack(true);
     try {
       const ok = await onRollback(selectedHash, preview);
@@ -108,7 +115,7 @@ export default function FileHistoryModal({
     } finally {
       setRollingBack(false);
     }
-  }, [selectedHash, preview, onRollback, onClose, toast]);
+  }, [selectedHash, preview, confirmRollback, onRollback, onClose, toast]);
 
   const selectedDate = entries.find(e => e.hash === selectedHash)?.date;
   const selectedAuthor = entries.find(e => e.hash === selectedHash)?.author;
@@ -176,13 +183,13 @@ export default function FileHistoryModal({
                 )}
               </div>
               <button
-                className="fh-modal__rollback"
-                onClick={handleRollback}
+                className={`fh-modal__rollback${confirmRollback ? ' fh-modal__rollback--confirm' : ''}`}
+                onClick={handleRollbackClick}
                 disabled={!selectedHash || preview === '' || rollingBack || previewLoading}
-                title="将当前文件恢复为该版本内容"
+                title={confirmRollback ? '再次点击确认将当前文件恢复为该版本内容' : '将当前文件恢复为该版本内容'}
               >
                 <RotateCcw size={14} />
-                {rollingBack ? '回滚中...' : '回滚'}
+                {rollingBack ? '回滚中...' : confirmRollback ? '确认回滚？' : '回滚'}
               </button>
             </div>
             <div className="fh-modal__preview-content">

@@ -6,6 +6,7 @@ import ExplorerPanel from './ExplorerPanel';
 import SubmitToSchedulerModal from './SubmitToSchedulerModal';
 import ExtractMetricsModal from './ExtractMetricsModal';
 import FileHistoryModal from './FileHistoryModal';
+import { gitRestoreFile, gitFileHasChanges, toRepoRelativePath } from '../../api/git';
 import useFileSystem from '../../hooks/useFileSystem';
 import { useAuth } from '../../contexts/AuthContext';
 import { useDataSourceCache } from '../../contexts/DataSourceContext';
@@ -557,6 +558,40 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
     return true;
   }, [historyTarget, saveFile, refreshTree, tabs, setEditorContent]);
 
+  // 撤销文件变更：把文件恢复到上次提交(HEAD)状态，丢弃所有未提交改动
+  const handleRevertFile = useCallback(async (filePath: string) => {
+    const name = filePath.split(/[/\\]/).pop() || filePath;
+    if (!projectCwd) {
+      toast.error('无法定位仓库根目录');
+      return;
+    }
+    if (!window.confirm(`确认撤销「${name}」中的所有未提交修改？\n该操作将把文件恢复到最后一次提交的状态，不可恢复！`)) {
+      return;
+    }
+    const rel = toRepoRelativePath(filePath, projectCwd);
+    const ok = await gitRestoreFile(projectCwd, rel);
+    if (!ok) {
+      toast.error('撤销失败：该文件没有未提交改动或尚未纳入 Git 管理');
+      return;
+    }
+    await refreshTree();
+    // 若文件已打开，重新读取内容刷新编辑器
+    const tab = tabs.find(t => t.path === filePath);
+    if (tab) {
+      const content = await readFileContent(filePath);
+      setEditorContent(prev => ({ ...prev, [tab.id]: content }));
+      setTabs(prev => prev.map(t => t.id === tab.id ? { ...t, isModified: false } : t));
+    }
+    toast.info(`已撤销「${name}」的未提交修改`);
+  }, [projectCwd, refreshTree, readFileContent, tabs, toast]);
+
+  // 判断文件是否有未提交变更（用于置灰「撤销文件变更」）
+  const handleCheckFileChanged = useCallback(async (filePath: string): Promise<boolean> => {
+    if (!projectCwd) return false;
+    const rel = toRepoRelativePath(filePath, projectCwd);
+    return gitFileHasChanges(projectCwd, rel);
+  }, [projectCwd]);
+
   const handleFileSelect = useCallback(async (filePath: string, revealRange?: { line: number; column: number }) => {
     if (isCodeFile(filePath) && !user?.isSuperAdmin && !isDeveloper(user?.roles || [])) {
       toast.warning(`当前角色无权编辑代码文件（.${filePath.split('.').pop()}），仅数据开发工程师可操作 Scala/SQL/Java/Python 文件`);
@@ -984,6 +1019,9 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
           onCompileDryRun={handleCompileDryRun}
           onSubmitToScheduler={() => setSubmitModalVisible(true)}
           onExtractMetrics={handleExtractMetrics}
+          onShowHistory={(fp) => setHistoryTarget({ filePath: fp })}
+          onRevertFile={handleRevertFile}
+          onCheckFileChanged={handleCheckFileChanged}
           executionHistory={executionHistory}
           currentResults={currentResults}
           onSaveConfigParams={handleSaveConfigParams}
@@ -1026,6 +1064,8 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
           onMoveNode={moveNode}
           onCopyNode={copyNode}
           onShowHistory={(fp) => setHistoryTarget({ filePath: fp })}
+          onRevertFile={handleRevertFile}
+          onCheckFileChanged={handleCheckFileChanged}
           onBeforeCommit={() => {
             if (editorAreaRef.current) {
               return editorAreaRef.current.validateDataSource();
