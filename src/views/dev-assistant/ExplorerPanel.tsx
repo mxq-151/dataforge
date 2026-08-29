@@ -19,6 +19,7 @@ import {
   FileText,
   Image,
   Pencil,
+  Move,
 } from 'lucide-react';
 import { Explorer } from 'react-file-navigator';
 import type { Tree, TreeNode, IconMap, ExplorerConfig } from 'react-file-navigator';
@@ -45,6 +46,7 @@ interface ExplorerPanelProps {
   onCreateFolder: (parentPath: string, folderName: string) => Promise<FileNode | null>;
   onDeleteNode?: (nodePath: string, nodeType: 'file' | 'folder') => Promise<boolean>;
   onRenameNode?: (oldPath: string, newName: string, nodeType: 'file' | 'folder') => Promise<boolean>;
+  onMoveNode?: (srcPath: string, targetDirPath: string, nodeType: 'file' | 'folder') => Promise<boolean>;
   onAISummarize?: (files: string[], diffs: string) => Promise<string>;
   onBeforeCommit?: () => { valid: boolean; message: string | null };
   style?: React.CSSProperties;
@@ -169,6 +171,7 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
   onCreateFolder,
   onDeleteNode,
   onRenameNode,
+  onMoveNode,
   onAISummarize,
   onBeforeCommit,
   style,
@@ -201,6 +204,14 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
   const renameInputRef = React.useRef<HTMLInputElement>(null);
 
   const [gitModalVisible, setGitModalVisible] = useState(false);
+
+  // 移动对话框状态
+  const [moveTarget, setMoveTarget] = useState<{ node: TreeNode } | null>(null);
+  const [selectedMoveDir, setSelectedMoveDir] = useState<string | null>(null);
+  const [moveExpanded, setMoveExpanded] = useState<Set<string>>(new Set());
+  const [isMoving, setIsMoving] = useState(false);
+  const [moveError, setMoveError] = useState<string | null>(null);
+  const moveTreeRef = useRef<HTMLDivElement>(null);
 
   const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirmState>({
     visible: false,
@@ -586,6 +597,78 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
     setRenamingNode(null);
   }, []);
 
+  // 右键菜单：选择"移动到 ..."
+  const handleMoveFromContext = useCallback(() => {
+    if (!contextMenu || !contextMenu.node || !onMoveNode) return;
+    // 默认选中源节点的父目录或项目根目录
+    const defaultTarget = getParentDir(contextMenu.node.filePath);
+    setMoveTarget({ node: contextMenu.node });
+    setSelectedMoveDir(rootPath && defaultTarget && rootPath !== defaultTarget && defaultTarget.startsWith(rootPath)
+      ? defaultTarget
+      : rootPath);
+    setMoveExpanded(new Set());
+    setMoveError(null);
+    setContextMenu(null);
+  }, [contextMenu, onMoveNode, rootPath]);
+
+  // 移动目录树：展开/折叠
+  const toggleMoveDir = useCallback((path: string) => {
+    setMoveExpanded(prev => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  }, []);
+
+  // 移动：选中目标目录
+  const handleMoveSelectDir = useCallback((path: string) => {
+    setSelectedMoveDir(path);
+    setMoveError(null);
+  }, []);
+
+  // 移动：提交
+  const handleMoveSubmit = useCallback(async () => {
+    if (!moveTarget || !onMoveNode) return;
+    const node = moveTarget.node;
+
+    if (!selectedMoveDir) {
+      setMoveError('请选择目标文件夹');
+      return;
+    }
+
+    setIsMoving(true);
+    setMoveError(null);
+    try {
+      const success = await onMoveNode(
+        node.filePath,
+        selectedMoveDir,
+        node.type === 'Folder' ? 'folder' : 'file'
+      );
+      if (success) {
+        toast.info(`已移动「${node.name}」`);
+        setMoveTarget(null);
+        setSelectedMoveDir(null);
+        setMoveExpanded(new Set());
+      } else {
+        setMoveError('移动失败：目标文件夹无效、不存在或与源位置冲突');
+      }
+    } catch {
+      setMoveError('移动时发生错误');
+    } finally {
+      setIsMoving(false);
+    }
+  }, [moveTarget, selectedMoveDir, onMoveNode, toast]);
+
+  // 移动：取消
+  const handleMoveCancel = useCallback(() => {
+    if (isMoving) return;
+    setMoveTarget(null);
+    setSelectedMoveDir(null);
+    setMoveExpanded(new Set());
+    setMoveError(null);
+  }, [isMoving]);
+
   const handleOpenGitModal = useCallback(() => {
     if (!rootPath) return;
     setGitModalVisible(true);
@@ -857,6 +940,14 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
             <Pencil size={14} />
             <span>重命名</span>
           </button>
+          <button
+            className="explorer-panel__context-menu-item"
+            onClick={handleMoveFromContext}
+            disabled={!onMoveNode || !contextMenu.node}
+          >
+            <Move size={14} />
+            <span>移动到 ...</span>
+          </button>
           <div className="explorer-panel__context-menu-divider" />
           <button
             className="explorer-panel__context-menu-item explorer-panel__context-menu-item--danger"
@@ -901,8 +992,119 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
           </div>
         </div>
       )}
+
+      {/* 移动对话框 */}
+      {moveTarget && (
+        <div className="explorer-panel__move-overlay" onClick={handleMoveCancel}>
+          <div className="explorer-panel__move-dialog" onClick={e => e.stopPropagation()}>
+            <div className="explorer-panel__move-dialog-header">
+              <Move size={18} className="explorer-panel__move-dialog-icon" />
+              <span>移动到</span>
+            </div>
+            <div className="explorer-panel__move-dialog-body">
+              <div className="explorer-panel__move-dialog-node">
+                移动{moveTarget.node.type === 'Folder' ? '文件夹' : '文件'}
+                <strong> {moveTarget.node.name} </strong>
+              </div>
+              <p className="explorer-panel__move-dialog-tip">
+                请在下方选择目标文件夹：
+              </p>
+              <div className="explorer-panel__move-tree" ref={moveTreeRef}>
+                {renderMoveDirTree(
+                  fileTree,
+                  selectedMoveDir,
+                  moveTarget.node.filePath,
+                  moveExpanded,
+                  handleMoveSelectDir,
+                  toggleMoveDir
+                )}
+                {fileTree.length === 0 && (
+                  <div className="explorer-panel__move-tree-empty">目录为空</div>
+                )}
+              </div>
+              {moveError && (
+                <p className="explorer-panel__move-dialog-error">{moveError}</p>
+              )}
+            </div>
+            <div className="explorer-panel__move-dialog-footer">
+              <span className="explorer-panel__move-target-path" title={selectedMoveDir || ''}>
+                {selectedMoveDir || '未选择目录'}
+              </span>
+              <div className="explorer-panel__move-dialog-actions">
+                <button
+                  className="explorer-panel__move-dialog-btn explorer-panel__move-dialog-btn--cancel"
+                  onClick={handleMoveCancel}
+                  disabled={isMoving}
+                >
+                  取消
+                </button>
+                <button
+                  className="explorer-panel__move-dialog-btn explorer-panel__move-dialog-btn--confirm"
+                  onClick={handleMoveSubmit}
+                  disabled={isMoving || !selectedMoveDir}
+                >
+                  {isMoving ? '移动中...' : '移动'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   );
 };
+
+// 移动目标目录选择树：递归渲染目录节点（只展示文件夹），可展开/折叠、点击选中。
+// srcPath 为被移动的节点路径，用于将该节点自身及其子目录禁用、避免移动到自身内部。
+const renderMoveDirTree = (
+  nodes: FileNode[],
+  selectedDir: string | null,
+  srcPath: string,
+  expanded: Set<string>,
+  onSelect: (path: string) => void,
+  onToggle: (path: string) => void,
+  depth = 0
+): React.ReactNode => {
+  const folders = nodes.filter(n => n.type === 'folder');
+  if (folders.length === 0) return null;
+
+  return folders.map(node => {
+    // 目标目录不能是被移动节点本身或其子目录
+    const disabled = srcPath === node.path || node.path.startsWith(srcPath.endsWith('/') || srcPath.endsWith('\\') ? srcPath : srcPath + getSeparator(node.path));
+    const isExpanded = expanded.has(node.path);
+    const hasChildren = node.children && node.children.some(c => c.type === 'folder') ? true : false;
+    const selected = selectedDir === node.path;
+
+    return (
+      <div key={node.path}>
+        <div
+          className={`explorer-panel__move-tree-row${selected ? ' explorer-panel__move-tree-row--selected' : ''}${disabled ? ' explorer-panel__move-tree-row--disabled' : ''}`}
+          style={{ paddingLeft: depth * 16 }}
+        >
+          <span
+            className="explorer-panel__move-tree-arrow"
+            onClick={() => hasChildren && !disabled && onToggle(node.path)}
+          >
+            {hasChildren ? (isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />) : null}
+          </span>
+          <span
+            className="explorer-panel__move-tree-label"
+            onClick={() => !disabled && onSelect(node.path)}
+          >
+            <Folder size={14} style={{ color: '#dcb67a' }} />
+            <span className="explorer-panel__move-tree-name">{node.name}</span>
+          </span>
+        </div>
+        {isExpanded && node.children && (
+          <div className="explorer-panel__move-tree-children">
+            {renderMoveDirTree(node.children, selectedDir, srcPath, expanded, onSelect, onToggle, depth + 1)}
+          </div>
+        )}
+      </div>
+    );
+  });
+};
+
+const getSeparator = (path: string): string => (path.includes('\\') ? '\\' : '/');
 
 export default ExplorerPanel;

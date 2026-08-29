@@ -578,6 +578,49 @@ const useFileSystem = (initialPath?: string) => {
     }
   }, [apiReady, refreshTree]);
 
+  const moveNode = useCallback(async (
+    srcPath: string,
+    targetDirPath: string,
+    nodeType: 'file' | 'folder'
+  ): Promise<boolean> => {
+    if (!apiReady) {
+      console.warn('⚠️ [moveNode] API 未就绪，跳过执行');
+      return false;
+    }
+
+    if (!srcPath.trim() || !targetDirPath.trim()) {
+      return false;
+    }
+
+    try {
+      const api = await initFileSystemAPI();
+      const srcName = srcPath.split(/[/\\]/).pop() || '';
+      if (!srcName) return false;
+
+      const separator = targetDirPath.includes('\\') ? '\\' : '/';
+      const targetBase = targetDirPath.replace(/[\\/]+$/, '');
+      const newPath = `${targetBase}${separator}${srcName}`;
+
+      // 防御：目标位置与原路径相同，无需移动
+      if (newPath === srcPath) return false;
+
+      // 防御：文件夹不能移动到自身或其子目录内（避免循环）
+      if (nodeType === 'folder') {
+        const prefix = newPath.endsWith(separator) ? newPath : newPath + separator;
+        if (srcPath === newPath || srcPath.startsWith(prefix)) return false;
+      }
+
+      await api.rename(srcPath, newPath);
+
+      // 刷新文件树以反映移动
+      await refreshTree();
+      return true;
+    } catch (error) {
+      console.error('移动失败:', error);
+      return false;
+    }
+  }, [apiReady, refreshTree]);
+
   return {
     rootPath,
     fileTree,
@@ -590,6 +633,7 @@ const useFileSystem = (initialPath?: string) => {
     saveFile,
     deleteNode,
     renameNode,
+    moveNode,
     refreshTree,
     setFileTree,
   };
