@@ -8,12 +8,12 @@ import type { IndicatorDTO, IndicatorFieldDTO } from '../types/indicator';
  * 支持两种提示词规范的表格格式（见 src/hooks/opencode/opencodeInstructions.ts）：
  *
  * 1. 数仓设计文档（数据架构师，8 列）：
- *    | 指标编码 | 指标名称 | 主题域 | 指定含义 | 计算表达式 | 过滤条件 | 字段来源 | 数据源 |
- *    注：提示词表头写作"指定含义"，列填写要求中称为"指标含义"（业务含义）。
+ *    | 指标编码 | 指标名称 | 主题域 | 指标含义 | 计算表达式 | 过滤条件 | 字段来源 | 数据源 |
+ *    注：提示词表头为"指标含义"；历史文档曾写作"指定含义"，两种写法均按业务含义列解析。
  * - 指标编码 → code（全局唯一 ID，如 {xxx}_0001）
  *    - 指标名称 → name
  *    - 主题域 → topic
- *    - 指定含义/指标含义 → businessDefinition
+ *    - 指标含义（历史写法：指定含义）→ businessDefinition
  *    - 计算表达式 → calcExpr
  *    - 过滤条件 → defaultFilter
  *    - 字段来源 → fields（格式 A.B:C,D;E.F:G,H，解析为 IndicatorFieldDTO[]）
@@ -229,7 +229,7 @@ export function extractMetricsFromMarkdown(
 
     // 业务定义 / 指标含义 → businessDefinition（4 列格式下兼作 name）
     // 注意：fuzzy 增加 "含义"/"指定含义"/"指标含义" 以识别数仓设计文档表头中的"指定含义"
-    //       （提示词列名写作"指定含义"，列填写要求中称为"指标含义"）
+    //       （提示词表头为"指标含义"；兼容历史文档表头"指定含义"，两者均命中同一列）
     const defIdx = findColumn(
       table.headers,
       ['业务定义', '指定含义', '指标含义'],

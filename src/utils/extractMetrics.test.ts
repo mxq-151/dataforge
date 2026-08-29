@@ -17,6 +17,7 @@ import {
   expandCalcExprBatch,
   parseFieldSource,
 } from './extractMetrics';
+import { DATA_ARCHITECT_INSTRUCTIONS } from '../hooks/opencode/opencodeInstructions';
 
 // ── 8 列数仓设计文档（数据架构师）──────────────────────────────
 
@@ -136,6 +137,54 @@ describe('extractMetricsFromMarkdown — 8 列数仓设计文档', () => {
     expect(result).toHaveLength(1);
     expect(result[0].fields).toHaveLength(1);
     expect(result[0].fields![0].datasourceName).toBe('');
+  });
+});
+
+// ── 提示词与解析器一致性（防止修改提示词时破坏指标解析）──────────────
+
+/** 从数仓设计提示词中取出"数据指标"章节的示例表头行与列数 */
+function promptMetricHeader(): { header: string; colCount: number } {
+  const line = DATA_ARCHITECT_INSTRUCTIONS
+    .split('\n')
+    .map(l => l.trim())
+    .find(l => l.startsWith('| 指标编码'));
+  if (!line) throw new Error('提示词中未找到指标表头行');
+  const colCount = line.slice(1, -1).split('|').length;
+  return { header: line, colCount };
+}
+
+describe('extractMetricsFromMarkdown — 数仓设计提示词表头与解析器一致', () => {
+  it('提示词给出的是 8 列表头', () => {
+    const { colCount } = promptMetricHeader();
+    expect(colCount).toBe(8);
+  });
+
+  it('按提示词表头生成的文档可被完整解析（含指标含义列）', () => {
+    const { header } = promptMetricHeader();
+    const sep = `|${'---|'.repeat(8)}`;
+    const row = `| USR_0009 | 次日留存率 | 用户域 | 次日仍活跃的用户占比 `
+      + `| USR_0002 / USR_0001 * 100 | | ods_user.login:user_id;dws_user.keep:keep_flag | test_dbs |`;
+    const doc = ['# 用户域数仓设计', '', '## 数据指标', '', header, sep, row, ''].join('\n');
+
+    const result = extractMetricsFromMarkdown(doc, 'USR');
+    expect(result).toHaveLength(1);
+
+    const [ind] = result;
+    expect(ind.code).toBe('USR_0009');
+    expect(ind.name).toBe('次日留存率');
+    expect(ind.topic).toBe('用户域');
+    // 指标含义列命中 businessDefinition，而非退化成"指标含义: xxx"兜底
+    expect(ind.businessDefinition).toBe('次日仍活跃的用户占比');
+    expect(ind.calcExpr).toBe('USR_0002 / USR_0001 * 100');
+    expect(ind.defaultFilter).toBeUndefined();
+    // 字段来源解析：跨两张表共 2 个字段，均带上数据源名称
+    expect(ind.fields).toHaveLength(2);
+    expect(ind.fields![0]).toEqual({
+      datasourceName: 'test_dbs', dbName: 'ods_user', tblName: 'login', fieldName: 'user_id', fieldType: '',
+    });
+    expect(ind.fields![1]).toEqual({
+      datasourceName: 'test_dbs', dbName: 'dws_user', tblName: 'keep', fieldName: 'keep_flag', fieldType: '',
+    });
   });
 });
 
