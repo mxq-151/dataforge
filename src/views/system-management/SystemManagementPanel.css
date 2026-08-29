@@ -134,10 +134,12 @@
   border: 1px solid #3c3c3c;
   border-radius: 4px;
   min-height: 0;
+  position: relative;
 }
 
 .sys-mgmt__table {
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   border-collapse: collapse;
   font-size: 12px;
 }
@@ -152,7 +154,7 @@
   white-space: nowrap;
   position: sticky;
   top: 0;
-  z-index: 1;
+  z-index: 2;
 }
 
 .sys-mgmt__table td {
@@ -160,6 +162,7 @@
   border-bottom: 1px solid #2d2d2d;
   color: #cccccc;
   max-width: 200px;
+  background-color: #1e1e1e;
 }
 
 .sys-mgmt__table tr:hover td {
@@ -179,8 +182,39 @@
   max-width: 180px;
 }
 
+/* 操作列固定在右侧，横向滚动时不跟随滚动 */
+.sys-mgmt__th-actions,
 .sys-mgmt__td-actions {
   white-space: nowrap;
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  box-shadow: -4px 0 6px -4px rgba(0, 0, 0, 0.4);
+}
+
+/* 操作列表头：同时在 top 和 right sticky，z-index 要高于普通 th */
+.sys-mgmt__th-actions {
+  z-index: 3;
+}
+
+/* 操作列 th 的背景与其他表头一致 */
+.sys-mgmt__th-actions {
+  background-color: #2d2d2d !important;
+}
+
+/* 操作列 td 的基础背景与普通 td 一致（非 hover）*/
+.sys-mgmt__td-actions {
+  background-color: #1e1e1e;
+}
+
+/* hover 时操作列 td 也同步变色（特异性要足够高）*/
+.sys-mgmt__table tr:hover .sys-mgmt__td-actions {
+  background-color: #2a2d2e !important;
+}
+
+/* 空行操作列保持灰色底 */
+.sys-mgmt__table tr:has(> td.sys-mgmt__table-empty) .sys-mgmt__td-actions {
+  background-color: #1e1e1e !important;
 }
 
 .sys-mgmt__tag {

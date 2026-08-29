@@ -364,7 +364,7 @@ const UserRoleManageTab: React.FC = () => {
           </div>
           <div className="sys-mgmt__table-wrap">
             <table className="sys-mgmt__table">
-              <thead><tr><th>用户名</th><th>真实姓名</th><th>邮箱</th><th>手机号</th><th>角色</th><th>状态</th><th>最后登录</th><th>操作</th></tr></thead>
+              <thead><tr><th>用户名</th><th>真实姓名</th><th>邮箱</th><th>手机号</th><th>角色</th><th>状态</th><th>最后登录</th><th className="sys-mgmt__th-actions">操作</th></tr></thead>
               <tbody>
                 {userLoading ? <tr><td colSpan={8} className="sys-mgmt__table-empty">加载中...</td></tr> :
                 userList.length === 0 ? <tr><td colSpan={8} className="sys-mgmt__table-empty">暂无数据</td></tr> :
@@ -400,7 +400,7 @@ const UserRoleManageTab: React.FC = () => {
           </div>
           <div className="sys-mgmt__table-wrap">
             <table className="sys-mgmt__table">
-              <thead><tr><th>角色名称</th><th>角色编码</th><th>角色类型</th><th>描述</th><th>状态</th><th>创建时间</th><th>操作</th></tr></thead>
+              <thead><tr><th>角色名称</th><th>角色编码</th><th>角色类型</th><th>描述</th><th>状态</th><th>创建时间</th><th className="sys-mgmt__th-actions">操作</th></tr></thead>
               <tbody>
                 {roleLoading ? <tr><td colSpan={9} className="sys-mgmt__table-empty">加载中...</td></tr> :
                 roleList.length === 0 ? <tr><td colSpan={9} className="sys-mgmt__table-empty">暂无数据</td></tr> :
@@ -436,7 +436,7 @@ const UserRoleManageTab: React.FC = () => {
           </div>
           <div className="sys-mgmt__table-wrap">
             <table className="sys-mgmt__table">
-              <thead><tr><th>租户名称</th><th>租户编码</th><th>联系人</th><th>联系电话</th><th>关联用户</th><th>状态</th><th>创建时间</th><th>操作</th></tr></thead>
+              <thead><tr><th>租户名称</th><th>租户编码</th><th>联系人</th><th>联系电话</th><th>关联用户</th><th>状态</th><th>创建时间</th><th className="sys-mgmt__th-actions">操作</th></tr></thead>
               <tbody>
                 {tenantLoading ? <tr><td colSpan={8} className="sys-mgmt__table-empty">加载中...</td></tr> :
                 tenantList.length === 0 ? <tr><td colSpan={8} className="sys-mgmt__table-empty">暂无数据</td></tr> :

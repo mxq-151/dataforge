@@ -522,7 +522,7 @@ const PermissionManageTab: React.FC = () => {
           </div>
           <div className="sys-mgmt__table-wrap">
             <table className="sys-mgmt__table">
-              <thead><tr><th>角色名称</th><th>菜单名称</th><th>菜单编码</th><th>是否可见</th><th>是否可用</th><th>操作</th></tr></thead>
+              <thead><tr><th>角色名称</th><th>菜单名称</th><th>菜单编码</th><th>是否可见</th><th>是否可用</th><th className="sys-mgmt__th-actions">操作</th></tr></thead>
               <tbody>
                 {menuLoading ? <tr><td colSpan={6} className="sys-mgmt__table-empty">加载中...</td></tr> :
                 pagedMenuData.length === 0 ? <tr><td colSpan={6} className="sys-mgmt__table-empty">暂无数据</td></tr> :
@@ -561,7 +561,7 @@ const PermissionManageTab: React.FC = () => {
           </div>
           <div className="sys-mgmt__table-wrap">
             <table className="sys-mgmt__table">
-              <thead><tr><th>权限名称</th><th>存储类型</th><th>文件/目录路径</th><th>权限类型</th><th>关联角色</th><th>递归子目录</th><th>操作</th></tr></thead>
+              <thead><tr><th>权限名称</th><th>存储类型</th><th>文件/目录路径</th><th>权限类型</th><th>关联角色</th><th>递归子目录</th><th className="sys-mgmt__th-actions">操作</th></tr></thead>
               <tbody>
                 {fileLoading ? <tr><td colSpan={7} className="sys-mgmt__table-empty">加载中...</td></tr> :
                 filteredFileData.length === 0 ? <tr><td colSpan={7} className="sys-mgmt__table-empty">暂无数据</td></tr> :
@@ -599,7 +599,7 @@ const PermissionManageTab: React.FC = () => {
           </div>
           <div className="sys-mgmt__table-wrap">
             <table className="sys-mgmt__table">
-              <thead><tr><th>权限名称</th><th>数据源</th><th>数据库</th><th>表名</th><th>权限范围</th><th>CRUD权限</th><th>关联角色</th><th>行过滤SQL</th><th>操作</th></tr></thead>
+              <thead><tr><th>权限名称</th><th>数据源</th><th>数据库</th><th>表名</th><th>权限范围</th><th>CRUD权限</th><th>关联角色</th><th>行过滤SQL</th><th className="sys-mgmt__th-actions">操作</th></tr></thead>
               <tbody>
                 {tableLoading ? <tr><td colSpan={9} className="sys-mgmt__table-empty">加载中...</td></tr> :
                 filteredTableData.length === 0 ? <tr><td colSpan={9} className="sys-mgmt__table-empty">暂无数据</td></tr> :
@@ -647,7 +647,7 @@ const PermissionManageTab: React.FC = () => {
           </div>
           <div className="sys-mgmt__table-wrap">
             <table className="sys-mgmt__table">
-              <thead><tr><th>角色名称</th><th>项目名称</th><th>权限类型</th><th>创建时间</th><th>操作</th></tr></thead>
+              <thead><tr><th>角色名称</th><th>项目名称</th><th>权限类型</th><th>创建时间</th><th className="sys-mgmt__th-actions">操作</th></tr></thead>
               <tbody>
                 {projectPermLoading ? <tr><td colSpan={5} className="sys-mgmt__table-empty">加载中...</td></tr> :
                 pagedProjectPermData.length === 0 ? <tr><td colSpan={5} className="sys-mgmt__table-empty">暂无数据</td></tr> :

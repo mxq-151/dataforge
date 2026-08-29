@@ -166,7 +166,7 @@ const OperationLogTab: React.FC = () => {
         <table className="sys-mgmt__table">
           <thead>
             <tr>
-              <th>操作用户</th><th>模块</th><th>操作名称</th><th>操作类型</th><th>请求方法</th><th>响应状态</th><th>IP地址</th><th>操作时间</th><th>耗时(ms)</th><th>敏感</th><th>AI请求</th><th>操作</th>
+              <th>操作用户</th><th>模块</th><th>操作名称</th><th>操作类型</th><th>请求方法</th><th>响应状态</th><th>IP地址</th><th>操作时间</th><th>耗时(ms)</th><th>敏感</th><th>AI请求</th><th className="sys-mgmt__th-actions">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -185,7 +185,7 @@ const OperationLogTab: React.FC = () => {
                 <td>{row.durationMs}</td>
                 <td><span className={`sys-mgmt__tag sys-mgmt__tag--${row.isSensitive === 1 ? 'danger' : 'info'}`}>{row.isSensitive === 1 ? '是' : '否'}</span></td>
                 <td><span className={`sys-mgmt__tag sys-mgmt__tag--${row.isAiRequest === 1 ? 'warning' : 'info'}`}>{row.isAiRequest === 1 ? '是' : '否'}</span></td>
-                <td>
+                <td className="sys-mgmt__td-actions">
                   <button className="sys-mgmt__btn sys-mgmt__btn--link" onClick={() => handleViewDetail(row.id)} title="查看详情">
                     <Eye size={14} />
                   </button>

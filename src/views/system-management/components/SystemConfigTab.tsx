@@ -444,7 +444,7 @@ const SystemConfigTab: React.FC = () => {
           </div>
           <div className="sys-mgmt__table-wrap">
             <table className="sys-mgmt__table">
-              <thead><tr><th>数据源名称</th><th>类型</th><th>连接方式</th><th>能力</th><th>连接地址</th><th>可访问数据库</th><th>状态</th><th>最后测试</th><th>操作</th></tr></thead>
+              <thead><tr><th>数据源名称</th><th>类型</th><th>连接方式</th><th>能力</th><th>连接地址</th><th>可访问数据库</th><th>状态</th><th>最后测试</th><th className="sys-mgmt__th-actions">操作</th></tr></thead>
               <tbody>
                 {dsLoading ? <tr><td colSpan={9} className="sys-mgmt__table-empty">加载中...</td></tr> :
                 dsList.length === 0 ? <tr><td colSpan={9} className="sys-mgmt__table-empty">暂无数据</td></tr> :
@@ -492,7 +492,7 @@ const SystemConfigTab: React.FC = () => {
           </div>
           <div className="sys-mgmt__table-wrap">
             <table className="sys-mgmt__table">
-              <thead><tr><th>存储名称</th><th>类型</th><th>访问端点</th><th>根路径</th><th>状态</th><th>操作</th></tr></thead>
+              <thead><tr><th>存储名称</th><th>类型</th><th>访问端点</th><th>根路径</th><th>状态</th><th className="sys-mgmt__th-actions">操作</th></tr></thead>
               <tbody>
                 {stLoading ? <tr><td colSpan={6} className="sys-mgmt__table-empty">加载中...</td></tr> :
                 stList.length === 0 ? <tr><td colSpan={6} className="sys-mgmt__table-empty">暂无数据</td></tr> :
@@ -525,7 +525,7 @@ const SystemConfigTab: React.FC = () => {
           </div>
           <div className="sys-mgmt__table-wrap">
             <table className="sys-mgmt__table">
-              <thead><tr><th>JAR包名称</th><th>Group ID</th><th>Artifact ID</th><th>版本号</th><th>作用域</th><th>来源</th><th>分类</th><th>程序类型</th><th>状态</th><th>操作</th></tr></thead>
+              <thead><tr><th>JAR包名称</th><th>Group ID</th><th>Artifact ID</th><th>版本号</th><th>作用域</th><th>来源</th><th>分类</th><th>程序类型</th><th>状态</th><th className="sys-mgmt__th-actions">操作</th></tr></thead>
               <tbody>
                 {depLoading ? <tr><td colSpan={10} className="sys-mgmt__table-empty">加载中...</td></tr> :
                 depList.length === 0 ? <tr><td colSpan={10} className="sys-mgmt__table-empty">暂无数据</td></tr> :
