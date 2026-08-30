@@ -375,6 +375,166 @@ describe('extractMetricsFromMarkdown — 边界与异常', () => {
   });
 });
 
+// ── 新提示词文档健壮性（模型输出偏差的容错解析，修复回归）──────────
+
+const HEADER_8COL = '| 指标编码 | 指标名称 | 主题域 | 指标含义 | 计算表达式 | 过滤条件 | 字段来源 | 数据源 |';
+const SEPARATOR_8COL = '|--------|------|----------|----------|----------|----------|----------|----------|';
+
+describe('extractMetricsFromMarkdown — 模型输出偏差容错（修复回归）', () => {
+  it('数据行缺失行尾竖线时整表仍完整提取（旧逻辑会丢行且产生垃圾行）', () => {
+    const doc = `# 设计
+
+## 数据指标
+
+${HEADER_8COL}
+${SEPARATOR_8COL}
+| USR_0001 | 指标一 | 用户域 | 含义一 | count(1) | | ods.login:user_id | ds1
+| USR_0002 | 指标二 | 用户域 | 含义二 | count(2) | | ods.login:user_id | ds2 |
+| USR_0003 | 指标三 | 用户域 | 含义三 | count(3) | | ods.login:user_id | ds3 |
+`;
+    const result = extractMetricsFromMarkdown(doc, 'USR');
+    expect(result.map(i => i.name)).toEqual(['指标一', '指标二', '指标三']);
+    expect(result[0].code).toBe('USR_0001');
+    expect(result[0].fields![0].datasourceName).toBe('ds1');
+  });
+
+  it('数据行缺失行首竖线时仍被提取', () => {
+    const doc = `# 设计
+
+## 数据指标
+
+${HEADER_8COL}
+${SEPARATOR_8COL}
+USR_0001 | 指标一 | 用户域 | 含义一 | count(1) | | ods.login:user_id | ds1 |
+`;
+    const result = extractMetricsFromMarkdown(doc, 'USR');
+    expect(result).toHaveLength(1);
+    expect(result[0].name).toBe('指标一');
+  });
+
+  it('单元格内转义竖线 \\| 不拆出额外单元格、不截断列', () => {
+    const doc = `# 设计
+
+## 数据指标
+
+${HEADER_8COL}
+${SEPARATOR_8COL}
+| USR_0001 | 指标一 | 用户域 | 含义一 | concat(a, '\\|', b) | | ods.login:user_id | ds1 |
+`;
+    const result = extractMetricsFromMarkdown(doc, 'USR');
+    expect(result).toHaveLength(1);
+    expect(result[0].calcExpr).toBe("concat(a, '|', b)");
+    expect(result[0].fields![0]).toEqual({
+      datasourceName: 'ds1', dbName: 'ods', tblName: 'login', fieldName: 'user_id', fieldType: '',
+    });
+  });
+
+  it('字段来源使用全角标点（：；，）仍可解析字段与数据源', () => {
+    const doc = `# 设计
+
+## 数据指标
+
+${HEADER_8COL}
+${SEPARATOR_8COL}
+| USR_0001 | 指标一 | 用户域 | 含义一 | count(1) | | ods.login：user_id，login_time；ods.reg：uid | ds1 |
+`;
+    const result = extractMetricsFromMarkdown(doc, 'USR');
+    expect(result[0].fields).toHaveLength(3);
+    expect(result[0].fields![0]).toEqual({
+      datasourceName: 'ds1', dbName: 'ods', tblName: 'login', fieldName: 'user_id', fieldType: '',
+    });
+    expect(result[0].fields![1].fieldName).toBe('login_time');
+    expect(result[0].fields![2]).toEqual({
+      datasourceName: 'ds1', dbName: 'ods', tblName: 'reg', fieldName: 'uid', fieldType: '',
+    });
+  });
+
+  it('数据行单元格数少于表头时补空对齐，不丢行', () => {
+    const doc = `# 设计
+
+## 数据指标
+
+${HEADER_8COL}
+${SEPARATOR_8COL}
+| USR_0001 | 指标一 | 用户域 | 含义一 | count(1) |
+`;
+    const result = extractMetricsFromMarkdown(doc, 'USR');
+    expect(result).toHaveLength(1);
+    expect(result[0].name).toBe('指标一');
+    expect(result[0].calcExpr).toBe('count(1)');
+    expect(result[0].fields).toBeUndefined();
+  });
+
+  it('编号章节标题（## 5. 数据指标）可命中', () => {
+    const doc = `# 设计
+
+## 4. 数据ETL逻辑
+略
+
+## 5. 数据指标
+
+${HEADER_8COL}
+${SEPARATOR_8COL}
+| USR_0001 | 指标一 | 用户域 | 含义一 | count(1) | | ods.login:user_id | ds1 |
+
+## 6. 数据质量稽核设计
+略
+`;
+    const result = extractMetricsFromMarkdown(doc, 'USR');
+    expect(result).toHaveLength(1);
+    expect(result[0].name).toBe('指标一');
+  });
+
+  it('围栏代码块内的竖线与 # 行不干扰章节与表格解析', () => {
+    const doc = `# 设计
+
+## 数据ETL逻辑
+\`\`\`sql
+-- select a || b from t
+# 数据指标（shell 注释伪标题）
+\`\`\`
+
+## 数据指标
+
+${HEADER_8COL}
+${SEPARATOR_8COL}
+| USR_0001 | 指标一 | 用户域 | 含义一 | count(1) | | ods.login:user_id | ds1 |
+`;
+    const result = extractMetricsFromMarkdown(doc, 'USR');
+    expect(result).toHaveLength(1);
+    expect(result[0].name).toBe('指标一');
+  });
+
+  it('含单个 | 的说明文字不终止表格、也不被当作数据行', () => {
+    const doc = `# 设计
+
+## 数据指标
+
+${HEADER_8COL}
+${SEPARATOR_8COL}
+| USR_0001 | 指标一 | 用户域 | 含义一 | count(1) | | ods.login:user_id | ds1 |
+注：口径 A|B 见需求文档
+| USR_0002 | 指标二 | 用户域 | 含义二 | count(2) | | ods.login:user_id | ds2 |
+`;
+    const result = extractMetricsFromMarkdown(doc, 'USR');
+    expect(result.map(i => i.name)).toEqual(['指标一', '指标二']);
+  });
+
+  it('无空格标题（##数据指标）可命中章节', () => {
+    const doc = `# 设计
+
+##数据指标
+
+${HEADER_8COL}
+${SEPARATOR_8COL}
+| USR_0001 | 指标一 | 用户域 | 含义一 | count(1) | | ods.login:user_id | ds1 |
+`;
+    const result = extractMetricsFromMarkdown(doc, 'USR');
+    expect(result).toHaveLength(1);
+    expect(result[0].name).toBe('指标一');
+  });
+});
+
 // ── 纯函数单元测试 ──────────────────────────────────────────
 
 describe('extractSection', () => {

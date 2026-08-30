@@ -40,28 +40,40 @@ export interface MarkdownTable {
 /** 名称最大长度（超出按字符截断并补省略号），避免业务定义过长导致列表展示失衡 */
 const NAME_MAX_LENGTH = 60;
 
+/** 标题行正则：# 后的空格可省略（兼容 "##数据指标" 写法） */
+const HEADER_LINE_RE = /^(#{1,6})[ \t]*(.+?)[ \t]*$/;
+
+/** 围栏代码块起始行（``` 或 ~~~） */
+const FENCE_LINE_RE = /^(```|~~~)/;
+
 /**
  * 提取指定关键词命中的首个章节内容（从标题下一行到下一个同级或更高级标题为止）。
+ * 代码围栏内的 "#" 行不视为标题，避免 shell 注释等伪标题截断章节。
  */
 export function extractSection(text: string, keyword: string): string {
   const allLines = text.split('\n');
-  const headerRegex = /^(#{1,6})\s+(.+?)\s*$/;
   let startIdx = -1;
   let startLevel = 0;
+  let inFence = false;
+  const headings: { level: number; title: string; lineIdx: number }[] = [];
   for (let i = 0; i < allLines.length; i++) {
-    const m = allLines[i].match(headerRegex);
-    if (m && m[2].includes(keyword)) {
-      startIdx = i + 1;
-      startLevel = m[1].length;
-      break;
+    const t = allLines[i].trim();
+    if (FENCE_LINE_RE.test(t)) {
+      inFence = !inFence;
+      continue;
     }
+    if (inFence) continue;
+    const m = t.match(HEADER_LINE_RE);
+    if (m) headings.push({ level: m[1].length, title: m[2], lineIdx: i });
   }
-  if (startIdx === -1) return '';
+  const start = headings.find(h => h.title.includes(keyword));
+  if (!start) return '';
+  startIdx = start.lineIdx + 1;
+  startLevel = start.level;
   let endIdx = allLines.length;
-  for (let i = startIdx; i < allLines.length; i++) {
-    const m = allLines[i].match(headerRegex);
-    if (m && m[1].length <= startLevel) {
-      endIdx = i;
+  for (const h of headings) {
+    if (h.lineIdx >= startIdx && h.level <= startLevel) {
+      endIdx = h.lineIdx;
       break;
     }
   }
@@ -69,14 +81,48 @@ export function extractSection(text: string, keyword: string): string {
 }
 
 /**
+ * 切分表格行的单元格：
+ * - 行首/行尾的边缘竖线剥离（缺失时不影响切分）
+ * - 仅按未转义的竖线切分，单元格内的 "\|" 还原为 "|"
+ */
+function splitCells(line: string): string[] {
+  let t = line.trim();
+  if (t.startsWith('|')) t = t.slice(1);
+  if (t.endsWith('|') && !t.endsWith('\\|')) t = t.slice(0, -1);
+  return t.split(/(?<!\\)\|/).map(c => c.trim().replace(/\\\|/g, '|'));
+}
+
+/** 统计行内未转义竖线数量 */
+function countPipes(line: string): number {
+  return (line.match(/(?<!\\)\|/g) || []).length;
+}
+
+/** 判断是否为表格行：以 | 开头或结尾，或含多个 |（无边缘竖线的表行） */
+function isTableLine(line: string): boolean {
+  return line.startsWith('|') || line.endsWith('|') || countPipes(line) >= 2;
+}
+
+/** 判断是否为表头下的分隔行（如 |---|---|） */
+function isSeparatorRow(cells: string[]): boolean {
+  return cells.length > 0 && cells.every(c => /^[-:\s]+$/.test(c));
+}
+
+/**
  * 解析文本中的所有 markdown 表格。
- * 表格由连续的以 `|` 开头并以 `|` 结尾的行组成；表头后紧跟一行分隔符（`---`）。
+ * 表格由连续的含 `|` 行组成；表头后紧跟一行分隔符（`---`）。
+ * 健壮性处理（实际生成文档的常见偏差）：
+ * - 数据行缺失行首/行尾竖线时仍按行解析，且不会截断后续行
+ * - 单元格内的转义竖线 "\|" 不会拆出额外单元格
+ * - 单元格数少于表头时右侧补空，避免索引越界导致整行丢失
+ * - 围栏代码块（```/~~~）内的竖线不参与表格解析
+ * - 仅含单个 | 的说明文字不终止表格（跳过但不 flush）
  */
 export function parseMarkdownTables(text: string): MarkdownTable[] {
   const lines = text.split('\n');
   const tables: MarkdownTable[] = [];
   let curHeaders: string[] | null = null;
   let curRows: string[][] = [];
+  let inFence = false;
   const flush = () => {
     if (curHeaders) {
       tables.push({ headers: curHeaders, rows: curRows });
@@ -86,18 +132,30 @@ export function parseMarkdownTables(text: string): MarkdownTable[] {
   };
   for (const raw of lines) {
     const t = raw.trim();
-    if (t.startsWith('|') && t.endsWith('|')) {
-      const cells = t.slice(1, -1).split('|').map(c => c.trim());
-      if (!curHeaders) {
-        curHeaders = cells;
-      } else if (curRows.length === 0 && cells.every(c => /^[-:\s]+$/.test(c))) {
-        continue; // 表头与数据之间的分隔行
-      } else {
-        curRows.push(cells);
-      }
-    } else {
-      flush();
+    if (FENCE_LINE_RE.test(t)) {
+      inFence = !inFence;
+      continue;
     }
+    if (inFence) continue;
+    if (!t.includes('|')) {
+      flush();
+      continue;
+    }
+    if (!curHeaders) {
+      // 表格起始行须形似表格行，避免把含单个 | 的普通文本误当表头
+      if (isTableLine(t)) curHeaders = splitCells(t);
+      continue;
+    }
+    const cells = splitCells(t);
+    if (curRows.length === 0 && isSeparatorRow(cells)) {
+      continue; // 表头与数据之间的分隔行
+    }
+    if (isTableLine(t)) {
+      // 短行右侧补空对齐表头，防止列索引越界
+      while (cells.length < curHeaders.length) cells.push('');
+      curRows.push(cells);
+    }
+    // 其余含 | 的行（如说明文字）跳过但不终止表格
   }
   flush();
   return tables;
@@ -158,7 +216,12 @@ export function parseFieldSource(
   datasourceName: string = '',
 ): IndicatorFieldDTO[] | undefined {
   if (!value || !value.trim()) return undefined;
-  const trimmed = value.trim();
+  // 归一化全角标点：模型生成文档时可能用中文标点替代格式中的半角分隔符
+  const trimmed = value.trim()
+    .replace(/：/g, ':')
+    .replace(/；/g, ';')
+    .replace(/，/g, ',')
+    .replace(/、/g, ',');
   const fields: IndicatorFieldDTO[] = [];
   const dsName = datasourceName.trim();
 
