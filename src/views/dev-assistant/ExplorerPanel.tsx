@@ -260,6 +260,9 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
   const [tree, setTree] = useState<Tree>([]);
   const treeRef = useRef<Tree>([]);
   const currentSelectedNodeRef = useRef<TreeNode | null>(null);
+  // 始终持有最新的 onFileSelect（避免点击监听器因回调引用变化而反复重挂）
+  const onFileSelectRef = useRef(onFileSelect);
+  onFileSelectRef.current = onFileSelect;
 
   useEffect(() => {
     const currentExpandedPaths = extractExpandedPaths(treeRef.current);
@@ -307,6 +310,56 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
       observer.disconnect();
     };
   }, [tree]);
+
+  // 修复：react-file-navigator 的 onFileSelectionChange 仅在「选中节点改变」时触发，
+  // 当文件已处于选中状态后再次点击同一节点，selection 引用不变 → 回调不再执行 → 无法在编辑器中重新打开。
+  // 这里监听文件树内的点击，命中的若是文件节点则直接回调 onFileSelect 重新打开。
+  useEffect(() => {
+    const wrapper = document.querySelector('.file-navigator-wrapper');
+    if (!wrapper) return;
+
+    const findNodeByName = (nodes: TreeNode[], name: string): TreeNode | null => {
+      for (const n of nodes) {
+        if (n.name === name) return n;
+        if ('children' in n && n.children) {
+          const found = findNodeByName(n.children, name);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+
+    const handleClick = (e: Event) => {
+      const target = e.target as HTMLElement;
+      // 向上遍历到交互层 div（带 tabIndex），结构与右键菜单一致
+      let el: HTMLElement | null = target;
+      for (let i = 0; i < 8 && el; i++) {
+        if (el.hasAttribute('tabindex')) break;
+        el = el.parentElement;
+      }
+      if (!el || !el.hasAttribute('tabindex')) return;
+
+      // 找到最后一个纯文本 span（文件名）
+      const allSpans = el.querySelectorAll('span');
+      let nodeName: string | null = null;
+      for (let j = allSpans.length - 1; j >= 0; j--) {
+        const text = allSpans[j].textContent?.trim();
+        if (text && text.length > 0 && text.length < 100 && !allSpans[j].querySelector('*')) {
+          nodeName = text;
+          break;
+        }
+      }
+      if (!nodeName) return;
+
+      const node = findNodeByName(treeRef.current, nodeName);
+      if (node && node.type === 'File') {
+        onFileSelectRef.current(node.filePath);
+      }
+    };
+
+    wrapper.addEventListener('click', handleClick);
+    return () => wrapper.removeEventListener('click', handleClick);
+  }, []);
 
   const handleSetTree = useCallback((newTreeOrUpdater: Tree | ((prev: Tree) => Tree)) => {
     setTree(prev => {
