@@ -5,19 +5,22 @@
 ;;     -D PROJECT="$CWD" -D HOME="$HOME" -D TMPDIR="$TMPDIR" \
 ;;     -D JAVA_HOME="$JAVA_HOME" -D MAVEN_HOME="$MAVEN_HOME" \
 ;;     -D SCALA_HOME="$SCALA_HOME" -D OPENCODE_BIN_DIR="$OPENCE_BIN_DIR" \
+;;     -D USERNAME="$USERNAME" -D GITREPO="$GITREPO" \
 ;;     -- $OPENCE_BIN serve --hostname=127.0.0.1 --port=4096 ...
 ;;
 ;; 设计目标
 ;; ---------
 ;; - 限制 opencode 进程及其所有子进程（git / java / python / mvn / npm / bash 等）
-;;   的文件【写】范围到工作目录与必要的 opencode 运行时目录，拒绝写入系统目录与
+;;   的文件【写】范围到实际工作目录与必要的 opencode 运行时目录，拒绝写入系统目录与
 ;;   HOME 下其他位置，防止失控的 agent 篡改系统或凭据。
 ;; - 限制【进程执行】到系统工具链、项目内脚本与用户配置的工具链目录，禁止高危
 ;;   启动器 / 提权 / GUI 桥接二进制。
 ;; - 限制文件【读】范围为白名单：与 opencode 服务端 permission.external_directory=deny
 ;;   语义一致，agent 无法读取工作目录之外的用户数据（源码、文档、凭据、其他后端目录等）。
-;;   白名单放行：系统运行库、项目工作目录、工具链、opencode 自身运行时、构建依赖缓存、
-;;   临时目录，以及 git SSH 所需的非敏感文件。
+;;   工作目录边界用 regex 锚定到 {PROJECT}(hostBase) 下该登录用户实际使用的工作子树
+;;   （{PROJECT}/code、{PROJECT}/{username}、{PROJECT}/{gitRepoDirName}），而非常规的整块
+;;   hostBase 放行，从而排除兄弟项目与其它用户的数据。白名单仍放行：系统运行库、
+;;   实际工作目录、工具链、opencode 自身运行时、构建依赖缓存、临时目录，以及 git SSH 所需文件。
 ;; - 纵深防御：显式屏蔽敏感凭据目录（.ssh 私钥、.aws、.gnupg、gcloud、kube）的【读】权限，
 ;;   但保留 .ssh/config 与 known_hosts 以便 git SSH 可用。
 ;; - 【网络保持开放】：opencode 必须联网调用模型 API，且 serve 仅监听 127.0.0.1，
@@ -37,8 +40,14 @@
 ;; ───────────────────────────────────────────────────────────────
 (deny file-write*)
 
-;; 项目工作目录（核心可写区）
-(allow file-write* (subpath (param "PROJECT")))
+;; 实际工作目录（核心可写区）—— 从整块 hostBase(PROJECT) 收紧到实际工作子树：
+;; code/{pc} 源码根、{username}/individual 会话、{gitRepoDirName}/ git 仓库、opencode 运行时。
+;; 逐条 subpath 放行，防止 agent 越界写兄弟项目/他人数据。
+(allow file-write* (subpath (string-append (param "PROJECT") "/code")))
+(allow file-write* (subpath (string-append (param "PROJECT") "/" (param "USERNAME"))))
+(allow file-write* (subpath (string-append (param "PROJECT") "/" (param "GITREPO"))))
+(allow file-write* (subpath (string-append (param "PROJECT") "/.opencode")))
+(allow file-write* (subpath (string-append (param "PROJECT") "/.local")))
 
 ;; opencode 自身运行时数据（会话 SQLite、缓存、配置、XDG 状态/锁）
 (allow file-write* (subpath (string-append (param "HOME") "/.local/share/opencode")))
@@ -58,16 +67,29 @@
 (allow file-write* (subpath "/private/var/folders"))
 
 ;; ───────────────────────────────────────────────────────────────
-;; 读：白名单模式（与 opencode 服务端 permission.external_directory=deny 对齐）
-;; 默认拒绝【读】；仅放行下方运行必需路径。工作目录之外的用户数据
-;; （源码、文档、凭据、其他后端目录等）一律不可读。
-;; 注意 seatbelt 求值为“后匹配者优先”，下方 allow 需排在后，凭据 deny 也需
-;; 在具体例外 allow 之前，方可既屏蔽私钥又保留 git SSH 所需文件。
+;; 读：不设全局 deny file-read*
+;; 曾尝试白名单模式（默认拒绝读，仅放行工作目录与系统运行库），但全局
+;; deny file-read* 会使 opencode 二进制在 sandbox-exec 下 SIGABRT（exit 134）：
+;; 运行时仍需读取未枚举的系统文件（dyld 共享缓存、/dev、/etc 等）。
+;; 故读侧边界交由 opencode 服务端 permission.external_directory=deny 控制，
+;; 沙箱侧仅保留下方凭据黑名单与路径放行，作为纵深防御。
+;; 注意 seatbelt 求值为“后匹配者优先”，凭据 deny 须在具体例外 allow 之前，
+;; 方可既屏蔽私钥又保留 git SSH 所需文件。
 ;; ───────────────────────────────────────────────────────────────
-(deny file-read*)
 
-;; 项目工作目录（agent 可读的核心区）
-(allow file-read* (subpath (param "PROJECT")))
+;; 实际工作目录（agent 可读核心区）—— 从整块 hostBase 收紧到该登录用户实际工作子树：
+;; code/{pc}、{username}/individual、{gitRepoDirName}/、opencode 运行时。逐条 subpath，
+;; 排除兄弟项目与其它用户数据。注：seatbelt 的 regex filter 在本机 sandbox-exec 初始化时
+;; 会 abort（SIGABRT），故此处用受支持的 subpath 精确列出各工作目录。
+(allow file-read* (subpath (string-append (param "PROJECT") "/code")))
+(allow file-read* (subpath (string-append (param "PROJECT") "/" (param "USERNAME"))))
+(allow file-read* (subpath (string-append (param "PROJECT") "/" (param "GITREPO"))))
+(allow file-read* (subpath (string-append (param "PROJECT") "/.opencode")))
+(allow file-read* (subpath (string-append (param "PROJECT") "/.local")))
+
+;; 注：仅放行 {PROJECT} 根目录自身的元数据（opencode 的 cwd 即 hostBase，必须能 stat 自身），
+;; 该规则只授予该目录的 stat/readdir，既不读任何子目录内容，也读不到兄弟项目/他人数据。
+(allow file-read-metadata (literal (param "PROJECT")))
 
 ;; 系统运行库：二进制、动态库、启动器、证书、网络解析等（opencode/JVM 运行必需）
 (allow file-read* (subpath "/System"))

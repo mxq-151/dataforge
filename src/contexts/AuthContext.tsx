@@ -206,8 +206,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     await setAuthToken(loginRes.data.token);
 
-    // 登录成功后启动 opencode sidecar（内部先同步工作区配置与 backendHost，再拉起进程）
-    await startOpencodeAfterLogin(backendHost || '');
+    // 登录成功后启动 opencode sidecar（内部先同步工作区配置与 backendHost，再拉起进程）。
+    // 传入 username，供主进程注入沙箱将读写边界收紧到本用户实际工作目录。
+    await startOpencodeAfterLogin(backendHost || '', username);
 
     let infoRes;
     try {

@@ -56,6 +56,10 @@ interface StoredOpenCodeConfig {
   mavenHome?: string;
   enableSandbox?: boolean;
   authToken?: string;
+  /** 登录用户名：用于沙箱将 hostBase 读写边界收紧到本用户实际工作目录 */
+  username?: string;
+  /** git 工作空间目录名（hostBase 下），沙箱需放行以保留 git 操作 */
+  gitRepoDirName?: string;
 }
 
 /** 服务端配置（model 含 provider 前缀）。 */
@@ -72,6 +76,8 @@ interface OpenCodeServerConfig {
   javaHome?: string;
   mavenHome?: string;
   scalaHome?: string;
+  username?: string;
+  gitRepoDirName?: string;
 }
 
 function toServerConfig(s: StoredOpenCodeConfig): OpenCodeServerConfig {
@@ -104,6 +110,8 @@ function toServerConfig(s: StoredOpenCodeConfig): OpenCodeServerConfig {
     javaHome: s.javaHome,
     mavenHome: s.mavenHome,
     scalaHome: s.scalaHome,
+    username: s.username,
+    gitRepoDirName: s.gitRepoDirName,
   };
 }
 
@@ -414,6 +422,10 @@ function makeSpawnSpec(config: OpenCodeServerConfig): { exe: string; args: strin
         '-D', `MAVEN_HOME=${config.mavenHome?.trim() || '/usr/local'}`,
         '-D', `SCALA_HOME=${config.scalaHome?.trim() || '/usr/local'}`,
         '-D', `OPENCODE_BIN_DIR=${binDir}`,
+        // 登录用户名：沙箱据此将 hostBase 读写边界收紧到该用户实际工作目录
+        '-D', `USERNAME=${config.username?.trim() || ''}`,
+        // git 工作空间目录名（hostBase 下），沙箱放行 git 仓库/工作树读写
+        '-D', `GITREPO=${config.gitRepoDirName?.trim() || ''}`,
         '--',
         bin,
       ];

@@ -21,7 +21,7 @@ export const OPENCODE_CONFIG_STORE = 'opencode-config.json';
  * 必须在启动 opencode 之前 await 完成：start_opencode_after_login 依赖这里的
  * backendHost 才能算出正确的 DATAFORGE_API_HOST。
  */
-export async function syncWorkspaceConfig(backendHost: string): Promise<void> {
+export async function syncWorkspaceConfig(backendHost: string, username?: string): Promise<void> {
   try {
     const home = await getPlatformDefaultWorkspace();
     const base = joinPath(home, hostToDirName(backendHost || ''));
@@ -30,6 +30,9 @@ export async function syncWorkspaceConfig(backendHost: string): Promise<void> {
     await store.set('config', {
       ...cfg,
       cwd: base,
+      // 登录用户名：主进程将其注入沙箱，用于将 hostBase 的读写边界收紧到
+      // 本用户实际工作目录（如 {hostBase}/{username}/individual/），排除他人数据。
+      username: username || cfg.username,
       backendHost: backendHost || cfg.backendHost,
     });
     await store.save();
@@ -39,8 +42,8 @@ export async function syncWorkspaceConfig(backendHost: string): Promise<void> {
 }
 
 /** 登录成功后启动 opencode sidecar；失败仅告警，不阻断调用方流程 */
-export async function startOpencodeAfterLogin(backendHost: string): Promise<void> {
-  await syncWorkspaceConfig(backendHost);
+export async function startOpencodeAfterLogin(backendHost: string, username?: string): Promise<void> {
+  await syncWorkspaceConfig(backendHost, username);
   try {
     await invoke<string>('start_opencode_after_login');
   } catch (err) {
