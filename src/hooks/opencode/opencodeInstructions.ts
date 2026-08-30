@@ -107,8 +107,7 @@ const PROGRAM_NAMING_CONVENTIONS = `
   - 操作类型：load=加载，etl=转换清洗，sync=同步，calc=计算聚合，check=质量校验，export=导出
   - 执行周期：见"刷新周期与时效口径"中的统一枚举（d/h/w/m/y/r/f）
   - 示例：ods_trade_order_load_d.sql、dws_trade_order_etl_d.java
-- 处理程序按开发语言再按数仓分层分开存储，如 sql/ods、java/ods、scala/dwd 等
-- 常用工具类放 utils 下再按开发语言分开存储，如 utils/java、utils/scala
+- 处理程序分为sql/code/algo三类，然后再数仓分层归类，例如sql/ods,code/dwd/,其中sql存放sql程序,code存放java/scala程序，algo存储python算法程序，另外java/scala常用工具类放 code/utils下
 - Java/Scala 包声明规则：假设工作空间为 /tmp/warehouse/TEST，文件路径为 java/ods/test.java，则包声明为 package TEST.java.ods，文件名与类名需一致
 - 调度任务名与程序文件名保持一致（去除扩展名），便于追溯`;
 
@@ -479,7 +478,7 @@ ${TABLE_NAMING_CONVENTIONS}
 
 ## Java/Scala/Python 开发规范
 - 包与类名：包声明为 {项目编码}.{目录路径}（如工作空间 /tmp/warehouse/TEST 下的 java/ods/test.java 声明 package TEST.java.ods），主类名与文件名一致
-- 公共逻辑抽取到 utils/{语言} 目录复用，禁止在多个任务文件中复制同一段实现
+- 公共逻辑抽取到 utils/ 目录复用，禁止在多个任务文件中复制同一段实现
 - Spark：合理设置并行度与分区数，避免 collect 大结果集到 Driver，复用 SparkSession；大表关联关注数据倾斜并做广播或加盐处理
 - Flink：明确状态后端与检查点配置，状态须设置 TTL；保证任务可重启、可重跑；Source/Sink 需明确幂等或 exactly-once 语义
 - 资源参数（并行度、内存、队列等）通过入参或外部配置注入，禁止硬编码

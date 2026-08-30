@@ -91,10 +91,24 @@ function findProjectPkgRoot(filePath: string, packageName: string): string | nul
   return dir;
 }
 
-/** 将项目 utils/{lang} 目录下的源码递归拷贝进编译工程 src 目录，返回拷贝数量。 */
-async function copyUtilSources(srcDir: string, pkgRootSeg: string, langSeg: string, utilsDir: string): Promise<number> {
+/**
+ * 将项目 code/utils 目录下的常用工具类源码递归拷贝进编译工程 src 目录，
+ * 返回拷贝数量。utils 目录为扁平结构（java/scala 工具类同放 code/utils，
+ * 不再按语言分子目录），按扩展名过滤目标语言。
+ */
+async function copyUtilSources(opts: {
+  /** 编译工程源码根 {buildDir}/src */
+  destSrc: string;
+  /** 首包段（项目根目录名） */
+  pkgRootSeg: string;
+  /** 用户工作区 {pkgRoot}/code/utils 目录 */
+  utilsSrcDir: string;
+  /** 要拷贝的语言扩展名，如 ['java'] / ['scala'] */
+  exts: string[];
+}): Promise<number> {
+  const { destSrc, pkgRootSeg, utilsSrcDir, exts } = opts;
   let copied = 0;
-  const stack = [utilsDir];
+  const stack = [utilsSrcDir];
   while (stack.length > 0) {
     const dir = stack.pop()!;
     let entries;
@@ -110,9 +124,9 @@ async function copyUtilSources(srcDir: string, pkgRootSeg: string, langSeg: stri
         continue;
       }
       const ext = path.extname(entry.name).slice(1);
-      if (ext.toLowerCase() !== langSeg.toLowerCase()) continue;
-      const rel = path.relative(utilsDir, p);
-      const target = path.join(srcDir, pkgRootSeg, 'utils', langSeg, rel);
+      if (!exts.includes(ext.toLowerCase())) continue;
+      const rel = path.relative(utilsSrcDir, p);
+      const target = path.join(destSrc, pkgRootSeg, 'code', 'utils', rel);
       await fsp.mkdir(path.dirname(target), { recursive: true });
       try {
         await fsp.copyFile(p, target);
@@ -214,22 +228,20 @@ export async function compileJavaScala(req: CompileRequest): Promise<CompileResu
   const sourceFile = path.join(packageDir, `${className}.${ext}`);
   await fsp.writeFile(sourceFile, req.codeContent, 'utf8');
 
-  // ── 将项目 utils/{scala,java} 目录下的公共源码一并编译 ──
+  // ── 将项目 code/utils 目录下的公共工具类源码一并编译（扁平结构，java/scala 同放）──
   let hasUtilsScala = false;
   let hasUtilsJava = false;
   if (req.filePath && req.packageName && req.packageName !== 'default') {
     const pkgRoot = findProjectPkgRoot(req.filePath, req.packageName);
     if (pkgRoot) {
       const pkgRootSeg = req.packageName.split('.')[0];
-      const scalaSrc = path.join(buildDir, 'src');
-      const javaSrc = path.join(buildDir, 'src');
-      const scalaUtils = path.join(pkgRoot, 'utils', 'scala');
-      if (fs.existsSync(scalaUtils)) {
-        hasUtilsScala = (await copyUtilSources(scalaSrc, pkgRootSeg, 'scala', scalaUtils)) > 0;
-      }
-      const javaUtils = path.join(pkgRoot, 'utils', 'java');
-      if (fs.existsSync(javaUtils)) {
-        hasUtilsJava = (await copyUtilSources(javaSrc, pkgRootSeg, 'java', javaUtils)) > 0;
+      const srcOut = path.join(buildDir, 'src');
+      // 规范：java/scala 常用工具类统一放 code/utils 下
+      const utilsSrc = path.join(pkgRoot, 'code', 'utils');
+      if (fs.existsSync(utilsSrc)) {
+        // 同一 code/utils 目录，按扩展名区分 java/scala 分别统计并拷贝
+        hasUtilsScala = (await copyUtilSources({ destSrc: srcOut, pkgRootSeg, utilsSrcDir: utilsSrc, exts: ['scala'] })) > 0;
+        hasUtilsJava = (await copyUtilSources({ destSrc: srcOut, pkgRootSeg, utilsSrcDir: utilsSrc, exts: ['java'] })) > 0;
       }
     }
   }
