@@ -19,11 +19,12 @@ import AdmZip from 'adm-zip';
 import { emitToRenderer, getMainWindow } from '../eventBus';
 
 const DEFAULT_METALS_VERSION = '1.6.7';
-// JDT.LS 改为首次使用时按需下载：从 dirigiblelabs/jdtls-mirror（固定镜像，GitHub CDN）
+// JDT.LS 改为首次使用时按需下载：从 Eclipse 官方镜像
 // 拉取 jdt-language-server-<版本>.tar.gz 到 userData/jdtls，避免打进安装包。
-const JDTLS_VERSION = '1.47.0.202505151856';
-const JDTLS_DOWNLOAD_URL = `https://github.com/dirigiblelabs/jdtls-mirror/releases/download/${JDTLS_VERSION}/jdt-language-server-${JDTLS_VERSION}.tar.gz`;
-const JDTLS_SHA256 = '354242694936016cd48635967cb28cd4b0735779dafe963077139d2823ccda3a';
+// 注意：1.47.0+ 需要 Java 21，这里固定使用兼容 Java 17 的 1.40.0.202409261450。
+const JDTLS_VERSION = '1.40.0.202409261450';
+const JDTLS_DOWNLOAD_URL = 'https://download.eclipse.org/jdtls/milestones/1.40.0/jdt-language-server-1.40.0-202409261450.tar.gz';
+const JDTLS_SHA256 = '7416fc62befa450e32f06ec2b503f2eec5f22f0b1cc12f7b8ee5112bf671cf11';
 const isWindows = process.platform === 'win32';
 
 interface JdtlsProgress {
