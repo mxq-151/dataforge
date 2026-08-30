@@ -272,7 +272,6 @@ export default function ExecutionResultTabs({
             <span>Ln {statusBarInfo.line}, Col {statusBarInfo.column}</span>
             <span>{statusBarInfo.language}</span>
             <span>{statusBarInfo.encoding}</span>
-            <span>Spaces: {statusBarInfo.spaces}</span>
             <span>{statusBarInfo.eol}</span>
             {statusBarInfo.showJavaLsp && (
               <span style={{

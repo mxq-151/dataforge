@@ -22,7 +22,7 @@ export interface EnsurePomOptions {
   scalaVersion?: string;
   /** 设置页的 POM 模板（与编译路径一致，支持 {group_id}/{artifact_id}/{scala_version}/{deps}/{scala_plugin}/{main_class}/{final_name} 占位符）。
    *  提供时 LSP pom 按模板生成；不提供时回退到下方 LSP 专用硬编码模板（含 scala-maven-plugin）。
-   *  源码统一采用 Maven 标准目录布局（默认 src/main/scala），不设置 <sourceDirectory> 覆盖。 */
+ *  源码根统一为工作区内的 src（Maven <sourceDirectory>src</sourceDirectory>）。 */
   pomTemplate?: string;
   /** 项目 ID，用于并入「项目级依赖配置」（/params jarDependency Catalogs） */
   projectId?: number;
@@ -181,7 +181,8 @@ export async function ensurePomReady(
 
     // bloop-maven-plugin 片段：声明在 pom.xml 中，bloop:install 生成 .bloop 工程，
     // 并按项目动态生成 bloop.configDirectory / downloadSources。
-    // 源码统一采用 Maven 标准目录布局（默认 src/main/scala），故不设置 sourceDir 覆盖。
+    // 源码根统一为工作区 src：Bloop 依据 pom 的 <sourceDirectory> 推导源码目录，
+    // 不在 bloop 插件上单独设置 sourceDir 覆盖。
     // 版本与 lspPom.ts 保持一致。
     const bloopPluginLines = [
         `            <plugin>`,
@@ -202,9 +203,21 @@ export async function ensurePomReady(
         return xml.replace(/(<plugins\b[^>]*>\s*)(<plugin>)/, `$1${bloopPluginXml}\n            $2`);
     };
 
+    // 源码根统一为工作区 src：若 pom 尚未声明 <sourceDirectory>，则注入
+    // <build><sourceDirectory>${project.basedir}/src</sourceDirectory></build>，
+    // 否则 Maven/Bloop 默认从 src/main/java|scala 找源码而漏掉工作区 src/ 下的包结构。
+    const ensureSourceDir = (xml: string): string => {
+        if (/<sourceDirectory\b/.test(xml)) return xml;
+        const sourceDir = '${project.basedir}/src';
+        if (/<build\b/.test(xml)) {
+            return xml.replace(/(<build\b[^>]*>)/, `$1\n        <sourceDirectory>${sourceDir}</sourceDirectory>`);
+        }
+        return xml.replace(/<\/project>\s*$/, `    <build>\n        <sourceDirectory>${sourceDir}</sourceDirectory>\n    </build>\n</project>`);
+    };
+
     // 生成 pom 内容：优先使用设置页模板（占位符替换，与编译路径一致）；
     // 未提供模板时回退到下方 LSP 专用硬编码模板。
-    // 源码采用 Maven 标准目录布局（默认 src/main/scala），不注入 <sourceDirectory> 覆盖。
+    // 源码根统一为 src：两分支生成后统一注入 <sourceDirectory>src</sourceDirectory>。
 
     let pomContent: string;
     if (options?.pomTemplate?.trim()) {
@@ -265,6 +278,9 @@ ${depsXml.trimEnd()}
 </project>`);
         console.log('[ensurePomReady] 未提供 pomTemplate，回退到 LSP 硬编码模板');
     }
+
+    // 统一注入 <build><sourceDirectory>src</sourceDirectory></build>（若模板中显式声明则保留）
+    pomContent = ensureSourceDir(pomContent);
 
     const pomStatus = await invoke<{ changed: boolean; bloopReady: boolean }>(
       'write_workspace_pom',

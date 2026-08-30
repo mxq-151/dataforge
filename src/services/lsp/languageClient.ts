@@ -34,7 +34,8 @@ const JAVA_INITIALIZATION_OPTIONS = {
       autobuild: { enabled: true },
       import: { maven: { enabled: true }, gradle: { enabled: false } },
       project: {
-        sourcePaths: ['src/main/java', 'src/main/scala'],
+        // 源码根统一为工作区内的 src（Maven sourceDirectory）
+        sourcePaths: ['src'],
         referencedLibraries: [],
       },
       completion: { filteredTypes: [] },

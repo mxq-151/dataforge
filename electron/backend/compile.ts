@@ -2,6 +2,8 @@
  * compile_java_scala 实现。
  * 流程：生成临时编译工程（源码 + utils 公共源 + pom.xml）→ mvn clean package -DskipTests →
  * 定位生成的 JAR。
+ * 源码根统一为 src（Maven <sourceDirectory>src</sourceDirectory>），Java/Scala 源码均写入
+ * {buildDir}/src/{包目录}；临时工程自包含，与工作区实际源码路径解耦。
  */
 import * as fs from 'node:fs';
 import * as fsp from 'node:fs/promises';
@@ -157,6 +159,7 @@ ${opts.depsXml.trimEnd()}
     </dependencies>
 
     <build>
+        <sourceDirectory>\${project.basedir}/src</sourceDirectory>
         <plugins>
 ${opts.scalaPlugin.trimEnd()}            <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -201,9 +204,8 @@ export async function compileJavaScala(req: CompileRequest): Promise<CompileResu
   buildDir = path.join(buildDir, timestamp);
   await fsp.mkdir(buildDir, { recursive: true });
 
-  const srcMain = req.codeType === 'scala'
-    ? path.join(buildDir, 'src', 'main', 'scala')
-    : path.join(buildDir, 'src', 'main', 'java');
+  // ── 源码根：{buildDir}/src（Maven sourceDirectory），Java 与 Scala 源码共用 ──
+  const srcMain = path.join(buildDir, 'src');
   const packageDir = req.packageName.split('.').reduce((acc, seg) => path.join(acc, seg), srcMain);
   await fsp.mkdir(packageDir, { recursive: true });
 
@@ -219,8 +221,8 @@ export async function compileJavaScala(req: CompileRequest): Promise<CompileResu
     const pkgRoot = findProjectPkgRoot(req.filePath, req.packageName);
     if (pkgRoot) {
       const pkgRootSeg = req.packageName.split('.')[0];
-      const scalaSrc = path.join(buildDir, 'src', 'main', 'scala');
-      const javaSrc = path.join(buildDir, 'src', 'main', 'java');
+      const scalaSrc = path.join(buildDir, 'src');
+      const javaSrc = path.join(buildDir, 'src');
       const scalaUtils = path.join(pkgRoot, 'utils', 'scala');
       if (fs.existsSync(scalaUtils)) {
         hasUtilsScala = (await copyUtilSources(scalaSrc, pkgRootSeg, 'scala', scalaUtils)) > 0;

@@ -276,7 +276,8 @@ const AppContent: React.FC = () => {
         // 目录结构（按需求统一）：
         //   基准（hostBase）= ~/.dataforge/{后端host目录}/
         //   项目源码根        = {hostBase}/code/{project_code}（pom.xml + bloop/metals 工作目录）
-        //   源码目录          = {hostBase}/code/{project_code}/src/main/java/{project_code}（文件浏览器 & opencode 工作目录）
+        //   源码目录          = {hostBase}/code/{project_code}/src（Maven sourceDirectory，文件浏览器 & opencode 工作目录）
+        //   首包目录(git挂载)  = {hostBase}/code/{project_code}/src/{project_code}
         //   git 工作空间      = {hostBase}/{gitRepoDirName}/{project_code}
         const base = joinPath(home, hostDir);
         if (cancelled) return;
@@ -318,9 +319,9 @@ const AppContent: React.FC = () => {
   }, [activeTab, config.javaHome, loaded]);
 
   // 项目目录集合（统一结构，见上方 baseWorkspace 注释）：
-  //   projectDir = {hostBase}/code/{project_code}         → 项目源码根（源码 src/、pom.xml、bloop/metals 工作目录 + 智能体/文件浏览器目录）
+  //   projectDir = {hostBase}/code/{project_code}         → 项目源码根（src/、pom.xml、bloop/metals 工作目录 + 智能体/文件浏览器目录）
   //   repoRoot   = {hostBase}/{gitRepoDirName}            → git 全局工作空间
-  //   gitProj    = {hostBase}/{gitRepoDirName}/{project_code} → 软链 → projectDir（git 读取 projectDir 数据）
+  //   gitProj    = {hostBase}/{gitRepoDirName}/{project_code} → 软链 → 首包目录（git 读取 src 下项目数据）
   const projectDirs = useCallback((pc: string) => {
     const projectDir = joinPath(baseWorkspace, 'code', pc);
     const repoRoot = config.gitRepoDirName
@@ -330,13 +331,20 @@ const AppContent: React.FC = () => {
     return { projectDir, gitProj, repoRoot };
   }, [baseWorkspace, config.gitRepoDirName]);
 
-  // 文件浏览器根目录 & opencode 工作目录 = 项目 Java 源码目录（Maven 标准 src/main/java/{pc}）
+  // opencode 工作目录 = 项目源码根 src（Maven sourceDirectory）
   const getProjectCwd = useCallback((project: ProjectInfo) => {
     if (!baseWorkspace) return undefined;
     const pc = project.projectCode;
     const { projectDir } = projectDirs(pc);
-    return joinPath(projectDir, 'src', 'main', 'java', pc);
+    return joinPath(projectDir, 'src');
   }, [baseWorkspace, projectDirs]);
+
+  // 开发助手文件浏览器根目录 = 首包目录 src/{pc}（git 工作树挂载点，真实源码所在）
+  const getProjectFileRoot = useCallback((project: ProjectInfo) => {
+    const cwd = getProjectCwd(project);
+    if (!cwd) return undefined;
+    return joinPath(cwd, project.projectCode);
+  }, [getProjectCwd]);
 
   const [gitSyncStatus, setGitSyncStatus] = useState<{
     syncing: boolean;
@@ -426,11 +434,11 @@ const AppContent: React.FC = () => {
   }, []);
 
   // 为每个已访问项目建立源码目录与 git 关联：
-  //   - code/{pc}                            → 项目源码根（pom.xml、bloop/metals 工作目录，真实目录）
-  //   - code/{pc}/src/main/java/{pc}         → 项目 Java 源码目录（智能体/文件浏览器/opencode 工作目录）
-  //   - gitProj → srcDir                     → hostBase/{gitRepoDirName}/{project_code} 软链指向该 Java 源码目录
-  //   - git 工作树挂载于 Java 源码目录        → 把仓库 {project_code} 子树内容与 src/main/java/{project_code} 关联，
-  //                                            使 git 在该目录直接读写/提交的源码与智能体看到的一致。
+  //   - code/{pc}/src            → 项目源码根（Maven sourceDirectory，智能体/文件浏览器/opencode 工作目录）
+  //   - code/{pc}/src/{pc}       → 首包目录（git 挂载点；保留首包段，包结构直接从 src/ 下展开）
+  //   - gitProj → srcDir         → hostBase/{gitRepoDirName}/{project_code} 软链指向该首包目录
+  //   - git 工作树挂载于首包目录  → 把仓库 {project_code} 子树内容与 code/{pc}/src/{pc} 关联，
+  //                                使 git 在该目录直接读写/提交的源码与智能体看到的 src 一致。
   // 未配置 gitRepoDirName 时，不建软链/不挂工作树，源码目录作为真实目录直接创建。
   useEffect(() => {
     if (!baseWorkspace || !loaded) return;
@@ -440,9 +448,18 @@ const AppContent: React.FC = () => {
     const ensureOne = async (project: ProjectInfo) => {
       const { gitProj, repoRoot } = projectDirs(project.projectCode);
       const pc = project.projectCode;
-      const srcDir = joinPath(baseWorkspace, 'code', pc, 'src', 'main', 'java', pc);
+      const srcRoot = joinPath(baseWorkspace, 'code', pc, 'src');
+      const srcDir = joinPath(srcRoot, pc);
       try {
-        const { mkdir, symlink } = await fsPromise;
+        const { mkdir, symlink, exists, rename } = await fsPromise;
+        // 非 git 项目：旧结构 code/{pc}/src/main/java/{pc} 一次迁移 → 新结构 code/{pc}/src/{pc}
+        if (!repoRoot) {
+          const oldSrcDir = joinPath(baseWorkspace, 'code', pc, 'src', 'main', 'java', pc);
+          if (!(await exists(srcDir)) && (await exists(oldSrcDir))) {
+            await mkdir(srcRoot, { recursive: true });
+            await rename(oldSrcDir, srcDir);
+          }
+        }
         await mkdir(srcDir, { recursive: true });
         const hadRepo = !!repoRoot;
         if (repoRoot) {
@@ -601,7 +618,7 @@ const AppContent: React.FC = () => {
                   <DevAssistantClientSlot
                     config={config}
                     project={project}
-                    projectCwd={getProjectCwd(project)}
+                    projectCwd={getProjectFileRoot(project)}
                     workspaceRoot={projectDirs(project.projectCode).projectDir}
                     gitRefreshSeq={gitRefreshSeq[project.projectCode] || 0}
                     dsApiUrl={config.dolphinSchedulerApiUrl}

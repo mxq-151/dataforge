@@ -361,11 +361,11 @@ const isInsideWorkTree = async (dir: string): Promise<boolean> => {
 const sanitizeBranchSegment = (s: string): string => s.replace(/[^a-zA-Z0-9_.\-/]/g, '_').replace(/\/{2,}/g, '/');
 
 /**
- * 为项目建立「链接工作树」并挂到项目源码目录 workTreeDir（如 code/{pc}/src/main/java/{pc}），
+ * 为项目建立「链接工作树」并挂到项目源码目录 workTreeDir（如 code/{pc}/src/{pc}），
  * 使 git 直接读取/提交 workTreeDir 里的真实文件。
  *
  * 背景：git 仓库位于 hostBase/{gitRepoDirName}（share 仓库），仓库按 {project_code}/ 子目录组织各项目；
- * 而智能体/文件浏览器的源码目录为 code/{project_code}/src/main/java/{project_code}。git 不跟随目录软链递归提交内容，
+ * 而智能体/文件浏览器的源码目录为 code/{project_code}/src/{project_code}。git 不跟随目录软链递归提交内容，
  * 因此对每个项目用 `git subtree split` 把 {project_code} 子树切成独立分支（该分支根 = 项目源码根），
  * 再用 `git worktree add` 把该分支挂到 workTreeDir，即把仓库 {project_code} 子树与源码目录关联起来。
  * 之后从 workTreeDir 发起的 status/add/commit/push 均直接操作真实源码并提交进 share 仓库。
