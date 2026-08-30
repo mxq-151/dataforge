@@ -4,6 +4,7 @@ import { registerIpcHandlers } from './ipc';
 import { autoStartOpencode, stopOpencodeServer } from './backend/opencode';
 import { startCompileServer, stopCompileServer } from './backend/compileServer';
 import { stopAllLspBridges } from './backend/lspBridge';
+import { detectWsl, runtimeId } from './backend/platform';
 
 // preload 编译产物与 main.js 同目录（dist-electron/）
 const PRELOAD_PATH = path.join(__dirname, 'preload.js');
@@ -66,6 +67,10 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  // 启动即打印精确运行环境（Windows / macOS / WSL / 裸 Linux），便于排查时第一时间确认宿主系统
+  console.log(
+    `[platform] DataForge running on runtime=${runtimeId()} platform=${process.platform} arch=${process.arch} wsl=${detectWsl()}`
+  );
   registerIpcHandlers();
   createWindow();
 

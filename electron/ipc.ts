@@ -15,6 +15,7 @@ import {
 } from './backend/lspBridge';
 import { autoStartOpencode, startOpencodeAfterLogin, stopOpencode } from './backend/opencode';
 import { readStoreJSON, writeStoreJSON } from './backend/store';
+import { detectWsl, runtimeId, type RuntimeId } from './backend/platform';
 
 // 事件桥（主进程 → 渲染层）统一迁至 eventBus.ts，此处仅转发导出
 export { emitToRenderer } from './eventBus';
@@ -278,7 +279,7 @@ export function registerIpcHandlers(): void {
   );
 
   // 数据上报所需的环境信息：操作系统类型+版本 + 应用版本（应用版本以打包时 package.json version 为准）
-  ipcMain.handle('df:report:meta', (): { os_version: string; dataforge_version: string } => {
+  ipcMain.handle('df:report:meta', (): { os_version: string; platform: RuntimeId; wsl: boolean; dataforge_version: string } => {
     const PLATFORM_NAMES: Record<string, string> = {
       darwin: 'macOS',
       win32: 'Windows',
@@ -298,7 +299,11 @@ export function registerIpcHandlers(): void {
     }
     // 合并操作系统类型与版本号，便于后端直接展示（后端 os_version 单字段存储）
     const os_version = [osName, osVersion].filter(Boolean).join(' ');
-    return { os_version, dataforge_version: app.getVersion() };
+    // 精确区分裸 Linux 与 WSL：runtimeId 返回 linux / wsl，detectWsl 提供布尔标记
+    const platform = runtimeId();
+    const wsl = detectWsl();
+    console.log(`[platform] runtime=${platform} (wsl=${wsl}) platform=${process.platform} arch=${process.arch} os_version=${os_version}`);
+    return { os_version, platform, wsl, dataforge_version: app.getVersion() };
   });
 
   // 应用退出：供渲染层在用户拒绝安装协议时调用（未同意协议前不进入任何界面）
