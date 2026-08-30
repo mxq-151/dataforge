@@ -274,6 +274,12 @@ export const gitPush = async (
       env['GIT_SSH_COMMAND'] = buildSshCommand(sshKeyPath);
     }
 
+    // 分支可能无上游（如 subtree split 新建的 dataforge/{pc} 分支），
+    // 启用 push.autoSetupRemote 使首次推送自动设置远程跟踪，避免 "no upstream branch" 报错。
+    await Command.create('git', ['config', 'push.autoSetupRemote', 'true'], {
+      cwd: rootPath,
+    }).execute();
+
     const output = await Command.create('git', ['push', '--progress'], {
       cwd: rootPath,
       env: Object.keys(env).length > 0 ? env : undefined,

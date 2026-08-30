@@ -1066,12 +1066,10 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
           onShowHistory={(fp) => setHistoryTarget({ filePath: fp })}
           onRevertFile={handleRevertFile}
           onCheckFileChanged={handleCheckFileChanged}
-          onBeforeCommit={() => {
-            if (editorAreaRef.current) {
-              return editorAreaRef.current.validateDataSource();
-            }
-            return { valid: true, message: null };
-          }}
+          // git 提交只负责版本管理，不验证 SQL 头部数据源是否可用；
+          // 数据源可用性校验应放在「提交到调度系统」流程（SubmitToSchedulerModal），
+          // 否则会因活动编辑器的 SQL 头部引用未接入的数据源而错误阻断 git commit。
+          onBeforeCommit={() => ({ valid: true, message: null })}
           onAISummarize={async (files: string[], diffs: string) => {
             // 通过 opencode 临时会话生成业务维度的提交信息；服务不可用时回退本地统计摘要
             return generateCommitSummary({

@@ -331,19 +331,18 @@ const AppContent: React.FC = () => {
     return { projectDir, gitProj, repoRoot };
   }, [baseWorkspace, config.gitRepoDirName]);
 
-  // opencode 工作目录 = 项目源码根 src（Maven sourceDirectory）
+  // opencode 工作目录 / 开发助手文件浏览器根 = 首包目录 src/{pc}
+  // （git 工作树挂载点，真实源码所在；opencode/会话在此目录下创建）
   const getProjectCwd = useCallback((project: ProjectInfo) => {
     if (!baseWorkspace) return undefined;
     const pc = project.projectCode;
     const { projectDir } = projectDirs(pc);
-    return joinPath(projectDir, 'src');
+    return joinPath(projectDir, 'src', pc);
   }, [baseWorkspace, projectDirs]);
 
-  // 开发助手文件浏览器根目录 = 首包目录 src/{pc}（git 工作树挂载点，真实源码所在）
+  // 开发助手文件浏览器根目录 = 与 opencode 工作目录一致
   const getProjectFileRoot = useCallback((project: ProjectInfo) => {
-    const cwd = getProjectCwd(project);
-    if (!cwd) return undefined;
-    return joinPath(cwd, project.projectCode);
+    return getProjectCwd(project);
   }, [getProjectCwd]);
 
   const [gitSyncStatus, setGitSyncStatus] = useState<{
