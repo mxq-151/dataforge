@@ -13,7 +13,7 @@ import { fetch } from '../bridge/http';
 import { Store } from '../bridge/store';
 
 /** 上报服务地址（hosts 中 dataforge.org.cn → 本机后端，默认端口 8080） */
-const REPORT_URL = 'http://dataforge.org.cn:8080/api/report';
+const REPORT_URL = 'http://dataforge.org.cn/api/report';
 
 /** 用于持久化 client_id 的 Store 文件名（userData，重装不清除） */
 const IDENTITY_STORE = 'report-identity.json';

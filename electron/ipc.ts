@@ -277,15 +277,28 @@ export function registerIpcHandlers(): void {
     writeStoreJSON(payload.file, payload.data),
   );
 
-  // 数据上报所需的环境信息：操作系统版本 + 应用版本（应用版本以打包时 package.json version 为准）
+  // 数据上报所需的环境信息：操作系统类型+版本 + 应用版本（应用版本以打包时 package.json version 为准）
   ipcMain.handle('df:report:meta', (): { os_version: string; dataforge_version: string } => {
+    const PLATFORM_NAMES: Record<string, string> = {
+      darwin: 'macOS',
+      win32: 'Windows',
+      linux: 'Linux',
+    };
+    let osName: string;
+    try {
+      osName = PLATFORM_NAMES[process.platform] || process.platform;
+    } catch {
+      osName = '';
+    }
     let osVersion = '';
     try {
       osVersion = (process.getSystemVersion && process.getSystemVersion()) || '';
     } catch {
       // ignore
     }
-    return { os_version: osVersion, dataforge_version: app.getVersion() };
+    // 合并操作系统类型与版本号，便于后端直接展示（后端 os_version 单字段存储）
+    const os_version = [osName, osVersion].filter(Boolean).join(' ');
+    return { os_version, dataforge_version: app.getVersion() };
   });
 
   // 应用退出：供渲染层在用户拒绝安装协议时调用（未同意协议前不进入任何界面）

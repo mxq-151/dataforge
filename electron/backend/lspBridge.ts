@@ -7,9 +7,11 @@
  * 的双向转换，不做任何协议语义解析（能力协商、自动应答全由前端 SDK 处理）。
  */
 import { app } from 'electron';
-import { spawn, type ChildProcess } from 'node:child_process';
+import { execFile, spawn, type ChildProcess } from 'node:child_process';
+import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as fsp from 'node:fs/promises';
+import * as https from 'node:https';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { WebSocket, WebSocketServer } from 'ws';
@@ -17,7 +19,19 @@ import AdmZip from 'adm-zip';
 import { emitToRenderer, getMainWindow } from '../eventBus';
 
 const DEFAULT_METALS_VERSION = '1.6.7';
+// JDT.LS 改为首次使用时按需下载：从 dirigiblelabs/jdtls-mirror（固定镜像，GitHub CDN）
+// 拉取 jdt-language-server-<版本>.tar.gz 到 userData/jdtls，避免打进安装包。
+const JDTLS_VERSION = '1.47.0.202505151856';
+const JDTLS_DOWNLOAD_URL = `https://github.com/dirigiblelabs/jdtls-mirror/releases/download/${JDTLS_VERSION}/jdt-language-server-${JDTLS_VERSION}.tar.gz`;
+const JDTLS_SHA256 = '354242694936016cd48635967cb28cd4b0735779dafe963077139d2823ccda3a';
 const isWindows = process.platform === 'win32';
+
+interface JdtlsProgress {
+  stage: 'download' | 'verify' | 'extract' | 'done' | 'error';
+  received?: number;
+  total?: number;
+  message?: string;
+}
 
 interface LspProcess {
   child: ChildProcess;
@@ -48,6 +62,7 @@ export function resolveJdtlsPath(): string {
   const candidates = [
     process.env.DATAFORGE_JDTLS_PATH ?? '',
     app.isPackaged ? path.join(process.resourcesPath, 'jdtls') : '',
+    path.join(app.getPath('userData'), 'jdtls'), // 按需下载位置（首次使用自动拉取）
     path.join(devAppPath, 'resources', 'jdtls'),
   ].filter(Boolean);
   for (const c of candidates) {
@@ -68,7 +83,9 @@ export function resolveMetalsPath(): string {
   for (const c of candidates) {
     if (hasMetalsArtifacts(c)) return c;
   }
-  throw new Error(`Metals 未安装。请在 ${path.join(devAppPath, 'resources', 'metals')} 中放置 metals.jar 或 coursier.jar`);
+  throw new Error(
+    `Metals 未安装。请在 ${path.join(devAppPath, 'resources', 'metals')} 中放置 coursier.jar（首次启动会自动下载 Metals 及其依赖），或直接放置 metals.jar`,
+  );
 }
 
 /** 归一化 JAVA_HOME 输入（去掉 JAVA_HOME= 前缀 / 末尾 /bin/java）。 */
@@ -109,6 +126,137 @@ function copyDirRecursive(src: string, dst: string): void {
     const d = path.join(dst, entry.name);
     if (entry.isDirectory()) copyDirRecursive(s, d);
     else fs.copyFileSync(s, d);
+  }
+}
+
+// ─── JDT.LS 按需下载 ────────────────────────────────────────────
+
+function emitJdtlsProgress(p: JdtlsProgress): void {
+  try {
+    emitToRenderer(getMainWindow(), 'lsp-jdtls-progress', p);
+  } catch {
+    /* 忽略（无窗口时） */
+  }
+}
+
+/** 下载文件到本地（自动跟随重定向，按块回报进度）。 */
+function downloadFile(url: string, dest: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const doGet = (u: string, redirects = 0) => {
+      if (redirects > 5) return reject(new Error('下载重定向次数过多'));
+      const req = https.get(u, (res) => {
+        const status = res.statusCode ?? 0;
+        if (status >= 300 && status < 400 && res.headers.location) {
+          res.resume();
+          return doGet(new URL(res.headers.location, u).toString(), redirects + 1);
+        }
+        if (status !== 200) {
+          res.resume();
+          return reject(new Error(`下载失败：HTTP ${status}`));
+        }
+        const total = parseInt(res.headers['content-length'] ?? '0', 10) || 0;
+        let received = 0;
+        const out = fs.createWriteStream(dest);
+        res.on('data', (chunk: Buffer) => {
+          received += chunk.length;
+          // 约每 1MB 回报一次进度，避免高频 IPC
+          if (received - Math.floor(received / (1024 * 1024)) * (1024 * 1024) < 64 * 1024) {
+            emitJdtlsProgress({ stage: 'download', received, total });
+          }
+        });
+        out.on('finish', () => {
+          out.close();
+          resolve();
+        });
+        out.on('error', reject);
+        res.on('error', reject);
+        res.pipe(out);
+      });
+      req.on('error', reject);
+    };
+    doGet(url);
+  });
+}
+
+function sha256File(file: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash('sha256');
+    const stream = fs.createReadStream(file);
+    stream.on('data', (d) => hash.update(d));
+    stream.on('end', () => resolve(hash.digest('hex')));
+    stream.on('error', reject);
+  });
+}
+
+/** 用系统 tar 解压 .tar.gz（macOS/Linux 用 tar，Windows 10+ 自带 bsdtar），返回含 launcher 的服务器目录。 */
+function extractTarGz(tgzPath: string, destParent: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const bin = isWindows ? 'tar.exe' : 'tar';
+    execFile(bin, ['-xzf', tgzPath, '-C', destParent], { maxBuffer: 256 * 1024 * 1024, timeout: 600_000 }, (err) => {
+      if (err) return reject(new Error(`解压失败：${err.message}`));
+      const entries = fs.readdirSync(destParent).map((n) => path.join(destParent, n));
+      const serverDir = entries.find((p) => {
+        try {
+          return fs.statSync(p).isDirectory() && hasJdtlsLauncher(p);
+        } catch {
+          return false;
+        }
+      });
+      resolve(serverDir ?? destParent);
+    });
+  });
+}
+
+/**
+ * 确保 JDT.LS 已就绪：若 userData/jdtls 已有 launcher 则直接返回；
+ * 否则从固定镜像下载 tar.gz → 校验 SHA-256 → 解压 → 落位到 userData/jdtls。
+ */
+async function ensureJdtlsDownloaded(): Promise<string> {
+  const userData = app.getPath('userData');
+  const targetDir = path.join(userData, 'jdtls');
+  if (hasJdtlsLauncher(targetDir)) return targetDir;
+
+  const tmpDir = path.join(userData, '.jdtls-download-tmp');
+  if (fs.existsSync(tmpDir)) fs.rmSync(tmpDir, { recursive: true, force: true });
+  fs.mkdirSync(tmpDir, { recursive: true });
+
+  try {
+    emitJdtlsProgress({
+      stage: 'download',
+      message: `首次使用自动下载 JDT.LS ${JDTLS_VERSION}（约 47MB，仅需一次）`,
+    });
+    console.log(`[JDT.LS] 首次使用自动下载 ${JDTLS_DOWNLOAD_URL} ...`);
+    const tgzPath = path.join(tmpDir, `jdt-language-server-${JDTLS_VERSION}.tar.gz`);
+    await downloadFile(JDTLS_DOWNLOAD_URL, tgzPath);
+
+    emitJdtlsProgress({ stage: 'verify', message: '校验下载完整性（SHA-256）' });
+    const sha = await sha256File(tgzPath);
+    if (sha !== JDTLS_SHA256) {
+      throw new Error(`JDT.LS 下载校验失败（sha256=${sha}，预期=${JDTLS_SHA256}）`);
+    }
+
+    emitJdtlsProgress({ stage: 'extract', message: '解压中' });
+    const extracted = await extractTarGz(tgzPath, tmpDir);
+    if (!hasJdtlsLauncher(extracted)) {
+      throw new Error(`解压后未找到 JDT.LS launcher：${extracted}`);
+    }
+
+    // 解压后立即删除 tar.gz，避免走「无顶层目录」兜底复制时把它一并带入目标目录
+    fs.rmSync(tgzPath, { force: true });
+
+    if (fs.existsSync(targetDir)) fs.rmSync(targetDir, { recursive: true, force: true });
+    if (extracted === tmpDir) {
+      // 兜底：tarball 无顶层目录时整体复制
+      fs.mkdirSync(targetDir, { recursive: true });
+      copyDirRecursive(tmpDir, targetDir);
+    } else {
+      fs.renameSync(extracted, targetDir);
+    }
+    emitJdtlsProgress({ stage: 'done', message: 'JDT.LS 就绪' });
+    console.log(`[JDT.LS] 已就绪：${targetDir}`);
+    return targetDir;
+  } finally {
+    if (fs.existsSync(tmpDir)) fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 }
 
@@ -191,6 +339,9 @@ function buildMetalsArgs(javaHome: string, metalsPath: string, dataDir: string, 
   if (fs.existsSync(metalsJar)) {
     args.push('-jar', metalsJar);
   } else if (fs.existsSync(coursierJar)) {
+    console.log(
+      `[Metals] 使用 coursier 启动（首次使用会自动下载 Metals v${metalsVersion} 及其依赖，约 150MB，仅需一次）`,
+    );
     args.push('-jar', coursierJar, 'launch', `org.scalameta:metals_2.13:${metalsVersion}`, '-M', 'scala.meta.metals.Main');
   } else {
     throw new Error(`Metals 未安装。在 ${metalsPath} 中未找到 metals.jar 或 coursier.jar`);
@@ -392,7 +543,13 @@ async function startLspWs(
 export async function startJavaLspWs(args: { javaHome: string; workspaceRoot: string }): Promise<{ client_id: number; ws_url: string }> {
   const javaHome = cleanJavaHome(args.javaHome);
   if (!javaHome) throw new Error('JAVA_HOME 未配置');
-  const jdtlsPath = resolveJdtlsPath();
+  // 优先使用已有安装（env / 打包资源 / userData / dev resources），缺失则按需下载
+  let jdtlsPath: string;
+  try {
+    jdtlsPath = resolveJdtlsPath();
+  } catch {
+    jdtlsPath = await ensureJdtlsDownloaded();
+  }
   const dataDir = path.join(app.getPath('userData'), 'jdtls-workspace', workspaceDataSubdir(args.workspaceRoot));
   const spec = buildJdtlsArgs(javaHome, jdtlsPath, dataDir);
   const { clientId, wsUrl } = await startLspWs(spec, 'JDT.LS');

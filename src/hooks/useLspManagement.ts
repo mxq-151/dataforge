@@ -172,6 +172,24 @@ export function useLspManagement({
       const stderrLines: string[] = [];
       const unlisteners: Array<() => void> = [];
       let exited = false;
+
+      // 看门狗：从「调用主进程（含 JDT.LS 首次按需下载）」起计时，超时仍未就绪 → 翻转错误。
+      // Java：JDT.LS 已改为按需下载（首次需拉取约 47MB 并解压），Scala：Metals 通过
+      // coursier 首次需拉取约 150MB 依赖，均放宽到 10 分钟，避免慢网下首次下载被误判为失败。
+      const timeoutMs = 600_000;
+      const watchdog = setTimeout(() => {
+        if (!exited) {
+          const hint = stderrLines.slice(-12).join('\n');
+          console.warn(
+            `[LSP:${languageId}] 启动超过 ${timeoutMs / 1000}s 仍未就绪。` +
+              (hint
+                ? `\n最近日志：\n${hint}`
+                : '\n（无任何日志，可能进程未启动或已静默退出）')
+          );
+          setStatus('error');
+        }
+      }, timeoutMs);
+
       try {
         // 确保 Maven 工程（pom.xml / bloop）就绪，并把「项目级依赖」并入 pom，
         // 使 LSP 的类路径与编译路径一致（否则 spark-sql 等类无法在编辑器内跳转）。
@@ -189,6 +207,18 @@ export function useLspManagement({
 
         const cmd = languageId === 'java' ? 'start_java_lsp_ws' : 'start_scala_lsp_ws';
         console.log(`[LSP:${languageId}] 调用主进程命令 ${cmd}，javaHome=${javaHome}, workspaceRoot=${workspaceRoot}`);
+        // 转发主进程 JDT.LS 首次下载进度（仅 Java；首次需拉取约 47MB 并解压），
+        // 需在 invoke 前注册，避免错过下载阶段的事件。
+        if (languageId === 'java') {
+          try {
+            const u3 = await listen<Record<string, unknown>>('lsp-jdtls-progress', (e) => {
+              console.log(`[LSP:java] JDT.LS 进度:`, e.payload);
+            });
+            unlisteners.push(u3);
+          } catch {
+            /* 忽略 */
+          }
+        }
         const res = await invoke<WsStartResult>(cmd, { javaHome, workspaceRoot });
         console.log(`[LSP:${languageId}] 主进程返回 ws_url=${res.ws_url}, client_id=${res.client_id}`);
 
@@ -219,21 +249,7 @@ export function useLspManagement({
           /* 忽略 */
         }
 
-        // 看门狗：180s 内仍未就绪 → 翻转错误（可能 Metals 正在首次导入 spark 工程，
-        // 也可能已挂死），并附上最近日志，避免 UI 永久卡在“启动中”。
-        const watchdog = setTimeout(() => {
-          if (!exited) {
-            const hint = stderrLines.slice(-12).join('\n');
-            console.warn(
-              `[LSP:${languageId}] 启动超过 180s 仍未就绪。` +
-                (hint
-                  ? `\n最近日志：\n${hint}`
-                  : '\n（无任何 Metals 日志，可能进程未启动或已静默退出）')
-            );
-            setStatus('error');
-          }
-        }, 180_000);
-
+        // 看门狗已在上方 invoke 前创建（覆盖 JDT.LS/Metals 首次下载期）
         try {
           const { wrapper, clientId } = await startWrapper(languageId, res);
           if (languageId === 'java') {
@@ -251,6 +267,8 @@ export function useLspManagement({
           unlisteners.forEach((u) => u());
         }
       } catch (e) {
+        clearTimeout(watchdog);
+        unlisteners.forEach((u) => u());
         console.warn(`[LSP] ${languageId === 'java' ? 'Java (JDT.LS)' : 'Scala (Metals)'} 启动失败:`, e);
         setStatus('error');
       } finally {
