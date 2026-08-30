@@ -979,17 +979,28 @@ function useOpencodeClientImpl(
     if (!sessionId) {
       // 通过对话创建会话：与「新建会话按钮」保持一致——
       // 若先前未新建会话目录（未点击新建按钮），则为本次对话创建一个独立目录并打开其标签页。
-      if (isDataExplore && dataExploreService && !pendingDeDirRef.current) {
+      if (isDataExplore && dataExploreService) {
+        // 关键：新建会话前必须保证 opencode 工作目录已实际落到会话时间戳目录
+        // （individual/{ts}），而不能停留在 individual/ 基础目录，否则 session.create
+        // 会把新会话建在基础目录下（session.directory = .../individual）。
+        // pendingDeDirRef 可能由「新建会话/首次兜底」提前设置，但其目录切换可能仍在
+        // 进行中，因此不把它当作"目录已就绪"信号，而是显式确保 currentDirectory 已指向目标目录。
         try {
-          const created = await dataExploreService.createDir();
-          if (created) {
-            pendingDeDirRef.current = created.dir;
-            await setWorkingDirectory(created.dir);
-            setDataExploreDirs(prev => {
-              const rest = (prev || []).filter(d => d.dir !== created.dir);
-              return [created, ...rest];
-            });
-            bumpDeVersion();
+          let targetDir = pendingDeDirRef.current ?? null;
+          if (!targetDir) {
+            const created = await dataExploreService.createDir();
+            if (created) {
+              targetDir = created.dir;
+              pendingDeDirRef.current = created.dir;
+              setDataExploreDirs(prev => {
+                const rest = (prev || []).filter(d => d.dir !== created.dir);
+                return [created, ...rest];
+              });
+              bumpDeVersion();
+            }
+          }
+          if (targetDir && targetDir !== currentDirectory) {
+            await setWorkingDirectory(targetDir);
           }
         } catch (err) {
           console.error('[useOpencodeClient] 通过对话新建数据探索目录失败:', err);
@@ -1179,6 +1190,12 @@ function useOpencodeClientImpl(
     if (dirs.length > 0) {
       // 默认仅打开最新的一个会话文件；其余由任务下拉勾选再打开
       setDataExploreDirs([dirs[0]]);
+      // 复用已有会话时也必须把 AI 工作目录切到会话时间戳子目录（individual/{ts}）。
+      // 否则 opencode 会停留在 individual/ 基础目录，新会话被创建在基础目录下
+      // （session.directory = .../individual），而不是 individual/{ts}/。
+      if (dirs[0].dir !== currentDirectory) {
+        await setWorkingDirectory(dirs[0].dir);
+      }
       return;
     }
     const created = await dataExploreService.createDir();
@@ -1187,7 +1204,7 @@ function useOpencodeClientImpl(
     await setWorkingDirectory(created.dir);
     setDataExploreDirs([created]);
     bumpDeVersion();
-  }, [isDataExplore, dataExploreService, setWorkingDirectory]);
+  }, [isDataExplore, dataExploreService, setWorkingDirectory, currentDirectory]);
 
   // data-explore 连接就绪后执行首次 scan（含兜底创建）
   useEffect(() => {

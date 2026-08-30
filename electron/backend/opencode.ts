@@ -398,14 +398,48 @@ async function healthCheck(): Promise<boolean> {
   }
 }
 
-function makeSpawnSpec(config: OpenCodeServerConfig): { exe: string; args: string[] } {
+interface SpawnSpec {
+  exe: string;
+  args: string[];
+  /** 是否走沙箱包装（用于启动失败时回退非沙箱重试）。 */
+  sandboxed: boolean;
+}
+
+/** opencode 运行所需的用户可写目录。首启时可能不存在，须先创建再 bind，
+ *  否则 bwrap 会因 "Can't find source path" 直接退出导致智能体无法启动。 */
+function opencodeRuntimeDirs(home: string): string[] {
+  return [
+    `${home}/.local/share/opencode`,
+    `${home}/.local/state/opencode`,
+    `${home}/.config/opencode`,
+    `${home}/.cache/opencode`,
+    `${home}/.opencode`,
+  ];
+}
+
+/** 探测 bubblewrap 是否真的可用：内核/发行版禁用非特权 user namespace 或限制挂载时，
+ *  bwrap 即使安装了也会启动失败，此时必须回退非沙箱，否则智能体启动即崩。 */
+function bwrapUsable(bwrap: string): boolean {
+  try {
+    execFileSync(
+      bwrap,
+      ['--ro-bind', '/', '/', '--dev', '/dev', '--proc', '/proc', '--tmpfs', '/tmp', '--tmpfs', '/dev/shm', '/bin/true'],
+      { stdio: 'ignore', timeout: 5000 },
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function makeSpawnSpec(config: OpenCodeServerConfig, noSandbox = false): SpawnSpec {
   const bin = resolveOpencodeBin();
   if (!bin) {
     throw new Error('无法解析 opencode 二进制路径（请确认已安装 opencode 或在 resources/binaries 下放置）');
   }
   // AI 助手始终在沙箱中执行（无需用户配置）。
   // 开发逃生阀：DATAFORGE_DISABLE_SANDBOX=1 跳过沙箱（受限终端/调试环境使用，桌面正常启动不受影响）。
-  const wantSandbox = process.env.DATAFORGE_DISABLE_SANDBOX !== '1';
+  const wantSandbox = !noSandbox && process.env.DATAFORGE_DISABLE_SANDBOX !== '1';
 
   if (process.platform === 'darwin' && wantSandbox) {
     const profile = sandboxProfilePath();
@@ -430,13 +464,12 @@ function makeSpawnSpec(config: OpenCodeServerConfig): { exe: string; args: strin
         bin,
       ];
       console.log(`[opencode] 沙箱模式启动: sandbox-exec -f ${profile} -- ${bin}`);
-      return { exe: 'sandbox-exec', args };
+      return { exe: 'sandbox-exec', args, sandboxed: true };
     }
     console.warn(`[opencode] 警告: 沙箱 profile 不存在 (${profile})，回退非沙箱启动`);
   } else if (process.platform === 'linux' && wantSandbox) {
-    // bubblewrap 实验性支持
     const bwrap = '/usr/bin/bwrap';
-    if (fs.existsSync(bwrap)) {
+    if (fs.existsSync(bwrap) && bwrapUsable(bwrap)) {
       const home = os.homedir();
       const cwd = config.cwd?.trim() || '';
       const args = [
@@ -444,23 +477,25 @@ function makeSpawnSpec(config: OpenCodeServerConfig): { exe: string; args: strin
         '--dev', '/dev',
         '--proc', '/proc',
         '--tmpfs', '/tmp',
+        '--tmpfs', '/dev/shm',
       ];
-      if (cwd) args.push('--bind', cwd, cwd);
-      for (const dir of [
-        `${home}/.local/share/opencode`,
-        `${home}/.config/opencode`,
-        `${home}/.cache/opencode`,
-        `${home}/.opencode`,
-      ]) {
-        args.push('--bind', dir, dir);
+      if (cwd && fs.existsSync(cwd)) args.push('--bind', cwd, cwd);
+      for (const dir of opencodeRuntimeDirs(home)) {
+        try {
+          fs.mkdirSync(dir, { recursive: true });
+          args.push('--bind', dir, dir);
+        } catch {
+          console.warn(`[opencode] 忽略不可用的沙箱绑定目录: ${dir}`);
+        }
       }
       args.push('--', bin);
-      return { exe: bwrap, args };
+      console.log(`[opencode] 沙箱模式启动: ${bwrap} ${args.join(' ')}`);
+      return { exe: bwrap, args, sandboxed: true };
     }
-    console.warn('[opencode] 警告: 未找到 /usr/bin/bwrap，回退非沙箱启动');
+    console.warn('[opencode] 警告: bubblewrap 不可用（未安装或内核命名空间受限），回退非沙箱启动');
   }
 
-  return { exe: bin, args: [] };
+  return { exe: bin, args: [], sandboxed: false };
 }
 
 function validateCwd(cwd: string): void {
@@ -474,7 +509,10 @@ function validateCwd(cwd: string): void {
  * 启动 opencode 服务核心逻辑。幂等：已有健康进程则复用；
  * 登录后调用前应先 stop，确保新配置生效。
  */
-export async function startOpencodeServerCore(config: OpenCodeServerConfig): Promise<string> {
+export async function startOpencodeServerCore(
+  config: OpenCodeServerConfig,
+  opts: { noSandbox?: boolean } = {},
+): Promise<string> {
   // ── 幂等性检查 ──
   if (childProc && childPid != null) {
     if (await healthCheck()) {
@@ -508,7 +546,7 @@ export async function startOpencodeServerCore(config: OpenCodeServerConfig): Pro
     spawnCwd = cwd;
   }
 
-  const { exe: opencodeExe, args: sandboxArgs } = makeSpawnSpec(config);
+  const { exe: opencodeExe, args: sandboxArgs, sandboxed } = makeSpawnSpec(config, opts.noSandbox === true);
 
   // ── 环境变量 ──
   const env: Record<string, string> = {};
@@ -605,6 +643,14 @@ export async function startOpencodeServerCore(config: OpenCodeServerConfig): Pro
   }
 
   if (!ready) {
+    if (sandboxed) {
+      // 沙箱包装导致启动失败时回退非沙箱重试，保证智能体可用（如 bwrap 命名空间受限、
+      // 绑定目录异常等）。仅回退一次，重试再失败则报真实错误。
+      const detail = stderrLines.length > 0 ? `\nstderr:\n${stderrLines.slice(-20).join('\n')}` : '';
+      console.warn(`[opencode] 沙箱模式启动失败，回退非沙箱模式重试${detail}`);
+      await stopOpencodeServer();
+      return startOpencodeServerCore(config, { noSandbox: true });
+    }
     const detail = stderrLines.length > 0 ? `\nstderr:\n${stderrLines.join('\n')}` : '';
     throw new Error(`OpenCode 服务器启动超时${detail}`);
   }
