@@ -3,11 +3,12 @@ import { X, Send, Loader2, FolderKanban, GitBranch, CheckCircle, AlertTriangle, 
 import type { DolphinSchedulerApi, DSProject, DSWorkflowDefinition, DSTaskType, DSDataSource, DSWorkerGroup, DSEnvironment, DSWorkflowTaskNode } from '../../types/dolphinscheduler';
 import { TASK_TYPE_LABELS, ReleaseState, Priority, parseReleaseState } from '../../types/dolphinscheduler';
 import type { CodeFileMapping, SavedConfig, ValidationError } from '../../utils/schedulerMapping';
-import { buildWorkflowFromCodeFile, validateSubmission, getAvailableTaskTypes, mapCodeFileToTask, sanitizeDsName, validateYarnJobName } from '../../utils/schedulerMapping';
+import { buildWorkflowFromCodeFile, validateSubmission, getAvailableTaskTypes, mapCodeFileToTask, sanitizeDsName, validateYarnJobName, buildDependentTaskNode, type ResolvedDependency } from '../../utils/schedulerMapping';
 import { type CompileResult } from '../../services/compileService';
 import { unifiedCompile } from '../../services/unifiedCompile';
 import { validateFileHeader } from '../../utils/index';
 import { splitPath, getBaseName } from '../../utils/pathUtils';
+import { useToast } from '../../components/Toast';
 import './SubmitToSchedulerModal.css';
 
 interface CompileConfig {
@@ -41,6 +42,17 @@ interface SubmitToSchedulerModalProps {
 
 type SubmitStep = 'config' | 'validating' | 'submitting' | 'success' | 'error';
 
+interface DependencyResolution {
+  found: boolean;
+  projectCode: number | null;
+  definitionCode: number | null;
+  taskCode: number | null;
+  /** 前置任务名称（原始值，未净化） */
+  taskName: string;
+  /** label：{调度项目}.{前置任务名称} */
+  label: string;
+}
+
 const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
   visible,
   fileName,
@@ -58,6 +70,7 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
   onClose,
   onSuccess,
 }) => {
+  const toast = useToast();
   const [step, setStep] = useState<SubmitStep>('config');
   const [projects, setProjects] = useState<DSProject[]>([]);
   const [selectedProjectCode, setSelectedProjectCode] = useState<number | null>(null);
@@ -614,6 +627,51 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
     }
   }, [dsApi, selectedProjectCode]);
 
+  /**
+   * 扫描指定调度项目中所有工作流的任务节点，确认代码头 @依赖 声明的每个前置任务是否存在。
+   * 返回 Map，key 为 {调度项目}.{前置任务名称}，value 为解析结果；找不到的 found=false。
+   * 仅当代码头声明了 @依赖 时才真正发起查询，否则返回空 Map。
+   */
+  const scanHeaderDependencyTasks = useCallback(
+    async (projectCodeNum: number | null): Promise<Map<string, DependencyResolution>> => {
+      const declaredDeps = currentMapping?.headerDependencies || [];
+      const resultMap = new Map<string, DependencyResolution>();
+      if (!dsApi || !projectCodeNum || declaredDeps.length === 0) return resultMap;
+
+      try {
+        const wfRes = await dsApi.workflowDefinition.list(projectCodeNum, { pageNo: 1, pageSize: 100 });
+        const defs = wfRes.code === 0 && wfRes.data?.totalList ? wfRes.data.totalList : [];
+        // taskName(净化后) -> { 项目code, 工作流code, 任务code }（同名只取首个）
+        const byName = new Map<string, { projectCode: number; definitionCode: number; taskCode: number }>();
+        for (const def of defs) {
+          try {
+            const dRes = await dsApi.workflowDefinition.detail(projectCodeNum, def.code);
+            if (dRes.code === 0 && dRes.data) {
+              for (const node of dRes.data.taskNodes) {
+                const san = sanitizeDsName(node.name);
+                if (san && !byName.has(san)) {
+                  byName.set(san, { projectCode: projectCodeNum, definitionCode: def.code, taskCode: node.code });
+                }
+              }
+            }
+          } catch { /* 单个工作流查询失败则跳过 */ }
+        }
+
+        for (const dep of declaredDeps) {
+          const label = [dep.projectCode, dep.taskName].filter(Boolean).join('.');
+          const hit = byName.get(sanitizeDsName(dep.taskName));
+          resultMap.set(label, hit
+            ? { found: true, projectCode: hit.projectCode, definitionCode: hit.definitionCode, taskCode: hit.taskCode, taskName: dep.taskName, label }
+            : { found: false, projectCode: null, definitionCode: null, taskCode: null, taskName: dep.taskName, label });
+        }
+      } catch {
+        // 查询失败时视为全部未解析，交由上层按"前置任务不存在"处理
+      }
+      return resultMap;
+    },
+    [dsApi, currentMapping],
+  );
+
   useEffect(() => {
     if (workflowCheckTimerRef.current) {
       clearTimeout(workflowCheckTimerRef.current);
@@ -677,6 +735,19 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
         field: 'datasource',
         message: `代码中引用的数据源「${codeDatasourceName}」在调度系统中不存在，请联系管理员在调度系统数据源管理中创建该数据源`,
       });
+    }
+
+    // 代码头 @依赖 声明的前置任务存在性校验：前置任务不存在时提示用户
+    if ((currentMapping?.headerDependencies?.length || 0) > 0 && selectedProjectCode) {
+      const depRes = await scanHeaderDependencyTasks(selectedProjectCode);
+      for (const [label, r] of depRes) {
+        if (!r.found) {
+          errors.push({
+            field: 'dependency',
+            message: `代码头 @依赖 声明的前置任务「${label}」在调度项目中不存在，请先在调度系统中创建该前置任务后再提交`,
+          });
+        }
+      }
     }
 
     const ext = fileName.split('.').pop()?.toLowerCase() || '';
@@ -777,11 +848,42 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
     console.log(passed)
     setValidationPassed(passed);
     return errors;
-  }, [effectiveMapping, currentMapping, selectedProjectCode, workflowName, selectedWorkflowCode, isRealApi, projectCode, projects, projectMismatch, needsDatasource, selectedDatasourceId, codeDatasourceName, datasourceMismatch, isCompilableTask, compileConfig, fileName, codeContent, filePath, rootPath, savedConfig, projectCode]);
+  }, [effectiveMapping, currentMapping, selectedProjectCode, workflowName, selectedWorkflowCode, isRealApi, projectCode, projects, projectMismatch, needsDatasource, selectedDatasourceId, codeDatasourceName, datasourceMismatch, isCompilableTask, compileConfig, fileName, codeContent, filePath, rootPath, savedConfig, scanHeaderDependencyTasks]);
 
   const handleSubmit = useCallback(async () => {
 
     if (!effectiveMapping || !selectedProjectCode || !dsApi) return;
+
+    // 提交前通过接口校验代码头 @依赖 声明的前置任务是否存在；存在缺失时不允许提交并提示用户先创建前置任务
+    const dependencyMap = (currentMapping?.headerDependencies?.length || 0) > 0
+      ? await scanHeaderDependencyTasks(selectedProjectCode)
+      : new Map<string, DependencyResolution>();
+    const resolvedDeps: ResolvedDependency[] = [];
+    const missingDepLabels: string[] = [];
+    dependencyMap.forEach(r => {
+      if (!r.found) {
+        missingDepLabels.push(r.label);
+        return;
+      }
+      if (r.projectCode != null && r.definitionCode != null && r.taskCode != null) {
+        resolvedDeps.push({
+          projectCode: r.projectCode,
+          definitionCode: r.definitionCode,
+          taskCode: r.taskCode,
+          taskName: r.taskName,
+          label: r.label,
+        });
+      }
+    });
+    if (missingDepLabels.length > 0) {
+      const depMsg = missingDepLabels.length === 1
+        ? `代码头 @依赖 声明的前置任务「${missingDepLabels[0]}」在调度项目中不存在`
+        : `代码头 @依赖 声明的前置任务「${missingDepLabels.join('」、『')}」在调度项目中不存在`;
+      toast.error(`${depMsg}，请先在调度系统中创建前置依赖后再提交`);
+      setShowValidation(true);
+      setStep('config');
+      return;
+    }
 
     setStep('submitting');
     setErrorMsg(null);
@@ -797,24 +899,36 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
       mappingWithDatasource.taskParams = updatedParams;
     }
 
-    // 为 Spark 任务注入 OpenLineage 固定参数
+    // 为 Spark 任务注入 OpenLineage 固定参数（支持文件级血缘管理配置覆盖/关闭全局设置）
     if (mappingWithDatasource.taskType === 'SPARK') {
-      const updatedParams = { ...mappingWithDatasource.taskParams };
-      const openlineageConfs: string[] = [
-        '--conf spark.extraListeners=io.openlineage.spark.agent.OpenLineageSparkListener',
-        '--conf spark.openlineage.transport.type=http',
-      ];
-      if (openlineageTransportUrl) {
-        openlineageConfs.push(`--conf spark.openlineage.transport.url=${openlineageTransportUrl}`);
+      // 从文件配置（savedConfig.taskParams）读取血缘管理保留参数 lineage.*
+      const lineageCfg: Record<string, string> = {};
+      (savedConfig?.taskParams || []).forEach(p => {
+        if (p.key && p.key.startsWith('lineage.')) lineageCfg[p.key] = p.value;
+      });
+      const lineageConfigured = Object.prototype.hasOwnProperty.call(lineageCfg, 'lineage.enabled');
+      const lineageEnabled = lineageCfg['lineage.enabled'] !== 'false';
+      // 未显式配置血缘时保持默认注入行为（向后兼容）；显式关闭则跳过注入
+      if (!lineageConfigured || lineageEnabled) {
+        const updatedParams = { ...mappingWithDatasource.taskParams };
+        const openlineageConfs: string[] = [
+          '--conf spark.extraListeners=io.openlineage.spark.agent.OpenLineageSparkListener',
+          '--conf spark.openlineage.transport.type=http',
+        ];
+        const transportUrl = lineageCfg['lineage.transportUrl'] || openlineageTransportUrl;
+        if (transportUrl) {
+          openlineageConfs.push(`--conf spark.openlineage.transport.url=${transportUrl}`);
+        }
+        const namespace = lineageCfg['lineage.namespace'] || projectCode;
+        if (namespace) {
+          openlineageConfs.push(`--conf spark.openlineage.namespace=${namespace}`);
+        }
+        const existingOthers = (updatedParams.others as string) || '';
+        updatedParams.others = existingOthers
+          ? `${existingOthers}\n${openlineageConfs.join('\n')}`
+          : openlineageConfs.join('\n');
+        mappingWithDatasource.taskParams = updatedParams;
       }
-      if (projectCode) {
-        openlineageConfs.push(`--conf spark.openlineage.namespace=${projectCode}`);
-      }
-      const existingOthers = (updatedParams.others as string) || '';
-      updatedParams.others = existingOthers
-        ? `${existingOthers}\n${openlineageConfs.join('\n')}`
-        : openlineageConfs.join('\n');
-      mappingWithDatasource.taskParams = updatedParams;
     }
 
     let uploadedJarResourcePath: string | null = null;
@@ -895,6 +1009,8 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
       }
     }
 
+    // 前置依赖已在上方开头解析（resolvedDeps），缺失时已阻止提交
+
     try {
       const targetProject = projects.find(p => p.code === selectedProjectCode);
       const projectName = targetProject?.name || '';
@@ -936,6 +1052,18 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
             });
           }
 
+          // 根据代码头 @依赖 配置前置任务依赖：构建 DEPENDENT 任务节点作为 newNode 的前置
+          if (resolvedDeps.length > 0) {
+            const depCode = newTaskCode + 1;
+            const depNode = buildDependentTaskNode(resolvedDeps, depCode);
+            updatedNodes.push(depNode);
+            updatedEdges.push({
+              id: `e_${depCode}_${newTaskCode}`,
+              sourceCode: depCode,
+              targetCode: newTaskCode,
+            });
+          }
+
           await dsApi.workflowDefinition.update(selectedProjectCode, selectedWorkflowCode, {
             name: workflowDefinition.name,
             description: workflowDefinition.description,
@@ -972,6 +1100,19 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
           mappingWithDatasource,
           workflowDesc || mappingWithDatasource.description,
         );
+
+        // 根据代码头 @依赖 配置前置任务依赖：在新建工作流中插入 DEPENDENT 前置节点并建立边关系
+        if (resolvedDeps.length > 0) {
+          const mainNode = workflowData.nodes[0];
+          const depCode = mainNode.code + 1;
+          const depNode = buildDependentTaskNode(resolvedDeps, depCode);
+          workflowData.nodes = [depNode, mainNode];
+          workflowData.edges = [{
+            id: `e_${depCode}_${mainNode.code}`,
+            sourceCode: depCode,
+            targetCode: mainNode.code,
+          }];
+        }
 
         const createRes = await dsApi.workflowDefinition.createWithTasks(selectedProjectCode, workflowData);
 
@@ -1013,6 +1154,7 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
     projects, workflowDesc, autoOnline, autoTrigger, dsApi, onSuccess,
     compiledJarPath, needsDatasource, selectedDatasourceId, dsDataSources,
     selectedWorkerGroup, selectedEnvironmentCode, openlineageTransportUrl, projectCode,
+    currentMapping, scanHeaderDependencyTasks,
   ]);
 
   if (!visible) return null;
@@ -1218,19 +1360,21 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
                 </div>
               </div>
 
-              {currentMapping && currentMapping.dataDependencies.length > 0 && (
+              {currentMapping && currentMapping.headerDependencies.length > 0 && (
                 <div className="submit-scheduler__section">
                   <div className="submit-scheduler__section-title">
-                    <Database size={14} />
-                    数据依赖
+                    <GitBranch size={14} />
+                    前置依赖
                   </div>
                   <div className="submit-scheduler__deps-list">
-                    {currentMapping.dataDependencies.map((dep, idx) => (
-                      <span key={idx} className="submit-scheduler__dep-tag">{dep}</span>
+                    {currentMapping.headerDependencies.map((dep, idx) => (
+                      <span key={idx} className="submit-scheduler__dep-tag">
+                        {[dep.projectCode, dep.taskName].filter(Boolean).join('.')}
+                      </span>
                     ))}
                   </div>
                   <div className="submit-scheduler__deps-hint">
-                    提交时将根据数据依赖关系设置前置任务依赖
+                    提交时将根据代码头 @依赖 创建前置依赖任务，等待以上任务完成后运行
                   </div>
                 </div>
               )}

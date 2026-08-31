@@ -523,6 +523,64 @@
   font-style: italic;
 }
 
+/* Lineage Management */
+.config-params__lineage {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  background-color: rgba(156, 103, 224, 0.06);
+  border: 1px solid rgba(156, 103, 224, 0.22);
+  border-radius: 6px;
+}
+
+.config-params__lineage .config-params__list-header {
+  margin-bottom: 2px;
+  padding: 0;
+  border-bottom: none;
+}
+
+.config-params__lineage-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.config-params__lineage-switch {
+  accent-color: #9C67E0;
+  flex: 0 0 auto;
+}
+
+.config-params__lineage-hint {
+  font-size: 12px;
+  color: #c8c8c8;
+}
+
+.config-params__lineage-label {
+  flex: 0 0 auto;
+  width: 96px;
+  font-size: 11px;
+  color: #858585;
+}
+
+.config-params__lineage-row .config-params__input {
+  flex: 1;
+}
+
+/* 命名空间 / Transport URL 为只读展示（取默认值），不可编辑 */
+.config-params__lineage-row .config-params__input:read-only {
+  opacity: 0.7;
+  cursor: not-allowed;
+  background-color: rgba(255, 255, 255, 0.03);
+  color: #c8c8c8;
+}
+
+.config-params__lineage-row .config-params__input:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .config-params__cat-group--current {
   border-color: #007acc60;
 }

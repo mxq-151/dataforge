@@ -22,6 +22,20 @@ interface ParamItem {
   value: string;
 }
 
+/** 血缘管理保留的任务参数 key（存于 computeResources，提交调度时注入 spark.openlineage.*） */
+const LINEAGE_ENABLED_KEY = 'lineage.enabled';
+
+interface LineageConfig {
+  enabled: boolean;
+}
+
+const isLineageKey = (key: string) => key.startsWith('lineage.');
+
+const extractLineageFromParams = (params: ParamItem[]): LineageConfig => {
+  const item = params.find(p => p.key === LINEAGE_ENABLED_KEY);
+  return { enabled: item ? item.value !== 'false' : true };
+};
+
 interface ConfigParamsModalProps {
   visible: boolean;
   onClose: () => void;
@@ -32,6 +46,10 @@ interface ConfigParamsModalProps {
   filePath?: string;
   rootPath?: string;
   projectId?: number;
+  /** 项目编码：血缘命名空间默认值（只读展示） */
+  projectCode?: string;
+  /** 全局 OpenLineage Transport URL（来自设置页）：血缘 Transport URL 默认值（只读展示） */
+  openlineageTransportUrl?: string;
   onSave?: (data: {
     dependencies: DependencyItem[];
     programParams: ParamItem[];
@@ -82,12 +100,15 @@ const ConfigParamsModal: React.FC<ConfigParamsModalProps> = ({
   filePath,
   rootPath,
   projectId,
+  projectCode,
+  openlineageTransportUrl,
   onSave,
 }) => {
   const [activeTab, setActiveTab] = useState<TabKey>('dependencies');
   const [deps, setDeps] = useState<DependencyItem[]>(dependencies);
   const [progParams, setProgParams] = useState<ParamItem[]>(programParams);
   const [taskParamList, setTaskParamList] = useState<ParamItem[]>(taskParams);
+  const [lineage, setLineage] = useState<LineageConfig>(() => extractLineageFromParams(taskParams));
   const [expandedProgramTypes, setExpandedProgramTypes] = useState<Set<string>>(new Set());
   const [selectedDepIds, setSelectedDepIds] = useState<Set<number>>(new Set());
   const [engineInfo, setEngineInfo] = useState<{ engine: string; warehouse: string } | null>(null);
@@ -100,6 +121,12 @@ const ConfigParamsModal: React.FC<ConfigParamsModalProps> = ({
   const currentProgramType = useMemo(
     () => resolveProgramTypeFromFile(fileContent, filePath),
     [fileContent, filePath]
+  );
+
+  // 普通任务参数列表不展示血缘管理保留项（lineage.*），仅展示用户自定义参数
+  const displayTaskParams = useMemo(
+    () => taskParamList.filter(p => !isLineageKey(p.key)),
+    [taskParamList]
   );
 
   useEffect(() => {
@@ -123,7 +150,10 @@ const ConfigParamsModal: React.FC<ConfigParamsModalProps> = ({
         if (loaded) {
           if (loaded.dependencies.length > 0) setDeps(loaded.dependencies);
           if (loaded.programParams.length > 0) setProgParams(loaded.programParams);
-          if (loaded.taskParams.length > 0) setTaskParamList(loaded.taskParams);
+          if (loaded.taskParams.length > 0) {
+            setTaskParamList(loaded.taskParams);
+            setLineage(extractLineageFromParams(loaded.taskParams));
+          }
           if (loaded.engine) setEngineInfo({ engine: loaded.engine, warehouse: '' });
         } else if (engine) {
           const defaults = getEngineDefaultTaskParams(engine);
@@ -211,6 +241,12 @@ const ConfigParamsModal: React.FC<ConfigParamsModalProps> = ({
       }
     }
 
+    // 将血缘管理配置合并为保留任务参数（lineage.enabled），普通任务参数列表中不展示这些保留项
+    const mergedTaskParams: ParamItem[] = [
+      ...taskParamList.filter(p => !isLineageKey(p.key)),
+      { id: 'lineage_enabled', key: LINEAGE_ENABLED_KEY, value: lineage.enabled ? 'true' : 'false' },
+    ];
+
     if (filePath) {
       setSaving(true);
       const relativePath = rootPath && filePath.startsWith(rootPath)
@@ -220,7 +256,7 @@ const ConfigParamsModal: React.FC<ConfigParamsModalProps> = ({
         const ok = await saveConfig(projectId || 1, relativePath, {
           dependencies: deps,
           programParams: progParams,
-          taskParams: taskParamList,
+          taskParams: mergedTaskParams,
           engine: engineInfo?.engine || '',
         });
         if (!ok) {
@@ -234,7 +270,7 @@ const ConfigParamsModal: React.FC<ConfigParamsModalProps> = ({
         setSaving(false);
       }
     }
-    onSave?.({ dependencies: deps, programParams: progParams, taskParams: taskParamList });
+    onSave?.({ dependencies: deps, programParams: progParams, taskParams: mergedTaskParams });
     onClose();
   };
 
@@ -467,8 +503,44 @@ const ConfigParamsModal: React.FC<ConfigParamsModalProps> = ({
                 </div>
               )}
 
+              <div className="config-params__lineage">
+                <div className="config-params__list-header">
+                  <span className="config-params__list-title">血缘管理</span>
+                </div>
+                <label className="config-params__lineage-row">
+                  <input
+                    type="checkbox"
+                    className="config-params__lineage-switch"
+                    checked={lineage.enabled}
+                    onChange={e => setLineage(prev => ({ ...prev, enabled: e.target.checked }))}
+                  />
+                  <span className="config-params__lineage-hint">
+                    启用 OpenLineage 血缘采集（提交 Spark 调度任务时注入 spark.openlineage.* 参数）
+                  </span>
+                </label>
+                <div className="config-params__lineage-row">
+                  <span className="config-params__lineage-label">命名空间</span>
+                  <input
+                    className="config-params__input"
+                    value={projectCode || ''}
+                    readOnly
+                    title="命名空间默认使用项目编码，不可修改"
+                  />
+                </div>
+                <div className="config-params__lineage-row">
+                  <span className="config-params__lineage-label">Transport URL</span>
+                  <input
+                    className="config-params__input"
+                    value={openlineageTransportUrl || ''}
+                    readOnly
+                    placeholder="未配置"
+                    title="Transport URL 取自设置页面中的 OpenLineage 配置，不可修改"
+                  />
+                </div>
+              </div>
+
               <div className="config-params__kv-list">
-                {taskParamList.map(param => (
+                {displayTaskParams.map(param => (
                   <div key={param.id} className="config-params__kv-row">
                     <input className="config-params__input config-params__input--key" placeholder="参数名" value={param.key}
                       onChange={e => updateTaskParam(param.id, 'key', e.target.value)} />
@@ -477,7 +549,7 @@ const ConfigParamsModal: React.FC<ConfigParamsModalProps> = ({
                     <button className="config-params__remove-btn" onClick={() => removeTaskParam(param.id)}><Trash2 size={12} /></button>
                   </div>
                 ))}
-                {taskParamList.length === 0 && <div className="config-params__empty">暂无任务参数，点击上方按钮添加</div>}
+                {displayTaskParams.length === 0 && <div className="config-params__empty">暂无任务参数，点击上方按钮添加</div>}
               </div>
             </section>
           )}

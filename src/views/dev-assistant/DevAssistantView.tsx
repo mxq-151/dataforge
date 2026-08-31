@@ -1041,6 +1041,7 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
           rootPath={projectCwd}
           projectId={project.id}
           projectCode={project.projectCode}
+          openlineageTransportUrl={config.openlineageTransportUrl}
           javaHome={config.javaHome}
           workspaceRoot={workspaceRoot ?? config.cwd}
           activeTabRange={activeTabId ? (tabRanges[activeTabId] ?? null) : null}

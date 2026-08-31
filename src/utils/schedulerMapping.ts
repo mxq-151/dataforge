@@ -1,4 +1,4 @@
-import type { DSTaskType, DSWorkflowTaskNode, DSWorkflowEdge, DSWorkflowGlobalParam, DSLocalParam } from '../types/dolphinscheduler';
+import type { DSTaskType, DSWorkflowTaskNode, DSWorkflowEdge, DSWorkflowGlobalParam, DSLocalParam, DSDependentTaskParams } from '../types/dolphinscheduler';
 import { getDefaultTaskParams, ExecutionType, Priority, TASK_CATEGORIES, TASK_TYPE_LABELS } from '../types/dolphinscheduler';
 import { parseFileHeader } from './index';
 
@@ -113,6 +113,105 @@ export interface CodeFileMapping {
   dirPath: string;
   dataSource: string | null;
   dataDependencies: string[];
+  /** 代码头 @依赖 声明的前置任务依赖（{调度项目}.{前置任务名称}，前置任务名称不含文件扩展名） */
+  headerDependencies: HeaderDependency[];
+}
+
+/**
+ * 代码头 @依赖 的前置任务引用。
+ * 格式：{调度项目}.{前置任务名称}，多个用英文逗号分隔。
+ */
+export interface HeaderDependency {
+  /** 调度项目（也即项目编码） */
+  projectCode: string;
+  /** 前置任务名称（不含文件扩展名） */
+  taskName: string;
+}
+
+/**
+ * 解析代码头 @依赖 的值（逗号分隔的 {调度项目}.{前置任务名称}）。
+ * - 空值、"无"、非法项会被忽略；同一 {调度项目}.{任务名称} 只保留一次。
+ */
+export function parseDependencyHeader(value: string | null | undefined): HeaderDependency[] {
+  if (!value) return [];
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === '无') return [];
+  const deps: HeaderDependency[] = [];
+  const seen = new Set<string>();
+  for (const raw of trimmed.split(',')) {
+    const token = raw.trim();
+    if (!token || token === '无') continue;
+    const dotIdx = token.indexOf('.');
+    const projectCode = dotIdx >= 0 ? token.slice(0, dotIdx).trim() : '';
+    const taskName = dotIdx >= 0 ? token.slice(dotIdx + 1).trim() : token.trim();
+    if (!taskName) continue;
+    const key = `${projectCode}.${taskName}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deps.push({ projectCode, taskName });
+  }
+  return deps;
+}
+
+/** 已解析并确认存在的前置任务（对应调度项目内的某个工作流任务） */
+export interface ResolvedDependency {
+  /** 调度项目 code（数值） */
+  projectCode: number;
+  /** 前置任务所在工作流定义 code */
+  definitionCode: number;
+  /** 前置任务节点 code */
+  taskCode: number;
+  /** 前置任务名称 */
+  taskName: string;
+  /** 展示用 label：{调度项目}.{前置任务名称} */
+  label: string;
+}
+
+/**
+ * 根据已解析的前置任务构建一个 DEPENDENT 任务节点，用于设置跨工作流的前置依赖。
+ * 生成的节点参数为 AND 关系、任一前置失败则失败、每 10s 轮询。DolphinScheduler 据此
+ * 在运行前等待所有引用任务成功完成。
+ */
+export function buildDependentTaskNode(
+  deps: ResolvedDependency[],
+  code: number,
+  x?: number,
+  y?: number,
+): DSWorkflowTaskNode {
+  const taskParams: DSDependentTaskParams = {
+    relation: 'AND',
+    dependTaskList: [
+      deps.map(d => ({
+        projectCode: d.projectCode,
+        definitionCode: d.definitionCode,
+        depTaskCode: d.taskCode,
+        cycle: 'day',
+        dateValue: 'today',
+      })),
+    ],
+    failurePolicy: 'DEPENDENT_FAILURE_FAILURE',
+    // 扩展字段（DS 允许额外字段）
+    checkInterval: 10,
+    failureWaitingTime: 0,
+  };
+  return {
+    code,
+    name: '前置依赖',
+    taskType: 'DEPENDENT',
+    description: `等待前置任务完成: ${deps.map(d => d.label).join(', ')}`,
+    taskParams: JSON.stringify(taskParams),
+    flag: 'YES',
+    taskPriority: Priority.MEDIUM,
+    workerGroup: 'default',
+    environmentCode: -1,
+    failRetryTimes: 0,
+    failRetryInterval: 1,
+    timeoutFlag: 'CLOSE',
+    timeout: 0,
+    delayTime: 0,
+    x: x ?? 100,
+    y: y ?? 100,
+  };
 }
 
 export interface SavedConfig {
@@ -353,6 +452,7 @@ export function mapCodeFileToTask(
   }
 
   const dataDependencies = extractDataDependencies(codeContent, header);
+  const headerDependencies = parseDependencyHeader(header?.dependency);
 
   return {
     recommendedTaskType,
@@ -367,6 +467,7 @@ export function mapCodeFileToTask(
     dirPath,
     dataSource: header?.dataSource || null,
     dataDependencies,
+    headerDependencies,
   };
 }
 

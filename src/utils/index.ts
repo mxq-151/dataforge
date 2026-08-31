@@ -30,7 +30,7 @@ const getSupportedLang = (filename: string): SupportedLang | null => {
  * 因此这里不做按语言裁剪，任何语言新建文件都给出完整字段，避免再次出现
  * 「SQL 有引擎、Java 没有引擎」这类漂移。
  */
-const HEADER_FIELDS = ['备注', '数仓', '引擎', '用法', '数据源'] as const;
+const HEADER_FIELDS = ['备注', '数仓', '引擎', '依赖', '用法', '数据源'] as const;
 
 export const generateFileHeader = (filePath: string, _rootPath?: string): string => {
   const fileName = filePath.split(/[/\\]/).pop() || filePath;
@@ -52,6 +52,7 @@ export interface FileHeaderInfo {
   remark: string;
   warehouse?: string;
   engine?: string;
+  dependency?: string;
   usage?: string;
   dataSource?: string;
 }
@@ -65,6 +66,7 @@ export const parseFileHeader = (content: string): FileHeaderInfo | null => {
     remark: '',
     warehouse: '',
     engine: '',
+    dependency: '',
     usage: '',
     dataSource: '',
   };
@@ -92,6 +94,7 @@ export const parseFileHeader = (content: string): FileHeaderInfo | null => {
       case '备注': info.remark = value; break;
       case '数仓': info.warehouse = value; break;
       case '引擎': info.engine = value; break;
+      case '依赖': info.dependency = value; break;
       case '用法': info.usage = value; break;
       case '数据源': info.dataSource = value; break;
     }

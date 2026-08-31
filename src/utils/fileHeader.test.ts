@@ -97,11 +97,11 @@ describe('generateFileHeader — 模板字段完整性', () => {
     { file: 'ods_trade_order_load_r.py', prefix: '# ' },
   ];
 
-  it.each(cases)('$file 的模板含 @备注/@数仓/@引擎/@用法/@数据源 且注释符正确', ({ file, prefix }) => {
+  it.each(cases)('$file 的模板含 @备注/@数仓/@引擎/@依赖/@用法/@数据源 且注释符正确', ({ file, prefix }) => {
     const header = generateFileHeader(`/workspace/TEST/sql/dwd/${file}`);
 
     expect(header).toBeTruthy();
-    for (const field of ['备注', '数仓', '引擎', '用法', '数据源']) {
+    for (const field of ['备注', '数仓', '引擎', '依赖', '用法', '数据源']) {
       expect(header).toContain(`${prefix}@${field}: `);
     }
 
@@ -110,6 +110,7 @@ describe('generateFileHeader — 模板字段完整性', () => {
     expect(parsed).not.toBeNull();
     expect(parsed!.remark).toBe('');
     expect(parsed!.engine).toBe('');
+    expect(parsed!.dependency).toBe('');
     expect(parsed!.dataSource).toBe('');
   });
 
@@ -156,5 +157,22 @@ describe('parseFileHeader — 边界与回归', () => {
     const header = parseFileHeader(broken);
     expect(header?.engine).toBe('spark');
     expect(header?.dataSource).toBe('');
+  });
+
+  it('解析 @依赖 前置依赖任务格式：{调度项目}.{前置任务名称} 逗号分隔且不含文件扩展名', () => {
+    const content = [
+      '-- @备注: 测试前置依赖',
+      '-- @引擎: kyuubi',
+      '-- @依赖: test_project.ods_load_user_f,test_project.ods_load_events_f',
+      '-- @数据源: test_datasource',
+    ].join('\n');
+    const header = parseFileHeader(content);
+    expect(header).not.toBeNull();
+    expect(header!.dependency).toBe('test_project.ods_load_user_f,test_project.ods_load_events_f');
+  });
+
+  it('未声明 @依赖 时 dependency 为空串', () => {
+    const header = parseFileHeader('-- @引擎: spark\n-- @备注: 无前置依赖\n');
+    expect(header?.dependency).toBe('');
   });
 });

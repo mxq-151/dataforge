@@ -73,6 +73,8 @@ interface EditorAreaProps {
   rootPath?: string;
   projectId?: number;
   projectCode?: string;
+  /** 全局 OpenLineage Transport URL（来自设置页），透传给配置参数弹窗的血缘管理只读展示 */
+  openlineageTransportUrl?: string;
   javaHome?: string;
   workspaceRoot?: string;
   // 跳转到定义的目标位置（1-based），用于在打开依赖源码后定位到对应行
@@ -121,6 +123,7 @@ const EditorArea = forwardRef<EditorAreaHandle, EditorAreaProps>(({
   rootPath,
   projectId,
   projectCode,
+  openlineageTransportUrl,
   javaHome,
   workspaceRoot,
   activeTabRange,
@@ -1009,6 +1012,8 @@ const EditorArea = forwardRef<EditorAreaHandle, EditorAreaProps>(({
         filePath={tabs.find(t => t.id === activeTabId)?.path}
         rootPath={rootPath}
         projectId={projectId}
+        projectCode={projectCode}
+        openlineageTransportUrl={openlineageTransportUrl}
         onSave={(data) => {
           const fp = tabs.find(t => t.id === activeTabId)?.path;
           if (fp) onSaveConfigParams?.(fp, data);
