@@ -4,13 +4,6 @@ export const generateId = (): number => {
 
 type SupportedLang = 'sql' | 'java' | 'scala' | 'python';
 
-const COMMENT_PREFIX: Record<SupportedLang, string> = {
-  sql: '-- ',
-  java: '// ',
-  scala: '// ',
-  python: '# ',
-};
-
 const getSupportedLang = (filename: string): SupportedLang | null => {
   const ext = filename.split('.').pop()?.toLowerCase();
   const extMap: Record<string, SupportedLang> = {
@@ -29,6 +22,8 @@ const getSupportedLang = (filename: string): SupportedLang | null => {
  * 任务类型与数据依赖，缺一不可：例如未声明 @引擎 的 .java 会被默认判为 SPARK 任务。
  * 因此这里不做按语言裁剪，任何语言新建文件都给出完整字段，避免再次出现
  * 「SQL 有引擎、Java 没有引擎」这类漂移。
+ *
+ * 自 v2 起代码头统一使用块注释（/* ... *\/）逐行书写，不再支持行注释（-- // #）。
  */
 const HEADER_FIELDS = ['备注', '数仓', '引擎', '依赖', '用法', '数据源'] as const;
 
@@ -38,10 +33,11 @@ export const generateFileHeader = (filePath: string, _rootPath?: string): string
 
   if (!lang) return '';
 
-  const prefix = COMMENT_PREFIX[lang];
-  const lines = HEADER_FIELDS.map(field => `${prefix}@${field}: `);
-
-  lines.push('');
+  const lines = [
+    '/*',
+    ...HEADER_FIELDS.map(field => ` * @${field}: `),
+    ' */',
+  ];
 
   return lines.join('\n');
 };
@@ -55,10 +51,36 @@ export interface FileHeaderInfo {
   dependency?: string;
   usage?: string;
   dataSource?: string;
+  /**
+   * 代码头注释风格。
+   * - 'block'：块注释（/* ... *\/）书写，符合 v2 规范
+   * - 'line'：旧式行注释（-- // #）书写，不符合规范
+   * - 'none'：识别到注释但未匹配到任何 @字段
+   */
+  style: 'block' | 'line' | 'none';
 }
 
-const HEADER_PATTERN = /^\s*(?:--|\/\/|#)\s*@(\S+):\s*(.*)$/;
+const LINE_HEADER_PATTERN = /^\s*(?:--|\/\/|#)\s*@(\S+):\s*(.*)$/;
 
+function parseHeaderField(key: string, value: string, info: FileHeaderInfo): void {
+  switch (key) {
+    case '语言': info.language = value; break;
+    case '文件': info.filePath = value; break;
+    case '备注': info.remark = value; break;
+    case '数仓': info.warehouse = value; break;
+    case '引擎': info.engine = value; break;
+    case '依赖': info.dependency = value; break;
+    case '用法': info.usage = value; break;
+    case '数据源': info.dataSource = value; break;
+  }
+}
+
+/**
+ * 解析文件头代码头。自 v2 起代码头必须使用块注释（/* ... *\/）逐行书写，
+ * 解析器优先按块注释扫描；仅当未出现块注释时才回退按旧式行注释扫描（用于兼容
+ * 识别旧文件，并在校验阶段提示不符合规范）。
+ * 两种情况都会标注 style 供调用方区分，遇首个真实代码行即终止。
+ */
 export const parseFileHeader = (content: string): FileHeaderInfo | null => {
   const info: FileHeaderInfo = {
     language: '',
@@ -69,38 +91,61 @@ export const parseFileHeader = (content: string): FileHeaderInfo | null => {
     dependency: '',
     usage: '',
     dataSource: '',
+    style: 'none',
   };
 
   let foundAny = false;
   const lines = content.split('\n');
 
-  for (const line of lines) {
-    // 容忍 BOM 与代码头前/中的空行，不终止解析
-    const trimmed = line.replace(/^\uFEFF/, '').trim();
-    if (!trimmed) continue;
+  // 跳过开头 BOM 与空行
+  let i = 0;
+  while (i < lines.length) {
+    const t = lines[i].replace(/^\uFEFF/, '').trim();
+    if (t) break;
+    i++;
+  }
+  if (i >= lines.length) return null;
 
-    // 只扫描行注释（-- // #）构成的文件头注释区；遇到首个真实代码行即终止，
-    // 避免把正文后续出现的 @字段 注释误收入代码头
-    if (!/^(?:--|\/\/|#)/.test(trimmed)) break;
+  const firstTrimmed = lines[i].replace(/^\uFEFF/, '').trim();
 
-    const match = line.match(HEADER_PATTERN);
-    if (!match) continue;
+  if (firstTrimmed.startsWith('/*')) {
+    // ── 块注释代码头（新规范） ──
+    info.style = 'block';
+    for (; i < lines.length; i++) {
+      let line = lines[i].replace(/^\uFEFF/, '').trim();
+      // 先定位行尾结束符 */（在剥离行首 * 之前判断，避免破坏结束符形态）
+      const closeIdx = line.indexOf('*/');
+      const hadClose = closeIdx !== -1;
+      if (hadClose) line = line.slice(0, closeIdx);
+      // 剥离块注释起始符 /*（含 /**）或行内前缀 *
+      line = line.replace(/^\/\*+\*?/, '');
+      line = line.replace(/^\*\*?/, '');
 
-    foundAny = true;
-    const [, key, value] = match;
-    switch (key) {
-      case '语言': info.language = value; break;
-      case '文件': info.filePath = value; break;
-      case '备注': info.remark = value; break;
-      case '数仓': info.warehouse = value; break;
-      case '引擎': info.engine = value; break;
-      case '依赖': info.dependency = value; break;
-      case '用法': info.usage = value; break;
-      case '数据源': info.dataSource = value; break;
+      const match = line.match(/^\s*@(\S+):\s*(.*)$/);
+      if (match) {
+        foundAny = true;
+        parseHeaderField(match[1], match[2].trim(), info);
+      }
+
+      if (hadClose) break;
+    }
+  } else {
+    // ── 旧式行注释代码头（仅识别，用于校验提示） ──
+    for (; i < lines.length; i++) {
+      const trimmed = lines[i].replace(/^\uFEFF/, '').trim();
+      if (!trimmed) continue;
+      // 只扫描行注释构成的代码头区，遇到首个真实代码行即终止
+      if (!/^(?:--|\/\/|#)/.test(trimmed)) break;
+      info.style = 'line';
+
+      const match = lines[i].match(LINE_HEADER_PATTERN);
+      if (!match) continue;
+      foundAny = true;
+      parseHeaderField(match[1], match[2], info);
     }
   }
 
-  return foundAny ? info : null;
+  return foundAny ? info : (info.style === 'none' ? null : info);
 };
 
 export interface HeaderValidationResult {
@@ -133,6 +178,19 @@ export const validateFileHeader = (content: string, fileName?: string, relativeP
   const isSql = ext === 'sql';
   const isJavaOrScala = ext === 'java' || ext === 'scala';
   const isPython = ext === 'py';
+
+  // 代码头规范（v2）：必须使用块注释（/* ... */）书写。检测到行注释代码头（-- // #）即视为不合规，
+  // 在进入后续字段/包校验前直接拦截并提示用户。
+  const header = parseFileHeader(content);
+  if ((isSql || isJavaOrScala || isPython) && header && header.style === 'line') {
+    packageErrors.push('代码头不符合规范：应使用块注释（/* ... */）逐行书写，当前检测到行注释（-- // #）书写');
+    return {
+      valid: false,
+      message: `文件规范校验失败: ${packageErrors.join('；')}`,
+      missingFields,
+      packageErrors,
+    };
+  }
 
   if (!isSql && !isJavaOrScala && !isPython) {
     return { valid: true, message: '', missingFields: [], packageErrors: [] };
