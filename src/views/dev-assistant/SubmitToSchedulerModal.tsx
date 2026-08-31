@@ -360,11 +360,13 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
           fromMapping[param.key] = typeof mappingVal === 'boolean' ? mappingVal : String(mappingVal);
         }
       }
-      setTaskTypeParams(prev => ({ ...defaults, ...fromMapping, ...prev }));
+      // 以当前文件的 mapping 推导值 + 默认值为准重建表单参数；不再携带 prev 残留值，
+      // 避免切换文件/任务类型后沿用上一个文件的主Class、appName 等参数（如 utils 类 MainClass）。
+      setTaskTypeParams({ ...defaults, ...fromMapping });
     } else {
       setTaskTypeParams({});
     }
-  }, [currentMapping?.taskType]);
+  }, [currentMapping?.taskType, fileName, filePath]);
 
   const applyTaskTypeParamsToMapping = useCallback((mapping: CodeFileMapping | null): CodeFileMapping | null => {
     if (!mapping || Object.keys(taskTypeParams).length === 0) return mapping;
@@ -423,6 +425,8 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
       setCompiledJarPath(null);
       setIsCompiling(false);
       setCompileResult(null);
+      // 主Jar包每次关闭/重开时置空，须在本次校验（编译）通过后再生成，避免沿用上一次编译残留
+      setTaskTypeParams(prev => ({ ...prev, mainJar: '' }));
       setSelectedDatasourceId(null);
       setSelectedWorkerGroup('default');
       setSelectedEnvironmentCode(-1);
