@@ -16,6 +16,8 @@
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { AlertCircle, Combine } from 'lucide-react';
+import { Store } from '../../bridge/store';
+import { useAuth } from '../../contexts/AuthContext';
 import type { AIPanelProps } from './types';
 import type { Session } from '../../types/opencode-backend';
 import MessageTimeline from './timeline/MessageTimeline';
@@ -28,6 +30,10 @@ import TodoDock from './TodoDock';
 import { useTodoDockState } from './useTodoDockState';
 import FileReviewPanel from './FileReviewPanel';
 import './AIPanel.css';
+
+/** 智能体模块的用户偏好存储（按 userId 记录所选模型） */
+const AGENT_PREFS_STORE = 'agent-preferences.json';
+const SELECTED_LLM_KEY = 'selectedLLMIdByUser';
 
 const AIPanel: React.FC<AIPanelProps> = ({ chatBackend, llmModels, onRollback, onOpenFile, onViewDiff, fileTree, moduleId }) => {
   const {
@@ -64,6 +70,42 @@ const AIPanel: React.FC<AIPanelProps> = ({ chatBackend, llmModels, onRollback, o
   const [selectedLLMId, setSelectedLLMId] = useState<string | null>(
     models.length > 0 ? models[0].id : null
   );
+
+  // ── LLM 模型回忆（记住用户选用的模型，并按用户隔离）──
+  // 不同用户所选模型持久化到 Store，重新进入面板/重启应用后自动恢复。
+  const { user } = useAuth();
+  const userId = user ? String(user.id) : null;
+
+  // 加载当前用户记忆的模型：仍可用则以记忆为准，否则沿用下方回退逻辑
+  useEffect(() => {
+    if (!userId || models.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const store = await Store.load(AGENT_PREFS_STORE);
+        const map = (await store.get<Record<string, string>>(SELECTED_LLM_KEY)) ?? {};
+        const remembered = map[userId];
+        if (cancelled || !remembered) return;
+        if (models.some(m => m.id === remembered)) {
+          setSelectedLLMId(remembered);
+        }
+      } catch { /* 记忆读取失败时静默回退到默认模型 */ }
+    })();
+    return () => { cancelled = true; };
+  }, [userId, models]);
+
+  // 持久化：记录当前用户选用的模型
+  useEffect(() => {
+    if (!userId || !selectedLLMId) return;
+    (async () => {
+      try {
+        const store = await Store.load(AGENT_PREFS_STORE);
+        const map = (await store.get<Record<string, string>>(SELECTED_LLM_KEY)) ?? {};
+        if (map[userId] === selectedLLMId) return;
+        await store.set(SELECTED_LLM_KEY, { ...map, [userId]: selectedLLMId });
+      } catch { /* 持久化失败静默，不影响本次选择 */ }
+    })();
+  }, [userId, selectedLLMId]);
 
   useEffect(() => {
     if (models.length === 0) {
