@@ -33,6 +33,17 @@ const JAVA_INITIALIZATION_OPTIONS = {
     java: {
       autobuild: { enabled: true },
       import: { maven: { enabled: true }, gradle: { enabled: false } },
+      maven: {
+        // 导入 Maven 项目时自动下载 sources jar（JDT.LS 默认 false，与 VS Code Java 插件一致）。
+        // 开启后，纯 Java 写的第三方库（Guava / Jackson / commons 等，sources.jar 内是 .java）
+        // 跳转能显示原始 .java 源码而非反编译。需重新导入（重启或切工作区）才生效。
+        //
+        // 注意：对 Scala 写的库（如 Spark，sources.jar 内是 .scala）本设置无效——JDT（Java LSP）
+        // 的 ClassFile.getBuffer() 只认 .java 源文件，读不到 .scala，这类类跳转永远只能
+        // FernFlower 反编译。想看 Scala 库源码须用 Scala（Metals）视角跳转。这是 Java 生态
+        // 固有限制，VS Code 的 Red Hat Java 插件对 SparkSession 同样只显示反编译。
+        downloadSources: true,
+      },
       project: {
         // 源码根统一为工作区内的 src（Maven sourceDirectory）
         sourcePaths: ['src'],
@@ -42,6 +53,15 @@ const JAVA_INITIALIZATION_OPTIONS = {
     },
   },
   bundles: [],
+  // 声明客户端支持 jdt:// 类文件内容（java/classFileContents 自定义请求）。
+  // JDT.LS 对二进制目标（JDK / 第三方 JAR 里的符号）的 textDocument/definition
+  // 以此为开关：未声明时 NavigateToDefinitionHandler 直接返回空数组（悬停不受影响，
+  // 因为 hover 不走这个门槛）——这正是「悬停正常、跳转为 count=0」的根因。
+  // 声明后 definition 会返回 jdt://contents/... 虚拟文档 URI，由导航中间件交给
+  // React 层以只读 Tab 打开（readJavaClassFileContent 负责取回源码/反编译结果）。
+  extendedClientCapabilities: {
+    classFileContentsSupport: true,
+  },
 };
 
 const SCALA_INITIALIZATION_OPTIONS = {
@@ -189,11 +209,15 @@ export function registerJavaClassFileProvider(javaClient: MonacoLanguageClient):
     provideTextDocumentContent: async (uri: vscode.Uri) => {
       if (!currentJavaClient) return '';
       try {
-        // JDT.LS 自定义请求：传入 jdt:// URI，返回该类文件的源码文本（或 null）
-        const content = await currentJavaClient.sendRequest(
-          'java/classFileContents',
-          uri.toString()
-        );
+        // JDT.LS 自定义请求 java/classFileContents：参数类型是 TextDocumentIdentifier（对象
+        // { uri: string }），不是裸字符串。服务端签名：
+        //   CompletableFuture<String> classFileContents(org.eclipse.lsp4j.TextDocumentIdentifier)
+        // 传裸串时 LSP4J 的 MessageJsonHandler.parseParams 无法把 JSON string 反序列化为对象，
+        // 报 "Message could not be parsed."。这里与 VS Code Java 扩展 providerDispatcher.ts 的
+        // createJDTContentProvider 保持一致：sendRequest(ClassFileContentsRequest.type, { uri }).
+        const content = await currentJavaClient.sendRequest('java/classFileContents', {
+          uri: uri.toString(),
+        });
         return (content as string) ?? '';
       } catch (e) {
         console.warn('[LSP] 获取 JDT 类文件源码失败:', e);
@@ -231,8 +255,12 @@ export async function readJavaClassFileContent(uri: string): Promise<string> {
   if (!currentJavaClient) {
     throw new Error('Java 语言客户端未就绪（JDT.LS 尚未启动）');
   }
-  const content = await currentJavaClient.sendRequest('java/classFileContents', uri);
+  // 参数必须是 { uri }（TextDocumentIdentifier），不能传裸字符串——见上方 provideTextDocumentContent 的注释。
+  const content = await currentJavaClient.sendRequest('java/classFileContents', { uri });
   const text = (content as string) ?? '';
+  invoke('trace_log', {
+    msg: `[jdt] classFileContents uri=${uri} 返回长度=${text.length}`,
+  }).catch(() => undefined);
   javaClassFileCache.set(uri, text);
   return text;
 }
@@ -356,6 +384,9 @@ function createNavigationMiddleware(languageId: LspLanguageId): Middleware {
 
     if (definitionOpener && external.length) {
       // 不 await：避免阻塞编辑器；Tab 随后由 React 层打开
+      invoke('trace_log', {
+        msg: `[nav:${languageId}] 外部目标=${external.length} 首个=${external[0]?.uri} opener=${!!definitionOpener}`,
+      }).catch(() => undefined);
       definitionOpener(external);
     } else if (external.length && !definitionOpener) {
       console.warn(`[LSP:${languageId}] definitionOpener 未注册！跨文件跳转无法以 Tab 形式打开。`);
@@ -412,7 +443,25 @@ function createNavigationMiddleware(languageId: LspLanguageId): Middleware {
     }
 
     const p = (async () => {
-      const result = await next(document, position, token);
+      let result: any;
+      try {
+        result = await next(document, position, token);
+      } catch (e) {
+        invoke('trace_log', {
+          msg: `[nav:${languageId}] ${method} 请求抛错: ${String((e as Error)?.message ?? e)}`,
+        }).catch(() => undefined);
+        throw e;
+      }
+      // 结果摘要：null / 条数 / 首个 URI（用于区分「服务器没返回」与「返回了无法路由的目标」）
+      const cnt = Array.isArray(result) ? result.length : result ? 1 : 0;
+      const firstUri = (() => {
+        const it = Array.isArray(result) ? result[0] : result;
+        const raw = it?.uri ?? it?.targetUri;
+        return typeof raw === 'string' ? raw : raw?.toString?.();
+      })();
+      invoke('trace_log', {
+        msg: `[nav:${languageId}] ${method} line=${position.line}:${position.character} 结果=${result === null ? 'null' : result === undefined ? 'undefined' : `count=${cnt}`} first=${firstUri ?? '(无)'}`,
+      }).catch(() => undefined);
       if (isReadonlyResult(result)) {
         resultCache.set(key, { t: Date.now(), result });
       }
@@ -498,7 +547,18 @@ function createNavigationMiddleware(languageId: LspLanguageId): Middleware {
         throw e;
       }
     },
-    provideHover: languageId === 'scala'
+    provideHover: languageId === 'java'
+      ? async (document, position, token, next) => {
+          const result = await next(document, position, token);
+          const text = typeof result?.contents === 'string'
+            ? result.contents
+            : JSON.stringify(result?.contents ?? null);
+          invoke('trace_log', {
+            msg: `[nav:java] hover line=${position.line}:${position.character} len=${text?.length ?? 0} 摘要=${text?.slice(0, 120) ?? '(null)'}`,
+          }).catch(() => undefined);
+          return result;
+        }
+      : languageId === 'scala'
       ? async (document, position, token, next) => {
           const client = currentMetalsClient;
           // Metals 客户端未就绪时，fallback 到 vscode-languageclient 默认 provider

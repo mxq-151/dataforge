@@ -5,6 +5,7 @@ import { systemRoleApi, type RoleInfo } from '../../../api/systemRole';
 import { tenantApi, type TenantVO, type TenantDTO } from '../../../api/systemTenant';
 import MultiSelect from './MultiSelect';
 import { useToast } from '../../../components/Toast';
+import { validateName, validateCode } from '../../../utils/validation';
 
 const ROLE_TYPE_MAP: Record<string, { label: string; color: string }> = {
   SUPER_ADMIN: { label: '超级管理员', color: '#f48771' },
@@ -240,7 +241,10 @@ const UserRoleManageTab: React.FC = () => {
   };
 
   const handleSubmitRole = async () => {
-    if (!roleForm.roleName || !roleForm.roleCode) { toast.warning('请填写角色名称和编码'); return; }
+    const roleNameErr = validateName(roleForm.roleName, '角色名称');
+    if (roleNameErr) { toast.warning(roleNameErr); return; }
+    const roleCodeErr = validateCode(roleForm.roleCode, '角色编码');
+    if (roleCodeErr) { toast.warning(roleCodeErr); return; }
     setSubmitLoading(true);
     try {
       if (roleForm.id) await systemRoleApi.updateRole(roleForm as any);
@@ -274,7 +278,10 @@ const UserRoleManageTab: React.FC = () => {
   };
 
   const handleSubmitTenant = async () => {
-    if (!tenantForm.tenantName || !tenantForm.tenantCode) { toast.warning('请填写租户名称和编码'); return; }
+    const tenantNameErr = validateName(tenantForm.tenantName, '租户名称');
+    if (tenantNameErr) { toast.warning(tenantNameErr); return; }
+    const tenantCodeErr = validateCode(tenantForm.tenantCode, '租户编码');
+    if (tenantCodeErr) { toast.warning(tenantCodeErr); return; }
     if (!tenantForm.id) {
       const pwdError = validatePassword(tenantForm.password || '');
       if (pwdError) { toast.warning(pwdError); return; }

@@ -4,6 +4,7 @@ import { fetchProjectList, createProject, deleteProject } from '../../api/devPro
 import type { ProjectInfo, CreateProjectDTO } from '../../api/devProject';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../components/Toast';
+import { validateName, validateCode } from '../../utils/validation';
 import './ProjectList.css';
 
 interface ProjectListProps {
@@ -79,10 +80,10 @@ const ProjectList: React.FC<ProjectListProps> = ({ onSelectProject }) => {
   }, [handleSearch]);
 
   const handleCreate = useCallback(async () => {
-    if (!createForm.projectName.trim() || !createForm.projectCode.trim()) {
-      setCreateError('项目名称和项目编码为必填项');
-      return;
-    }
+    const nameErr = validateName(createForm.projectName, '项目名称');
+    if (nameErr) { setCreateError(nameErr); return; }
+    const codeErr = validateCode(createForm.projectCode, '项目编码');
+    if (codeErr) { setCreateError(codeErr); return; }
     setCreating(true);
     setCreateError(null);
     try {

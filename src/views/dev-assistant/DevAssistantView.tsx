@@ -176,6 +176,7 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
     registerDefinitionOpener(async (locations) => {
       for (const loc of locations) {
         const uriStr = loc.uri;
+        invoke('trace_log', { msg: `[DEF>opener] uri=${uriStr}` }).catch(() => undefined);
         if (uriStr.startsWith('file://') && uriStr.includes('/.metals/readonly/')) {
           const diskPath = uriToPath(uriStr);
           const base = diskPath.split('/').pop() || 'source';
@@ -236,12 +237,18 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
             setTabRanges(prev => ({ ...prev, [tabId]: { line: (r.line ?? 0) + 1, column: (r.character ?? 0) + 1 } }));
           }
           setActiveTabId(tabId);
+          invoke('trace_log', { msg: `[DEF>jdt] 切换tab=${tabId} 内容已载=${editorContentRef.current[tabId] !== undefined} fetching=${fetchingTabsRef.current.has(tabId)}` }).catch(() => undefined);
           // 重复跳转同一类命中前端缓存（readJavaClassFileContent 内部已缓存）；双触发时在途去重
           if (editorContentRef.current[tabId] === undefined && !fetchingTabsRef.current.has(tabId)) {
             fetchingTabsRef.current.add(tabId);
             readJavaClassFileContent(uriStr)
               .then((content) => {
-                setEditorContent(prev => ({ ...prev, [tabId]: content }));
+                setEditorContent(prev => ({
+                  ...prev,
+                  [tabId]: content
+                    ? content
+                    : `// 类源码不可用: ${className}\n// JDT.LS 既无源码附件（sources jar）也未能反编译出内容。\n// 可尝试在依赖里附带 -sources.jar，或检查 Maven 是否下载了源码包。\n`,
+                }));
               })
               .catch((e) => {
                 console.warn('[DevAssistant] 打开 JDK / 依赖类源码失败:', e);
@@ -254,7 +261,9 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
           // 项目内文件：走现有逻辑打开为普通 Tab，并定位到定义所在行
           const r = loc.range?.start;
           const reveal = r ? { line: (r.line ?? 0) + 1, column: (r.character ?? 0) + 1 } : undefined;
-          handleFileSelectRef.current?.(uriToPath(uriStr), reveal);
+          const diskPath = uriToPath(uriStr);
+          invoke('trace_log', { msg: `[DEF>file] path=${diskPath} reveal=${JSON.stringify(reveal)} handler=${!!handleFileSelectRef.current}` }).catch(() => undefined);
+          handleFileSelectRef.current?.(diskPath, reveal);
         } else {
           // 无法路由的 scheme（既非 metals readonly、也非 jdt、也非项目内 file://）
           console.warn('[DevAssistant] 不支持的跳转目标 URI，已忽略:', uriStr);

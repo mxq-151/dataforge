@@ -7,6 +7,7 @@ import { fileExplorerApi } from '../../../api/fileExplorer';
 import type { DependencyRecord } from '../../../api/dependency';
 import { fetchDependencyPageList, fetchJarSources, fetchJarCategories, fetchJarProgramTypes, createJarDependency, updateJarDependency, deleteJarDependency } from '../../../api/dependency';
 import { useToast } from '../../../components/Toast';
+import { validateName } from '../../../utils/validation';
 
 interface DataSourceFormData extends Partial<DataSource> {
   password?: string;
@@ -295,7 +296,9 @@ const SystemConfigTab: React.FC = () => {
   };
 
   const handleDsSubmit = async () => {
-    if (!dsForm.datasourceName || !dsForm.datasourceType || !dsForm.connectionType || !dsForm.url || !dsForm.username || !dsForm.password) { toast.warning('请填写必填项（数据源名称、类型、连接方式、连接URL、用户名、密码）'); return; }
+    const nameErr = validateName(dsForm.datasourceName, '数据源名称');
+    if (nameErr) { toast.warning(nameErr); return; }
+    if (!dsForm.datasourceType || !dsForm.connectionType || !dsForm.url || !dsForm.username || !dsForm.password) { toast.warning('请填写必填项（数据源类型、连接方式、连接URL、用户名、密码）'); return; }
     // 测试连接未通过不允许保存
     if (dsTestStatus !== 'success') {
       toast.warning('请先进行连接测试，测试通过后方可保存');

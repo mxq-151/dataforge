@@ -46,6 +46,11 @@ const BACKEND_COMMANDS: Record<string, (args: Record<string, unknown>) => Promis
   stop_scala_lsp_ws: async (args) => stopScalaLspWs(args as unknown as { clientId: number }),
   read_metals_source: async (args) =>
     readMetalsSource(args as unknown as { path: string }),
+  // 诊断用：把渲染层信息打印到主进程终端（npm run dev 时可见）
+  trace_log: async (args) => {
+    console.log(`[renderer] ${String(args.msg ?? '')}`);
+    return null;
+  },
 };
 
 // ────────────────────────────────────────────────────────────────
