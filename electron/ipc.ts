@@ -5,7 +5,7 @@ import { promisify } from 'node:util';
 import * as fsp from 'node:fs/promises';
 import * as path from 'node:path';
 import { compileJavaScala } from './backend/compile';
-import { runMavenBloopInstall, writeWorkspacePom } from './backend/lspPom';
+import { readJarScalaSource, resolveJarSources, runMavenBloopInstall, writeWorkspacePom } from './backend/lspPom';
 import {
   readMetalsSource,
   startJavaLspWs,
@@ -36,6 +36,10 @@ const BACKEND_COMMANDS: Record<string, (args: Record<string, unknown>) => Promis
     writeWorkspacePom(String(args.workspaceRoot ?? ''), String(args.pomContent ?? '')),
   run_maven_bloop_install: async (args) =>
     runMavenBloopInstall(String(args.javaHome ?? ''), String(args.mavenHome ?? ''), String(args.workspaceRoot ?? '')),
+  resolve_jar_sources: async (args) =>
+    resolveJarSources(args as unknown as { jarPaths: string[] }),
+  read_jar_scala_source: async (args) =>
+    readJarScalaSource(args as unknown as { jarName: string; className: string }),
   compile_java_scala: async (args) => compileJavaScala(args as unknown as Parameters<typeof compileJavaScala>[0]),
   // ── LSP WebSocket 桥（已移植：backend/lspBridge.ts）────────────────
   start_java_lsp_ws: async (args) =>
@@ -56,6 +60,56 @@ const BACKEND_COMMANDS: Record<string, (args: Record<string, unknown>) => Promis
 // ────────────────────────────────────────────────────────────────
 // 文件系统（主进程 Node fs）
 // ────────────────────────────────────────────────────────────────
+
+/**
+ * 目录链接创建（跨平台）。
+ *
+ * Windows 上创建真正的符号链接需要 SeCreateSymbolicLinkPrivilege（管理员或
+ *「开发者模式」），普通用户会直接 EPERM —— 本项目 code/{pc}/src/{pc} 与
+ * {gitRepoDirName}/{pc} 的关联就因此建不起来，进而导致 git 工作树挂不上。
+ * junction（目录联接）无需任何特权，且：
+ *   - lstat() 仍报告 isSymbolicLink() === true，上层幂等判定无需改动；
+ *   - Git for Windows 会把它当普通目录穿透，主工作树能照常看到真实源码；
+ *   - 删除 junction 只删链接，不会动目标目录里的数据。
+ * 因此 Windows 优先 junction，仅在 junction 也失败时退回标准目录软链。
+ */
+async function linkDirectory(target: string, linkPath: string): Promise<void> {
+  if (process.platform === 'win32') {
+    try {
+      await fsp.symlink(target, linkPath, 'junction');
+      return;
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      // junction 需要目标为已存在的目录；其余错误（如父目录缺失）原样上抛
+      if (code !== 'EPERM' && code !== 'EACCES' && code !== 'EINVAL') throw err;
+    }
+  }
+  await fsp.symlink(target, linkPath, 'dir');
+}
+
+/**
+ * 同一 linkPath 的软链操作串行化。
+ *
+ * 渲染层会对「当前项目」和「已访问项目列表」各触发一次初始化（同一个项目出现两次），
+ * 两个并发请求都会通过 lstat 的"不存在"检查，然后同时创建 → 后到者 EEXIST。
+ */
+const linkLocks = new Map<string, Promise<unknown>>();
+function withLinkLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const prev = linkLocks.get(key) ?? Promise.resolve();
+  // prev 无论成功失败都要继续排队（不因前一次失败而中断后续请求）
+  const next = prev.then(fn, fn);
+  const guard = next.then(
+    () => undefined,
+    () => undefined
+  );
+  linkLocks.set(key, guard);
+  // 队列排空后清理：仅当自己仍是该 key 的最新登记项时才移除
+  void guard.then(() => {
+    if (linkLocks.get(key) === guard) linkLocks.delete(key);
+  });
+  return next;
+}
+
 interface FsRequest {
   op: string;
   args: Record<string, unknown>;
@@ -108,40 +162,48 @@ async function handleFs(req: FsRequest): Promise<unknown> {
       return null;
     }
     case 'symlink': {
-      // 创建/修复软链：linkPath -> target。
-      // 幂等：linkPath 已是指向 target 的软链则跳过；指向别处则先解除再重建；
-      // 已是普通目录/文件则视为数据目录，保留不动（不覆盖）。
+      // 创建/修复目录链接：linkPath -> target。
+      // 幂等：linkPath 已是指向 target 的链接则跳过；指向别处则先解除再重建；
+      // 已是普通目录/文件则视为数据目录，保留不动（不覆盖）；空目录则直接顶掉换成链接。
       // 注意：target 是数据真身，必须是真实目录；若它当前是符号链接（如翻转方向前的旧软链，
       // 常为悬空链接），先解除再建真实目录。
       const linkPath = String(args.linkPath);
       const target = String(args.target);
-      try {
-        const tst = await fsp.lstat(target);
-        if (tst.isSymbolicLink()) {
-          await fsp.unlink(target);
+      return withLinkLock(linkPath, async () => {
+        try {
+          const tst = await fsp.lstat(target);
+          if (tst.isSymbolicLink()) {
+            await fsp.unlink(target);
+          }
+        } catch {
+          // target 不存在，稍后 mkdir
         }
-      } catch {
-        // target 不存在，稍后 mkdir
-      }
-      await fsp.mkdir(path.dirname(linkPath), { recursive: true });
-      await fsp.mkdir(target, { recursive: true });
-      try {
-        const st = await fsp.lstat(linkPath);
-        if (st.isSymbolicLink()) {
-          const [linkReal, targetReal] = await Promise.all([
-            fsp.realpath(linkPath).catch(() => ''),
-            fsp.realpath(target).catch(() => target),
-          ]);
-          if (linkReal && linkReal === targetReal) return null; // 已正确，幂等
-          await fsp.unlink(linkPath); // 指向别处，解除后重建
-        } else {
-          return null; // 已存在真实目录/文件，不覆盖
+        await fsp.mkdir(path.dirname(linkPath), { recursive: true });
+        await fsp.mkdir(target, { recursive: true });
+        try {
+          const st = await fsp.lstat(linkPath);
+          if (st.isSymbolicLink()) {
+            const [linkReal, targetReal] = await Promise.all([
+              fsp.realpath(linkPath).catch(() => ''),
+              fsp.realpath(target).catch(() => target),
+            ]);
+            if (linkReal && linkReal === targetReal) return null; // 已正确，幂等
+            await fsp.unlink(linkPath); // 指向别处，解除后重建
+          } else if (st.isDirectory()) {
+            // 已有真实目录：非空则保留（可能是数据目录，不能丢数据）；
+            // 空目录说明是历史遗留的空壳，顶掉换成链接，让下次启动能自愈
+            const entries = await fsp.readdir(linkPath).catch(() => ['']);
+            if (entries.length > 0) return null;
+            await fsp.rmdir(linkPath);
+          } else {
+            return null; // 已存在普通文件，不覆盖
+          }
+        } catch {
+          // linkPath 不存在，直接创建
         }
-      } catch {
-        // linkPath 不存在，直接创建
-      }
-      await fsp.symlink(target, linkPath);
-      return null;
+        await linkDirectory(target, linkPath);
+        return null;
+      });
     }
     default:
       throw new Error(`未知 fs 操作: ${op}`);

@@ -42,10 +42,14 @@ export function workspaceHome(): string {
 export function resolveMvnBin(mavenHome: string): string {
   const mvnName = isWindows ? 'mvn.cmd' : 'mvn';
   if (mavenHome.trim()) {
-    const p1 = path.join(mavenHome.trim(), 'bin', mvnName);
+    const home = mavenHome.trim();
+    const p1 = path.join(home, 'bin', mvnName);
     if (fs.existsSync(p1)) return p1;
-    const p2 = path.join(mavenHome.trim(), 'bin', 'mvn');
+    const p2 = path.join(home, 'bin', 'mvn');
     if (fs.existsSync(p2)) return p2;
+    // mavenHome 已配置但找不到 mvn：明确报错，避免静默回退到 PATH 上的同名命令
+    // （往往也不存在，最终得到难以排查的 spawn 失败）
+    throw new Error(`mavenHome 下未找到 Maven 可执行文件: ${path.join(home, 'bin', mvnName)}`);
   }
   return mvnName;
 }
@@ -78,6 +82,10 @@ export function runMvn(
       env: { ...process.env, ...env },
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe'],
+      // Windows 下 .cmd/.bat 无法被 spawn 直接执行（会同步抛 EINVAL -4071），
+      // 必须由 cmd.exe 经 shell 包装执行（Node 官方文档要求）。仅对脚本类
+      // 可执行文件启用 shell，避免普通 exe 因 shell 解析引入引号/元字符问题。
+      shell: isWindows && /\.(cmd|bat)$/i.test(bin),
     });
     let stdout = '';
     let stderr = '';

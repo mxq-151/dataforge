@@ -12,6 +12,7 @@ import {
 } from '../services/lsp';
 import { fetchDependencyList } from '../api/dependency';
 import { ensurePomReady, clearPomCache } from '../services/ensurePomReady';
+import { buildReferencedLibraries } from '../services/lsp/referencedLibraries';
 import type { DependencyItemLite } from '../utils/dependencyMerge';
 
 interface UseLspManagementParams {
@@ -343,14 +344,26 @@ export function useLspManagement({
           .map((d: any) => d.jarPath)
           .filter((p: string): p is string => !!p && p.length > 0);
 
-        // 诊断日志：确认 spark 等可能被引用的 jar 是否进入了 JDT.LS 类路径
-        // 注意：此处只针对 JDT.LS（.java 文件）。.scala 文件的类路径来自 Maven/bloop
-        // 工程（ensurePomReady 生成的 pom + mvn bloop:install），由 Metals 使用，
-        // 不经过这条 referencedLibraries 推送，因此「spark 相关 0 个」对 .scala 文件
-        // 是正常的、不影响其跳转——Spark 是否已就绪请看下一个 Rust 端 [LSP] 诊断日志。
-        const sparkJars = jarPaths.filter((p) => /spark/i.test(p));
+        // 解析「二进制 jar → 源码 jar」映射（主进程展开目录 / 找同目录 -sources.jar /
+        // 回退 ~/.m2），使 JDT.LS 能对 referencedLibraries 里的 jar 附加源码，
+        // 定义跳转直接命中 source jar 的 .java，而不是反编译 .class。
+        let include: string[] = jarPaths;
+        let sourcesMap: Record<string, string> | undefined;
+        try {
+          const resolved = await invoke<{ binaries: string[]; sources: Record<string, string> }>(
+            'resolve_jar_sources',
+            { jarPaths },
+          );
+          include = resolved?.binaries?.length ? resolved.binaries : jarPaths;
+          sourcesMap = resolved?.sources;
+        } catch (e) {
+          // 解析失败不阻断 classpath 推送，退回「只挂裸 jar」的旧行为
+          console.warn('[useLspManagement] 解析 jar 源码映射失败（退回仅 include）:', e);
+        }
+
+        const sparkJars = include.filter((p) => /spark/i.test(p));
         console.log(
-          `[useLspManagement] 推送 JDT.LS classpath：共 ${jarPaths.length} 个 jar（来自 ${filtered.length} 条依赖记录），其中 spark 相关 ${sparkJars.length} 个（仅影响 .java 文件）`,
+          `[useLspManagement] 推送 JDT.LS classpath：共 ${include.length} 个 jar（来自 ${filtered.length} 条依赖记录），其中 spark 相关 ${sparkJars.length} 个（仅影响 .java 文件），有源码附件的 ${sourcesMap ? Object.keys(sourcesMap).length : 0} 个`,
           sparkJars.slice(0, 10)
         );
         if (sparkJars.length === 0) {
@@ -367,7 +380,7 @@ export function useLspManagement({
           settings: {
             java: {
               project: {
-                referencedLibraries: jarPaths.length > 0 ? { include: jarPaths } : [],
+                referencedLibraries: buildReferencedLibraries(include, sourcesMap),
               },
             },
           },

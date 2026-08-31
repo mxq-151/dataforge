@@ -1,4 +1,4 @@
-import { isWindows as checkIsWindows, normalizePath } from '../utils/pathUtils';
+import { isWindows as checkIsWindows, joinPath, normalizePath } from '../utils/pathUtils';
 import { Command } from '../bridge/shell';
 
 export interface GitFileStatus {
@@ -366,6 +366,131 @@ const isInsideWorkTree = async (dir: string): Promise<boolean> => {
 
 const sanitizeBranchSegment = (s: string): string => s.replace(/[^a-zA-Z0-9_.\-/]/g, '_').replace(/\/{2,}/g, '/');
 
+/** 路径比较用归一化：统一分隔符、去尾部斜杠；Windows 再忽略大小写 */
+const comparePathKey = (p: string): string => {
+  const key = p.replace(/\\/g, '/').replace(/\/+$/, '');
+  return isWindows() ? key.toLowerCase() : key;
+};
+
+const samePath = (a: string, b: string): boolean => comparePathKey(a) === comparePathKey(b);
+
+interface WorktreeEntry {
+  path: string;
+  branch: string;
+  prunable: boolean;
+}
+
+/** 解析 `git worktree list --porcelain` 输出 */
+const parseWorktreeList = (stdout: string): WorktreeEntry[] => {
+  const entries: WorktreeEntry[] = [];
+  let cur: WorktreeEntry | null = null;
+  for (const line of stdout.split('\n')) {
+    if (line.startsWith('worktree ')) {
+      cur = { path: line.slice('worktree '.length).trim(), branch: '', prunable: false };
+      entries.push(cur);
+    } else if (cur && line.startsWith('branch ')) {
+      cur.branch = line.slice('branch '.length).trim();
+    } else if (cur && line.startsWith('prunable')) {
+      cur.prunable = true;
+    }
+  }
+  return entries;
+};
+
+/** 源码目录的状态，决定能否就地挂载 git 工作树（git 要求目标目录不存在或为空） */
+type DirState = 'missing' | 'empty' | 'staleGitOnly' | 'occupied';
+
+const inspectMountDir = async (dir: string): Promise<DirState> => {
+  let names: string[];
+  try {
+    const { readDir } = await import('../bridge/fs');
+    names = (await readDir(dir)).map(e => e.name);
+  } catch {
+    return 'missing';
+  }
+  const rest = names.filter(n => n !== '.git');
+  if (rest.length > 0) return 'occupied';
+  if (names.length === 0) return 'empty';
+  return 'staleGitOnly';
+};
+
+/**
+ * 工作树已挂载但源码文件全部缺失时，从 index 恢复。
+ *
+ * 典型成因：链接工作树的 `.git` 文件丢失后目录被清空（或被误删），
+ * git 侧仍完整持有 index 与 HEAD，此时目录里一个文件都没有，
+ * 属于明确的损坏状态（正常项目的目录不可能为空而分支又有内容），直接恢复即可。
+ */
+const restoreMissingWorktreeFiles = async (workTreeDir: string): Promise<void> => {
+  try {
+    const { readDir } = await import('../bridge/fs');
+    const names = (await readDir(workTreeDir)).map(e => e.name).filter(n => n !== '.git');
+    if (names.length > 0) return;
+    const lsTree = await Command.create('git', ['-C', workTreeDir, 'ls-tree', '-r', '--name-only', 'HEAD']).execute();
+    if (lsTree.code !== 0 || !lsTree.stdout.trim()) return; // 分支本来就没有内容，无需恢复
+    const checkout = await Command.create('git', ['-C', workTreeDir, 'checkout', '--', '.']).execute();
+    if (checkout.code !== 0) {
+      console.warn('[git] 恢复工作树缺失文件失败:', checkout.stderr);
+      return;
+    }
+    console.log(`[git] 已恢复工作树缺失的源码文件: ${workTreeDir}`);
+  } catch (err) {
+    console.warn('[git] restoreMissingWorktreeFiles 异常:', err);
+  }
+};
+
+/** 串行化 fetch（避免多个项目并发 fetch 撞同一仓库的 .git 锁） */
+let fetchQueue: Promise<void> = Promise.resolve();
+const fetchOrigin = (repoRoot: string): Promise<void> => {
+  const task = fetchQueue.then(() =>
+    Command.create('git', ['-C', repoRoot, 'fetch', 'origin'])
+      .execute()
+      .then(() => undefined)
+  );
+  fetchQueue = task.catch(() => undefined);
+  return task;
+};
+
+/**
+ * 工作树已挂载时，把其分支 fast-forward 到远端最新。
+ *
+ * 背景：App 启动的自动同步只在主仓库上 `git pull`（更新 master），
+ * 而工作树挂载的 dataforge/{pc} 分支不会自动前进，导致「拉取最新代码」后
+ * 工作树仍停留在旧提交。这里在工作树干净且可 fast-forward 时，主动
+ * fetch 远端并把工作树前进到 origin/{branch}，让拉取真正生效。
+ *
+ * 安全边界（任一不满足就跳过，绝不丢数据）：
+ *   - 工作树有未提交改动（status 非空）→ 跳过，交由用户手动 pull；
+ *   - 本地分支领先远端或与远端分叉 → merge --ff-only 失败 → 跳过；
+ *   - 无 origin/{branch} 远端分支 → 跳过。
+ */
+const syncWorktreeWithRemote = async (
+  repoRoot: string,
+  workTreeDir: string,
+  branch: string,
+): Promise<void> => {
+  try {
+    // 工作树必须干净，否则不自动前进（避免覆盖智能体的未提交改动）
+    const status = await Command.create('git', ['-C', workTreeDir, 'status', '--porcelain']).execute();
+    if (status.code !== 0 || status.stdout.trim()) return;
+
+    // fetch 远端（默认 refspec 会更新所有 origin/* 跟踪分支）
+    await fetchOrigin(repoRoot);
+
+    const upstream = `origin/${branch}`;
+    const verify = await Command.create('git', ['-C', repoRoot, 'rev-parse', '--verify', upstream]).execute();
+    if (verify.code !== 0) return; // 无远端分支，跳过
+
+    // 仅 fast-forward：本地落后时前进；已最新/领先/分叉则跳过（不覆盖本地提交）
+    const ff = await Command.create('git', ['-C', workTreeDir, 'merge', '--ff-only', upstream]).execute();
+    if (ff.code === 0) {
+      console.log(`[git] 已同步工作树到远端最新: ${workTreeDir} -> ${upstream}`);
+    }
+  } catch (err) {
+    console.warn('[git] syncWorktreeWithRemote 异常:', err);
+  }
+};
+
 /**
  * 为项目建立「链接工作树」并挂到项目源码目录 workTreeDir（如 code/{pc}/src/{pc}），
  * 使 git 直接读取/提交 workTreeDir 里的真实文件。
@@ -378,6 +503,10 @@ const sanitizeBranchSegment = (s: string): string => s.replace(/[^a-zA-Z0-9_.\-/
  *
  * 幂等：workTreeDir 已是链接工作树则直接复用；若该分支此前挂在旧路径（迁移目录结构后遗留），
  * 会先移除旧工作树再挂到新 workTreeDir，避免 "branch is already checked out" 导致拉取失败。
+ *
+ * 自愈：链接工作树的 `.git` 文件一旦丢失（目录被清空等），该工作树会变成 prunable ——
+ * worktree remove 校验失败、worktree add 又报 "already exists"，永久卡住。
+ * 这里先跑 `git worktree repair` 重建 .git 文件，成功则复用原工作树并恢复缺失的源码文件。
  */
 export const ensureGitWorktree = async (
   repoRoot: string,
@@ -387,10 +516,15 @@ export const ensureGitWorktree = async (
   if (!repoRoot || !workTreeDir || !projectCode) return;
   // 仓库未就绪（未配置 gitRepoDirName / 尚未 clone）时不处理
   if (!(await checkGitRepoExists(repoRoot))) return;
-  // 已是链接工作树 → 复用
-  if (await isInsideWorkTree(workTreeDir)) return;
 
   const branch = `dataforge/${sanitizeBranchSegment(projectCode)}`;
+
+  // 已是链接工作树 → 复用，并尝试 fast-forward 到远端最新（让「拉取最新代码」生效）
+  if (await isInsideWorkTree(workTreeDir)) {
+    await syncWorktreeWithRemote(repoRoot, workTreeDir, branch);
+    return;
+  }
+
   try {
     // 1) 确保 per-project 分支存在（根 = 项目源码）。分支已存在则跳过切分。
     const listRes = await Command.create('git', ['-C', repoRoot, 'branch', '--list', branch]).execute();
@@ -402,25 +536,16 @@ export const ensureGitWorktree = async (
       }
     }
 
-    // 2) 清理旧的 prunable 工作树，并定位该分支当前挂载的工作树路径（可能有迁移目录结构后遗留的旧路径）
+    // 2) 清理无效工作树登记，并定位该分支当前挂载路径（可能有迁移目录结构后遗留的旧路径）
     await Command.create('git', ['-C', repoRoot, 'worktree', 'prune']).execute();
-    let existing = '';
     const wl = await Command.create('git', ['-C', repoRoot, 'worktree', 'list', '--porcelain']).execute();
-    if (wl.code === 0) {
-      let cur = '';
-      for (const line of wl.stdout.split('\n')) {
-        if (line.startsWith('worktree ')) {
-          cur = line.slice('worktree '.length).trim();
-        } else if (line.startsWith('branch ') && line.slice('branch '.length).trim() === `refs/heads/${branch}`) {
-          existing = cur;
-        } else if (line.trim() === '') {
-          cur = '';
-        }
-      }
-    }
+    const entries = wl.code === 0 ? parseWorktreeList(wl.stdout) : [];
+    // 路径比较必须归一化：git 输出形如 C:/a/b，而渲染层拼出来可能是 C:\a\b（且大小写可能不同），
+    // 直接字符串比较会误判为「挂在旧路径」，进而 worktree remove 掉正在使用的源码目录。
+    const existing = entries.find(e => e.branch === `refs/heads/${branch}`)?.path || '';
 
-    // 3) 若该分支挂在旧路径（≠ workTreeDir），先移除旧工作树，释放分支
-    if (existing && existing !== workTreeDir) {
+    // 3) 若该分支挂在别的路径，先移除旧工作树，释放分支（remove 会连目录一起删，故只在路径确实不同时才做）
+    if (existing && !samePath(existing, workTreeDir)) {
       const rm = await Command.create('git', ['-C', repoRoot, 'worktree', 'remove', '--force', existing]).execute();
       if (rm.code !== 0) {
         console.warn('[git] 移除旧工作树失败，无法迁移挂载点:', existing, rm.stderr);
@@ -429,13 +554,39 @@ export const ensureGitWorktree = async (
       console.log(`[git] 已移除旧工作树 ${existing}，将在新位置重新挂载: ${workTreeDir}`);
     }
 
-    // 4) 把该分支挂为 workTreeDir 的链接工作树
+    // 4) 自愈 prunable 工作树：链接工作树的 `.git` 文件丢失后，
+    //    既无法 worktree remove（校验失败）也无法 worktree add（分支已检出 / 目录已存在），会永久卡死。
+    //    git worktree repair 会重建该 .git 文件；它即使报错也可能已完成修复，故忽略退出码后复查。
+    if (existing) {
+      await Command.create('git', ['-C', repoRoot, 'worktree', 'repair', workTreeDir]).execute();
+      if (await isInsideWorkTree(workTreeDir)) {
+        console.log(`[git] 已修复链接工作树: ${workTreeDir} (${branch})`);
+        await restoreMissingWorktreeFiles(workTreeDir);
+        return;
+      }
+    }
+
+    // 5) 挂载链接工作树：git 要求目标目录不存在或为空，非空目录会报 "already exists"
+    const dirState = await inspectMountDir(workTreeDir);
+    if (dirState === 'occupied') {
+      console.warn(`[git] 源码目录非空且不是 git 工作树，跳过挂载以免覆盖已有文件: ${workTreeDir}`);
+      return;
+    }
+    if (dirState === 'staleGitOnly') {
+      // 只剩一个失效的 .git（文件或目录），清掉后重新挂载
+      const { remove } = await import('../bridge/fs');
+      await remove(joinPath(workTreeDir, '.git'), { recursive: true });
+    }
+
     const addRes = await Command.create('git', ['-C', repoRoot, 'worktree', 'add', '--force', workTreeDir, branch]).execute();
     if (addRes.code !== 0) {
       console.warn('[git] 挂载链接工作树失败:', addRes.stderr);
       return;
     }
     console.log(`[git] 已为 ${projectCode} 挂载链接工作树: ${workTreeDir} -> ${repoRoot} (${branch})`);
+    await restoreMissingWorktreeFiles(workTreeDir);
+    // 挂载后立即同步到远端最新：分支可能早已存在且落后远端，worktree add 会挂到旧提交
+    await syncWorktreeWithRemote(repoRoot, workTreeDir, branch);
   } catch (err) {
     console.warn('[git] ensureGitWorktree 异常:', err);
   }

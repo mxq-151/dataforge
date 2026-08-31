@@ -196,6 +196,8 @@ const AppContent: React.FC = () => {
   const [visitedProjects, setVisitedProjects] = useState<Map<string, ProjectInfo>>(new Map());
   // 每个项目拉取/挂载源码的次数，递增后用于通知文件浏览器在 git 拉完代码后再刷新一次
   const [gitRefreshSeq, setGitRefreshSeq] = useState<Record<string, number>>({});
+  // 项目目录初始化（建目录/软链/挂 git 工作树）的在途任务，按 projectCode 去重
+  const ensureInflightRef = useRef<Map<string, Promise<void>>>(new Map());
 
   const handleTabChange = useCallback((tab: ActiveTab) => {
     setActiveTab(tab);
@@ -444,7 +446,7 @@ const AppContent: React.FC = () => {
     // bridge/fs 在 useOpencodeClient / useFileSystem / SubmitToSchedulerModal 中均为按需动态载入，
     // 此处沿用动态引入，避免把 fs 模块静态打进主 chunk（否则上述懒加载会失效）。
     const fsPromise = import('./bridge/fs');
-    const ensureOne = async (project: ProjectInfo) => {
+    const runEnsureOne = async (project: ProjectInfo) => {
       const { gitProj, repoRoot } = projectDirs(project.projectCode);
       const pc = project.projectCode;
       const srcRoot = joinPath(baseWorkspace, 'code', pc, 'src');
@@ -462,7 +464,13 @@ const AppContent: React.FC = () => {
         await mkdir(srcDir, { recursive: true });
         const hadRepo = !!repoRoot;
         if (repoRoot) {
-          await symlink(gitProj, srcDir);
+          // 软链失败（Windows 无特权时尤甚）不能阻断 git 工作树挂载，
+          // 否则源码目录永远不是一个 git 工作树，Git 面板与提交全部不可用。
+          try {
+            await symlink(gitProj, srcDir);
+          } catch (err) {
+            console.warn('[App] 建立项目软链失败（不影响 git 工作树挂载）:', pc, err);
+          }
           await ensureGitWorktree(repoRoot, srcDir, pc);
         }
         // git 拉取/挂载源码完成后，递增序列，通知文件浏览器重新刷新（首次进入常有竞态：浏览器先于拉取完成打开空目录）
@@ -472,6 +480,17 @@ const AppContent: React.FC = () => {
       } catch (err) {
         console.error('[App] 建立项目目录/软链失败:', pc, err);
       }
+    };
+    const ensureOne = (project: ProjectInfo): Promise<void> => {
+      // 同一项目会被「当前选中」和「已访问列表」各触发一次，且 effect 会因依赖变化重跑；
+      // 并发执行会让软链创建互相抢同一个 linkPath（EEXIST），这里按项目去重并复用在途 Promise。
+      const inflight = ensureInflightRef.current.get(project.projectCode);
+      if (inflight) return inflight;
+      const task = runEnsureOne(project).finally(() => {
+        ensureInflightRef.current.delete(project.projectCode);
+      });
+      ensureInflightRef.current.set(project.projectCode, task);
+      return task;
     };
     // hostBase 是 opencode 进程校验/启动的工作目录，先确保存在
     void fsPromise.then(fs => fs.mkdir(baseWorkspace, { recursive: true })).catch(() => {});

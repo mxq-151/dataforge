@@ -18,6 +18,7 @@ import {
 import type { MonacoLanguageClient } from 'monaco-languageclient';
 import type { BaseLanguageClient, Middleware } from 'vscode-languageclient';
 import { stabilizeIncompleteResult, hoverIsComplete, hoverContentLen } from './stabilizeHover';
+import { parseJdtClassUri } from './jdtClassUri';
 
 export type LspLanguageId = 'java' | 'scala';
 
@@ -198,6 +199,23 @@ let javaClassFileProviderRegistered = false;
 // 这里用模块级引用保存最新实例，避免内容提供器持有已 dispose 的陈旧客户端。
 let currentJavaClient: MonacoLanguageClient | null = null;
 
+/**
+ * 尝试从本地 ~/.m2 的 sources jar 里直接读取 Scala 源码。
+ *
+ * 针对 JDT.LS 对 Scala 写的库（如 Spark）「只反编译 .class、读不到 .scala 源码」的
+ * 固有限制：解析 jdt:// URI 得到二进制 jar 名 + 类名，让主进程按类名在 sources jar
+ * 里定位对应的 .scala 文件。命中返回源码文本；未命中（如纯 Java 类、JDK 模块或
+ * 本地无 sources jar）返回 null，由调用方回退到 java/classFileContents 反编译。
+ */
+async function tryReadScalaSource(jarName: string, className: string): Promise<string | null> {
+  try {
+    const content = await invoke<string | null>('read_jar_scala_source', { jarName, className });
+    return typeof content === 'string' && content.length > 0 ? content : null;
+  } catch {
+    return null;
+  }
+}
+
 export function registerJavaClassFileProvider(javaClient: MonacoLanguageClient): void {
   // 先刷新引用：即便提供器已注册过（重启场景），也要换成最新客户端
   currentJavaClient = javaClient;
@@ -209,6 +227,14 @@ export function registerJavaClassFileProvider(javaClient: MonacoLanguageClient):
     provideTextDocumentContent: async (uri: vscode.Uri) => {
       if (!currentJavaClient) return '';
       try {
+        const uriStr = uri.toString();
+        // 先尝试从 sources jar 直接提取 .scala 源码（针对 Scala 写的库，如 Spark），
+        // 命中则直接返回真实源码，避免落入下方的 FernFlower 反编译。
+        const parsed = parseJdtClassUri(uriStr);
+        if (parsed?.isJar) {
+          const scalaSource = await tryReadScalaSource(parsed.jarName, parsed.className);
+          if (scalaSource != null) return scalaSource;
+        }
         // JDT.LS 自定义请求 java/classFileContents：参数类型是 TextDocumentIdentifier（对象
         // { uri: string }），不是裸字符串。服务端签名：
         //   CompletableFuture<String> classFileContents(org.eclipse.lsp4j.TextDocumentIdentifier)
@@ -216,7 +242,7 @@ export function registerJavaClassFileProvider(javaClient: MonacoLanguageClient):
         // 报 "Message could not be parsed."。这里与 VS Code Java 扩展 providerDispatcher.ts 的
         // createJDTContentProvider 保持一致：sendRequest(ClassFileContentsRequest.type, { uri }).
         const content = await currentJavaClient.sendRequest('java/classFileContents', {
-          uri: uri.toString(),
+          uri: uriStr,
         });
         return (content as string) ?? '';
       } catch (e) {
@@ -255,6 +281,21 @@ export async function readJavaClassFileContent(uri: string): Promise<string> {
   if (!currentJavaClient) {
     throw new Error('Java 语言客户端未就绪（JDT.LS 尚未启动）');
   }
+
+  // 先尝试从 sources jar 直接提取 .scala 源码（Scala 写的库，如 Spark）：
+  // JDT.LS 对 .scala 只反编译 .class，这里绕开它、显示真实 Scala 源码。
+  const parsed = parseJdtClassUri(uri);
+  if (parsed?.isJar) {
+    const scalaSource = await tryReadScalaSource(parsed.jarName, parsed.className);
+    if (scalaSource != null) {
+      invoke('trace_log', {
+        msg: `[jdt] 命中 .scala 源码 jar=${parsed.jarName} class=${parsed.className} 长度=${scalaSource.length}`,
+      }).catch(() => undefined);
+      javaClassFileCache.set(uri, scalaSource);
+      return scalaSource;
+    }
+  }
+
   // 参数必须是 { uri }（TextDocumentIdentifier），不能传裸字符串——见上方 provideTextDocumentContent 的注释。
   const content = await currentJavaClient.sendRequest('java/classFileContents', { uri });
   const text = (content as string) ?? '';
