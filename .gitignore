@@ -48,7 +48,6 @@ lerna-debug.log*
 resources/metals/metals.jar
 resources/metals/metals-1.6.8.jar.bak
 resources/metals/coursier.jar
-resources/jdtls/
 resources/binaries/
 
 # Java test artifacts

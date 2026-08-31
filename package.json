@@ -47,6 +47,13 @@
         ]
       },
       {
+        "from": "resources/jdtls",
+        "to": "jdtls",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
         "from": "resources/binaries/opencode-aarch64-apple-darwin",
         "to": "binaries/opencode"
       }
