@@ -1,11 +1,12 @@
 /**
  * fileHeader.test.ts — 代码头解析与数据开发提示词的一致性测试
  *
- * 代码头是机器解析契约：src/utils/index.ts 的 parseFileHeader 从文件首行起
- * 用 /^\s*(?:--|\/\/|#)\s*@(\S+):\s*(.*)$/ 逐行匹配，遇到不匹配的行即终止。
+ * 代码头是机器解析契约：src/utils/index.ts 的 parseFileHeader 扫描文件头注释区，
+ * 逐行匹配 /^\s*(?:--|\/\/|#)\s*@(\S+):\s*(.*)$/，容忍开头 BOM/空行/说明行，
+ * 遇到首个真实代码行（非行注释）即终止。
  * 因此 opencodeInstructions.ts 中数据开发提示词的代码头样例必须：
  * - 使用行注释（-- / // / #）逐行书写，斜杠星号式的块注释无法被解析
- * - 位于文件最开头且连续书写，之前不得有空行、import 或 package 语句
+ * - 位于文件开头，不得被 import 或 package 语句隔断
  * - 含 @备注 / @引擎 / @数据源 必填项，且 @引擎 取值可被识别为调度任务类型
  *
  * 本测试直接从提示词中抽取样例代码块并喂给真实解析器，防止改提示词时破坏解析。
@@ -138,9 +139,11 @@ describe('parseFileHeader — 边界与回归', () => {
     expect(parseFileHeader(legacy)).toBeNull();
   });
 
-  it('代码头之前出现空行即终止解析', () => {
+  it('代码头之前出现空行仍可正常解析', () => {
     const withBlankLine = `\n-- @引擎: kyuubi\n-- @备注: 前面有空行\n`;
-    expect(parseFileHeader(withBlankLine)).toBeNull();
+    const header = parseFileHeader(withBlankLine);
+    expect(header).not.toBeNull();
+    expect(header!.engine).toBe('kyuubi');
   });
 
   it('代码头须连续书写，中间插入普通行则后续字段丢失', () => {

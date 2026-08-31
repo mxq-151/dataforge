@@ -73,8 +73,16 @@ export const parseFileHeader = (content: string): FileHeaderInfo | null => {
   const lines = content.split('\n');
 
   for (const line of lines) {
+    // 容忍 BOM 与代码头前/中的空行，不终止解析
+    const trimmed = line.replace(/^\uFEFF/, '').trim();
+    if (!trimmed) continue;
+
+    // 只扫描行注释（-- // #）构成的文件头注释区；遇到首个真实代码行即终止，
+    // 避免把正文后续出现的 @字段 注释误收入代码头
+    if (!/^(?:--|\/\/|#)/.test(trimmed)) break;
+
     const match = line.match(HEADER_PATTERN);
-    if (!match) break;
+    if (!match) continue;
 
     foundAny = true;
     const [, key, value] = match;
