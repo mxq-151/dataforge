@@ -381,7 +381,7 @@ export default function ExecutionResultTabs({
                                   </table>
                                 </div>
                               )}
-                              {item.success && item.columns.length === 0 && item.outputLog && (
+                              {item.columns.length === 0 && item.outputLog && (
                                 <pre className="exec-tabs__output-log">{item.outputLog}</pre>
                               )}
                             </>
@@ -476,7 +476,7 @@ export default function ExecutionResultTabs({
                               </table>
                             </div>
                           )}
-                          {item.success && item.columns.length === 0 && item.outputLog && (
+                          {item.columns.length === 0 && item.outputLog && (
                             <pre className="exec-tabs__output-log">{item.outputLog}</pre>
                           )}
                         </>

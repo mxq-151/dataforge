@@ -5,6 +5,7 @@ import { promisify } from 'node:util';
 import * as fsp from 'node:fs/promises';
 import * as path from 'node:path';
 import { compileJavaScala } from './backend/compile';
+import { runLocalJava, abortLocalRun } from './backend/localRun';
 import { readJarScalaSource, resolveJarSources, runMavenBloopInstall, writeWorkspacePom } from './backend/lspPom';
 import {
   readMetalsSource,
@@ -41,6 +42,12 @@ const BACKEND_COMMANDS: Record<string, (args: Record<string, unknown>) => Promis
   read_jar_scala_source: async (args) =>
     readJarScalaSource(args as unknown as { jarName: string; className: string }),
   compile_java_scala: async (args) => compileJavaScala(args as unknown as Parameters<typeof compileJavaScala>[0]),
+  // ── 本地运行（后端：backend/localRun.ts）──────────────────────────────
+  run_local_java: async (args) => runLocalJava(args as unknown as Parameters<typeof runLocalJava>[0]),
+  run_local_abort: async (args) => {
+    abortLocalRun(String((args as { sessionId?: string }).sessionId ?? ''));
+    return null;
+  },
   // ── LSP WebSocket 桥（已移植：backend/lspBridge.ts）────────────────
   start_java_lsp_ws: async (args) =>
     startJavaLspWs(args as unknown as { javaHome: string; workspaceRoot: string }),

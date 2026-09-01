@@ -4,6 +4,7 @@ import EditorArea from '../../components/editor/EditorArea';
 import type { EditorAreaHandle } from '../../types';
 import ExplorerPanel from './ExplorerPanel';
 import SubmitToSchedulerModal from './SubmitToSchedulerModal';
+import { RunLocalModal } from '../../components/modal/RunLocalModal';
 import ExtractMetricsModal from './ExtractMetricsModal';
 import FileHistoryModal from './FileHistoryModal';
 import { gitRestoreFile, gitFileHasChanges, toRepoRelativePath } from '../../api/git';
@@ -447,6 +448,10 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
     handleRunProgram,
     handleCompileDryRun,
     handleCancelExecution,
+    handleRunLocal,
+    handleLocalRunExecute,
+    handleCancelLocalRun,
+    pendingLocalRun,
     isRunning,
     isCompiling,
     executionHistory,
@@ -1060,6 +1065,7 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
           onChange={handleEditorChange}
           statusInfo={statusInfo}
           onRunProgram={handleRunProgram}
+          onRunLocal={handleRunLocal}
           onCompileDryRun={handleCompileDryRun}
           onSubmitToScheduler={() => setSubmitModalVisible(true)}
           onExtractMetrics={handleExtractMetrics}
@@ -1156,6 +1162,13 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
         onSuccess={(_projectName, workflowName) => {
           console.log(`已提交到调度系统，工作流: ${workflowName}`);
         }}
+      />
+      <RunLocalModal
+        open={!!pendingLocalRun}
+        defaultMainClass={pendingLocalRun?.defaultMainClass ?? ''}
+        defaultArgs={pendingLocalRun?.defaultArgs ?? ''}
+        onRun={handleLocalRunExecute}
+        onCancel={handleCancelLocalRun}
       />
       <ExtractMetricsModal
         visible={extractMetricsVisible}
