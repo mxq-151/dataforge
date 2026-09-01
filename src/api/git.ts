@@ -156,6 +156,43 @@ export const gitPull = async (
   }
 };
 
+/**
+ * 初始化一个本地 git 仓库（无远程地址时的默认 warehouse 仓库）。
+ * 幂等：仓库已存在则直接返回成功。初始化后确保存在一个 HEAD 提交，
+ * 供后续 subtree split / worktree 挂载使用。
+ */
+export const gitInit = async (repoPath: string): Promise<{ success: boolean; message: string }> => {
+  try {
+    if (await checkGitRepoExists(repoPath)) {
+      return { success: true, message: 'Repository already exists' };
+    }
+    // git init 不会创建父目录；仓库目录可能尚未创建（如 baseWorkspace 首次初始化时），先补齐
+    try {
+      const { mkdir } = await import('../bridge/fs');
+      await mkdir(repoPath, { recursive: true });
+    } catch {
+      // fs 桥不可用时交给 git init 兜底（父目录存在时仍可创建）
+    }
+    const init = await Command.create('git', ['init', '-b', 'master', repoPath]).execute();
+    if (init.code !== 0) {
+      // 旧版 git 不支持 -b，回退到默认分支命名后置空提交
+      if (!init.stderr?.includes('unknown option')) {
+        return { success: false, message: init.stderr || init.stdout || 'git init failed' };
+      }
+      await Command.create('git', ['init', repoPath]).execute();
+    }
+    // 确保仓库存在 HEAD 提交（subtree split / worktree add 均依赖它）
+    const hasHead = await Command.create('git', ['-C', repoPath, 'rev-parse', '--verify', 'HEAD']).execute();
+    if (hasHead.code !== 0) {
+      await Command.create('git', ['-C', repoPath, 'add', '-A']).execute();
+      await Command.create('git', ['-C', repoPath, 'commit', '--allow-empty', '-m', 'init: local warehouse']).execute();
+    }
+    return { success: true, message: 'Local warehouse initialized' };
+  } catch (err) {
+    return { success: false, message: err instanceof Error ? err.message : String(err) };
+  }
+};
+
 export const gitStatus = async (rootPath: string): Promise<GitStatusResult> => {
   try {
     const output = await Command.create('git', ['-c', 'core.quotePath=false', 'status', '--porcelain=v2', '--branch', '-uall'], {

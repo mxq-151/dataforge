@@ -121,7 +121,8 @@ const GitModal: React.FC<GitModalProps> = ({
   // 切换标签页时加载对应数据
   useEffect(() => {
     if (!visible || !rootPath) return;
-    if (activeTab === 'history' && logEntries.length === 0) {
+    if (activeTab === 'history') {
+      // 每次进入历史页都重新拉取，避免提交后仍然停留在旧的历史记录
       loadLog();
     }
     if (activeTab === 'changes') {
@@ -191,13 +192,15 @@ const GitModal: React.FC<GitModalProps> = ({
       setSuccessMsg(`已提交 ${filesToAdd.length} 个文件`);
       setCommitMessage('');
       await loadStatus();
+      // 提交后立即刷新历史，保证历史页能看到最新提交
+      await loadLog();
       onCommitted?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : '提交失败');
     } finally {
       setIsCommitting(false);
     }
-  }, [rootPath, selectedFiles, commitMessage, onBeforeCommit, clearTransient, loadStatus, onCommitted]);
+  }, [rootPath, selectedFiles, commitMessage, onBeforeCommit, clearTransient, loadStatus, loadLog, onCommitted]);
 
   const handlePush = useCallback(async () => {
     if (!rootPath) return;
