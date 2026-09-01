@@ -8,6 +8,7 @@ import ExtractMetricsModal from './ExtractMetricsModal';
 import FileHistoryModal from './FileHistoryModal';
 import { gitRestoreFile, gitFileHasChanges, toRepoRelativePath } from '../../api/git';
 import useFileSystem from '../../hooks/useFileSystem';
+import useDevProjectConfig from '../../hooks/useDevProjectConfig';
 import { useAuth } from '../../contexts/AuthContext';
 import { useDataSourceCache } from '../../contexts/DataSourceContext';
 import { StatusBarInfo, Tab, FileNode } from '../../types';
@@ -156,6 +157,10 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
   // 项目级依赖配置（开发助手模块）：作为编译与悬停提示的默认依赖集合，
   // 与逐文件依赖合并生效。后端未部署项目级接口时优雅降级为空（仅逐文件行为）。
   const projectDepConfig = useProjectDependencyConfig(project.id, project.projectCode);
+
+  // 逐文件参数配置读写（含依赖 jarPath 等）：用于打开标签时从后端 /params 兜底加载，
+  // 避免 --jars 只依赖本会话手动勾选
+  const devProjectConfig = useDevProjectConfig();
 
   // 打开开发助手模块时加载库表信息
   useEffect(() => {
@@ -406,6 +411,35 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
       }
     }
   }, [chatBackend.lastFileChangeSeq]);
+
+  // 逐文件 --jars 兜底：标签已打开但本会话未保存过配置（savedConfigParams 缺失）时，
+  // 从后端 /params 拉取已保存的依赖/参数配置并写入内存态，使 --jars 无需手动勾选即可生成。
+  useEffect(() => {
+    if (!activeTabId) return;
+    const tab = tabs.find(t => t.id === activeTabId);
+    if (!tab) return;
+    if (savedConfigParams[tab.path]) return; // 内存态已有，无需兜底
+    if (!projectCwd) return;
+    let cancelled = false;
+    // 后端持久化/查询按 (project_id, file_path) 联合键，file_path 需为项目内相对路径
+    // （unifiedCompile 也用相对路径回读），故转相对后再请求
+    const relPath = toRepoRelativePath(tab.path, projectCwd);
+    devProjectConfig.fetchByFilePath(project.id, relPath).then(loaded => {
+      if (cancelled || !loaded) return;
+      setSavedConfigParams(prev => {
+        // 若加载期间用户已保存则不再覆盖
+        if (prev[tab.path]) return prev;
+        return { ...prev, [tab.path]: {
+          dependencies: loaded.dependencies,
+          programParams: loaded.programParams,
+          taskParams: loaded.taskParams,
+        } };
+      });
+    });
+    return () => { cancelled = true; };
+    // activeTabId 切换时重新评估；savedConfigParams 更新后条件自然放行
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTabId, tabs, project.id, savedConfigParams]);
 
   // 提取的运行/编译/取消执行逻辑
   const {

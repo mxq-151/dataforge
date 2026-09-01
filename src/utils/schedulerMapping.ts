@@ -562,8 +562,7 @@ function applyRuntimeParams(
     const jarsArg = buildJarsArg(customJars);
     if (jarsArg) {
       const existingOthers = (taskParams.others as string) || '';
-      const merged = existingOthers ? `${existingOthers} --jars ${jarsArg}` : `--jars ${jarsArg}`;
-      taskParams.others = merged;
+      taskParams.others = existingOthers ? `${existingOthers} --jars ${jarsArg}` : `--jars ${jarsArg}`;
     }
   }
 
