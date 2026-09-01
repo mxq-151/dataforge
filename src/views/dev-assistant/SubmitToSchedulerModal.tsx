@@ -804,7 +804,17 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
           const now = new Date();
           const timestamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
           previewSegments.push(`${codeFileBaseName}_${timestamp}.jar`);
-          const mainJarPreview = "/"+previewSegments.join('/');
+          // 拼接资源中心根目录 baseDir，与实际提交时上传返回的资源路径保持一致
+          let baseDir = '/';
+          try {
+            if (dsApi) {
+              const baseDirRes = await dsApi.resource.queryBaseDir('FILE');
+              if (baseDirRes.code === 0 && baseDirRes.data) {
+                baseDir = baseDirRes.data;
+              }
+            }
+          } catch { /* use default */ }
+          const mainJarPreview = [baseDir.replace(/\/+$/, ''), ...previewSegments].join('/');
           setTaskTypeParams(prev => ({ ...prev, mainJar: mainJarPreview }));
         } else {
           setCompiledJarPath(null);
