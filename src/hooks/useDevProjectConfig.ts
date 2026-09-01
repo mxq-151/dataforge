@@ -10,6 +10,11 @@ interface DependencyItem {
   name: string;
   version: string;
   source?: string;
+  /** 自定义 jar 相对 basePath 的路径（含文件名），保存到 /params 时透传 jarPath */
+  jarPath?: string;
+  groupId?: string;
+  scope?: string;
+  autoChoose?: number | null;
 }
 
 interface ParamItem {
@@ -34,6 +39,10 @@ const mapToLoadedConfig = (vo: ProgramParamsVO | null | undefined): LoadedConfig
     name: dep.artifactId || dep.jarName || '',
     version: dep.version || '',
     source: dep.source,
+    jarPath: dep.jarPath,
+    groupId: dep.groupId,
+    scope: dep.scope,
+    autoChoose: dep.autoChoose,
   })),
   programParams: (Object.entries(vo?.runParams || {}) as [string, unknown][]).map(([key, val], i) => ({
     id: `loaded_pp_${i}`,
@@ -117,6 +126,10 @@ const useDevProjectConfig = () => {
             artifactId: d.name,
             version: d.version,
             source: d.source,
+            jarPath: d.jarPath,
+            groupId: d.groupId,
+            scope: d.scope,
+            autoChoose: d.autoChoose,
             ...(programType ? { programType } : {}),
           })),
         runParams,

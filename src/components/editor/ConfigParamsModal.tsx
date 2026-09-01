@@ -14,6 +14,11 @@ interface DependencyItem {
   name: string;
   version: string;
   source?: string;
+  /** 自定义 jar 相对 basePath 的路径（含文件名），透传到 /params 保存与 --jars 注入 */
+  jarPath?: string;
+  groupId?: string;
+  scope?: string;
+  autoChoose?: number | null;
 }
 
 interface ParamItem {
@@ -195,6 +200,10 @@ const ConfigParamsModal: React.FC<ConfigParamsModalProps> = ({
               name: r.artifactId,
               version: r.version,
               source: r.source,
+              jarPath: r.jarPath,
+              groupId: r.groupId,
+              scope: r.scope,
+              autoChoose: r.autoChoose,
             });
           });
         return newDeps;
@@ -296,6 +305,10 @@ const ConfigParamsModal: React.FC<ConfigParamsModalProps> = ({
           name: record.artifactId,
           version: record.version,
           source: record.source,
+          jarPath: record.jarPath,
+          groupId: record.groupId,
+          scope: record.scope,
+          autoChoose: record.autoChoose,
         }]);
       }
       return next;
@@ -309,7 +322,7 @@ const ConfigParamsModal: React.FC<ConfigParamsModalProps> = ({
       items.forEach(item => {
         next.add(item.id);
         if (!newDeps.find(d => d.name === item.artifactId)) {
-          newDeps.push({ id: `dep_api_${item.id}`, name: item.artifactId, version: item.version, source: item.source });
+          newDeps.push({ id: `dep_api_${item.id}`, name: item.artifactId, version: item.version, source: item.source, jarPath: item.jarPath, groupId: item.groupId, scope: item.scope, autoChoose: item.autoChoose });
         }
       });
       setDeps(newDeps);

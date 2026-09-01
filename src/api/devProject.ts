@@ -33,7 +33,7 @@ export interface DevJarDependency {
   category?: string;
   /** 程序类型（SPARK / FLINK / JAVA 等，后端 @NotBlank） */
   programType?: string;
-  autoChoose?: number;
+  autoChoose?: number | null;
   createTime?: string;
   updateTime?: string;
 }

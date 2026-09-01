@@ -294,7 +294,7 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [savedConfigParams, setSavedConfigParams] = useState<Record<string, {
-    dependencies: { id: string; name: string; version: string }[];
+    dependencies: { id: string; name: string; version: string; source?: string; jarPath?: string; groupId?: string; scope?: string; autoChoose?: number | null }[];
     programParams: { id: string; key: string; value: string }[];
     taskParams: { id: string; key: string; value: string }[];
   }>>({});
@@ -835,7 +835,7 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
   }, [activeTabId, tabs, saveFile, user]);
 
   const handleSaveConfigParams = useCallback((filePath: string, data: {
-    dependencies: { id: string; name: string; version: string }[];
+    dependencies: { id: string; name: string; version: string; source?: string; jarPath?: string; groupId?: string; scope?: string; autoChoose?: number | null }[];
     programParams: { id: string; key: string; value: string }[];
     taskParams: { id: string; key: string; value: string }[];
   }) => {

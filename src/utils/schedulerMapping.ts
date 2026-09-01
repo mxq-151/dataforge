@@ -215,7 +215,7 @@ export function buildDependentTaskNode(
 }
 
 export interface SavedConfig {
-  dependencies: { id: string; name: string; version: string }[];
+  dependencies: { id: string; name: string; version: string; source?: string; jarPath?: string; groupId?: string; scope?: string; autoChoose?: number | null }[];
   programParams: { id: string; key: string; value: string }[];
   taskParams: { id: string; key: string; value: string }[];
 }

@@ -60,7 +60,7 @@ interface EditorAreaProps {
   /** 判断文件是否有未提交变更（用于是否置灰「撤销文件变更」） */
   onCheckFileChanged?: (filePath: string) => Promise<boolean>;
   onSaveConfigParams?: (filePath: string, data: {
-    dependencies: { id: string; name: string; version: string }[];
+    dependencies: { id: string; name: string; version: string; source?: string; jarPath?: string; groupId?: string; scope?: string; autoChoose?: number | null }[];
     programParams: { id: string; key: string; value: string }[];
     taskParams: { id: string; key: string; value: string }[];
   }) => void;
