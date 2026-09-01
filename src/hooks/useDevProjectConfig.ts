@@ -74,6 +74,11 @@ const ENGINE_TO_PROGRAM_TYPE: Record<string, string> = {
   mr: 'MAPREDUCE',
 };
 
+// 统一路径分隔符：Windows 下路径用反斜杠（\），macOS/Linux 用正斜杠（/）。
+// 后端按 (project_id, file_path) 联合键存储参数，为避免同一文件在不同平台被识别为
+// 不同路径导致项目/程序参数保存与读取不一致，入口处一律归一为正斜杠相对路径。
+const toPosixPath = (p: string): string => (p ?? '').trim().replace(/\\/g, '/');
+
 const useDevProjectConfig = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -82,7 +87,7 @@ const useDevProjectConfig = () => {
     setLoading(true);
     setError(null);
     try {
-      const json = await fetchProjectConfigByFilePath(projectId, filePath);
+      const json = await fetchProjectConfigByFilePath(projectId, toPosixPath(filePath));
       if (json.code !== 200) throw new Error(json.message || '获取配置失败');
       return mapToLoadedConfig(json.data);
     } catch (e) {
@@ -119,7 +124,7 @@ const useDevProjectConfig = () => {
       const programType = ENGINE_TO_PROGRAM_TYPE[data.engine.trim().toLowerCase()];
       const body: ProgramParamsDTO = {
         projectId,
-        filePath,
+        filePath: toPosixPath(filePath),
         engine: data.engine,
         datasources: [],
         jarDependencyCatalogs: data.dependencies
