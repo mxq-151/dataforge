@@ -74,13 +74,12 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
   const [step, setStep] = useState<SubmitStep>('config');
   const [projects, setProjects] = useState<DSProject[]>([]);
   const [selectedProjectCode, setSelectedProjectCode] = useState<number | null>(null);
-  const [workflows, setWorkflows] = useState<DSWorkflowDefinition[]>([]);
   const [selectedWorkflowCode, setSelectedWorkflowCode] = useState<number | null>(null);
   const [workflowName, setWorkflowName] = useState('');
+  const [taskName, setTaskName] = useState('');
   const [workflowDesc, setWorkflowDesc] = useState('');
   const [autoOnline, setAutoOnline] = useState(false);
   const [autoTrigger, setAutoTrigger] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successInfo, setSuccessInfo] = useState<{ projectName: string; workflowName: string } | null>(null);
   const [selectedTaskType, setSelectedTaskType] = useState<DSTaskType | null>(null);
@@ -360,13 +359,20 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
           fromMapping[param.key] = typeof mappingVal === 'boolean' ? mappingVal : String(mappingVal);
         }
       }
-      // 以当前文件的 mapping 推导值 + 默认值为准重建表单参数；不再携带 prev 残留值，
-      // 避免切换文件/任务类型后沿用上一个文件的主Class、appName 等参数（如 utils 类 MainClass）。
-      setTaskTypeParams({ ...defaults, ...fromMapping });
+      // 除「其他参数(others)」外，所有输入项均以当前文件的推导值 + 默认值重建，不记忆上一次的编辑值；
+      // 每次点开「提交调度」都会重新填充。others 单独保留上一次的取值，方便跨会话沿用。
+      setTaskTypeParams(prev => {
+        const preservedOthers = (prev && typeof prev.others === 'string' && prev.others.trim())
+          ? prev.others
+          : '';
+        const merged: Record<string, string | boolean> = { ...defaults, ...fromMapping };
+        if (preservedOthers) merged.others = preservedOthers;
+        return merged;
+      });
     } else {
       setTaskTypeParams({});
     }
-  }, [currentMapping?.taskType, fileName, filePath]);
+  }, [currentMapping?.taskType, fileName, filePath, visible]);
 
   const applyTaskTypeParamsToMapping = useCallback((mapping: CodeFileMapping | null): CodeFileMapping | null => {
     if (!mapping || Object.keys(taskTypeParams).length === 0) return mapping;
@@ -442,7 +448,9 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
 
     if (initialMapping) {
       setSelectedTaskType(initialMapping.taskType);
-      setWorkflowName(initialMapping.workflowName);
+      // 工作流/任务名称中的斜杠、反斜杠统一替换为下划线，保证 DS 名称合法
+      setWorkflowName(initialMapping.workflowName.replace(/[/\\]/g, '_'));
+      setTaskName(initialMapping.taskName.replace(/[/\\]/g, '_') || fileName.replace(/\.[^.]+$/, ''));
       setWorkflowDesc(initialMapping.description);
     }
   }, [visible, initialMapping]);
@@ -451,7 +459,6 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
     if (!visible || !dsApi) return;
 
     const loadProjects = async () => {
-      setLoading(true);
       try {
         const res = await dsApi.project.list({ pageNo: 1, pageSize: 100 });
         if (res.code === 0 && res.data?.totalList) {
@@ -468,36 +475,11 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
         }
       } catch {
         setProjects([]);
-      } finally {
-        setLoading(false);
       }
     };
 
     loadProjects();
   }, [visible, dsApi, projectCode]);
-
-  useEffect(() => {
-    if (!visible || !selectedProjectCode || !dsApi) {
-      setWorkflows([]);
-      return;
-    }
-
-    const loadWorkflows = async () => {
-      try {
-        const res = await dsApi.workflowDefinition.list(selectedProjectCode, {
-          pageNo: 1,
-          pageSize: 100,
-        });
-        if (res.code === 0 && res.data?.totalList) {
-          setWorkflows(res.data.totalList);
-        }
-      } catch {
-        setWorkflows([]);
-      }
-    };
-
-    loadWorkflows();
-  }, [visible, selectedProjectCode, dsApi]);
 
   useEffect(() => {
     if (!visible || !needsDatasource || !dsApi) {
@@ -595,8 +577,11 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
             isOnline,
             workflowCode: exactMatch.code,
           });
+          // 工作流已存在：记录其 code，触发任务存在性检测，并在提交时走「更新工作流」路径
+          setSelectedWorkflowCode(exactMatch.code);
         } else {
           setWorkflowNameCheck({ exists: false, isOnline: false });
+          setSelectedWorkflowCode(null);
         }
       } else {
         setWorkflowNameCheck(null);
@@ -893,6 +878,10 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
     setErrorMsg(null);
 
     const mappingWithDatasource = { ...effectiveMapping };
+    // 以用户在「任务名称」输入框填写的值为准（净化掉反斜杠、斜杠等非法字符）
+    mappingWithDatasource.taskName = sanitizeDsName(taskName) || mappingWithDatasource.taskName;
+    // 任务描述以用户填写值为准（新建/更新任务节点时均使用该描述）
+    mappingWithDatasource.description = workflowDesc;
     if (needsDatasource && selectedDatasourceId) {
       const updatedParams = { ...mappingWithDatasource.taskParams };
       updatedParams.datasource = selectedDatasourceId;
@@ -927,10 +916,11 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
         if (namespace) {
           openlineageConfs.push(`--conf spark.openlineage.namespace=${namespace}`);
         }
-        const existingOthers = (updatedParams.others as string) || '';
+        const existingOthers = ((updatedParams.others as string) || '').replace(/\r?\n/g, ' ').trim();
+        // 所有 spark-submit 执行命令拼成单行（用空格连接，不做换行），避免提交后执行命令被拆成多行
         updatedParams.others = existingOthers
-          ? `${existingOthers}\n${openlineageConfs.join('\n')}`
-          : openlineageConfs.join('\n');
+          ? `${existingOthers} ${openlineageConfs.join(' ')}`
+          : openlineageConfs.join(' ');
         mappingWithDatasource.taskParams = updatedParams;
       }
     }
@@ -1023,10 +1013,19 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
         const detailRes = await dsApi.workflowDefinition.detail(selectedProjectCode, selectedWorkflowCode);
         if (detailRes.code === 0 && detailRes.data) {
           const { taskNodes, edges, globalParams, workflowDefinition } = detailRes.data;
-          const newTaskCode = Date.now();
+
+          // 判断工作流中是否已存在同名任务：存在则原地更新内容（保留原 code 以维持既有边关系），
+          // 不再新增重复节点，也不在任务之间建立前后依赖
+          const sanitizedTaskName = sanitizeDsName(mappingWithDatasource.taskName);
+          const existingIndex = taskNodes.findIndex(node => sanitizeDsName(node.name) === sanitizedTaskName);
+          const existingCodes = taskNodes.map(n => n.code);
+          const taskCode = existingIndex >= 0
+            ? taskNodes[existingIndex].code
+            : (Date.now() > Math.max(0, ...existingCodes) ? Date.now() : Math.max(0, ...existingCodes) + 1);
+          const depCode = Math.max(taskCode, 0, ...existingCodes) + 1;
 
           const newNode: import('../../types/dolphinscheduler').DSWorkflowTaskNode = {
-            code: newTaskCode,
+            code: taskCode,
             name: mappingWithDatasource.taskName,
             taskType: mappingWithDatasource.taskType,
             description: mappingWithDatasource.description,
@@ -1040,31 +1039,37 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
             timeoutFlag: 'CLOSE',
             timeout: 0,
             delayTime: 0,
-            x: 200 + taskNodes.length * 200,
-            y: 100 + (taskNodes.length % 3) * 100,
+            x: existingIndex >= 0 ? taskNodes[existingIndex].x : 200 + taskNodes.length * 200,
+            y: existingIndex >= 0 ? taskNodes[existingIndex].y : 100 + (taskNodes.length % 3) * 100,
           };
 
-          const updatedNodes = [...taskNodes, newNode];
-          const updatedEdges = [...edges];
+          let updatedNodes: import('../../types/dolphinscheduler').DSWorkflowTaskNode[];
+          let updatedEdges: import('../../types/dolphinscheduler').DSWorkflowEdge[] = [...edges];
 
-          if (taskNodes.length > 0) {
-            const lastNode = taskNodes[taskNodes.length - 1];
-            updatedEdges.push({
-              id: `e_${lastNode.code}_${newTaskCode}`,
-              sourceCode: lastNode.code,
-              targetCode: newTaskCode,
-            });
+          if (existingIndex >= 0) {
+            // 同名任务已存在：用新内容替换该节点，保持其 code 与既有边，不新增串行边
+            updatedNodes = taskNodes.map((n, i) => (i === existingIndex ? newNode : n));
+          } else {
+            // 不存在同名任务：追加新节点，并与原最后一个任务串行连接
+            updatedNodes = [...taskNodes, newNode];
+            if (taskNodes.length > 0) {
+              const lastNode = taskNodes[taskNodes.length - 1];
+              updatedEdges.push({
+                id: `e_${lastNode.code}_${taskCode}`,
+                sourceCode: lastNode.code,
+                targetCode: taskCode,
+              });
+            }
           }
 
-          // 根据代码头 @依赖 配置前置任务依赖：构建 DEPENDENT 任务节点作为 newNode 的前置
+          // 根据代码头 @依赖 配置前置任务依赖：构建 DEPENDENT 任务节点作为主任务（新建或更新）的前置
           if (resolvedDeps.length > 0) {
-            const depCode = newTaskCode + 1;
             const depNode = buildDependentTaskNode(resolvedDeps, depCode);
             updatedNodes.push(depNode);
             updatedEdges.push({
-              id: `e_${depCode}_${newTaskCode}`,
+              id: `e_${depCode}_${taskCode}`,
               sourceCode: depCode,
-              targetCode: newTaskCode,
+              targetCode: taskCode,
             });
           }
 
@@ -1266,28 +1271,6 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
 
           {step === 'config' && (
             <>
-              <div className="submit-scheduler__section">
-                <div className="submit-scheduler__section-title">文件信息</div>
-                <div className="submit-scheduler__info-grid">
-                  <div className="submit-scheduler__info-item">
-                    <span className="submit-scheduler__info-label">文件名</span>
-                    <span className="submit-scheduler__info-value">{fileName}</span>
-                  </div>
-                  {currentMapping && (
-                    <>
-                      <div className="submit-scheduler__info-item">
-                        <span className="submit-scheduler__info-label">任务路径</span>
-                        <span className="submit-scheduler__info-value submit-scheduler__path">{currentMapping.relativePath || fileName}</span>
-                      </div>
-                      <div className="submit-scheduler__info-item">
-                        <span className="submit-scheduler__info-label">所属工作流</span>
-                        <span className="submit-scheduler__info-value submit-scheduler__path">{currentMapping.workflowName}</span>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-
               {needsDatasource && (
                 <div className="submit-scheduler__section">
                   <div className="submit-scheduler__section-title">
@@ -1388,41 +1371,85 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
                   <FolderKanban size={14} />
                   目标项目
                 </div>
-                {projectCode && (
-                  <div className="submit-scheduler__project-code-hint">
-                    当前项目编码: <strong>{projectCode}</strong>
+
+                <div className="submit-scheduler__field">
+                  <div className="submit-scheduler__field-row">
+                    <label className="submit-scheduler__label">调度项目</label>
                     {matchedProject ? (
-                      <span className="submit-scheduler__project-code-match">
-                        <CheckCircle size={12} /> 已匹配调度项目
-                      </span>
-                    ) : projects.length > 0 ? (
-                      <span className="submit-scheduler__project-code-mismatch">
-                        <AlertTriangle size={12} /> 未找到匹配的调度项目
-                      </span>
+                      <div className="submit-scheduler__name-check-hint submit-scheduler__name-check-hint--ok">
+                        <CheckCircle size={12} />
+                        <span>调度项目「{projectCode}」已存在，提交后将使用该调度项目</span>
+                      </div>
+                    ) : projectCode ? (
+                      <div className="submit-scheduler__name-check-hint submit-scheduler__name-check-hint--warning">
+                        <AlertTriangle size={12} />
+                        <span>调度系统中不存在项目「{projectCode}」，必须先在调度管理中创建该调度项目后才能提交</span>
+                      </div>
                     ) : null}
                   </div>
-                )}
-                <select
-                  className="submit-scheduler__select"
-                  value={selectedProjectCode || ''}
-                  onChange={e => setSelectedProjectCode(Number(e.target.value) || null)}
-                >
-                  <option value="">选择项目...</option>
-                  {projects.map(p => (
-                    <option key={p.code} value={p.code}>
-                      {p.name === projectCode ? '✓ ' : ''}{p.name}（{p.code}）
-                    </option>
-                  ))}
-                </select>
-                {projectMismatch && projects.length > 0 && (
-                  <div className="submit-scheduler__project-mismatch-warning">
-                    <AlertTriangle size={14} />
-                    <span>调度系统中不存在名称为「{projectCode}」的项目，请联系管理员创建该调度项目后再提交工作流定义</span>
+                  <input
+                    className="submit-scheduler__input"
+                    value={matchedProject ? `${matchedProject.name}（${projectCode}）` : (projectCode ? `未匹配项目编码：${projectCode}` : '未识别到项目编码')}
+                    readOnly
+                    disabled
+                  />
+                </div>
+
+                <div className="submit-scheduler__field">
+                  <div className="submit-scheduler__field-row">
+                    <label className="submit-scheduler__label">工作流名称</label>
+                    {isCheckingName ? (
+                      <div className="submit-scheduler__name-check-hint submit-scheduler__name-check-hint--loading">
+                        <Loader2 size={12} className="submit-scheduler__spin" />
+                        <span>正在检查工作流名称...</span>
+                      </div>
+                    ) : (selectedWorkflowCode || workflowNameCheck?.exists) ? (
+                      <div className="submit-scheduler__name-check-hint submit-scheduler__name-check-hint--warning">
+                        <AlertTriangle size={12} />
+                        <span>工作流「{workflowName}」已存在，提交后将更新该工作流</span>
+                      </div>
+                    ) : workflowNameCheck && !workflowNameCheck.exists ? (
+                      <div className="submit-scheduler__name-check-hint submit-scheduler__name-check-hint--ok">
+                        <CheckCircle size={12} />
+                        <span>工作流「{workflowName}」不存在，提交后将自动创建</span>
+                      </div>
+                    ) : null}
                   </div>
-                )}
-                {projects.length === 0 && !loading && (
-                  <div className="submit-scheduler__empty-hint">暂无项目，请先在调度管理中创建项目</div>
-                )}
+                  <input className="submit-scheduler__input" value={workflowName} readOnly disabled placeholder="由文件目录自动生成" />
+                </div>
+
+                <div className="submit-scheduler__field">
+                  <div className="submit-scheduler__field-row">
+                    <label className="submit-scheduler__label">任务名称</label>
+                    {(selectedWorkflowCode || workflowNameCheck?.exists) && taskNameCheck?.exists ? (
+                      <div className="submit-scheduler__name-check-hint submit-scheduler__name-check-hint--warning">
+                        <AlertTriangle size={12} />
+                        <span>工作流中已存在任务「{taskName}」，提交后将更新该任务内容</span>
+                      </div>
+                    ) : (selectedWorkflowCode || workflowNameCheck?.exists) ? (
+                      <div className="submit-scheduler__name-check-hint submit-scheduler__name-check-hint--ok">
+                        <CheckCircle size={12} />
+                        <span>工作流中将自动创建任务「{taskName}」</span>
+                      </div>
+                    ) : (
+                      <div className="submit-scheduler__name-check-hint submit-scheduler__name-check-hint--ok">
+                        <CheckCircle size={12} />
+                        <span>提交后将随新工作流自动创建任务「{taskName}」</span>
+                      </div>
+                    )}
+                  </div>
+                  <input className="submit-scheduler__input" value={taskName} readOnly disabled placeholder="由文件名自动生成" />
+                </div>
+
+                <div className="submit-scheduler__field">
+                  <label className="submit-scheduler__label">任务描述</label>
+                  <input
+                    className="submit-scheduler__input"
+                    value={workflowDesc}
+                    onChange={e => setWorkflowDesc(e.target.value)}
+                    placeholder="工作流描述（可选）"
+                  />
+                </div>
               </div>
 
               {currentTaskTypeConfig && currentTaskTypeConfig.params.length > 0 && (
@@ -1491,117 +1518,6 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
                 </div>
               )}
 
-              <div className="submit-scheduler__section">
-                <div className="submit-scheduler__section-title">
-                  <GitBranch size={14} />
-                  工作流
-                </div>
-                <div className="submit-scheduler__radio-group">
-                  <label className="submit-scheduler__radio">
-                    <input
-                      type="radio"
-                      name="workflowMode"
-                      checked={!selectedWorkflowCode}
-                      onChange={() => setSelectedWorkflowCode(null)}
-                    />
-                    <span>创建新工作流</span>
-                  </label>
-                  <label className="submit-scheduler__radio">
-                    <input
-                      type="radio"
-                      name="workflowMode"
-                      checked={!!selectedWorkflowCode}
-                      onChange={() => {
-                        if (workflows.length > 0) {
-                          setSelectedWorkflowCode(workflows[0].code);
-                        }
-                      }}
-                      disabled={workflows.length === 0}
-                    />
-                    <span>添加到已有工作流</span>
-                  </label>
-                </div>
-
-                {!selectedWorkflowCode ? (
-                  <div className="submit-scheduler__field-group">
-                    <div className="submit-scheduler__field">
-                      <label className="submit-scheduler__label">工作流名称（目录路径）</label>
-                      <input
-                        className="submit-scheduler__input"
-                        value={workflowName}
-                        onChange={e => setWorkflowName(e.target.value)}
-                        placeholder="如: etl/ods/dwd_layer"
-                      />
-                    </div>
-                    {isCheckingName && (
-                      <div className="submit-scheduler__name-check-hint submit-scheduler__name-check-hint--loading">
-                        <Loader2 size={12} className="submit-scheduler__spin" />
-                        <span>正在检查工作流名称...</span>
-                      </div>
-                    )}
-                    {workflowNameCheck?.exists && !selectedWorkflowCode && (
-                      <div className={`submit-scheduler__name-check-hint ${workflowNameCheck.isOnline ? 'submit-scheduler__name-check-hint--warning' : 'submit-scheduler__name-check-hint--info'}`}>
-                        <AlertTriangle size={12} />
-                        <span>
-                          调度系统中已存在同名工作流「{workflowName}」
-                          {workflowNameCheck.isOnline ? '，且该工作流已上线，创建新工作流可能会影响现有调度任务' : '（未上线状态）'}
-                          {workflowNameCheck.isOnline && (
-                            <button
-                              className="submit-scheduler__link-btn"
-                              onMouseDown={(e) => {
-                                e.preventDefault();
-                                setSelectedWorkflowCode(workflowNameCheck.workflowCode || null);
-                                setWorkflowNameCheck(null);
-                              }}
-                            >
-                              改为添加到该工作流 →
-                            </button>
-                          )}
-                        </span>
-                      </div>
-                    )}
-                    {workflowNameCheck && !workflowNameCheck.exists && !isCheckingName && workflowName.trim() && (
-                      <div className="submit-scheduler__name-check-hint submit-scheduler__name-check-hint--ok">
-                        <CheckCircle size={12} />
-                        <span>工作流名称可用</span>
-                      </div>
-                    )}
-                    <div className="submit-scheduler__field">
-                      <label className="submit-scheduler__label">描述</label>
-                      <input
-                        className="submit-scheduler__input"
-                        value={workflowDesc}
-                        onChange={e => setWorkflowDesc(e.target.value)}
-                        placeholder="工作流描述（可选）"
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <select
-                      className="submit-scheduler__select"
-                      value={selectedWorkflowCode || ''}
-                      onChange={e => setSelectedWorkflowCode(Number(e.target.value) || null)}
-                    >
-                      <option value="">选择工作流...</option>
-                      {workflows.map(w => (
-                        <option key={w.code} value={w.code}>
-                          {w.name} {parseReleaseState(w.releaseState) === ReleaseState.ONLINE ? '(已上线)' : '(未上线)'}
-                        </option>
-                      ))}
-                    </select>
-                    {taskNameCheck?.exists && (
-                      <div className="submit-scheduler__name-check-hint submit-scheduler__name-check-hint--warning">
-                        <AlertTriangle size={12} />
-                        <span>
-                          工作流「{taskNameCheck.workflowName}」中已存在同名任务「{currentMapping?.taskName}」
-                          ，提交后将创建同名任务节点，可能产生冲突
-                        </span>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
 
               <div className="submit-scheduler__section">
                 <div className="submit-scheduler__section-title">执行配置</div>

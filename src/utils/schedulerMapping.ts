@@ -326,8 +326,10 @@ export function mapCodeFileToTask(
 
   const relativePath = getRelativePath(filePath, rootPath);
   const dirPath = getDirectoryPath(relativePath);
-  const taskName = relativePath || fileName;
-  const workflowName = dirPath || fileName.replace(/\.[^.]+$/, '');
+  // 任务名称只取文件名部分（不含目录、不含扩展名），作为调度任务节点名；
+  // 工作流名称取目录路径，斜杠/反斜杠统一替换为下划线，保证 DS 名称合法
+  const taskName = fileName.replace(/\.[^.]+$/, '');
+  const workflowName = (dirPath || fileName.replace(/\.[^.]+$/, '')).replace(/[/\\]/g, '_');
 
   const baseParams = getDefaultTaskParams(taskType);
   const codeBody = stripFileHeader(codeContent);
