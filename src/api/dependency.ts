@@ -17,6 +17,8 @@ export interface DependencyRecord {
   category: string;
   programType: string;
   autoChoose: number | null;
+  /** jar 存储根路径（后端 engineProperties.jar.basePath 回填），--jars 路径由 basePath + jarPath 组成 */
+  basePath?: string;
   createTime: string;
   updateTime: string;
 }

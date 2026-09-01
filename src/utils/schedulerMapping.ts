@@ -168,6 +168,38 @@ export interface ResolvedDependency {
 }
 
 /**
+ * 将自定义 jar 依赖拼接为 --jars 参数值（多个以逗号连接）。
+ * - 有 basePath：`basePath(尾斜杠判断) + jarPath(去前导斜杠)`（后端 SparkExecutionStrategy 语义）。
+ * - 无 basePath（旧兼容）：jarPath 以 .jar 结尾视为完整文件路径直接使用；否则 jarPath(去尾斜杠) + '/' + (jarName||name)。
+ * - 忽略无 jarPath 或无处名的条目。
+ */
+export function buildJarsArg(
+  deps: { jarPath?: string; basePath?: string; jarName?: string; name?: string }[],
+): string {
+  const args: string[] = [];
+  for (const d of deps) {
+    if (!d.jarPath || !d.jarPath.trim()) continue;
+
+    if (d.basePath) {
+      const base = d.basePath.endsWith('/') ? d.basePath : `${d.basePath}/`;
+      const path = d.jarPath.replace(/^\/+/, '');
+      args.push(`${base}${path}`);
+      continue;
+    }
+
+    if (d.jarPath.toLowerCase().endsWith('.jar')) {
+      args.push(d.jarPath);
+      continue;
+    }
+    const file = (d.jarName || d.name || '').trim();
+    if (!file) continue;
+    const dir = d.jarPath.endsWith('/') ? d.jarPath.replace(/\/+$/, '') : d.jarPath;
+    args.push(`${dir}/${file}`);
+  }
+  return args.join(',');
+}
+
+/**
  * 根据已解析的前置任务构建一个 DEPENDENT 任务节点，用于设置跨工作流的前置依赖。
  * 生成的节点参数为 AND 关系、任一前置失败则失败、每 10s 轮询。DolphinScheduler 据此
  * 在运行前等待所有引用任务成功完成。
@@ -215,7 +247,7 @@ export function buildDependentTaskNode(
 }
 
 export interface SavedConfig {
-  dependencies: { id: string; name: string; version: string; source?: string; jarPath?: string; groupId?: string; scope?: string; autoChoose?: number | null }[];
+  dependencies: { id: string; name: string; version: string; source?: string; jarPath?: string; groupId?: string; scope?: string; autoChoose?: number | null; basePath?: string }[];
   programParams: { id: string; key: string; value: string }[];
   taskParams: { id: string; key: string; value: string }[];
 }
@@ -521,6 +553,17 @@ function applyRuntimeParams(
         if (taskType === 'SPARK') taskParams.yarnQueue = p.value;
         else if (taskType === 'FLINK') taskParams.yarnQueue = p.value;
       }
+    }
+  }
+
+  // 自定义 jar 通过 --jars 跟随提交（仅 SPARK）：路径为 {basePath}/{jarPath}
+  if (taskType === 'SPARK' && savedConfig.dependencies?.length > 0) {
+    const customJars = savedConfig.dependencies.filter(d => d.source === 'custom');
+    const jarsArg = buildJarsArg(customJars);
+    if (jarsArg) {
+      const existingOthers = (taskParams.others as string) || '';
+      const merged = existingOthers ? `${existingOthers} --jars ${jarsArg}` : `--jars ${jarsArg}`;
+      taskParams.others = merged;
     }
   }
 

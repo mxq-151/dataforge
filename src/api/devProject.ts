@@ -34,6 +34,8 @@ export interface DevJarDependency {
   /** 程序类型（SPARK / FLINK / JAVA 等，后端 @NotBlank） */
   programType?: string;
   autoChoose?: number | null;
+  /** 依赖 jar 的 basePath（后端回填，保存时不传），--jars 路径由 basePath + jarPath 组成 */
+  basePath?: string;
   createTime?: string;
   updateTime?: string;
 }

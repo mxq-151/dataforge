@@ -19,6 +19,8 @@ interface DependencyItem {
   groupId?: string;
   scope?: string;
   autoChoose?: number | null;
+  /** 依赖 jar 的 basePath（后端回填），--jars 路径由 basePath + jarPath 组成 */
+  basePath?: string;
 }
 
 interface ParamItem {
@@ -204,6 +206,7 @@ const ConfigParamsModal: React.FC<ConfigParamsModalProps> = ({
               groupId: r.groupId,
               scope: r.scope,
               autoChoose: r.autoChoose,
+              basePath: r.basePath,
             });
           });
         return newDeps;
@@ -309,6 +312,7 @@ const ConfigParamsModal: React.FC<ConfigParamsModalProps> = ({
           groupId: record.groupId,
           scope: record.scope,
           autoChoose: record.autoChoose,
+          basePath: record.basePath,
         }]);
       }
       return next;
@@ -322,7 +326,7 @@ const ConfigParamsModal: React.FC<ConfigParamsModalProps> = ({
       items.forEach(item => {
         next.add(item.id);
         if (!newDeps.find(d => d.name === item.artifactId)) {
-          newDeps.push({ id: `dep_api_${item.id}`, name: item.artifactId, version: item.version, source: item.source, jarPath: item.jarPath, groupId: item.groupId, scope: item.scope, autoChoose: item.autoChoose });
+          newDeps.push({ id: `dep_api_${item.id}`, name: item.artifactId, version: item.version, source: item.source, jarPath: item.jarPath, groupId: item.groupId, scope: item.scope, autoChoose: item.autoChoose, basePath: item.basePath });
         }
       });
       setDeps(newDeps);

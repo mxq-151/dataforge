@@ -294,7 +294,7 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [savedConfigParams, setSavedConfigParams] = useState<Record<string, {
-    dependencies: { id: string; name: string; version: string; source?: string; jarPath?: string; groupId?: string; scope?: string; autoChoose?: number | null }[];
+    dependencies: { id: string; name: string; version: string; source?: string; jarPath?: string; groupId?: string; scope?: string; autoChoose?: number | null; basePath?: string }[];
     programParams: { id: string; key: string; value: string }[];
     taskParams: { id: string; key: string; value: string }[];
   }>>({});
@@ -349,7 +349,7 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
     if (!tab) return null;
     const content = editorContent[activeTabId] || '';
     if (!content.trim()) return null;
-    const config = savedConfigParams[activeTabId] as SavedConfig | undefined;
+    const config = savedConfigParams[tab.path] as SavedConfig | undefined;
     return mapCodeFileToTask(tab.name, content, tab.path, projectCwd, config || null);
   }, [activeTabId, tabs, editorContent, savedConfigParams, projectCwd]);
 
@@ -835,7 +835,7 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
   }, [activeTabId, tabs, saveFile, user]);
 
   const handleSaveConfigParams = useCallback((filePath: string, data: {
-    dependencies: { id: string; name: string; version: string; source?: string; jarPath?: string; groupId?: string; scope?: string; autoChoose?: number | null }[];
+    dependencies: { id: string; name: string; version: string; source?: string; jarPath?: string; groupId?: string; scope?: string; autoChoose?: number | null; basePath?: string }[];
     programParams: { id: string; key: string; value: string }[];
     taskParams: { id: string; key: string; value: string }[];
   }) => {
@@ -1099,7 +1099,7 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
         fileName={tabs.find(t => t.id === activeTabId)?.name || ''}
         codeContent={currentContent}
         mapping={currentMapping}
-        savedConfig={activeTabId ? (savedConfigParams[activeTabId] as SavedConfig | null) ?? null : null}
+        savedConfig={activeTabId ? (savedConfigParams[tabs.find(t => t.id === activeTabId)?.path || ''] as SavedConfig | null) ?? null : null}
         filePath={tabs.find(t => t.id === activeTabId)?.path}
         rootPath={projectCwd}
         projectCode={project.projectCode}

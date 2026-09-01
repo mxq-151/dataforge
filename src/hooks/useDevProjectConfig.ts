@@ -15,6 +15,8 @@ interface DependencyItem {
   groupId?: string;
   scope?: string;
   autoChoose?: number | null;
+  /** 依赖 jar 的 basePath（后端回填，保存时不传）；--jars 路径由 basePath + jarPath 组成 */
+  basePath?: string;
 }
 
 interface ParamItem {
@@ -43,6 +45,7 @@ const mapToLoadedConfig = (vo: ProgramParamsVO | null | undefined): LoadedConfig
     groupId: dep.groupId,
     scope: dep.scope,
     autoChoose: dep.autoChoose,
+    basePath: dep.basePath,
   })),
   programParams: (Object.entries(vo?.runParams || {}) as [string, unknown][]).map(([key, val], i) => ({
     id: `loaded_pp_${i}`,
