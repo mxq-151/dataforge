@@ -3,7 +3,7 @@ import { X, Send, Loader2, FolderKanban, GitBranch, CheckCircle, AlertTriangle, 
 import type { DolphinSchedulerApi, DSProject, DSWorkflowDefinition, DSTaskType, DSDataSource, DSWorkerGroup, DSEnvironment, DSWorkflowTaskNode } from '../../types/dolphinscheduler';
 import { TASK_TYPE_LABELS, ReleaseState, Priority, parseReleaseState } from '../../types/dolphinscheduler';
 import type { CodeFileMapping, SavedConfig, ValidationError } from '../../utils/schedulerMapping';
-import { buildWorkflowFromCodeFile, validateSubmission, getAvailableTaskTypes, mapCodeFileToTask, sanitizeDsName, validateYarnJobName, buildDependentTaskNode, type ResolvedDependency } from '../../utils/schedulerMapping';
+import { buildWorkflowFromCodeFile, validateSubmission, getAvailableTaskTypes, mapCodeFileToTask, sanitizeDsName, validateYarnJobName, buildDependentTaskNode, buildJarsArg, type ResolvedDependency } from '../../utils/schedulerMapping';
 import { type CompileResult } from '../../services/compileService';
 import { unifiedCompile } from '../../services/unifiedCompile';
 import { validateFileHeader } from '../../utils/index';
@@ -927,10 +927,15 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
           openlineageConfs.push(`--conf spark.openlineage.namespace=${namespace}`);
         }
         const existingOthers = ((updatedParams.others as string) || '').replace(/\r?\n/g, ' ').trim();
+        // 自定义 jar 通过 --jars 跟随提交（仅 SPARK）：路径为 {basePath}/{jarPath}。
+        // 在提交时动态拼接，避免 --jars 污染弹窗「其他参数」输入框（该输入框仅承载用户手填命令）
+        const jarsArg = buildJarsArg((savedConfig?.dependencies || []).filter(d => d.source === 'custom'));
+        const segments: string[] = [];
+        if (jarsArg) segments.push(`--jars ${jarsArg}`);
+        if (existingOthers) segments.push(existingOthers);
+        segments.push(openlineageConfs.join(' '));
         // 所有 spark-submit 执行命令拼成单行（用空格连接，不做换行），避免提交后执行命令被拆成多行
-        updatedParams.others = existingOthers
-          ? `${existingOthers} ${openlineageConfs.join(' ')}`
-          : openlineageConfs.join(' ');
+        updatedParams.others = segments.join(' ');
         mappingWithDatasource.taskParams = updatedParams;
       }
     }
@@ -1033,6 +1038,9 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
             ? taskNodes[existingIndex].code
             : (Date.now() > Math.max(0, ...existingCodes) ? Date.now() : Math.max(0, ...existingCodes) + 1);
           const depCode = Math.max(taskCode, 0, ...existingCodes) + 1;
+
+          console.log('[SubmitToSchedulerModal] 提交前 taskParams=', mappingWithDatasource.taskParams);
+          console.log('[SubmitToSchedulerModal] taskParams.others=', mappingWithDatasource.taskParams?.others);
 
           const newNode: import('../../types/dolphinscheduler').DSWorkflowTaskNode = {
             code: taskCode,

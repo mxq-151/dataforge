@@ -10,7 +10,10 @@ Electron + React + Vite 的数据开发平台（DataForge），内嵌 opencode �
 - 类型检查用：`./node_modules/.bin/tsc -p tsconfig.json --noEmit`。
   `tsconfig.json` 显式 exclude 了 `src/**/*.test.ts(x)`，因此测试文件不在类型检查范围内。
 - 已知既有失败（与改动无关，勿误判为回归）：`src/services/textmate/textmateFix.test.ts`（3 例，warmUp 相关）、
-  `src/components/ai/parts/tools.test.tsx`（收集期报错，0 test）。
+  `src/components/ai/parts/tools.test.tsx`（收集期报错，0 test）、`src/api/git.test.ts`（1 例，
+  `window is not defined`——跑在 node 环境无 jsdom，环境问题）。
+- git stash 参数顺序：`-m "msg"` 必须在 `-- <path>` 之前，否则报 pathspec 错；
+  误 drop 的 stash 可 `git fsck --unreachable` 找 commit 后用 `git stash store -m "<msg>" <sha>` 恢复。
 
 ## 提示词 ↔ 解析器耦合（重要）
 

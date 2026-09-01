@@ -425,7 +425,8 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
     // （unifiedCompile 也用相对路径回读），故转相对后再请求
     const relPath = toRepoRelativePath(tab.path, projectCwd);
     devProjectConfig.fetchByFilePath(project.id, relPath).then(loaded => {
-      if (cancelled || !loaded) return;
+      if (cancelled) return;
+      if (!loaded) return;
       setSavedConfigParams(prev => {
         // 若加载期间用户已保存则不再覆盖
         if (prev[tab.path]) return prev;

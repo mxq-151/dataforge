@@ -104,22 +104,27 @@ object TestApp {
     taskParams: [],
   });
 
-  it('SPARK 任务：依赖带 jarPath 时注入 --jars 到 others（basePath/jarPath 组成）', () => {
+  it('SPARK 任务：--jars 不在 mapCodeFileToTask 注入（改由提交端 buildJarsArg 拼接，避免污染弹窗输入框）', () => {
     const mapping = mapCodeFileToTask('TestApp.scala', sparkScalaContent, undefined, undefined, mkConfig([
       { id: 'd1', name: 'my-udf', version: '1.0', source: 'custom', basePath: '/opt/dataforge/jars', jarPath: 'udf/my-udf.jar' },
     ]));
     expect(mapping.taskType).toBe('SPARK');
-    expect(mapping.taskParams.others).toBe('--jars /opt/dataforge/jars/udf/my-udf.jar');
-    // 原有行为保持：依赖名仍进 resourceList
-    expect(mapping.taskParams.resourceList).toContain('my-udf');
+    expect(mapping.taskParams.others || '').not.toContain('--jars');
+    // 依赖不进入 Spark 任务的 resourceList，仅由提交端 buildJarsArg 生成 --jars
+    expect(mapping.taskParams.resourceList).not.toContain('my-udf');
   });
 
-  it('SPARK 任务：多个 custom jar 以逗号连接成单个 --jars', () => {
-    const mapping = mapCodeFileToTask('TestApp.scala', sparkScalaContent, undefined, undefined, mkConfig([
+  it('SPARK 任务：多个 custom jar 的拼接由 buildJarsArg 完成（basePath/jarPath 逗号连接）', () => {
+    const config = mkConfig([
       { id: 'd1', name: 'a', version: '1.0', source: 'custom', basePath: '/opt/jars', jarPath: 'a.jar' },
       { id: 'd2', name: 'b', version: '1.0', source: 'custom', basePath: '/opt/jars', jarPath: 'udf/b.jar' },
-    ]));
-    expect(mapping.taskParams.others).toBe('--jars /opt/jars/a.jar,/opt/jars/udf/b.jar');
+    ]);
+    const mapping = mapCodeFileToTask('TestApp.scala', sparkScalaContent, undefined, undefined, config);
+    expect(mapping.taskType).toBe('SPARK');
+    expect(mapping.taskParams.others || '').not.toContain('--jars');
+    // --jars 由提交弹窗调用 buildJarsArg 动态生成，此处验证拼接结果正确
+    const jarsArg = buildJarsArg(config.dependencies.filter(d => d.source === 'custom'));
+    expect(jarsArg).toBe('/opt/jars/a.jar,/opt/jars/udf/b.jar');
   });
 
   it('SPARK 任务：custom 但无 jarPath（仅 Maven 坐标）时不注入 --jars', () => {

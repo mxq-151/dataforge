@@ -556,23 +556,8 @@ function applyRuntimeParams(
     }
   }
 
-  // 自定义 jar 通过 --jars 跟随提交（仅 SPARK）：路径为 {basePath}/{jarPath}
-  if (taskType === 'SPARK' && savedConfig.dependencies?.length > 0) {
-    const customJars = savedConfig.dependencies.filter(d => d.source === 'custom');
-    const jarsArg = buildJarsArg(customJars);
-    if (jarsArg) {
-      const existingOthers = (taskParams.others as string) || '';
-      taskParams.others = existingOthers ? `${existingOthers} --jars ${jarsArg}` : `--jars ${jarsArg}`;
-    }
-  }
-
-  if (savedConfig.dependencies?.length > 0) {
-    const existing = (taskParams.resourceList as string[]) || [];
-    taskParams.resourceList = [
-      ...existing,
-      ...savedConfig.dependencies.filter(d => d.name).map(d => d.name),
-    ];
-  }
+  // --jars 不在本函数注入：避免进入提交弹窗「其他参数」输入框，改由 SubmitToSchedulerModal 提交时 buildJarsArg 动态拼接。
+  // 依赖（jarDependencyCatalogs）也不应回填到 Spark 任务的 resourceList，提交时仅由 buildJarsArg 生成 --jars 与 classpath 相关参数。
 }
 
 function extractDataDependencies(codeContent: string, header: ReturnType<typeof parseFileHeader>): string[] {
