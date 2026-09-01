@@ -15,7 +15,7 @@
  */
 
 import type { Part, SessionStatus, SnapshotFileDiff, UserMessage, AssistantMessage } from '@opencode-ai/sdk/v2/client';
-import type { MessageEntry } from '../../../types/opencode-backend';
+import type { MessageEntry, Todo, FileChange } from '../../../types/opencode-backend';
 import {
   TimelineRow,
   rowKey,
@@ -107,6 +107,14 @@ export function renderable(part: Part, showReasoningSummaries = true): boolean {
 
 // ── constructMessageRows: 将一个 user message turn 展平为行 ────
 
+/** 该 turn 末尾内联展示的内容（执行计划 / 文件变更） */
+export interface TurnInlineOptions {
+  /** 执行计划（todos），仅传给最后建立计划的 turn */
+  todos?: Todo[];
+  /** 文件变更，仅传给最后产生变更的 turn */
+  fileChanges?: FileChange[];
+}
+
 /**
  * @param userMessage 用户消息
  * @param getMessageParts 根据 messageID 获取 parts 的函数
@@ -115,6 +123,7 @@ export function renderable(part: Part, showReasoningSummaries = true): boolean {
  * @param showReasoning 是否显示 reasoning
  * @param status 当前会话状态类型
  * @param isActive 该 turn 是否为活跃 turn
+ * @param inline 内联行选项（执行计划 / 文件变更），未提供则不生成对应行
  */
 export function constructMessageRows(
   userMessage: UserMessage,
@@ -124,6 +133,7 @@ export function constructMessageRows(
   showReasoning: boolean,
   status: SessionStatus['type'],
   isActive: boolean,
+  inline?: TurnInlineOptions,
 ): TimelineRowType[] {
   const rows: TimelineRowType[] = [];
 
@@ -220,6 +230,14 @@ export function constructMessageRows(
     .reverse();
   if (diffs.length > 0 && (status === 'idle' || !isActive)) {
     rows.push(TimelineRow.DiffSummary(userMessage.id, diffs));
+  }
+
+  // 内联行：执行计划 / 文件变更（内联到该 turn 的对话流中，随消息滚动展示）
+  if (inline?.todos && inline.todos.length > 0) {
+    rows.push(TimelineRow.Todo(userMessage.id, inline.todos));
+  }
+  if (inline?.fileChanges && inline.fileChanges.length > 0) {
+    rows.push(TimelineRow.FileChange(userMessage.id, inline.fileChanges));
   }
 
   // Error 行

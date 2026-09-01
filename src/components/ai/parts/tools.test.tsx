@@ -725,8 +725,8 @@ describe('QuestionTool', () => {
     expect(screen.getAllByText('React').length).toBeGreaterThanOrEqual(1);
   });
 
-  it('completed 时默认展开', () => {
-    // defaultOpen = completed 为 true
+  it('completed 时默认折叠', () => {
+    // 所有工具默认折叠，completed 的 question 也收起
     const { container } = render(
       <QuestionTool
         tool="question"
@@ -739,7 +739,7 @@ describe('QuestionTool', () => {
         status="completed"
       />,
     );
-    expect(container.querySelector('.ai-panel__basic-tool-content')).not.toBeNull();
+    expect(container.querySelector('.ai-panel__basic-tool-content')).toBeNull();
   });
 });
 

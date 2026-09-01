@@ -22,7 +22,7 @@ import {
 } from './projection';
 import { TimelineRow } from './rows';
 import type { Part, UserMessage, AssistantMessage } from '@opencode-ai/sdk/v2/client';
-import type { MessageEntry } from '../../../types/opencode-backend';
+import type { MessageEntry, Todo, FileChange } from '../../../types/opencode-backend';
 
 // ── Mock 构造辅助函数 ──────────────────────────────────────────
 
@@ -384,6 +384,99 @@ describe('constructMessageRows', () => {
       true,
     );
     expect(rows.some((r) => r._tag === 'Retry')).toBe(true);
+  });
+
+  it('inline todos → 追加 Todo 行（内联到 turn 末尾）', () => {
+    const userMsg = makeUserMessage('u1');
+    const todos = [{ id: 't1', content: '任务1', status: 'pending' }] as unknown as Todo[];
+    const rows = constructMessageRows(
+      userMsg,
+      () => [],
+      [],
+      0,
+      true,
+      idleStatus,
+      false,
+      { todos },
+    );
+    const todoRow = rows.find((r) => r._tag === 'Todo');
+    expect(todoRow).toBeDefined();
+    if (todoRow && todoRow._tag === 'Todo') {
+      expect(todoRow.todos).toBe(todos);
+    }
+    // 位于 turn 末尾（最后一个行是 Todo 行）
+    expect(rows[rows.length - 1]._tag).toBe('Todo');
+  });
+
+  it('inline todos 为空 → 不生成 Todo 行', () => {
+    const userMsg = makeUserMessage('u1');
+    const rows = constructMessageRows(
+      userMsg,
+      () => [],
+      [],
+      0,
+      true,
+      idleStatus,
+      false,
+      { todos: [] },
+    );
+    expect(rows.some((r) => r._tag === 'Todo')).toBe(false);
+  });
+
+  it('inline fileChanges → 追加 FileChange 行（内联到 turn 末尾）', () => {
+    const userMsg = makeUserMessage('u1');
+    const changes = [{
+      filePath: '/src/a.ts',
+      additions: 1,
+      deletions: 0,
+      type: 'edit',
+      status: 'pending',
+      messageID: 'a1',
+      partID: 'p1',
+    }] as unknown as FileChange[];
+    const rows = constructMessageRows(
+      userMsg,
+      () => [],
+      [],
+      0,
+      true,
+      idleStatus,
+      false,
+      { fileChanges: changes },
+    );
+    const fcRow = rows.find((r) => r._tag === 'FileChange');
+    expect(fcRow).toBeDefined();
+    if (fcRow && fcRow._tag === 'FileChange') {
+      expect(fcRow.changes).toBe(changes);
+    }
+    expect(rows[rows.length - 1]._tag).toBe('FileChange');
+  });
+
+  it('inline todos + fileChanges → Todo 行在 FileChange 行之前', () => {
+    const userMsg = makeUserMessage('u1');
+    const todos = [{ id: 't1', content: '任务1', status: 'pending' }] as unknown as Todo[];
+    const changes = [{
+      filePath: '/src/a.ts',
+      additions: 1,
+      deletions: 0,
+      type: 'edit',
+      status: 'pending',
+      messageID: 'a1',
+      partID: 'p1',
+    }] as unknown as FileChange[];
+    const rows = constructMessageRows(
+      userMsg,
+      () => [],
+      [],
+      0,
+      true,
+      idleStatus,
+      false,
+      { todos, fileChanges: changes },
+    );
+    const tags = rows.map((r) => r._tag);
+    expect(tags.indexOf('Todo')).toBeGreaterThan(-1);
+    expect(tags.indexOf('FileChange')).toBeGreaterThan(tags.indexOf('Todo'));
   });
 });
 

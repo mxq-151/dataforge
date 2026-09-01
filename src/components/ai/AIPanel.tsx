@@ -14,7 +14,7 @@
  *   任务历史 | 压缩按钮 | 上下文使用量
  */
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { AlertCircle, Combine } from 'lucide-react';
 import { Store } from '../../bridge/store';
 import { useAuth } from '../../contexts/AuthContext';
@@ -26,9 +26,7 @@ import SessionSwitcher from './SessionSwitcher';
 import PermissionDock from './PermissionDock';
 import QuestionDock from './QuestionDock';
 import ContextUsageBar from './ContextUsageBar';
-import TodoDock from './TodoDock';
 import { useTodoDockState } from './useTodoDockState';
-import FileReviewPanel from './FileReviewPanel';
 import './AIPanel.css';
 
 /** 智能体模块的用户偏好存储（按 userId 记录所选模型） */
@@ -245,6 +243,28 @@ const AIPanel: React.FC<AIPanelProps> = ({ chatBackend, llmModels, onRollback, o
 
   const canCompress = !!currentSessionId && !compressing && !!connected;
 
+  // 执行计划 / 文件变更面板状态与回调（内联时间线行用）。
+  // useMemo 保持引用稳定，避免破坏 MessageTimeline 的 React.memo。
+  const todoDockProps = useMemo(
+    () => ({
+      visible: todoDockState.dock,
+      collapsed: todoDockState.collapsed,
+      closing: todoDockState.closing,
+      onToggle: todoDockState.toggle,
+    }),
+    [todoDockState.dock, todoDockState.collapsed, todoDockState.closing, todoDockState.toggle],
+  );
+  const fileReviewProps = useMemo(
+    () => ({
+      onApprove: approveFileChange,
+      onReject: rejectFileChange,
+      onApproveAll: approveAllFileChanges,
+      onOpenFile,
+      onViewDiff,
+    }),
+    [approveFileChange, rejectFileChange, approveAllFileChanges, onOpenFile, onViewDiff],
+  );
+
   return (
     <div ref={wrapperRef} className="ai-panel-wrapper" style={{ width: `${panelWidth}%` }}>
       <div className={`ai-panel ${isDragging ? 'ai-panel--dragging' : ''}`}>
@@ -307,30 +327,14 @@ const AIPanel: React.FC<AIPanelProps> = ({ chatBackend, llmModels, onRollback, o
           sessions={sessions}
           onRevert={handleRollback}
           revertDisabled={busy}
+          todos={todos ?? []}
+          fileChanges={fileChanges}
+          todoDock={todoDockProps}
+          fileReview={fileReviewProps}
         />
-
-        {/* 文件变更审查面板 */}
-        {fileChanges.length > 0 && (
-          <FileReviewPanel
-            changes={fileChanges}
-            onApprove={approveFileChange}
-            onReject={rejectFileChange}
-            onApproveAll={approveAllFileChanges}
-            onOpenFile={onOpenFile}
-            onViewDiff={onViewDiff}
-          />
-        )}
 
         {/* 输入区域（含 inline dock 栈，对齐桌面版 session-composer-region） */}
         <div className="ai-panel__input-region">
-          {todoDockState.dock && (
-            <TodoDock
-              todos={todos}
-              collapsed={todoDockState.collapsed}
-              onToggle={todoDockState.toggle}
-              closing={todoDockState.closing}
-            />
-          )}
           {questionModal && (
             <QuestionDock
               modal={questionModal}

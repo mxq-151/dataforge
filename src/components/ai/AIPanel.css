@@ -2723,7 +2723,8 @@
   min-width: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  contain: strict;
+  /* 使用 layout paint（而非 strict）：避免 size 约束影响虚拟化行与内联面板的高度计算 */
+  contain: layout paint;
   padding: 8px 0;
 }
 
