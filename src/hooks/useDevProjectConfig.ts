@@ -2,7 +2,6 @@ import { useState, useCallback } from 'react';
 import {
   fetchProjectConfigByFilePath,
   saveProjectConfig as apiSaveProjectConfig,
-  updateProjectConfig,
 } from '../api/devProject';
 import type { ProgramParamsVO, ProgramParamsDTO } from '../api/devProject';
 
@@ -27,24 +26,41 @@ export interface LoadedConfig {
   warehouse?: string;
 }
 
-const mapToLoadedConfig = (vo: ProgramParamsVO): LoadedConfig => ({
-  dependencies: (vo.jarDependencyCatalogs || []).map((name, i) => ({
+// 后端 jarDependencyCatalogs 为对象数组（DevJarDependency），取 artifactId || jarName 作为依赖名；
+// vo 可能为 null（后端无记录时 Result.success() 不带 data），按空配置处理
+const mapToLoadedConfig = (vo: ProgramParamsVO | null | undefined): LoadedConfig => ({
+  dependencies: (vo?.jarDependencyCatalogs || []).map((dep, i) => ({
     id: `loaded_dep_${i}`,
-    name,
-    version: '',
+    name: dep.artifactId || dep.jarName || '',
+    version: dep.version || '',
+    source: dep.source,
   })),
-  programParams: (Object.entries(vo.runParams || {}) as [string, unknown][]).map(([key, val], i) => ({
+  programParams: (Object.entries(vo?.runParams || {}) as [string, unknown][]).map(([key, val], i) => ({
     id: `loaded_pp_${i}`,
     key,
     value: String(val ?? ''),
   })),
-  taskParams: (Object.entries(vo.computeResources || {}) as [string, unknown][]).map(([key, val], i) => ({
+  taskParams: (Object.entries(vo?.computeResources || {}) as [string, unknown][]).map(([key, val], i) => ({
     id: `loaded_tp_${i}`,
     key,
     value: String(val ?? ''),
   })),
-  engine: vo.engine || '',
+  engine: vo?.engine || '',
 });
+
+// 引擎 → 程序类型映射（与 ConfigParamsModal 内 ENGINE_TO_PROGRAM_TYPE 保持一致，
+// 用于回填 DevJarDependency.programType，后端 DTO 标注 @NotBlank）
+const ENGINE_TO_PROGRAM_TYPE: Record<string, string> = {
+  spark: 'SPARK',
+  flink: 'FLINK',
+  flink_stream: 'FLINK',
+  kyuubi: 'SPARK',
+  hive: 'HIVE',
+  java: 'JAVA',
+  scala: 'SCALA',
+  python: 'PYTHON',
+  mr: 'MAPREDUCE',
+};
 
 const useDevProjectConfig = () => {
   const [loading, setLoading] = useState(false);
@@ -86,30 +102,32 @@ const useDevProjectConfig = () => {
       const computeResources: Record<string, unknown> = {};
       data.taskParams.forEach(p => { if (p.key) computeResources[p.key] = p.value; });
 
+      // 后端 jarDependencyCatalogs 现为对象数组（DevJarDependency），
+      // jarName/artifactId 均回填依赖名，programType 由引擎推断（engine 为空时省略）
+      const programType = ENGINE_TO_PROGRAM_TYPE[data.engine.trim().toLowerCase()];
       const body: ProgramParamsDTO = {
         projectId,
         filePath,
         engine: data.engine,
         datasources: [],
-        jarDependencyCatalogs: data.dependencies.filter(d => d.name).map(d => d.name),
+        jarDependencyCatalogs: data.dependencies
+          .filter(d => d.name)
+          .map(d => ({
+            jarName: d.name,
+            artifactId: d.name,
+            version: d.version,
+            source: d.source,
+            ...(programType ? { programType } : {}),
+          })),
         runParams,
         computeResources,
         remark: '',
       };
 
-      let exists = false;
-      try {
-        const json = await fetchProjectConfigByFilePath(projectId, filePath);
-        exists = json.code === 200 && json.data != null;
-      } catch {
-        exists = false;
-      }
+      // 后端仅暴露 PUT upsert（按 (project_id, file_path) 原子保存），不再需要先查后写区分新增/更新
+      const json = await apiSaveProjectConfig(projectId, body);
 
-      const json = exists
-        ? await updateProjectConfig(projectId, filePath, body)
-        : await apiSaveProjectConfig(projectId, body);
-
-      if (json.code !== 200) throw new Error(json.message || (exists ? '更新失败' : '保存失败'));
+      if (json.code !== 200) throw new Error(json.message || '保存失败');
       return true;
     } catch (e) {
       const msg = e instanceof Error ? e.message : '保存配置失败';

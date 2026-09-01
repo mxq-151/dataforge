@@ -116,7 +116,10 @@ export async function ensurePomReady(
       try {
         const fp = options.projectCode || '';
         const cfg = await fetchProjectConfigByFilePath(options.projectId, fp);
-        const names: string[] = (cfg?.data?.jarDependencyCatalogs as string[]) || [];
+        // 后端返回的是 DevJarDependency 对象数组，取 artifactId || jarName 作为依赖名
+        const names: string[] = (cfg?.data?.jarDependencyCatalogs || [])
+          .map(dep => dep.artifactId || dep.jarName || '')
+          .filter(Boolean);
         if (names.length > 0) {
           const seen = new Set<string>();
           for (const name of names) {
