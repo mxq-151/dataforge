@@ -763,16 +763,23 @@ function SaveWorkflowModal({ form, onChange, onConfirm, onClose }: SaveWorkflowM
                     onChange={e => onChange({ ...form, timeout: parseInt(e.target.value) || 0 })}
                     min={1}
                     placeholder="分钟"
-                    style={{ width: '80px' }}
+                    className="sm-modal__timeout-input"
                   />
                 )}
               </div>
             </div>
           </div>
 
-          <div className="sm-modal__field">
+          <div className="sm-modal__field sm-modal__field--section">
             <label>全局参数</label>
             <div className="wf-global-params">
+              <div className="wf-global-param__header">
+                <span>参数名</span>
+                <span>方向</span>
+                <span>类型</span>
+                <span>参数值</span>
+                <span className="wf-global-param__col-action">操作</span>
+              </div>
               {form.globalParams.map((param, idx) => (
                 <div key={idx} className="wf-global-param__row">
                   <input
@@ -805,26 +812,29 @@ function SaveWorkflowModal({ form, onChange, onConfirm, onClose }: SaveWorkflowM
                     placeholder="参数值"
                     className="wf-global-param__input"
                   />
-                  <button className="sm-btn sm-btn--danger sm-btn--xs" onClick={() => removeGlobalParam(idx)}>
+                  <button className="sm-btn sm-btn--danger sm-btn--xs wf-global-param__btn-action" onClick={() => removeGlobalParam(idx)}>
                     <X size={12} />
                   </button>
                 </div>
               ))}
-              <button className="sm-btn sm-btn--ghost sm-btn--xs" onClick={addGlobalParam}>
+              <button className="sm-btn sm-btn--ghost sm-btn--xs wf-global-param__add-btn" onClick={addGlobalParam}>
                 <Plus size={12} /> 添加参数
               </button>
             </div>
           </div>
 
           <div className="sm-modal__field">
-            <label className="sm-modal__toggle">
-              <input
-                type="checkbox"
-                checked={form.release}
-                onChange={e => onChange({ ...form, release: e.target.checked })}
-              />
-              <span>是否直接上线</span>
-            </label>
+            <label>是否直接上线</label>
+            <div className="sm-modal__toggle-row">
+              <label className="sm-modal__toggle">
+                <input
+                  type="checkbox"
+                  checked={form.release}
+                  onChange={e => onChange({ ...form, release: e.target.checked })}
+                />
+                <span>保存后自动上线</span>
+              </label>
+            </div>
           </div>
         </div>
         <div className="sm-modal__footer">

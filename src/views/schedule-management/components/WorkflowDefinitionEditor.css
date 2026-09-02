@@ -351,43 +351,149 @@
 }
 
 .sm-modal--task,
-.sm-modal--save,
 .sm-modal--trigger {
   min-width: 520px;
   max-width: 640px;
 }
 
+/* 保存工作流模态框加宽，为全局参数留出空间 */
+.sm-modal--save {
+  min-width: 640px;
+  max-width: 760px;
+}
+
 .sm-modal__body--scroll {
-  max-height: 500px;
+  max-height: 560px;
   overflow-y: auto;
 }
 
 .sm-modal__row {
   display: flex;
-  gap: 12px;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.sm-modal__row .sm-modal__field {
+  margin-bottom: 0;
 }
 
 .sm-modal__field--half {
   flex: 1;
 }
 
-.sm-modal__toggle-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+/* ========== 保存工作流模态框：控件高度/字体统一（目标 28px） ==========
+   原则：所有文本字段控件（文本输入/数字输入/下拉）统一 height:28px border-box；
+        字体统一 13px；内部文字 cap-height 顶部距盒子顶部 ≈ 8px，视觉中心线 ≈ 14px
+*/
+
+/* 文本 & 数字输入框：覆盖 ScheduleManagementPanel.css 的原生 padding 与隐式高度
+   padding 上下 4px → content 区高度 = 28 - 2(border) - 8 = 18px
+   13px 字体在 18px content 居中 → cap-height 顶部 ≈ border(1)+padding(4)+2.5 ≈ 7.5px ✓
+*/
+.sm-modal--save .sm-modal__field input[type="text"],
+.sm-modal--save .sm-modal__field input[type="number"],
+.sm-modal--save .sm-modal__field input:not([type]) {
+  width: 100%;
+  height: 28px;
+  box-sizing: border-box;
+  padding: 4px 10px;
+  background-color: #3c3c3c;
+  border: 1px solid #555555;
+  border-radius: 3px;
+  color: #cccccc;
+  font-size: 13px;
+  line-height: 1;
+  outline: none;
 }
 
-.sm-modal__toggle {
+.sm-modal--save .sm-modal__field input[type="text"]:focus,
+.sm-modal--save .sm-modal__field input[type="number"]:focus {
+  border-color: #0078d4;
+}
+
+/* 下拉框：关闭原生 appearance，使用自定义箭头，保证文字垂直位置可预测
+   padding 0 上下，line-height:26px (= content 区高度) → 13px 字完美居中
+*/
+.sm-modal--save .sm-modal__field .sm-select,
+.sm-modal--save .sm-modal__field select {
+  width: 100%;
+  height: 28px;
+  box-sizing: border-box;
+  padding: 0 30px 0 10px;
+  -webkit-appearance: none;
+  appearance: none;
+  background-color: #3c3c3c;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23aaaaaa' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 12px 12px;
+  border: 1px solid #555555;
+  border-radius: 3px;
+  color: #cccccc;
+  font-size: 13px;
+  line-height: 26px;
+  outline: none;
+  cursor: pointer;
+}
+
+.sm-modal--save .sm-modal__field .sm-select:focus,
+.sm-modal--save .sm-modal__field select:focus {
+  border-color: #0078d4;
+}
+
+/* checkbox/radio 所在行：与 input/select 等高 28px，内部垂直居中 */
+.sm-modal--save .sm-modal__toggle-row {
   display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 28px;
+  box-sizing: border-box;
+}
+
+.sm-modal--save .sm-modal__toggle {
+  display: inline-flex;
   align-items: center;
   gap: 6px;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 13px;
   color: #cccccc;
+  white-space: nowrap;
+  /* 微调：14px checkbox + 13px 文字整体中心线 往上挪 0.5px 对齐输入框文字 */
+  transform: translateY(-0.5px);
 }
 
-.sm-modal__toggle input[type="checkbox"] {
+.sm-modal--save .sm-modal__toggle input[type="checkbox"] {
   accent-color: #0078d4;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  flex-shrink: 0;
+}
+
+/* 超时分钟输入框（固定窄宽） */
+.sm-modal--save .sm-modal__timeout-input {
+  width: 96px !important;
+  padding: 4px 8px !important;
+  height: 28px !important;
+  box-sizing: border-box !important;
+  line-height: 1 !important;
+  font-size: 13px !important;
+}
+
+/* section 级别字段：全局参数等分组 */
+.sm-modal__field--section {
+  margin-top: 4px;
+  padding: 12px;
+  background-color: rgba(60, 60, 60, 0.35);
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+}
+
+.sm-modal__field--section > label {
+  font-size: 13px;
+  color: #c8c8c8;
+  margin-bottom: 8px;
+  font-weight: 500;
 }
 
 .sm-modal__radio-group {
@@ -414,36 +520,90 @@
   line-height: 1.5;
 }
 
+/* ========== 全局参数表格化布局 ========== */
 .wf-global-params {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
+}
+
+.wf-global-param__header {
+  display: grid;
+  grid-template-columns: 1.4fr 0.8fr 0.8fr 1.4fr 44px;
+  gap: 8px;
+  padding: 0 2px 4px;
+  border-bottom: 1px dashed #4a4a4a;
+  font-size: 11px;
+  color: #888888;
+}
+
+.wf-global-param__col-action {
+  text-align: center;
 }
 
 .wf-global-param__row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1.4fr 0.8fr 0.8fr 1.4fr 44px;
+  gap: 8px;
   align-items: center;
-  gap: 6px;
 }
 
 .wf-global-param__input {
-  flex: 1;
+  width: 100%;
+  min-width: 0;
+  height: 28px;
+  box-sizing: border-box;
   padding: 4px 8px;
   background-color: #3c3c3c;
   border: 1px solid #555555;
   border-radius: 3px;
   color: #cccccc;
-  font-size: 12px;
+  font-size: 13px;
+  line-height: 1;
   outline: none;
-  min-width: 60px;
 }
 
 .wf-global-param__input:focus {
   border-color: #0078d4;
 }
 
+/* 全局参数下拉：列较窄（方向/类型只有 ~90px），padding 和箭头要紧凑 */
 .wf-global-param__select {
-  min-width: 70px;
-  padding: 4px 6px;
-  font-size: 11px;
+  width: 100% !important;
+  min-width: 0 !important;
+  height: 28px !important;
+  box-sizing: border-box;
+  padding: 0 22px 0 6px !important;
+  font-size: 12px !important;
+  line-height: 26px !important;
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  background-color: #3c3c3c !important;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23999999' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 7px center !important;
+  background-size: 10px 10px !important;
+  border: 1px solid #555555 !important;
+  border-radius: 3px !important;
+  color: #cccccc !important;
+  outline: none !important;
+  cursor: pointer !important;
+}
+
+.wf-global-param__select:focus {
+  border-color: #0078d4 !important;
+}
+
+.wf-global-param__btn-action {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  justify-self: center;
+}
+
+.wf-global-param__add-btn {
+  align-self: flex-start;
+  margin-top: 4px;
 }
