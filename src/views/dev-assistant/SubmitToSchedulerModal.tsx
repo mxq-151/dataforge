@@ -330,9 +330,20 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
     return mapCodeFileToTask(fileName, codeContent, filePath, rootPath, savedConfig, selectedTaskType);
   }, [initialMapping, selectedTaskType, fileName, codeContent, filePath, rootPath, savedConfig]);
 
+  // 用户可编辑的任务参数签名（排除 mainJar）：mainJar 是校验成功时由编译结果回填的派生值，
+  // 若按整对象监听，则校验通过后 setTaskTypeParams(mainJar) 会再次触发重置，导致提交按钮仍不可用。
+  const userTaskParamsSignature = useMemo(
+    () => Object.entries(taskTypeParams)
+      .filter(([k]) => k !== 'mainJar')
+      .map(([k, v]) => `${k}=${v}`)
+      .sort()
+      .join('|'),
+    [taskTypeParams],
+  );
+
   useEffect(() => {
     setValidationPassed(false);
-  }, [selectedProjectCode, selectedWorkflowCode, workflowName, selectedTaskType, selectedDatasourceId, selectedWorkerGroup, selectedEnvironmentCode, taskTypeParams]);
+  }, [selectedProjectCode, selectedWorkflowCode, workflowName, selectedTaskType, selectedDatasourceId, selectedWorkerGroup, selectedEnvironmentCode, userTaskParamsSignature]);
 
   const needsDatasource = currentMapping ? DATASOURCE_REQUIRED_TYPES.includes(currentMapping.taskType) : false;
 

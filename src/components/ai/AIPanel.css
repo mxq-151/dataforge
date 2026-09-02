@@ -14,6 +14,8 @@
 .ai-panel {
   display: flex;
   flex-direction: column;
+  /* 定位上下文：供右上角「向左缩进」按钮绝对定位参照 */
+  position: relative;
   width: 100%;
   height: 100%;
   background-color: #1e1e1e;
@@ -24,6 +26,38 @@
 
 .ai-panel--dragging {
   user-select: none;
+}
+
+/* ── 折叠态（向左缩进）：收起为左侧窄条 ───────────────────────── */
+.ai-panel-wrapper--collapsed {
+  width: 28px;
+  overflow: hidden;
+}
+
+/* 覆盖 App.css 中 `.app__workspace--data-explore .ai-panel { min-width: 200px }`：
+   否则内层被撑到 200px、溢出 28px 的窄条并压住右侧编辑器。
+   这里用 .ai-panel-wrapper.ai-panel-wrapper--collapsed（三个类）保证优先级更高。 */
+.ai-panel-wrapper.ai-panel-wrapper--collapsed .ai-panel {
+  min-width: 0;
+}
+
+/* 折叠后头部撑满整条，展开按钮垂直居中 */
+.ai-panel-wrapper--collapsed .ai-panel__header {
+  height: 100%;
+  padding: 0;
+  justify-content: center;
+  border-bottom: none;
+}
+
+/* 折叠后隐藏除展开按钮以外的全部内容 */
+.ai-panel-wrapper--collapsed .ai-panel__session-switcher,
+.ai-panel-wrapper--collapsed .ai-panel__compress-btn,
+.ai-panel-wrapper--collapsed .ai-panel__context-bar,
+.ai-panel-wrapper--collapsed .ai-panel__error-banner,
+.ai-panel-wrapper--collapsed .ai-panel__connect-prompt,
+.ai-panel-wrapper--collapsed .ai-panel__timeline,
+.ai-panel-wrapper--collapsed .ai-panel__input-region {
+  display: none;
 }
 
 /* ── 拖拽手柄 ─────────────────────────────────────────────────── */
@@ -48,7 +82,8 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 0 8px;
+  /* 右侧 28px 为「向左缩进」按钮预留空间，避免按钮覆盖最右的上下文使用量条 */
+  padding: 0 28px 0 8px;
   height: 30px;
   border-bottom: 1px solid #3c3c3c;
   background-color: #252526;
@@ -318,35 +353,6 @@
 .ai-panel__session-edit-cancel:hover {
   background-color: #444;
   color: #ccc;
-}
-
-/* 常驻的"快速新建会话"按钮（紧贴主按钮右侧） */
-.ai-panel__session-quick-new-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  border: none;
-  border-radius: 3px;
-  background-color: #0e639c;
-  color: #fff;
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: background-color 0.15s;
-}
-
-.ai-panel__session-quick-new-btn:hover {
-  background-color: #1177bb;
-}
-
-.ai-panel__session-quick-new-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.ai-panel__session-quick-new-btn:disabled:hover {
-  background-color: #0e639c;
 }
 
 /* ── LLM 模型选择器（新建会话按钮右侧） ─────────────────────── */
@@ -1625,6 +1631,48 @@
 
 .ai-panel__compress-btn-icon--spin {
   animation: spin 1s linear infinite;
+}
+
+/* ── 向左缩进 / 展开按钮（独立定位到面板右上角，紧邻头部右外缘） ─
+   默认无边框无背景，与「项目依赖」等图标按钮风格保持一致；
+   hover 时显示浅色高亮。 */
+.ai-panel__collapse-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: #888;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.ai-panel__collapse-btn:hover {
+  background-color: #3a3a3a;
+  color: #fff;
+}
+
+.ai-panel__collapse-btn:focus-visible {
+  outline: 1px solid #0078d4;
+  outline-offset: 1px;
+}
+
+/* 折叠态：按钮位于窄条垂直居中，作为唯一的展开入口 */
+.ai-panel-wrapper--collapsed .ai-panel__collapse-btn {
+  top: 50%;
+  right: 3px;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
 }
 
 /* ── 上下文压缩系统提示（对话区） ───────────────────────────── */

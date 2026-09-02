@@ -195,16 +195,6 @@ const SessionSwitcher: React.FC<SessionSwitcherProps> = ({
         <ChevronDown size={10} className={`ai-panel__session-chevron ${open ? 'ai-panel__session-chevron--open' : ''}`} />
       </button>
 
-      {/* 常驻的"新建会话"按钮 */}
-      <button
-        className="ai-panel__session-quick-new-btn"
-        onClick={handleNew}
-        title={disabled ? 'AI 服务未连接，请稍候' : '新建会话'}
-        disabled={disabled}
-      >
-        <Plus size={11} />
-      </button>
-
       {open && dropdownPos && (
         <div
           className="ai-panel__session-dropdown"
