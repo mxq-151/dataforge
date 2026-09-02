@@ -43,6 +43,17 @@ const extractLineageFromParams = (params: ParamItem[]): LineageConfig => {
   return { enabled: item ? item.value !== 'false' : true };
 };
 
+/** 合并引擎基础参数与已保存的用户任务参数：基础参数缺失时自动补齐，保留用户自定义与已保存取值 */
+const mergeWithBaseParams = (savedUserParams: ParamItem[], engine: string): ParamItem[] => {
+  const defaults = getEngineDefaultTaskParams(engine);
+  if (!defaults) return savedUserParams;
+  const savedKeys = new Set(savedUserParams.map(p => p.key));
+  const missingBase = defaults
+    .filter(d => !savedKeys.has(d.key))
+    .map(d => ({ ...d, id: `eng_${d.id}` }));
+  return [...missingBase, ...savedUserParams];
+};
+
 interface ConfigParamsModalProps {
   visible: boolean;
   onClose: () => void;
@@ -154,22 +165,21 @@ const ConfigParamsModal: React.FC<ConfigParamsModalProps> = ({
         ? filePath.slice(rootPath.length).replace(/^\/+/, '')
         : filePath;
       fetchByFilePath(projectId || 1, relativePath).then(loaded => {
+        const effectiveEngine = loaded?.engine || engine;
+        if (effectiveEngine) setEngineInfo({ engine: effectiveEngine, warehouse: '' });
         if (loaded) {
           if (loaded.dependencies.length > 0) setDeps(loaded.dependencies);
           if (loaded.programParams.length > 0) setProgParams(loaded.programParams);
-          if (loaded.taskParams.length > 0) {
-            setTaskParamList(loaded.taskParams);
-            setLineage(extractLineageFromParams(loaded.taskParams));
-          }
-          if (loaded.engine) setEngineInfo({ engine: loaded.engine, warehouse: '' });
-        } else if (engine) {
-          const defaults = getEngineDefaultTaskParams(engine);
-          if (defaults) setTaskParamList(defaults.map(d => ({ ...d, id: `eng_${d.id}` })));
+          const savedAll = loaded.taskParams;
+          const savedUser = savedAll.filter(p => !isLineageKey(p.key));
+          setLineage(extractLineageFromParams(savedAll));
+          setTaskParamList(mergeWithBaseParams(savedUser, effectiveEngine));
+        } else if (effectiveEngine) {
+          setTaskParamList(mergeWithBaseParams([], effectiveEngine));
         }
       });
     } else if (engine) {
-      const defaults = getEngineDefaultTaskParams(engine);
-      if (defaults) setTaskParamList(defaults.map(d => ({ ...d, id: `eng_${d.id}` })));
+      setTaskParamList(mergeWithBaseParams([], engine));
     }
   }, [visible, filePath, fileContent]);
 

@@ -86,7 +86,6 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
   const [showValidation, setShowValidation] = useState(false);
   const [validationPassed, setValidationPassed] = useState(false);
-  void validationPassed;
   const [compiledJarPath, setCompiledJarPath] = useState<string | null>(null);
   const [isCompiling, setIsCompiling] = useState(false);
   const [compileResult, setCompileResult] = useState<CompileResult | null>(null);
@@ -844,7 +843,6 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
     setValidationErrors(errors);
     setShowValidation(true);
     const passed = errors.length === 0;
-    console.log(passed)
     setValidationPassed(passed);
     return errors;
   }, [effectiveMapping, currentMapping, selectedProjectCode, workflowName, selectedWorkflowCode, isRealApi, projectCode, projects, projectMismatch, needsDatasource, selectedDatasourceId, codeDatasourceName, datasourceMismatch, isCompilableTask, compileConfig, fileName, codeContent, filePath, rootPath, savedConfig, scanHeaderDependencyTasks]);
@@ -1627,6 +1625,7 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
             </button>
             <button
               className="submit-scheduler__submit-btn"
+              disabled={!validationPassed}
               onMouseDown={(e) => {
                 e.preventDefault();
                 handleSubmit();
