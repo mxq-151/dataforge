@@ -12,9 +12,11 @@ import type { OpenCodeConfig } from '../types/opencode-backend';
 import type { DependencyItemLite } from '../utils/dependencyMerge';
 import { buildScopedStorageKey } from '../utils/historyIsolation';
 import { ensureHistoryStore, readHistory, writeHistory } from '../utils/historyStore';
+import { invoke } from '../bridge/ipc';
+import { listen } from '../bridge/event';
 
 interface SavedConfigLike {
-  dependencies: { id: string; name: string; version: string; source?: string }[];
+  dependencies: { id: string; name: string; version: string; source?: string; jarPath?: string; groupId?: string; scope?: string; autoChoose?: number | null }[];
   programParams: { id: string; key: string; value: string }[];
   taskParams: { id: string; key: string; value: string }[];
 }
@@ -49,6 +51,10 @@ interface UseProgramRunnerReturn {
   handleRunProgram: (selectedCode?: string) => Promise<void>;
   handleCompileDryRun: () => Promise<void>;
   handleCancelExecution: () => Promise<void>;
+  handleRunLocal: () => Promise<void>;
+  handleLocalRunExecute: (cfg: { mainClass: string; vmArgs: string; programArgs: string }) => Promise<void>;
+  handleCancelLocalRun: () => void;
+  pendingLocalRun: PendingLocalRun | null;
   isRunning: boolean;
   isCompiling: boolean;
   executionHistory: ExecutionRecord[];
@@ -56,7 +62,60 @@ interface UseProgramRunnerReturn {
   runningLogs: string;
 }
 
+/** 本地运行待确认状态：打开模态框，编译推迟到用户点「运行」之后 */
+interface PendingLocalRun {
+  /** 默认程序参数（预填） */
+  defaultArgs: string;
+  /** 默认主类（预填，取自当前文件：包名.文件名/类名） */
+  defaultMainClass: string;
+}
+
+/** 根据源码与文件名推断默认主类（编译前预填模态框用） */
+function buildDefaultMainClass(code: string, fileName: string): string {
+  const pkgMatch = code.match(/^\s*package\s+([\w.]+)/m);
+  const pkg = pkgMatch ? pkgMatch[1] : '';
+  const cls = (fileName || '').replace(/\.[^.]+$/, '');
+  if (!cls) return '';
+  return pkg ? `${pkg}.${cls}` : cls;
+}
+
+/** 将用户输入的参数字符串按空白拆分为命令行参数（忽略引号包裹内容，简单实现） */
+function splitArgs(raw: string): string[] {
+  const s = (raw ?? '').trim();
+  if (!s) return [];
+  return s.split(/\s+/).filter(Boolean);
+}
+
 const EXT_TO_CODE_TYPE: Record<string, string> = { sql: 'sql', java: 'java', scala: 'scala', py: 'python' };
+
+// 引擎 → 程序类型，用于回填 jarDependencyCatalogs 的 programType（后端 @NotBlank）
+const ENGINE_TO_PROGRAM_TYPE: Record<string, string> = {
+  spark: 'SPARK', flink: 'FLINK', flink_stream: 'FLINK', kyuubi: 'SPARK',
+  hive: 'HIVE', java: 'JAVA', scala: 'SCALA', python: 'PYTHON', mr: 'MAPREDUCE',
+};
+
+/**
+ * 将前端依赖项映射为后端 DevJarDependency 对象结构（jarDependencyCatalogs 不再传坐标字符串）。
+ * Java/Scala 只透传 source=custom 的自定义 jar；其余（SQL/Python）透传全部命名依赖。
+ */
+const toJarDependencyCatalogs = (
+  deps: SavedConfigLike['dependencies'],
+  options: { onlyCustom: boolean; engineType?: string },
+): { jarName: string; artifactId: string; version?: string; source?: string; jarPath?: string; groupId?: string; scope?: string; programType?: string }[] => {
+  const programType = ENGINE_TO_PROGRAM_TYPE[(options.engineType || '').trim().toLowerCase()];
+  return deps
+    .filter(d => d.name && (!options.onlyCustom || d.source === 'custom'))
+    .map(d => ({
+      jarName: d.name,
+      artifactId: d.name,
+      version: d.version,
+      source: d.source,
+      jarPath: d.jarPath,
+      groupId: d.groupId,
+      scope: d.scope,
+      ...(programType ? { programType } : {}),
+    }));
+};
 
 function resolveDataSource(code: string, header: { dataSource?: string } | null): string | null {
   if (header?.dataSource) return header.dataSource;
@@ -215,6 +274,8 @@ export function useProgramRunner({
 }: UseProgramRunnerParams): UseProgramRunnerReturn {
   const [isRunning, setIsRunning] = useState(false);
   const [isCompiling, setIsCompiling] = useState(false);
+  /** 本地运行待确认配置（空=不显示模态框）；编译成功后待用户确认运行参数 */
+  const [pendingLocalRun, setPendingLocalRun] = useState<PendingLocalRun | null>(null);
   const [_runningExecutionId, setRunningExecutionId] = useState<string | null>(null);
   const [executionHistory, setExecutionHistory] = useState<ExecutionRecord[]>([]);
   const [currentResults, setCurrentResults] = useState<ExecutionRecord[]>([]);
@@ -380,7 +441,8 @@ export function useProgramRunner({
 
     const header = parseFileHeader(content);
     const engineType = header?.engine || (isJavaOrScala ? 'spark' : 'kyuubi');
-    const resolvedDataSource = isJavaOrScala ? null : resolveDataSource(content, header);
+    // 数据源从文件头解析（Java/Scala 同样可能有 @数据源 代码头）
+    const resolvedDataSource = resolveDataSource(content, header);
 
     const fileParams = savedConfigParams[filePath];
     const runParams: Record<string, unknown> = {};
@@ -388,12 +450,12 @@ export function useProgramRunner({
     const computeResources: Record<string, unknown> = {};
     (fileParams?.taskParams || []).forEach(p => { if (p.key) computeResources[p.key] = p.value; });
 
-    // 公共参数
-    const allDepNames = fileParams?.dependencies?.filter(d => d.name).map(d => d.name) || [];
+    // 公共参数：jarDependencyCatalogs 传后端 DevJarDependency 对象数组（非坐标字符串数组）
     const commonParams = {
-      jarDependencyCatalogs: isJavaOrScala
-        ? fileParams?.dependencies?.filter(d => d.name && d.source === 'custom').map(d => d.name) || []
-        : allDepNames,
+      jarDependencyCatalogs: toJarDependencyCatalogs(
+        fileParams?.dependencies ? fileParams.dependencies.filter(d => d.name) : [],
+        { onlyCustom: isJavaOrScala, engineType },
+      ),
       runParams: Object.keys(runParams).length > 0 ? runParams : undefined,
       computeResources: Object.keys(computeResources).length > 0 ? computeResources : undefined,
       remark: header?.remark || '',
@@ -449,6 +511,7 @@ export function useProgramRunner({
           code: content,
           codeType,
           engineType,
+          datasources: resolvedDataSource ? [resolvedDataSource] : undefined,
           sqlSnippet: fileName,
           jarData: jarUint8Array,
           jarFileName,
@@ -676,10 +739,194 @@ export function useProgramRunner({
     setRunningExecutionId(null);
   }, []);
 
+  // 本地运行监听器清理函数引用（每次本地运行前取消上一次的订阅，避免泄漏）
+  const localRunCleanupRef = useRef<(() => void) | null>(null);
+
+  // 本地运行（仅 Java / Scala）：校验后弹出运行配置模态框，编译推迟到确认后
+  const handleRunLocal = useCallback(async () => {
+    const { filePath, fileName, codeType } = getFileInfo();
+    if (codeType !== 'java' && codeType !== 'scala') {
+      setRunningLogs('本地运行仅支持 Java / Scala 文件');
+      return;
+    }
+    const content = currentContent;
+    if (!content.trim()) { setRunningLogs('代码内容为空，无法本地运行'); return; }
+    if (!config.javaHome) { setRunningLogs('JAVA_HOME 未配置，请在设置页面配置 JAVA_HOME'); return; }
+
+    // 清理上一次本地运行的监听与残留配置
+    if (localRunCleanupRef.current) { localRunCleanupRef.current(); localRunCleanupRef.current = null; }
+    setPendingLocalRun(null);
+
+    // 用「配置的程序参数」预填模态框（--key value）
+    const defaultArgs = (savedConfigParams[filePath]?.programParams || [])
+      .map(p => (p.key ? `--${p.key} ${p.value ?? ''}`.trim() : ''))
+      .filter(Boolean)
+      .join(' ');
+
+    // 发起本地运行即清空上次的执行结果与运行日志，避免结果面板残留上一次内容
+    setCurrentResults([]);
+    setRunningLogs('请确认运行参数后点击「运行」，确认后将自动编译并在本地执行。');
+    setPendingLocalRun({ defaultArgs, defaultMainClass: buildDefaultMainClass(content, fileName) });
+  }, [currentContent, getFileInfo, savedConfigParams, config]);
+
+  // 本地运行（用户确认后）：先编译再用配置的 VM 参数/程序参数执行，
+  // 运行过程通过「执行结果」面板（currentResults）实时展示
+  const handleLocalRunExecute = useCallback(async (cfg: { mainClass: string; vmArgs: string; programArgs: string }) => {
+    const { fileName, filePath, codeType } = getFileInfo();
+    setPendingLocalRun(null);
+    // 本地运行期间置为运行中：使执行结果面板走 busy 分支（显示 RUNNING + 实时日志），
+    // 结束后才显示最终 SUCCESS/FAILED，避免编译前就误显示 FAILED。
+    setIsRunning(true);
+
+    const execId = generateId().toString();
+    const startTime = Date.now();
+    let out = '正在编译并准备本地运行...\n';
+    setCurrentResults([]);
+    setRunningLogs('');
+
+    const pendingRecord: ExecutionRecord = {
+      id: execId, time: new Date(), filePath,
+      engineType: 'spark', codeType,
+      result: {
+        success: false, executionId: execId, status: 'RUNNING',
+        outputLog: out, errorMessage: null, affectedRows: null, resultData: null,
+        startTime: new Date(startTime).toISOString(), endTime: null, durationMs: null,
+      },
+      sqlSnippet: fileName,
+    };
+    setCurrentResults([pendingRecord]);
+    setExecutionHistory(prev => [pendingRecord, ...prev]);
+
+    // 实时追加一行到当前执行结果，并同步到运行日志区域
+    const appendOutput = (text: string) => {
+      out = out + text;
+      setCurrentResults(prev => prev.map(e => e.id === execId
+        ? ({ ...e, result: e.result ? { ...e.result, outputLog: out } : e.result }) : e));
+      setRunningLogs(prev => prev + text);
+    };
+
+    // 结束本次本地运行，写入最终结果
+    const finalizeLocal = (status: 'SUCCESS' | 'FAILED', success: boolean, errorMessage: string | null) => {
+      setIsRunning(false);
+      const finalResult: CodeExecutionResult = {
+        success, executionId: execId, status,
+        outputLog: out, errorMessage, affectedRows: null, resultData: null,
+        startTime: new Date(startTime).toISOString(),
+        endTime: new Date().toISOString(), durationMs: Date.now() - startTime,
+      };
+      setCurrentResults(prev => prev.map(e => e.id === execId ? { ...e, result: finalResult } : e));
+      setExecutionHistory(prev => prev.map(e => e.id === execId ? { ...e, result: finalResult } : e));
+    };
+
+    // 1) 确认后编译，得到产物 jar 与默认主类
+    let jarPath: string;
+    let compileMainClass: string;
+    try {
+      const compileResult = await unifiedCompile({
+        projectId: project.id,
+        projectCode: project.projectCode || undefined,
+        filePath,
+        codeContent: currentContent,
+        rootPath: projectCwd || undefined,
+        envConfig: {
+          javaHome: config.javaHome,
+          scalaHome: config.scalaHome,
+          mavenHome: config.mavenHome,
+          scalaVersion: config.scalaVersion || undefined,
+          pomTemplate: config.pomTemplate || undefined,
+          workspace: config.cwd || undefined,
+          mavenGroupId: config.mavenGroupId || undefined,
+          mavenArtifactId: config.mavenArtifactId || undefined,
+        },
+        savedConfig: savedConfigParams[filePath] || null,
+        projectDependencies,
+      });
+      if (!compileResult || !compileResult.success) {
+        appendOutput(`\n本地编译失败：${compileResult?.error || compileResult?.output || '未知错误'}\n`);
+        finalizeLocal('FAILED', false, String(compileResult?.error || compileResult?.output || '编译失败'));
+        return;
+      }
+      if (!compileResult.jarPath) {
+        appendOutput(`\n编译成功但未生成 JAR：${compileResult.output || '(无输出)'}\n`);
+        finalizeLocal('FAILED', false, '编译成功但未生成 JAR');
+        return;
+      }
+      jarPath = compileResult.jarPath;
+      // 兜底：编译服务提取主类失败时回退到文件名（与远程运行逻辑一致）
+      compileMainClass = `${compileResult.packageName}.${compileResult.className || fileName.replace(/\.[^.]+$/, '')}`;
+    } catch (e) {
+      appendOutput(`\n本地编译出错：${e instanceof Error ? e.message : String(e)}\n`);
+      finalizeLocal('FAILED', false, e instanceof Error ? e.message : String(e));
+      return;
+    }
+
+    const mainClass = cfg.mainClass.trim() || compileMainClass;
+    const args = splitArgs(cfg.programArgs);
+    const vmArgs = splitArgs(cfg.vmArgs);
+
+    appendOutput(`编译完成，启动本地进程：java ${vmArgs.join(' ')} -cp <classpath> ${mainClass} ${args.join(' ')}\n`);
+
+    let sessionId: string | null = null;
+    const cleanupFns: (() => void)[] = [];
+
+    const rmLog = await listen<{ sessionId: string; text: string }>('local-run-log', (ev) => {
+      const p = ev.payload;
+      // sessionId 尚未就绪（invoke 返回值前）时也放行：快速失败的 JVM 可能会在
+      // invoke 返回前就把异常栈写到 stderr，若在此处按 sessionId 严格过滤会被丢弃。
+      if (sessionId && p.sessionId !== sessionId) return;
+      appendOutput(p.text);
+    });
+    cleanupFns.push(rmLog);
+
+    const rmExit = await listen<{ sessionId: string; code: number }>('local-run-exit', (ev) => {
+      const p = ev.payload;
+      if (sessionId && p.sessionId !== sessionId) return;
+      appendOutput(`\n[本地运行] 进程退出，退出码 ${p.code}${p.code === 0 ? '（成功）' : '（失败）'}\n`);
+      finalizeLocal(p.code === 0 ? 'SUCCESS' : 'FAILED', p.code === 0, p.code === 0 ? null : `进程退出码 ${p.code}，详见上方运行日志`);
+    });
+    cleanupFns.push(rmExit);
+
+    const rmStatus = await listen<{ type: string; sessionId?: string; message: string }>('local-run-status', (ev) => {
+      const p = ev.payload;
+      // status 事件可能不带 sessionId（如依赖 classpath 解析告警），始终展示；
+      // 带 sessionId 的仅在 sessionId 已就绪且不匹配主进程时丢弃。
+      if (sessionId && p.sessionId && p.sessionId !== sessionId) return;
+      appendOutput(`\n[本地运行] ${p.type === 'error' ? '错误' : '提示'}: ${p.message}\n`);
+    });
+    cleanupFns.push(rmStatus);
+
+    localRunCleanupRef.current = () => { cleanupFns.forEach(fn => fn()); localRunCleanupRef.current = null; };
+
+    try {
+      const res = await invoke<{ sessionId: string }>('run_local_java', {
+        javaHome: config.javaHome,
+        mavenHome: config.mavenHome || '',
+        jarPath,
+        mainClass,
+        args,
+        vmArgs,
+      });
+      sessionId = res.sessionId;
+    } catch (e) {
+      appendOutput(`\n启动本地进程失败：${e instanceof Error ? e.message : String(e)}\n`);
+      finalizeLocal('FAILED', false, e instanceof Error ? e.message : String(e));
+      localRunCleanupRef.current?.();
+    }
+  }, [currentContent, getFileInfo, savedConfigParams, config, projectCwd, project, projectDependencies]);
+
+  const handleCancelLocalRun = useCallback(() => {
+    if (localRunCleanupRef.current) { localRunCleanupRef.current(); localRunCleanupRef.current = null; }
+    setPendingLocalRun(null);
+  }, []);
+
   return {
     handleRunProgram,
     handleCompileDryRun,
     handleCancelExecution,
+    handleRunLocal,
+    handleLocalRunExecute,
+    handleCancelLocalRun,
+    pendingLocalRun,
     isRunning,
     isCompiling,
     executionHistory,

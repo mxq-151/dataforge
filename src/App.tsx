@@ -29,7 +29,7 @@ import EditorTestPage from './views/editor-test/EditorTestPage';
 import type { ProjectInfo } from './api/devProject';
 import disableAutoCapitalize from './utils/disableAutoCapitalize';
 import LicenseGate from './components/license/LicenseGate';
-import { gitClone, gitPull, checkGitRepoExists, ensureGitWorktree } from './api/git';
+import { gitClone, gitPull, gitInit, checkGitRepoExists, ensureGitWorktree } from './api/git';
 import { setApiHost } from './api/index';
 import { Store } from './bridge/store';
 import { joinPath, hostToDirName } from './utils/pathUtils';
@@ -38,6 +38,9 @@ import './App.css';
 
 /** 与 useOpencodeConfig / Rust 侧 auto_start_opencode 对应的 store 文件名 */
 const CONFIG_STORE_FILE = 'opencode-config.json';
+
+/** 本地默认 Git 仓库名：未配置远程地址时初始化为该目录名 */
+const LOCAL_GIT_DIR = 'warehouse';
 
 const FIRST_LEVEL_TAB_IDS: ActiveTab[] = [
   'devAssist',
@@ -322,13 +325,11 @@ const AppContent: React.FC = () => {
 
   // 项目目录集合（统一结构，见上方 baseWorkspace 注释）：
   //   projectDir = {hostBase}/code/{project_code}         → 项目源码根（src/、pom.xml、bloop/metals 工作目录 + 智能体/文件浏览器目录）
-  //   repoRoot   = {hostBase}/{gitRepoDirName}            → git 全局工作空间
-  //   gitProj    = {hostBase}/{gitRepoDirName}/{project_code} → 软链 → 首包目录（git 读取 src 下项目数据）
+  //   repoRoot   = {hostBase}/warehouse                    → git 全局工作空间（本地仓库，可配置远程后同步）
+  //   gitProj    = {hostBase}/warehouse/{project_code}     → 软链 → 首包目录（git 读取 src 下项目数据）
   const projectDirs = useCallback((pc: string) => {
     const projectDir = joinPath(baseWorkspace, 'code', pc);
-    const repoRoot = config.gitRepoDirName
-      ? joinPath(baseWorkspace, config.gitRepoDirName)
-      : '';
+    const repoRoot = joinPath(baseWorkspace, config.gitRepoDirName || LOCAL_GIT_DIR);
     const gitProj = repoRoot ? joinPath(repoRoot, pc) : projectDir;
     return { projectDir, gitProj, repoRoot };
   }, [baseWorkspace, config.gitRepoDirName]);
@@ -354,56 +355,60 @@ const AppContent: React.FC = () => {
   }>({ syncing: false, message: '', authError: false });
 
   useEffect(() => {
-    if (!config.gitRepoUrl || !config.gitRepoDirName || !baseWorkspace) return;
+    if (!baseWorkspace) return;
+
+    const repoPath = joinPath(baseWorkspace, config.gitRepoDirName || LOCAL_GIT_DIR);
 
     const syncGitRepo = async () => {
-      const repoPath = joinPath(baseWorkspace, config.gitRepoDirName);
-
-      setGitSyncStatus({ syncing: true, message: '正在检查 Git 仓库...', authError: false });
+      setGitSyncStatus({
+        syncing: true,
+        message: config.gitRepoUrl ? '正在检查 Git 仓库...' : '正在初始化本地仓库...',
+        authError: false,
+      });
 
       try {
         const repoExists = await checkGitRepoExists(repoPath);
 
-        if (repoExists) {
-          setGitSyncStatus(prev => ({ ...prev, message: '正在拉取最新代码...' }));
-          const pullResult = await gitPull(repoPath, config.gitSshKeyPath || undefined);
-
-          if (pullResult.success) {
+        if (!repoExists) {
+          if (!config.gitRepoUrl) {
+            // 未配置远程地址 → 在本地初始化默认 warehouse 仓库
+            const initResult = await gitInit(repoPath);
             setGitSyncStatus({
               syncing: false,
-              message: '✓ 代码已更新到最新版本',
+              message: initResult.success ? '✓ 已初始化本地 warehouse 仓库' : `⚠ 初始化仓库失败: ${initResult.message}`,
               authError: false,
             });
-            setTimeout(() => {
-              setGitSyncStatus({ syncing: false, message: '', authError: false });
-            }, 2000);
-          } else {
-            setGitSyncStatus({
-              syncing: false,
-              message: `⚠ 拉取失败: ${pullResult.message}`,
-              authError: pullResult.authRequired,
-            });
+            if (initResult.success) {
+              setTimeout(() => { setGitSyncStatus({ syncing: false, message: '', authError: false }); }, 2000);
+            }
+            return;
           }
-        } else {
           setGitSyncStatus(prev => ({ ...prev, message: '正在克隆 Git 仓库...（首次配置可能需要较长时间）' }));
           const cloneResult = await gitClone(config.gitRepoUrl, repoPath, config.gitSshKeyPath || undefined);
 
           if (cloneResult.success) {
-            setGitSyncStatus({
-              syncing: false,
-              message: '✓ Git 仓库克隆成功',
-              authError: false,
-            });
-            setTimeout(() => {
-              setGitSyncStatus({ syncing: false, message: '', authError: false });
-            }, 2000);
+            setGitSyncStatus({ syncing: false, message: '✓ Git 仓库克隆成功', authError: false });
+            setTimeout(() => { setGitSyncStatus({ syncing: false, message: '', authError: false }); }, 2000);
           } else {
-            setGitSyncStatus({
-              syncing: false,
-              message: `⚠ 克隆失败: ${cloneResult.message}`,
-              authError: cloneResult.authRequired,
-            });
+            setGitSyncStatus({ syncing: false, message: `⚠ 克隆失败: ${cloneResult.message}`, authError: cloneResult.authRequired });
           }
+          return;
+        }
+
+        // 仓库已存在，但未配置远程地址 → 本地模式，无需拉取
+        if (!config.gitRepoUrl) {
+          setGitSyncStatus({ syncing: false, message: '', authError: false });
+          return;
+        }
+
+        setGitSyncStatus(prev => ({ ...prev, message: '正在拉取最新代码...' }));
+        const pullResult = await gitPull(repoPath, config.gitSshKeyPath || undefined);
+
+        if (pullResult.success) {
+          setGitSyncStatus({ syncing: false, message: '✓ 代码已更新到最新版本', authError: false });
+          setTimeout(() => { setGitSyncStatus({ syncing: false, message: '', authError: false }); }, 2000);
+        } else {
+          setGitSyncStatus({ syncing: false, message: `⚠ 拉取失败: ${pullResult.message}`, authError: pullResult.authRequired });
         }
       } catch (err) {
         console.error('[App] Git 同步错误:', err);
@@ -471,7 +476,17 @@ const AppContent: React.FC = () => {
           } catch (err) {
             console.warn('[App] 建立项目软链失败（不影响 git 工作树挂载）:', pc, err);
           }
-          await ensureGitWorktree(repoRoot, srcDir, pc);
+          if (config.gitRepoUrl) {
+            // 远程模式：用共享仓库的子树挂载链接工作树
+            await ensureGitWorktree(repoRoot, srcDir, pc);
+          } else {
+            // 本地模式（未配置远程地址）：直接在项目源码目录初始化独立仓库，
+            // 避免共享仓库 subtree split 无法对已存在源码的目录建立链接工作树。
+            const localInit = await gitInit(srcDir);
+            if (!localInit.success) {
+              console.warn('[App] 本地项目仓库初始化失败:', pc, localInit.message);
+            }
+          }
         }
         // git 拉取/挂载源码完成后，递增序列，通知文件浏览器重新刷新（首次进入常有竞态：浏览器先于拉取完成打开空目录）
         if (hadRepo) {

@@ -12,10 +12,16 @@
  *
  * 头部布局（从左到右）：
  *   任务历史 | 压缩按钮 | 上下文使用量
+ *
+ * 「向左缩进」按钮：独立定位到面板右上角（与头部 inline 排版并列，
+ * 不挤进头部元素流，避免窄面板下挤压会话切换器）。
+ *
+ * 折叠（向左缩进）：点击右上角按钮，面板收起为左侧窄条，
+ * 状态按 moduleId 隔离持久化到 localStorage。
  */
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { AlertCircle, Combine } from 'lucide-react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { AlertCircle, Combine, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Store } from '../../bridge/store';
 import { useAuth } from '../../contexts/AuthContext';
 import type { AIPanelProps } from './types';
@@ -26,14 +32,15 @@ import SessionSwitcher from './SessionSwitcher';
 import PermissionDock from './PermissionDock';
 import QuestionDock from './QuestionDock';
 import ContextUsageBar from './ContextUsageBar';
-import TodoDock from './TodoDock';
 import { useTodoDockState } from './useTodoDockState';
-import FileReviewPanel from './FileReviewPanel';
 import './AIPanel.css';
 
 /** 智能体模块的用户偏好存储（按 userId 记录所选模型） */
 const AGENT_PREFS_STORE = 'agent-preferences.json';
 const SELECTED_LLM_KEY = 'selectedLLMIdByUser';
+
+/** 面板折叠（向左缩进）状态的 localStorage 键前缀，按 moduleId 隔离 */
+const COLLAPSED_KEY_PREFIX = 'ai-panel-collapsed';
 
 const AIPanel: React.FC<AIPanelProps> = ({ chatBackend, llmModels, onRollback, onOpenFile, onViewDiff, fileTree, moduleId }) => {
   const {
@@ -148,6 +155,30 @@ const AIPanel: React.FC<AIPanelProps> = ({ chatBackend, llmModels, onRollback, o
   const [isDragging, setIsDragging] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
+  // ── 折叠（向左缩进）状态 ──
+  // 按 moduleId 隔离存储，避免「开发助手」与「数据探索」两个实例互相覆盖。
+  const collapsedKey = `${COLLAPSED_KEY_PREFIX}:${moduleId}`;
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(collapsedKey) === 'true';
+    } catch {
+      // localStorage 不可用（隐私模式/配额耗尽）时退化为不折叠
+      return false;
+    }
+  });
+
+  const handleToggleCollapse = useCallback(() => {
+    setCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(collapsedKey, String(next));
+      } catch {
+        // 持久化失败只影响下次进入，不阻断本次交互
+      }
+      return next;
+    });
+  }, [collapsedKey]);
+
   // ── 回滚后用户消息回显到输入框 ──
   // 仅当输入框为空时，将回滚目标用户消息的文本预填到输入框（nonce 触发 ChatInput effect）
   const [prefill, setPrefill] = useState<{ text: string; nonce: number }>({ text: '', nonce: 0 });
@@ -245,8 +276,35 @@ const AIPanel: React.FC<AIPanelProps> = ({ chatBackend, llmModels, onRollback, o
 
   const canCompress = !!currentSessionId && !compressing && !!connected;
 
+  // 执行计划 / 文件变更面板状态与回调（内联时间线行用）。
+  // useMemo 保持引用稳定，避免破坏 MessageTimeline 的 React.memo。
+  const todoDockProps = useMemo(
+    () => ({
+      visible: todoDockState.dock,
+      collapsed: todoDockState.collapsed,
+      closing: todoDockState.closing,
+      onToggle: todoDockState.toggle,
+    }),
+    [todoDockState.dock, todoDockState.collapsed, todoDockState.closing, todoDockState.toggle],
+  );
+  const fileReviewProps = useMemo(
+    () => ({
+      onApprove: approveFileChange,
+      onReject: rejectFileChange,
+      onApproveAll: approveAllFileChanges,
+      onOpenFile,
+      onViewDiff,
+    }),
+    [approveFileChange, rejectFileChange, approveAllFileChanges, onOpenFile, onViewDiff],
+  );
+
   return (
-    <div ref={wrapperRef} className="ai-panel-wrapper" style={{ width: `${panelWidth}%` }}>
+    <div
+      ref={wrapperRef}
+      className={`ai-panel-wrapper ${collapsed ? 'ai-panel-wrapper--collapsed' : ''}`}
+      // 折叠时交给 CSS 类控制宽度（固定窄条），不再套用拖拽百分比宽度
+      style={collapsed ? undefined : { width: `${panelWidth}%` }}
+    >
       <div className={`ai-panel ${isDragging ? 'ai-panel--dragging' : ''}`}>
         {/* 头部：任务历史 + LLM 选择 + 压缩按钮 + 上下文使用量 */}
         <div className="ai-panel__header">
@@ -307,30 +365,28 @@ const AIPanel: React.FC<AIPanelProps> = ({ chatBackend, llmModels, onRollback, o
           sessions={sessions}
           onRevert={handleRollback}
           revertDisabled={busy}
+          todos={todos ?? []}
+          fileChanges={fileChanges}
+          todoDock={todoDockProps}
+          fileReview={fileReviewProps}
         />
 
-        {/* 文件变更审查面板 */}
-        {fileChanges.length > 0 && (
-          <FileReviewPanel
-            changes={fileChanges}
-            onApprove={approveFileChange}
-            onReject={rejectFileChange}
-            onApproveAll={approveAllFileChanges}
-            onOpenFile={onOpenFile}
-            onViewDiff={onViewDiff}
-          />
-        )}
+        {/* 「向左缩进 / 展开」按钮：独立绝对定位到面板右上角（不挤进头部 inline 流）。
+            折叠态下位置改到窄条垂直居中，作为展开面板的唯一入口。 */}
+        <button
+          type="button"
+          className="ai-panel__collapse-btn"
+          onClick={handleToggleCollapse}
+          title={collapsed ? '展开面板' : '向左缩进'}
+          aria-label={collapsed ? '展开面板' : '向左缩进'}
+          aria-expanded={!collapsed}
+          data-testid="ai-panel-collapse-btn"
+        >
+          {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+        </button>
 
         {/* 输入区域（含 inline dock 栈，对齐桌面版 session-composer-region） */}
         <div className="ai-panel__input-region">
-          {todoDockState.dock && (
-            <TodoDock
-              todos={todos}
-              collapsed={todoDockState.collapsed}
-              onToggle={todoDockState.toggle}
-              closing={todoDockState.closing}
-            />
-          )}
           {questionModal && (
             <QuestionDock
               modal={questionModal}
@@ -365,11 +421,13 @@ const AIPanel: React.FC<AIPanelProps> = ({ chatBackend, llmModels, onRollback, o
         </div>
       </div>
 
-      {/* 拖拽手柄 */}
-      <div
-        className={`ai-panel__resize-handle ${isDragging ? 'ai-panel__resize-handle--active' : ''}`}
-        onMouseDown={handleMouseDown}
-      />
+      {/* 拖拽手柄（折叠时隐藏：窄条只保留展开按钮，避免误拖改宽度） */}
+      {!collapsed && (
+        <div
+          className={`ai-panel__resize-handle ${isDragging ? 'ai-panel__resize-handle--active' : ''}`}
+          onMouseDown={handleMouseDown}
+        />
+      )}
     </div>
   );
 };

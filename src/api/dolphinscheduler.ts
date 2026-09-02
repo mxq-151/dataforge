@@ -42,12 +42,18 @@ function buildTaskDefinitionJson(nodes: DSWorkflowTaskNode[]): string {
     }
 
     if (Array.isArray(taskParamsObj.resourceList)) {
-      taskParamsObj.resourceList = (taskParamsObj.resourceList as unknown[]).map((item: unknown) => {
+      const mapped = (taskParamsObj.resourceList as unknown[]).map((item: unknown) => {
         if (typeof item === 'string' && item) {
           return { resourceName: item };
         }
         return item;
       });
+      // resourceList 为空数组时移除该字段，避免向 DS 提交多余的 resourceList
+      if (mapped.length === 0) {
+        delete taskParamsObj.resourceList;
+      } else {
+        taskParamsObj.resourceList = mapped;
+      }
     }
 
     return {

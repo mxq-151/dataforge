@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Package, Plus, Trash2, RefreshCw, ChevronDown, ChevronRight, Check, Save } from 'lucide-react';
+import { X, Package, Plus, RefreshCw, ChevronDown, ChevronRight, Check, Save } from 'lucide-react';
 import useDependencyList from '../../hooks/useDependencyList';
 import type { DependencyRecord } from '../../api/dependency';
 import type { ProjectDependencyItem } from '../../api/projectDependency';
@@ -150,19 +150,6 @@ const ProjectDependencyModal: React.FC<ProjectDependencyModalProps> = ({
     setDeps(prev => [...prev, { id: `dep_manual_${Date.now()}`, name: '', version: '' }]);
   };
 
-  const removeDependency = (id: string) => {
-    setDeps(prev => prev.filter(d => d.id !== id));
-    setSelectedDepIds(prev => {
-      const next = new Set(prev);
-      const rec = records.find(r => `dep_api_${r.id}` === id || `dep_auto_${r.id}` === id);
-      if (rec) next.delete(rec.id);
-      return next;
-    });
-  };
-
-  const updateDependency = (id: string, field: 'name' | 'version', val: string) =>
-    setDeps(prev => prev.map(d => (d.id === id ? { ...d, [field]: val } : d)));
-
   return (
     <div className="config-params-overlay" onClick={handleOverlayClick}>
       <div className="config-params-modal">
@@ -196,31 +183,6 @@ const ProjectDependencyModal: React.FC<ProjectDependencyModalProps> = ({
             </div>
 
             {depError && <div className="config-params__error">{depError}</div>}
-
-            {/* 已选依赖（含手动添加） */}
-            {deps.length > 0 && (
-              <div className="config-params__kv-list" style={{ marginBottom: 12 }}>
-                {deps.map(dep => (
-                  <div key={dep.id} className="config-params__kv-row">
-                    <input
-                      className="config-params__input config-params__input--key"
-                      placeholder="依赖坐标(artifactId)"
-                      value={dep.name}
-                      onChange={e => updateDependency(dep.id, 'name', e.target.value)}
-                    />
-                    <input
-                      className="config-params__input config-params__input--value"
-                      placeholder="版本"
-                      value={dep.version}
-                      onChange={e => updateDependency(dep.id, 'version', e.target.value)}
-                    />
-                    <button className="config-params__remove-btn" onClick={() => removeDependency(dep.id)}>
-                      <Trash2 size={12} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
 
             <div className="config-params__dep-catalog">
               {groups.map(group => (

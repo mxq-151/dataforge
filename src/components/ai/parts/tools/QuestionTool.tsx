@@ -3,7 +3,7 @@
  *
  * 对齐桌面版 question 渲染器（message-part.tsx 2370-2413 行）。
  * pending/running 状态由 ToolPartDisplay 隐藏（不渲染）。
- * completed 时显示问答对，默认展开。
+ * completed 时显示问答对，默认折叠（defaultOpen 未传入时为 false）。
  */
 
 import React, { useMemo } from 'react';
@@ -17,7 +17,7 @@ interface QuestionInfo {
   options: Array<{ label: string; description: string }> | null;
 }
 
-const QuestionTool: React.FC<ToolProps> = ({ input, metadata, status }) => {
+const QuestionTool: React.FC<ToolProps> = ({ input, metadata, status, defaultOpen }) => {
   const questions = (input.questions as QuestionInfo[] | undefined) ?? [];
   const answers = (metadata.answers as string[][] | undefined) ?? [];
   const completed = answers.length > 0;
@@ -33,7 +33,7 @@ const QuestionTool: React.FC<ToolProps> = ({ input, metadata, status }) => {
   );
 
   return (
-    <BasicTool status={status} trigger={trigger} defaultOpen={completed}>
+    <BasicTool status={status} trigger={trigger} defaultOpen={defaultOpen}>
       <div className="ai-panel__question-answers">
         {questions.map((q, idx) => {
           const answer = answers[idx]?.join(', ');

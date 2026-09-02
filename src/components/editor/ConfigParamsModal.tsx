@@ -14,6 +14,13 @@ interface DependencyItem {
   name: string;
   version: string;
   source?: string;
+  /** 自定义 jar 相对 basePath 的路径（含文件名），透传到 /params 保存与 --jars 注入 */
+  jarPath?: string;
+  groupId?: string;
+  scope?: string;
+  autoChoose?: number | null;
+  /** 依赖 jar 的 basePath（后端回填），--jars 路径由 basePath + jarPath 组成 */
+  basePath?: string;
 }
 
 interface ParamItem {
@@ -34,6 +41,17 @@ const isLineageKey = (key: string) => key.startsWith('lineage.');
 const extractLineageFromParams = (params: ParamItem[]): LineageConfig => {
   const item = params.find(p => p.key === LINEAGE_ENABLED_KEY);
   return { enabled: item ? item.value !== 'false' : true };
+};
+
+/** 合并引擎基础参数与已保存的用户任务参数：基础参数缺失时自动补齐，保留用户自定义与已保存取值 */
+const mergeWithBaseParams = (savedUserParams: ParamItem[], engine: string): ParamItem[] => {
+  const defaults = getEngineDefaultTaskParams(engine);
+  if (!defaults) return savedUserParams;
+  const savedKeys = new Set(savedUserParams.map(p => p.key));
+  const missingBase = defaults
+    .filter(d => !savedKeys.has(d.key))
+    .map(d => ({ ...d, id: `eng_${d.id}` }));
+  return [...missingBase, ...savedUserParams];
 };
 
 interface ConfigParamsModalProps {
@@ -147,22 +165,21 @@ const ConfigParamsModal: React.FC<ConfigParamsModalProps> = ({
         ? filePath.slice(rootPath.length).replace(/^\/+/, '')
         : filePath;
       fetchByFilePath(projectId || 1, relativePath).then(loaded => {
+        const effectiveEngine = loaded?.engine || engine;
+        if (effectiveEngine) setEngineInfo({ engine: effectiveEngine, warehouse: '' });
         if (loaded) {
           if (loaded.dependencies.length > 0) setDeps(loaded.dependencies);
           if (loaded.programParams.length > 0) setProgParams(loaded.programParams);
-          if (loaded.taskParams.length > 0) {
-            setTaskParamList(loaded.taskParams);
-            setLineage(extractLineageFromParams(loaded.taskParams));
-          }
-          if (loaded.engine) setEngineInfo({ engine: loaded.engine, warehouse: '' });
-        } else if (engine) {
-          const defaults = getEngineDefaultTaskParams(engine);
-          if (defaults) setTaskParamList(defaults.map(d => ({ ...d, id: `eng_${d.id}` })));
+          const savedAll = loaded.taskParams;
+          const savedUser = savedAll.filter(p => !isLineageKey(p.key));
+          setLineage(extractLineageFromParams(savedAll));
+          setTaskParamList(mergeWithBaseParams(savedUser, effectiveEngine));
+        } else if (effectiveEngine) {
+          setTaskParamList(mergeWithBaseParams([], effectiveEngine));
         }
       });
     } else if (engine) {
-      const defaults = getEngineDefaultTaskParams(engine);
-      if (defaults) setTaskParamList(defaults.map(d => ({ ...d, id: `eng_${d.id}` })));
+      setTaskParamList(mergeWithBaseParams([], engine));
     }
   }, [visible, filePath, fileContent]);
 
@@ -195,6 +212,11 @@ const ConfigParamsModal: React.FC<ConfigParamsModalProps> = ({
               name: r.artifactId,
               version: r.version,
               source: r.source,
+              jarPath: r.jarPath,
+              groupId: r.groupId,
+              scope: r.scope,
+              autoChoose: r.autoChoose,
+              basePath: r.basePath,
             });
           });
         return newDeps;
@@ -296,6 +318,11 @@ const ConfigParamsModal: React.FC<ConfigParamsModalProps> = ({
           name: record.artifactId,
           version: record.version,
           source: record.source,
+          jarPath: record.jarPath,
+          groupId: record.groupId,
+          scope: record.scope,
+          autoChoose: record.autoChoose,
+          basePath: record.basePath,
         }]);
       }
       return next;
@@ -309,7 +336,7 @@ const ConfigParamsModal: React.FC<ConfigParamsModalProps> = ({
       items.forEach(item => {
         next.add(item.id);
         if (!newDeps.find(d => d.name === item.artifactId)) {
-          newDeps.push({ id: `dep_api_${item.id}`, name: item.artifactId, version: item.version, source: item.source });
+          newDeps.push({ id: `dep_api_${item.id}`, name: item.artifactId, version: item.version, source: item.source, jarPath: item.jarPath, groupId: item.groupId, scope: item.scope, autoChoose: item.autoChoose, basePath: item.basePath });
         }
       });
       setDeps(newDeps);

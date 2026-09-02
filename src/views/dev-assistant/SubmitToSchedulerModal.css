@@ -340,6 +340,13 @@
   font-weight: 500;
 }
 
+.submit-scheduler__field-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .submit-scheduler__input {
   background-color: #1e1e1e;
   border: 1px solid #3c3c3c;

@@ -2,10 +2,11 @@
  * rows.ts — TimelineRow 类型定义 + key/equals 工具函数
  *
  * 对齐 opencode 桌面版 rows.ts，适配 React + TypeScript（不使用 effect 库）。
- * 9 种行类型以 user message 为 turn 锚点，把 assistant 消息的 parts 展平成行。
+ * 11 种行类型以 user message 为 turn 锚点，把 assistant 消息的 parts 展平成行。
  */
 
 import type { SnapshotFileDiff } from '@opencode-ai/sdk/v2/client';
+import type { Todo, FileChange } from '../../../types/opencode-backend';
 
 export type SummaryDiff = SnapshotFileDiff & { file: string };
 
@@ -77,6 +78,20 @@ export interface ErrorRow {
   text: string;
 }
 
+/** 执行计划内联行：在对话流中对应 turn 末尾展示 TodoDock */
+export interface TodoRow {
+  _tag: 'Todo';
+  userMessageID: string;
+  todos: Todo[];
+}
+
+/** 文件变更内联行：在对话流中对应 turn 末尾展示 FileReviewPanel */
+export interface FileChangeRow {
+  _tag: 'FileChange';
+  userMessageID: string;
+  changes: FileChange[];
+}
+
 export type TimelineRow =
   | TurnGapRow
   | CommentStripRow
@@ -86,7 +101,9 @@ export type TimelineRow =
   | ThinkingRow
   | RetryRow
   | DiffSummaryRow
-  | ErrorRow;
+  | ErrorRow
+  | TodoRow
+  | FileChangeRow;
 
 // ── 工厂函数 ──────────────────────────────────────────────────
 
@@ -100,6 +117,8 @@ export const TimelineRow = {
   Retry: (userMessageID: string): RetryRow => ({ _tag: 'Retry', userMessageID }),
   DiffSummary: (userMessageID: string, diffs: SummaryDiff[]): DiffSummaryRow => ({ _tag: 'DiffSummary', userMessageID, diffs }),
   Error: (userMessageID: string, text: string): ErrorRow => ({ _tag: 'Error', userMessageID, text }),
+  Todo: (userMessageID: string, todos: Todo[]): TodoRow => ({ _tag: 'Todo', userMessageID, todos }),
+  FileChange: (userMessageID: string, changes: FileChange[]): FileChangeRow => ({ _tag: 'FileChange', userMessageID, changes }),
 };
 
 // ── key() — 生成稳定字符串 key（用于 React key prop 和 virtualizer getItemKey） ──
@@ -124,6 +143,10 @@ export function rowKey(row: TimelineRow): string {
       return `error:${row.userMessageID}`;
     case 'Retry':
       return `retry:${row.userMessageID}`;
+    case 'Todo':
+      return `todo:${row.userMessageID}`;
+    case 'FileChange':
+      return `file-change:${row.userMessageID}`;
   }
 }
 
@@ -166,6 +189,14 @@ export function rowEquals(a: TimelineRow, b: TimelineRow): boolean {
     case 'Error': {
       const o = b as ErrorRow;
       return a.userMessageID === o.userMessageID && a.text === o.text;
+    }
+    case 'Todo': {
+      const o = b as TodoRow;
+      return a.userMessageID === o.userMessageID && a.todos === o.todos;
+    }
+    case 'FileChange': {
+      const o = b as FileChangeRow;
+      return a.userMessageID === o.userMessageID && a.changes === o.changes;
     }
   }
 }

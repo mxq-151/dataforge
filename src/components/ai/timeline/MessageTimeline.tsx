@@ -5,7 +5,7 @@
  * 适配 React + @tanstack/react-virtual（桌面版用 @tanstack/solid-virtual）。
  *
  * 核心机制：
- * - useTimelineProjection 计算行投影（9 种 TimelineRow）
+ * - useTimelineProjection 计算行投影（11 种 TimelineRow）
  * - useVirtualizer 虚拟化渲染（estimateSize 60, overscan 50, paddingEnd 64）
  * - getItemKey 用 rowKey(row) 稳定 key
  * - measureElement 动态测量行高（流式内容尺寸变化）
@@ -24,7 +24,7 @@
 import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { Part, Session, Message, SessionStatus } from '@opencode-ai/sdk/v2/client';
-import type { MessageEntry, ToolPart, AssistantMessage, RetryState } from '../../../types/opencode-backend';
+import type { MessageEntry, ToolPart, AssistantMessage, RetryState, Todo, FileChange } from '../../../types/opencode-backend';
 import { useTimelineProjection } from './useTimelineProjection';
 import { rowKey, type TimelineRow, type AssistantPartRow } from './rows';
 import TimelineRowFrame from './TimelineRowFrame';
@@ -36,9 +36,32 @@ import MessagePart from '../parts/MessagePart';
 import ContextToolGroup from '../parts/ContextToolGroup';
 import UserMessageDisplay from '../parts/UserMessageDisplay';
 import MessageDivider from '../parts/MessageDivider';
+import TodoDock from '../TodoDock';
+import FileReviewPanel from '../FileReviewPanel';
 import { PartsDataProvider } from '../parts/PartsDataContext';
 
 // ── MessageTimelineProps ──────────────────────────────────────
+
+/** 执行计划面板状态（来自 useTodoDockState，内联 TodoRow 渲染用） */
+export interface TimelineTodoDockProps {
+  /** dock 是否可见（4 态状态机控制） */
+  visible: boolean;
+  /** 是否折叠 */
+  collapsed: boolean;
+  /** 是否正在关闭中 */
+  closing?: boolean;
+  /** 切换折叠 */
+  onToggle: () => void;
+}
+
+/** 文件变更面板回调（内联 FileChangeRow 渲染用） */
+export interface TimelineFileReviewProps {
+  onApprove?: (partID: string) => void;
+  onReject?: (filePath: string, change: { type: 'edit' | 'write' | 'apply_patch'; messageID?: string; partID?: string }) => void;
+  onApproveAll?: () => void;
+  onOpenFile?: (filePath: string) => void;
+  onViewDiff?: (filePath: string, patch: string) => void;
+}
 
 export interface MessageTimelineProps {
   /** 消息列表 */
@@ -63,10 +86,14 @@ export interface MessageTimelineProps {
   onRevert?: (messageID: string) => void;
   /** 回滚按钮禁用（busy 时） */
   revertDisabled?: boolean;
-  /** bash 工具默认展开（默认 false，对齐桌面版设置） */
-  shellToolPartsExpanded?: boolean;
-  /** edit/write/apply_patch 工具默认展开（默认 false） */
-  editToolPartsExpanded?: boolean;
+  /** 执行计划数据（内联 TodoRow 投影用） */
+  todos?: Todo[];
+  /** 执行计划面板状态（内联 TodoRow 渲染用） */
+  todoDock?: TimelineTodoDockProps;
+  /** 文件变更数据（内联 FileChangeRow 投影用） */
+  fileChanges?: FileChange[];
+  /** 文件变更面板回调（内联 FileChangeRow 渲染用） */
+  fileReview?: TimelineFileReviewProps;
 }
 
 // ── MessageTimeline 组件 ─────────────────────────────────────
@@ -83,11 +110,13 @@ const MessageTimeline: React.FC<MessageTimelineProps> = ({
   sessions,
   onRevert,
   revertDisabled,
-  shellToolPartsExpanded = false,
-  editToolPartsExpanded = false,
+  todos,
+  todoDock,
+  fileChanges,
+  fileReview,
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const { rows } = useTimelineProjection(messages, status, showReasoning);
+  const { rows } = useTimelineProjection(messages, status, showReasoning, todos, fileChanges);
 
   // messageByID 查找表
   const messageByID = useMemo(() => {
@@ -138,33 +167,11 @@ const MessageTimeline: React.FC<MessageTimelineProps> = ({
     return map;
   }, [messages]);
 
-  // partDefaultOpen：对齐桌面版 partDefaultOpen
-  // 有输出且已完成的工具默认展开；bash/edit/write 可被设置覆盖
-  const partDefaultOpen = useCallback(
-    (part: Part): boolean => {
-      if (part.type !== 'tool') return false;
-      const tool = (part as any).tool;
-      const state = (part as any).state;
-      const status = state?.status;
-      const hasOutput = !!(state?.output || state?.metadata?.filediff);
-      const completed = status === 'completed';
-
-      // 错误状态工具默认展开，让失败原因立即可见
-      if (status === 'error') return true;
-
-      // 已完成且有输出 → 默认展开
-      if (completed && hasOutput) return true;
-
-      // question 完成后默认展开
-      if (tool === 'question' && completed) return true;
-
-      // bash 有命令时展开
-      if (tool === 'bash' && completed && state?.input?.command) return true;
-
-      return false;
-    },
-    [shellToolPartsExpanded, editToolPartsExpanded],
-  );
+  // partDefaultOpen：所有 tool 执行参数与结果默认折叠
+  // 不区分状态/是否有输出，统一收起；用户点击 trigger 后展开（展开状态由 toolOpen 记忆）
+  const partDefaultOpen = useCallback((_part: Part): boolean => {
+    return false;
+  }, []);
 
   // follow 逻辑：用户在底部 80px 内时标记 atBottom
   const [atBottom, setAtBottom] = useState(true);
@@ -187,14 +194,15 @@ const MessageTimeline: React.FC<MessageTimelineProps> = ({
     getItemKey: (index) => rowKey(rows[index]),
   });
 
-  // 追加行时若用户在底部则跟随滚动
+  // 追加行时若用户在底部则跟随滚动（滚到最底部，保持最新内容可见）
   const prevCountRef = useRef(rows.length);
   useEffect(() => {
     if (rows.length > prevCountRef.current && atBottom) {
-      virtualizer.scrollToIndex(rows.length - 1, { align: 'end' });
+      const el = scrollRef.current;
+      if (el) el.scrollTop = el.scrollHeight;
     }
     prevCountRef.current = rows.length;
-  }, [rows.length, atBottom, virtualizer]);
+  }, [rows.length, atBottom]);
 
   // 渲染 AssistantPart 的 group（context group 或 part group）
   const renderAssistantPartGroup = useCallback(
@@ -292,11 +300,37 @@ const MessageTimeline: React.FC<MessageTimelineProps> = ({
               <TimelineErrorRow text={row.text} />
             </TimelineRowFrame>
           );
+        case 'Todo':
+          // dock 状态机未开启时隐藏（如 session 切换的短暂窗口）
+          if (!todoDock?.visible) return null;
+          return (
+            <TimelineRowFrame row={row}>
+              <TodoDock
+                todos={row.todos}
+                collapsed={todoDock.collapsed}
+                onToggle={todoDock.onToggle}
+                closing={todoDock.closing}
+              />
+            </TimelineRowFrame>
+          );
+        case 'FileChange':
+          return (
+            <TimelineRowFrame row={row}>
+              <FileReviewPanel
+                changes={row.changes}
+                onApprove={fileReview?.onApprove}
+                onReject={fileReview?.onReject}
+                onApproveAll={fileReview?.onApproveAll}
+                onOpenFile={fileReview?.onOpenFile}
+                onViewDiff={fileReview?.onViewDiff}
+              />
+            </TimelineRowFrame>
+          );
         default:
           return null;
       }
     },
-    [messages, onRevert, revertDisabled, renderAssistantPartGroup, retry],
+    [messages, onRevert, revertDisabled, renderAssistantPartGroup, retry, todoDock, fileReview],
   );
 
   // PartsDataProvider 值（透传导航和流式文本读取）
@@ -309,7 +343,11 @@ const MessageTimeline: React.FC<MessageTimelineProps> = ({
   if (rows.length === 0) {
     return (
       <PartsDataProvider {...partsDataValue}>
-        <div className="ai-panel__timeline ai-panel__timeline--empty" ref={scrollRef}>
+        <div
+          className="ai-panel__timeline ai-panel__timeline--empty"
+          ref={scrollRef}
+          style={{ overflowY: 'auto', contain: 'layout paint' }}
+        >
           <div className="ai-panel__timeline-empty">暂无消息</div>
         </div>
       </PartsDataProvider>
@@ -322,7 +360,7 @@ const MessageTimeline: React.FC<MessageTimelineProps> = ({
         className="ai-panel__timeline"
         ref={scrollRef}
         onScroll={handleScroll}
-        style={{ overflowY: 'auto', contain: 'strict' }}
+        style={{ overflowY: 'auto', contain: 'layout paint' }}
       >
         <div
           style={{

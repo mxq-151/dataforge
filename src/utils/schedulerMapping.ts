@@ -169,6 +169,38 @@ export interface ResolvedDependency {
 }
 
 /**
+ * 将自定义 jar 依赖拼接为 --jars 参数值（多个以逗号连接）。
+ * - 有 basePath：`basePath(尾斜杠判断) + jarPath(去前导斜杠)`（后端 SparkExecutionStrategy 语义）。
+ * - 无 basePath（旧兼容）：jarPath 以 .jar 结尾视为完整文件路径直接使用；否则 jarPath(去尾斜杠) + '/' + (jarName||name)。
+ * - 忽略无 jarPath 或无处名的条目。
+ */
+export function buildJarsArg(
+  deps: { jarPath?: string; basePath?: string; jarName?: string; name?: string }[],
+): string {
+  const args: string[] = [];
+  for (const d of deps) {
+    if (!d.jarPath || !d.jarPath.trim()) continue;
+
+    if (d.basePath) {
+      const base = d.basePath.endsWith('/') ? d.basePath : `${d.basePath}/`;
+      const path = d.jarPath.replace(/^\/+/, '');
+      args.push(`${base}${path}`);
+      continue;
+    }
+
+    if (d.jarPath.toLowerCase().endsWith('.jar')) {
+      args.push(d.jarPath);
+      continue;
+    }
+    const file = (d.jarName || d.name || '').trim();
+    if (!file) continue;
+    const dir = d.jarPath.endsWith('/') ? d.jarPath.replace(/\/+$/, '') : d.jarPath;
+    args.push(`${dir}/${file}`);
+  }
+  return args.join(',');
+}
+
+/**
  * 根据已解析的前置任务构建一个 DEPENDENT 任务节点，用于设置跨工作流的前置依赖。
  * 生成的节点参数为 AND 关系、任一前置失败则失败、每 10s 轮询。DolphinScheduler 据此
  * 在运行前等待所有引用任务成功完成。
@@ -216,7 +248,7 @@ export function buildDependentTaskNode(
 }
 
 export interface SavedConfig {
-  dependencies: { id: string; name: string; version: string }[];
+  dependencies: { id: string; name: string; version: string; source?: string; jarPath?: string; groupId?: string; scope?: string; autoChoose?: number | null; basePath?: string }[];
   programParams: { id: string; key: string; value: string }[];
   taskParams: { id: string; key: string; value: string }[];
 }
@@ -327,8 +359,10 @@ export function mapCodeFileToTask(
 
   const relativePath = getRelativePath(filePath, rootPath);
   const dirPath = getDirectoryPath(relativePath);
-  const taskName = relativePath || fileName;
-  const workflowName = dirPath || fileName.replace(/\.[^.]+$/, '');
+  // 任务名称只取文件名部分（不含目录、不含扩展名），作为调度任务节点名；
+  // 工作流名称取目录路径，斜杠/反斜杠统一替换为下划线，保证 DS 名称合法
+  const taskName = fileName.replace(/\.[^.]+$/, '');
+  const workflowName = (dirPath || fileName.replace(/\.[^.]+$/, '')).replace(/[/\\]/g, '_');
 
   const baseParams = getDefaultTaskParams(taskType);
   const codeBody = stripFileHeader(codeContent);
@@ -523,13 +557,8 @@ function applyRuntimeParams(
     }
   }
 
-  if (savedConfig.dependencies?.length > 0) {
-    const existing = (taskParams.resourceList as string[]) || [];
-    taskParams.resourceList = [
-      ...existing,
-      ...savedConfig.dependencies.filter(d => d.name).map(d => d.name),
-    ];
-  }
+  // --jars 不在本函数注入：避免进入提交弹窗「其他参数」输入框，改由 SubmitToSchedulerModal 提交时 buildJarsArg 动态拼接。
+  // 依赖（jarDependencyCatalogs）也不应回填到 Spark 任务的 resourceList，提交时仅由 buildJarsArg 生成 --jars 与 classpath 相关参数。
 }
 
 function extractDataDependencies(codeContent: string, header: ReturnType<typeof parseFileHeader>): string[] {

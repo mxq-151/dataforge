@@ -66,7 +66,9 @@ export async function unifiedCompile(options: UnifiedCompileOptions): Promise<Co
         const relativePathForDep = toRelativePath(filePath, rootPath);
         const configRes = await fetchProjectConfigByFilePath(projectId, relativePathForDep);
         if (configRes.code === 200 && configRes.data?.jarDependencyCatalogs?.length) {
-          for (const name of configRes.data.jarDependencyCatalogs) {
+          // 后端返回 DevJarDependency 对象数组，取 artifactId || jarName 作为依赖名
+          for (const dep of configRes.data.jarDependencyCatalogs) {
+            const name = dep.artifactId || dep.jarName;
             if (name) configuredDepNames.push(name);
           }
         }

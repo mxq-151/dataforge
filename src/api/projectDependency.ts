@@ -7,9 +7,9 @@ import type { ProgramParamsVO } from './devProject';
  *
  * 复用「逐文件配置」的 /params 接口。后端要求 filePath 非空，
  * 项目级配置以「项目编码」作为 filePath 来标识（区别于逐文件具体路径）。
- *   GET  /api/development/project/{projectId}/params?filePath={projectCode}
- *   POST /api/development/project/{projectId}/params  (body.filePath = projectCode)
- * 后端返回的是 jarDependencyCatalogs（依赖坐标字符串列表），
+ *   GET /api/development/project/{projectId}/params?filePath={projectCode}
+ *   PUT /api/development/project/{projectId}/params  (body.filePath = projectCode, upsert)
+ * 后端返回的 jarDependencyCatalogs 为 DevJarDependency 对象数组（不再只是坐标字符串），
  * 这里在边界处映射成前端使用的带 id 的依赖项结构。
  *
  * 后端未部署该接口（返回非 200 / 网络错误）时，调用方应优雅降级
@@ -28,13 +28,13 @@ export interface ProjectDependencyConfig {
   dependencies: ProjectDependencyItem[];
 }
 
-// 后端 params 接口返回的是 jarDependencyCatalogs: string[]（仅坐标），
+// 后端 params 接口返回的是 DevJarDependency 对象数组，
 // 这里把它映射成前端使用的带 id 的依赖项结构。
 const toConfig = (vo?: ProgramParamsVO): ProjectDependencyConfig => ({
-  dependencies: (vo?.jarDependencyCatalogs || []).map((name, i) => ({
+  dependencies: (vo?.jarDependencyCatalogs || []).map((dep, i) => ({
     id: `proj_dep_${i}`,
-    name,
-    version: '',
+    name: dep.artifactId || dep.jarName || '',
+    version: dep.version || '',
   })),
 });
 
@@ -64,15 +64,22 @@ export const saveProjectDependencyConfig = (
   projectCode: string,
   body: ProjectDependencyConfig
 ) =>
+  // 后端 DevProjectController 仅暴露 PUT upsert（旧 POST 已移除）
   request<ApiResponse<null>>(`/api/development/project/${projectId}/params`, {
-    method: 'POST',
+    method: 'PUT',
     body: JSON.stringify({
       projectId,
       // 项目级配置以项目编码作为 filePath（后端要求 filePath 非空）
       filePath: projectCode ?? '',
       engine: '',
       datasources: [],
-      jarDependencyCatalogs: body.dependencies.filter((d) => d.name).map((d) => d.name),
+      // 后端 jarDependencyCatalogs 为 DevJarDependency 对象数组
+      jarDependencyCatalogs: body.dependencies.filter((d) => d.name).map((d) => ({
+        jarName: d.name,
+        artifactId: d.name,
+        version: d.version,
+        source: d.source,
+      })),
       runParams: {},
       computeResources: {},
       remark: '',

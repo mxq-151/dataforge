@@ -4,10 +4,12 @@ import EditorArea from '../../components/editor/EditorArea';
 import type { EditorAreaHandle } from '../../types';
 import ExplorerPanel from './ExplorerPanel';
 import SubmitToSchedulerModal from './SubmitToSchedulerModal';
+import { RunLocalModal } from '../../components/modal/RunLocalModal';
 import ExtractMetricsModal from './ExtractMetricsModal';
 import FileHistoryModal from './FileHistoryModal';
 import { gitRestoreFile, gitFileHasChanges, toRepoRelativePath } from '../../api/git';
 import useFileSystem from '../../hooks/useFileSystem';
+import useDevProjectConfig from '../../hooks/useDevProjectConfig';
 import { useAuth } from '../../contexts/AuthContext';
 import { useDataSourceCache } from '../../contexts/DataSourceContext';
 import { StatusBarInfo, Tab, FileNode } from '../../types';
@@ -157,6 +159,10 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
   // 与逐文件依赖合并生效。后端未部署项目级接口时优雅降级为空（仅逐文件行为）。
   const projectDepConfig = useProjectDependencyConfig(project.id, project.projectCode);
 
+  // 逐文件参数配置读写（含依赖 jarPath 等）：用于打开标签时从后端 /params 兜底加载，
+  // 避免 --jars 只依赖本会话手动勾选
+  const devProjectConfig = useDevProjectConfig();
+
   // 打开开发助手模块时加载库表信息
   useEffect(() => {
     refresh();
@@ -298,7 +304,7 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [savedConfigParams, setSavedConfigParams] = useState<Record<string, {
-    dependencies: { id: string; name: string; version: string }[];
+    dependencies: { id: string; name: string; version: string; source?: string; jarPath?: string; groupId?: string; scope?: string; autoChoose?: number | null; basePath?: string }[];
     programParams: { id: string; key: string; value: string }[];
     taskParams: { id: string; key: string; value: string }[];
   }>>({});
@@ -353,7 +359,7 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
     if (!tab) return null;
     const content = editorContent[activeTabId] || '';
     if (!content.trim()) return null;
-    const config = savedConfigParams[activeTabId] as SavedConfig | undefined;
+    const config = savedConfigParams[tab.path] as SavedConfig | undefined;
     return mapCodeFileToTask(tab.name, content, tab.path, projectCwd, config || null);
   }, [activeTabId, tabs, editorContent, savedConfigParams, projectCwd]);
 
@@ -412,11 +418,45 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
     }
   }, [chatBackend.lastFileChangeSeq]);
 
+  // 逐文件 --jars 兜底：标签已打开但本会话未保存过配置（savedConfigParams 缺失）时，
+  // 从后端 /params 拉取已保存的依赖/参数配置并写入内存态，使 --jars 无需手动勾选即可生成。
+  useEffect(() => {
+    if (!activeTabId) return;
+    const tab = tabs.find(t => t.id === activeTabId);
+    if (!tab) return;
+    if (savedConfigParams[tab.path]) return; // 内存态已有，无需兜底
+    if (!projectCwd) return;
+    let cancelled = false;
+    // 后端持久化/查询按 (project_id, file_path) 联合键，file_path 需为项目内相对路径
+    // （unifiedCompile 也用相对路径回读），故转相对后再请求
+    const relPath = toRepoRelativePath(tab.path, projectCwd);
+    devProjectConfig.fetchByFilePath(project.id, relPath).then(loaded => {
+      if (cancelled) return;
+      if (!loaded) return;
+      setSavedConfigParams(prev => {
+        // 若加载期间用户已保存则不再覆盖
+        if (prev[tab.path]) return prev;
+        return { ...prev, [tab.path]: {
+          dependencies: loaded.dependencies,
+          programParams: loaded.programParams,
+          taskParams: loaded.taskParams,
+        } };
+      });
+    });
+    return () => { cancelled = true; };
+    // activeTabId 切换时重新评估；savedConfigParams 更新后条件自然放行
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTabId, tabs, project.id, savedConfigParams]);
+
   // 提取的运行/编译/取消执行逻辑
   const {
     handleRunProgram,
     handleCompileDryRun,
     handleCancelExecution,
+    handleRunLocal,
+    handleLocalRunExecute,
+    handleCancelLocalRun,
+    pendingLocalRun,
     isRunning,
     isCompiling,
     executionHistory,
@@ -848,7 +888,7 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
   }, [activeTabId, tabs, saveFile, user]);
 
   const handleSaveConfigParams = useCallback((filePath: string, data: {
-    dependencies: { id: string; name: string; version: string }[];
+    dependencies: { id: string; name: string; version: string; source?: string; jarPath?: string; groupId?: string; scope?: string; autoChoose?: number | null; basePath?: string }[];
     programParams: { id: string; key: string; value: string }[];
     taskParams: { id: string; key: string; value: string }[];
   }) => {
@@ -1038,6 +1078,7 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
           onChange={handleEditorChange}
           statusInfo={statusInfo}
           onRunProgram={handleRunProgram}
+          onRunLocal={handleRunLocal}
           onCompileDryRun={handleCompileDryRun}
           onSubmitToScheduler={() => setSubmitModalVisible(true)}
           onExtractMetrics={handleExtractMetrics}
@@ -1112,7 +1153,7 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
         fileName={tabs.find(t => t.id === activeTabId)?.name || ''}
         codeContent={currentContent}
         mapping={currentMapping}
-        savedConfig={activeTabId ? (savedConfigParams[activeTabId] as SavedConfig | null) ?? null : null}
+        savedConfig={activeTabId ? (savedConfigParams[tabs.find(t => t.id === activeTabId)?.path || ''] as SavedConfig | null) ?? null : null}
         filePath={tabs.find(t => t.id === activeTabId)?.path}
         rootPath={projectCwd}
         projectCode={project.projectCode}
@@ -1134,6 +1175,13 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
         onSuccess={(_projectName, workflowName) => {
           console.log(`已提交到调度系统，工作流: ${workflowName}`);
         }}
+      />
+      <RunLocalModal
+        open={!!pendingLocalRun}
+        defaultMainClass={pendingLocalRun?.defaultMainClass ?? ''}
+        defaultArgs={pendingLocalRun?.defaultArgs ?? ''}
+        onRun={handleLocalRunExecute}
+        onCancel={handleCancelLocalRun}
       />
       <ExtractMetricsModal
         visible={extractMetricsVisible}

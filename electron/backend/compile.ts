@@ -92,6 +92,28 @@ function findProjectPkgRoot(filePath: string, packageName: string): string | nul
 }
 
 /**
+ * 从源码文件所在目录向上定位项目中的 utils 目录。
+ * utils 可能位于不同层级（如 {pkgRoot}/code/utils 或 {srcRoot}/test_project/ads/code/utils），
+ * 因此从即可源码文件所在目录逐级向上、在 srcRoot 范围内查找名为 utils 的目录，
+ * 避免硬编码首段包名拼接 code/utils 导致定位失败。
+ */
+function locateUtilsDir(startDir: string, srcRoot: string): string | null {
+  let dir = path.resolve(startDir);
+  const srcRootResolved = path.resolve(srcRoot);
+  while (true) {
+    const cand = path.join(dir, 'utils');
+    if (fs.existsSync(cand) && fs.statSync(cand).isDirectory()) {
+      return cand;
+    }
+    if (dir === srcRootResolved) break; // 不越过 Maven sourceDirectory 根
+    const parent = path.dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+  return null;
+}
+
+/**
  * 将项目 code/utils 目录下的常用工具类源码递归拷贝进编译工程 src 目录，
  * 返回拷贝数量。utils 目录为扁平结构（java/scala 工具类同放 code/utils，
  * 不再按语言分子目录），按扩展名过滤目标语言。
@@ -99,14 +121,15 @@ function findProjectPkgRoot(filePath: string, packageName: string): string | nul
 async function copyUtilSources(opts: {
   /** 编译工程源码根 {buildDir}/src */
   destSrc: string;
-  /** 首包段（项目根目录名） */
-  pkgRootSeg: string;
-  /** 用户工作区 {pkgRoot}/code/utils 目录 */
+  /** utils 相对 Maven sourceDirectory 根的包路径（如 test_project/ads/code/utils） */
+  relPkgDir: string;
+  /** utils 源码目录（工作区中定位到的真实路径） */
   utilsSrcDir: string;
   /** 要拷贝的语言扩展名，如 ['java'] / ['scala'] */
   exts: string[];
 }): Promise<number> {
-  const { destSrc, pkgRootSeg, utilsSrcDir, exts } = opts;
+  const { destSrc, relPkgDir, utilsSrcDir, exts } = opts;
+  const destBase = path.join(destSrc, relPkgDir);
   let copied = 0;
   const stack = [utilsSrcDir];
   while (stack.length > 0) {
@@ -126,7 +149,7 @@ async function copyUtilSources(opts: {
       const ext = path.extname(entry.name).slice(1);
       if (!exts.includes(ext.toLowerCase())) continue;
       const rel = path.relative(utilsSrcDir, p);
-      const target = path.join(destSrc, pkgRootSeg, 'code', 'utils', rel);
+      const target = path.join(destBase, rel);
       await fsp.mkdir(path.dirname(target), { recursive: true });
       try {
         await fsp.copyFile(p, target);
@@ -234,14 +257,16 @@ export async function compileJavaScala(req: CompileRequest): Promise<CompileResu
   if (req.filePath && req.packageName && req.packageName !== 'default') {
     const pkgRoot = findProjectPkgRoot(req.filePath, req.packageName);
     if (pkgRoot) {
-      const pkgRootSeg = req.packageName.split('.')[0];
+      // 工作区 Maven sourceDirectory 根（首包目录的父目录），utils 相对路径按此根推导
+      const srcRoot = path.dirname(pkgRoot);
       const srcOut = path.join(buildDir, 'src');
-      // 规范：java/scala 常用工具类统一放 code/utils 下
-      const utilsSrc = path.join(pkgRoot, 'code', 'utils');
-      if (fs.existsSync(utilsSrc)) {
-        // 同一 code/utils 目录，按扩展名区分 java/scala 分别统计并拷贝
-        hasUtilsScala = (await copyUtilSources({ destSrc: srcOut, pkgRootSeg, utilsSrcDir: utilsSrc, exts: ['scala'] })) > 0;
-        hasUtilsJava = (await copyUtilSources({ destSrc: srcOut, pkgRootSeg, utilsSrcDir: utilsSrc, exts: ['java'] })) > 0;
+      // 从源码文件所在目录向上定位真实 utils 目录，并保持其相对 src 根的包路径，
+      // 使工具类与其源码 import 的包（如 test_project.ads.code.utils）一致。
+      const utilsSrc = locateUtilsDir(path.dirname(req.filePath), srcRoot);
+      if (utilsSrc) {
+        const relPkgDir = path.relative(srcRoot, utilsSrc).split(path.sep).join('/');
+        hasUtilsScala = (await copyUtilSources({ destSrc: srcOut, relPkgDir, utilsSrcDir: utilsSrc, exts: ['scala'] })) > 0;
+        hasUtilsJava = (await copyUtilSources({ destSrc: srcOut, relPkgDir, utilsSrcDir: utilsSrc, exts: ['java'] })) > 0;
       }
     }
   }
@@ -334,7 +359,21 @@ export async function compileJavaScala(req: CompileRequest): Promise<CompileResu
         .replace('{deps}', depsXml.trimEnd())
         .replace('{scala_plugin}', scalaPlugin.trimEnd()))
     : pomDefault;
-  await fsp.writeFile(path.join(buildDir, 'pom.xml'), pomContent, 'utf8');
+
+  // 源码统一写入 {buildDir}/src，若 pom 未显式声明 <sourceDirectory>，则强制注入
+  // Maven 默认只扫描 src/main/java 与 src/main/scala，缺失该配置会导致源码不被编译、
+  // 打包出的 jar 不含字节文件（只有 manifest）。与 ensurePomReady 的注入逻辑保持一致。
+  const sourceDirInject = `<sourceDirectory>\${project.basedir}/src</sourceDirectory>`;
+  let injectedPom = pomContent;
+  if (!/<sourceDirectory\b/.test(injectedPom)) {
+    if (/<build\b[^>]*>/.test(injectedPom)) {
+      injectedPom = injectedPom.replace(/(<build\b[^>]*>)/, `$1\n        ${sourceDirInject}`);
+    } else {
+      injectedPom = injectedPom.replace(/<\/project>\s*$/, `    <build>\n        ${sourceDirInject}\n    </build>\n</project>`);
+    }
+  }
+
+  await fsp.writeFile(path.join(buildDir, 'pom.xml'), injectedPom, 'utf8');
 
   const cmdStr = `JAVA_HOME=${javaHome} ${mvnBin} clean package -DskipTests`;
   const r = await runMvn(mvnBin, ['clean', 'package', '-DskipTests'], buildDir, { JAVA_HOME: javaHome });

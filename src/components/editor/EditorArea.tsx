@@ -48,6 +48,7 @@ interface EditorAreaProps {
   language?: string;
   onConfigureDependencies?: () => void;
   onRunProgram?: (selectedCode?: string) => void;
+  onRunLocal?: () => void;
   onCompileDryRun?: () => void;
   onConfigureRunParams?: () => void;
   onConfigureParams?: () => void;
@@ -60,7 +61,7 @@ interface EditorAreaProps {
   /** 判断文件是否有未提交变更（用于是否置灰「撤销文件变更」） */
   onCheckFileChanged?: (filePath: string) => Promise<boolean>;
   onSaveConfigParams?: (filePath: string, data: {
-    dependencies: { id: string; name: string; version: string }[];
+    dependencies: { id: string; name: string; version: string; source?: string; jarPath?: string; groupId?: string; scope?: string; autoChoose?: number | null; basePath?: string }[];
     programParams: { id: string; key: string; value: string }[];
     taskParams: { id: string; key: string; value: string }[];
   }) => void;
@@ -106,6 +107,7 @@ const EditorArea = forwardRef<EditorAreaHandle, EditorAreaProps>(({
   statusInfo,
   language,
   onRunProgram,
+  onRunLocal,
   onCompileDryRun,
   onConfigureParams,
   onSubmitToScheduler,
@@ -372,6 +374,7 @@ const EditorArea = forwardRef<EditorAreaHandle, EditorAreaProps>(({
   // ========== 编辑器 Ref 回调（供右键菜单等使用）==========
 
   const onRunProgramRef = useRef(onRunProgram);
+  const onRunLocalRef = useRef(onRunLocal);
   const onCompileDryRunRef = useRef(onCompileDryRun);
   const onSubmitToSchedulerRef = useRef(onSubmitToScheduler);
   const onExtractMetricsRef = useRef(onExtractMetrics);
@@ -379,6 +382,7 @@ const EditorArea = forwardRef<EditorAreaHandle, EditorAreaProps>(({
   const onRevertFileRef = useRef(onRevertFile);
   const onCheckFileChangedRef = useRef(onCheckFileChanged);
   onRunProgramRef.current = onRunProgram;
+  onRunLocalRef.current = onRunLocal;
   onCompileDryRunRef.current = onCompileDryRun;
   onSubmitToSchedulerRef.current = onSubmitToScheduler;
   onExtractMetricsRef.current = onExtractMetrics;
@@ -1118,6 +1122,18 @@ const EditorArea = forwardRef<EditorAreaHandle, EditorAreaProps>(({
           >
             运行程序
           </div>
+          {/* 本地运行仅对 Java/Scala 文件显示 */}
+          {(currentLanguage === 'java' || currentLanguage === 'scala') && (
+            <div
+              className="editor-area__context-item"
+              onMouseDown={(e) => { e.preventDefault(); onRunLocalRef.current?.(); setContextMenu(null); }}
+              style={{ padding: '6px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
+              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#094771')}
+              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+            >
+              本地运行
+            </div>
+          )}
           {/* 编译程序仅对 Java/Scala 文件显示 */}
           {currentLanguage !== 'sql' && (
           <div

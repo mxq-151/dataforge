@@ -1,13 +1,15 @@
 import { getApiHost, getAuthToken } from './index';
 import { bearerHeader, ensureOk } from './httpCore';
 import type { ApiResponse } from './types';
+import type { DevJarDependency } from './devProject';
 
 export interface CodeExecutionRequest {
   codeContent?: string;
   codeType: string;
   engineType: string;
   datasources?: string[];
-  jarDependencyCatalogs?: string[];
+  /** 后端为 DevJarDependency 对象数组，非坐标字符串列表 */
+  jarDependencyCatalogs?: DevJarDependency[];
   mainClass?: string;
   fileName?: string;
   uploadedJarPath?: string;

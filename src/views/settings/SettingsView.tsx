@@ -323,19 +323,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                   readOnly={!isEditing}
                   placeholder="https://github.com/example/repo.git 或 git@github.com:example/repo.git"
                 />
-                <span className="settings-field__hint">Git 仓库的远程地址（支持 HTTPS 和 SSH 协议）</span>
-              </div>
-              <div className="settings-field">
-                <label className="settings-field__label">本地目录名称</label>
-                <input
-                  type="text"
-                  className={`settings-field__input ${!isEditing ? 'settings-field__input--readonly' : ''}`}
-                  value={getFieldValue('gitRepoDirName')}
-                  onChange={e => handleFieldChange('gitRepoDirName', e.target.value)}
-                  readOnly={!isEditing}
-                  placeholder="my-repo"
-                />
-                <span className="settings-field__hint">Git 仓库在本地克隆后的目录名称。项目工作目录 = 基础工作目录 + 本地目录名称 + 项目编码</span>
+                <span className="settings-field__hint">Git 仓库的远程地址（支持 HTTPS 和 SSH 协议）。留空时在本地初始化名为 warehouse 的仓库</span>
               </div>
               <div className="settings-field">
                 <label className="settings-field__label">SSH 私钥路径（免密配置）</label>
