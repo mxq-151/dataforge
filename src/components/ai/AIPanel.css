@@ -2771,6 +2771,8 @@
 .ai-panel__timeline-assistant-content {
   min-width: 0;
   overflow: hidden;
+  /* 模块缩进：助手模块整体向左缩进，对齐开发助手文件浏览器的缩进风格 */
+  padding-left: 16px;
 }
 
 .ai-panel__timeline-retry {

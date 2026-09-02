@@ -4,6 +4,7 @@ import {
   pollUntilComplete, shouldUseAsyncExecution,
 } from '../api/codeExecution';
 import type { CodeExecutionResult, CodeExecutionRequest } from '../api/codeExecution';
+import type { DevJarDependency } from '../api/devProject';
 
 // ─── 类型定义 ────────────────────────────────────────────────
 
@@ -16,7 +17,8 @@ export interface TaskDefinition {
   codeType: string;
   engineType: string;
   datasources?: string[];
-  jarDependencyCatalogs?: string[];
+  /** 后端为 DevJarDependency 对象数组，非坐标字符串列表 */
+  jarDependencyCatalogs?: DevJarDependency[];
   runParams?: Record<string, unknown>;
   computeResources?: Record<string, unknown>;
   remark?: string;
@@ -250,6 +252,7 @@ export class TaskExecutionService {
         {
           codeType: def.codeType,
           engineType: def.engineType,
+          datasources: def.datasources,
           mainClass: def.mainClass || '',
           fileName: def.fileName || '',
           uploadedJarPath: def.uploadedJarPath || '',

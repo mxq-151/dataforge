@@ -15,7 +15,7 @@ import { invoke } from '../bridge/ipc';
 import { listen } from '../bridge/event';
 
 interface SavedConfigLike {
-  dependencies: { id: string; name: string; version: string; source?: string }[];
+  dependencies: { id: string; name: string; version: string; source?: string; jarPath?: string; groupId?: string; scope?: string; autoChoose?: number | null }[];
   programParams: { id: string; key: string; value: string }[];
   taskParams: { id: string; key: string; value: string }[];
 }
@@ -86,6 +86,35 @@ function splitArgs(raw: string): string[] {
 }
 
 const EXT_TO_CODE_TYPE: Record<string, string> = { sql: 'sql', java: 'java', scala: 'scala', py: 'python' };
+
+// 引擎 → 程序类型，用于回填 jarDependencyCatalogs 的 programType（后端 @NotBlank）
+const ENGINE_TO_PROGRAM_TYPE: Record<string, string> = {
+  spark: 'SPARK', flink: 'FLINK', flink_stream: 'FLINK', kyuubi: 'SPARK',
+  hive: 'HIVE', java: 'JAVA', scala: 'SCALA', python: 'PYTHON', mr: 'MAPREDUCE',
+};
+
+/**
+ * 将前端依赖项映射为后端 DevJarDependency 对象结构（jarDependencyCatalogs 不再传坐标字符串）。
+ * Java/Scala 只透传 source=custom 的自定义 jar；其余（SQL/Python）透传全部命名依赖。
+ */
+const toJarDependencyCatalogs = (
+  deps: SavedConfigLike['dependencies'],
+  options: { onlyCustom: boolean; engineType?: string },
+): { jarName: string; artifactId: string; version?: string; source?: string; jarPath?: string; groupId?: string; scope?: string; programType?: string }[] => {
+  const programType = ENGINE_TO_PROGRAM_TYPE[(options.engineType || '').trim().toLowerCase()];
+  return deps
+    .filter(d => d.name && (!options.onlyCustom || d.source === 'custom'))
+    .map(d => ({
+      jarName: d.name,
+      artifactId: d.name,
+      version: d.version,
+      source: d.source,
+      jarPath: d.jarPath,
+      groupId: d.groupId,
+      scope: d.scope,
+      ...(programType ? { programType } : {}),
+    }));
+};
 
 function resolveDataSource(code: string, header: { dataSource?: string } | null): string | null {
   if (header?.dataSource) return header.dataSource;
@@ -411,7 +440,8 @@ export function useProgramRunner({
 
     const header = parseFileHeader(content);
     const engineType = header?.engine || (isJavaOrScala ? 'spark' : 'kyuubi');
-    const resolvedDataSource = isJavaOrScala ? null : resolveDataSource(content, header);
+    // 数据源从文件头解析（Java/Scala 同样可能有 @数据源 代码头）
+    const resolvedDataSource = resolveDataSource(content, header);
 
     const fileParams = savedConfigParams[filePath];
     const runParams: Record<string, unknown> = {};
@@ -419,12 +449,12 @@ export function useProgramRunner({
     const computeResources: Record<string, unknown> = {};
     (fileParams?.taskParams || []).forEach(p => { if (p.key) computeResources[p.key] = p.value; });
 
-    // 公共参数
-    const allDepNames = fileParams?.dependencies?.filter(d => d.name).map(d => d.name) || [];
+    // 公共参数：jarDependencyCatalogs 传后端 DevJarDependency 对象数组（非坐标字符串数组）
     const commonParams = {
-      jarDependencyCatalogs: isJavaOrScala
-        ? fileParams?.dependencies?.filter(d => d.name && d.source === 'custom').map(d => d.name) || []
-        : allDepNames,
+      jarDependencyCatalogs: toJarDependencyCatalogs(
+        fileParams?.dependencies ? fileParams.dependencies.filter(d => d.name) : [],
+        { onlyCustom: isJavaOrScala, engineType },
+      ),
       runParams: Object.keys(runParams).length > 0 ? runParams : undefined,
       computeResources: Object.keys(computeResources).length > 0 ? computeResources : undefined,
       remark: header?.remark || '',
@@ -480,6 +510,7 @@ export function useProgramRunner({
           code: content,
           codeType,
           engineType,
+          datasources: resolvedDataSource ? [resolvedDataSource] : undefined,
           sqlSnippet: fileName,
           jarData: jarUint8Array,
           jarFileName,
