@@ -16,6 +16,7 @@
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder",
     "start": "electron .",
+    "postinstall": "patch-package",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -122,6 +123,7 @@
     "jsdom": "^30.0.1",
     "lucide-react": "^1.34.0",
     "monaco-languageclient": "^10.7.0",
+    "patch-package": "^8.0.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-file-navigator": "^1.0.2-dev.1",
