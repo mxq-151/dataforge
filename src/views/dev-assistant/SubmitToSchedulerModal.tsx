@@ -651,7 +651,7 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
   }, [dsApi, selectedProjectCode]);
 
   /**
-   * 扫描指定调度项目中所有工作流的任务节点，确认代码头 @依赖 声明的每个前置任务是否存在。
+   * 扫描提交目标项目及各依赖声明指定项目中的所有工作流任务节点，确认代码头 @依赖 声明的每个前置任务是否存在。
    * 返回 Map，key 为 {调度项目}.{前置任务名称}，value 为解析结果；找不到的 found=false。
    * 仅当代码头声明了 @依赖 时才真正发起查询，否则返回空 Map。
    */
@@ -659,40 +659,54 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
     async (projectCodeNum: number | null): Promise<Map<string, DependencyResolution>> => {
       const declaredDeps = currentMapping?.headerDependencies || [];
       const resultMap = new Map<string, DependencyResolution>();
-      if (!dsApi || !projectCodeNum || declaredDeps.length === 0) return resultMap;
+      if (!dsApi || declaredDeps.length === 0) return resultMap;
 
-      try {
-        const wfRes = await dsApi.workflowDefinition.list(projectCodeNum, { pageNo: 1, pageSize: 100 });
-        const defs = wfRes.code === 0 && wfRes.data?.totalList ? wfRes.data.totalList : [];
-        // taskName(净化后) -> { 项目code, 工作流code, 任务code }（同名只取首个）
-        const byName = new Map<string, { projectCode: number; definitionCode: number; taskCode: number }>();
-        for (const def of defs) {
-          try {
-            const dRes = await dsApi.workflowDefinition.detail(projectCodeNum, def.code);
-            if (dRes.code === 0 && dRes.data) {
-              for (const node of dRes.data.taskNodes) {
-                const san = sanitizeDsName(node.name);
-                if (san && !byName.has(san)) {
-                  byName.set(san, { projectCode: projectCodeNum, definitionCode: def.code, taskCode: node.code });
+      // 需要扫描的项目集合：提交目标项目 + 各依赖声明中指定的 {调度项目}
+      const scanProjectCodes = new Set<number>();
+      if (projectCodeNum != null) scanProjectCodes.add(projectCodeNum);
+      for (const dep of declaredDeps) {
+        const matched = dep.projectCode ? projects.find(p => p.name === dep.projectCode) : null;
+        if (matched?.code != null) scanProjectCodes.add(matched.code);
+      }
+
+      // taskName(净化后) -> { 项目code, 工作流code, 任务code }（同名只取首个）
+      const byName = new Map<string, { projectCode: number; definitionCode: number; taskCode: number }>();
+      for (const scanCode of scanProjectCodes) {
+        try {
+          // 分页拉取项目内全部工作流，避免前置任务所在工作流在第一页之外被漏检
+          const pageSize = 100;
+          for (let page = 1; ; page++) {
+            const wfRes = await dsApi.workflowDefinition.list(scanCode, { pageNo: page, pageSize });
+            const defs = wfRes.code === 0 && wfRes.data?.totalList ? wfRes.data.totalList : [];
+            for (const def of defs) {
+              try {
+                const dRes = await dsApi.workflowDefinition.detail(scanCode, def.code);
+                if (dRes.code === 0 && dRes.data) {
+                  for (const node of dRes.data.taskNodes) {
+                    const san = sanitizeDsName(node.name);
+                    if (san && !byName.has(san)) {
+                      byName.set(san, { projectCode: scanCode, definitionCode: def.code, taskCode: node.code });
+                    }
+                  }
                 }
-              }
+              } catch { /* 单个工作流查询失败则跳过 */ }
             }
-          } catch { /* 单个工作流查询失败则跳过 */ }
-        }
+            // 当一页返回数不足 pageSize 时说明已是最后一页
+            if (defs.length < pageSize) break;
+          }
+        } catch { /* 项目扫描失败则跳过 */ }
+      }
 
-        for (const dep of declaredDeps) {
-          const label = [dep.projectCode, dep.taskName].filter(Boolean).join('.');
-          const hit = byName.get(sanitizeDsName(dep.taskName));
-          resultMap.set(label, hit
-            ? { found: true, projectCode: hit.projectCode, definitionCode: hit.definitionCode, taskCode: hit.taskCode, taskName: dep.taskName, label }
-            : { found: false, projectCode: null, definitionCode: null, taskCode: null, taskName: dep.taskName, label });
-        }
-      } catch {
-        // 查询失败时视为全部未解析，交由上层按"前置任务不存在"处理
+      for (const dep of declaredDeps) {
+        const label = [dep.projectCode, dep.taskName].filter(Boolean).join('.');
+        const hit = byName.get(sanitizeDsName(dep.taskName));
+        resultMap.set(label, hit
+          ? { found: true, projectCode: hit.projectCode, definitionCode: hit.definitionCode, taskCode: hit.taskCode, taskName: dep.taskName, label }
+          : { found: false, projectCode: null, definitionCode: null, taskCode: null, taskName: dep.taskName, label });
       }
       return resultMap;
     },
-    [dsApi, currentMapping],
+    [dsApi, currentMapping, projects],
   );
 
   useEffect(() => {
