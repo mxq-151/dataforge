@@ -716,6 +716,50 @@ export const gitRestoreFile = async (
   }
 };
 
+/**
+ * 批量撒销（丢弃）文件的未提交改动，恢复到上次提交(HEAD)状态。
+ *
+ * 按文件状态分组处理：
+ *   - 已跟踪文件（modified / deleted / renamed）：`git restore --staged --worktree`
+ *     同时清空暂存区与工作区改动（deleted 会从 index 恢复文件）；
+ *   - 未跟踪 / 已暂存新增文件（untracked / added）：HEAD 中本就不存在该文件，
+ *     restore 无法生效，直接将其从磁盘删除。
+ *
+ * files 需来自 gitStatus 返回的状态（含 path 与 status）。任一步失败即抛错，由调用方提示。
+ */
+export const gitDiscardFiles = async (
+  rootPath: string,
+  files: Pick<GitFileStatus, 'path' | 'status'>[]
+): Promise<void> => {
+  const pathsToRestore: string[] = [];
+  const pathsToDelete: string[] = [];
+
+  for (const f of files) {
+    if (f.status === 'untracked' || f.status === 'added') {
+      pathsToDelete.push(f.path);
+    } else {
+      pathsToRestore.push(f.path);
+    }
+  }
+
+  if (pathsToRestore.length > 0) {
+    const out = await Command.create(
+      'git',
+      ['-C', rootPath, 'restore', '--staged', '--worktree', '--', ...pathsToRestore]
+    ).execute();
+    if (out.code !== 0) {
+      throw new Error(out.stderr || 'git restore failed');
+    }
+  }
+
+  if (pathsToDelete.length > 0) {
+    const { remove } = await import('../bridge/fs');
+    for (const p of pathsToDelete) {
+      await remove(joinPath(rootPath, p));
+    }
+  }
+};
+
 /** 判断文件是否有未提交的变更（已跟踪文件的改动；untracked/未纳入管理视为无可撤销变更） */
 export const gitFileHasChanges = async (
   rootPath: string,

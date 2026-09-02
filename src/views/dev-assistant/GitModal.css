@@ -589,10 +589,40 @@
 
 .git-modal__footer {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
   padding: 14px 20px;
   border-top: 1px solid #3c3c3c;
+}
+
+.git-modal__footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.git-modal__discard-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 16px;
+  background-color: rgba(244, 71, 71, 0.15);
+  border: 1px solid rgba(244, 71, 71, 0.4);
+  border-radius: 4px;
+  color: #f44747;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.git-modal__discard-btn:hover:not(:disabled) {
+  background-color: rgba(244, 71, 71, 0.25);
+}
+
+.git-modal__discard-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .git-modal__cancel-btn {

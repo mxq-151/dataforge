@@ -59,6 +59,8 @@ interface ExplorerPanelProps {
   onCheckFileChanged?: (filePath: string) => Promise<boolean>;
   onAISummarize?: (files: string[], diffs: string) => Promise<string>;
   onBeforeCommit?: () => { valid: boolean; message: string | null };
+  /** Git 模态框撤销变更成功后的回调，入参为受影响文件的绝对路径 */
+  onDiscarded?: (filePaths: string[]) => void;
   style?: React.CSSProperties;
   onCollapsedChange?: (collapsed: boolean) => void;
 }
@@ -188,6 +190,7 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
   onCheckFileChanged,
   onAISummarize,
   onBeforeCommit,
+  onDiscarded,
   style,
   onCollapsedChange,
 }) => {
@@ -1068,6 +1071,7 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
         onClose={handleCloseGitModal}
         onAISummarize={onAISummarize}
         onBeforeCommit={onBeforeCommit}
+        onDiscarded={onDiscarded}
         onCommitted={() => {
           // 提交/拉取/回滚后可触发外部刷新（如需刷新文件树可在此回调）
         }}

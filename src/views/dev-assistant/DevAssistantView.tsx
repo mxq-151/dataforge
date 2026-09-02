@@ -803,6 +803,24 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
     }
   }, [activeTabId, tabs]);
 
+  // Git 模态框「撒销变更」后：刷新受影响文件的编辑器内容，被删除的文件则关闭对应标签页
+  const handleGitDiscarded = useCallback(async (filePaths: string[]) => {
+    if (filePaths.length === 0) return;
+    await refreshTree();
+    for (const fp of filePaths) {
+      const tab = tabs.find(t => samePath(t.path, fp));
+      if (!tab) continue;
+      try {
+        const content = await readFileContent(fp);
+        setEditorContent(prev => ({ ...prev, [tab.id]: content }));
+        setTabs(prev => prev.map(t => t.id === tab.id ? { ...t, isModified: false } : t));
+      } catch {
+        // 文件已被撤销删除（如未跟踪/新增文件被丢弃），关闭对应标签页
+        handleTabClose(tab.id);
+      }
+    }
+  }, [tabs, refreshTree, readFileContent, handleTabClose]);
+
   const handleDeleteNode = useCallback(async (nodePath: string, nodeType: 'file' | 'folder'): Promise<boolean> => {
     const success = await deleteNode(nodePath, nodeType);
     if (success) {
@@ -1130,6 +1148,7 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
           onShowHistory={(fp) => setHistoryTarget({ filePath: fp })}
           onRevertFile={handleRevertFile}
           onCheckFileChanged={handleCheckFileChanged}
+          onDiscarded={handleGitDiscarded}
           // git 提交只负责版本管理，不验证 SQL 头部数据源是否可用；
           // 数据源可用性校验应放在「提交到调度系统」流程（SubmitToSchedulerModal），
           // 否则会因活动编辑器的 SQL 头部引用未接入的数据源而错误阻断 git commit。

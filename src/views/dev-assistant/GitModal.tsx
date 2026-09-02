@@ -22,9 +22,11 @@ import {
   gitPull,
   gitLog,
   gitReset,
+  gitDiscardFiles,
   type GitFileStatus,
   type GitLogEntry,
 } from '../../api/git';
+import { joinPath } from '../../utils/pathUtils';
 import './GitModal.css';
 
 type TabKey = 'changes' | 'history' | 'remote';
@@ -36,6 +38,8 @@ interface GitModalProps {
   onAISummarize?: (files: string[], diffs: string) => Promise<string>;
   onBeforeCommit?: () => { valid: boolean; message: string | null };
   onCommitted?: () => void;
+  /** 撤销变更成功后回调，入参为受影响文件的绝对路径 */
+  onDiscarded?: (filePaths: string[]) => void;
 }
 
 const GitModal: React.FC<GitModalProps> = ({
@@ -45,6 +49,7 @@ const GitModal: React.FC<GitModalProps> = ({
   onAISummarize,
   onBeforeCommit,
   onCommitted,
+  onDiscarded,
 }) => {
   const [activeTab, setActiveTab] = useState<TabKey>('changes');
 
@@ -55,6 +60,8 @@ const GitModal: React.FC<GitModalProps> = ({
   const [isLoadingStatus, setIsLoadingStatus] = useState(false);
   const [isCommitting, setIsCommitting] = useState(false);
   const [isSummarizing, setIsSummarizing] = useState(false);
+  const [isDiscarding, setIsDiscarding] = useState(false);
+  const [discardConfirm, setDiscardConfirm] = useState(false);
 
   // 历史页状态
   const [logEntries, setLogEntries] = useState<GitLogEntry[]>([]);
@@ -265,6 +272,27 @@ const GitModal: React.FC<GitModalProps> = ({
     else loadStatus();
   }, [activeTab, loadStatus, loadLog]);
 
+  const handleDiscard = useCallback(async () => {
+    if (!rootPath || selectedFiles.size === 0) return;
+    setIsDiscarding(true);
+    clearTransient();
+    try {
+      const targets = gitFiles.filter(f => selectedFiles.has(f.path));
+      await gitDiscardFiles(rootPath, targets);
+      setSuccessMsg(`已撤销 ${targets.length} 个文件的变更`);
+      setDiscardConfirm(false);
+      await loadStatus();
+      onCommitted?.();
+      if (rootPath) {
+        onDiscarded?.(targets.map(f => joinPath(rootPath, f.path)));
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '撤销变更失败');
+    } finally {
+      setIsDiscarding(false);
+    }
+  }, [rootPath, selectedFiles, gitFiles, clearTransient, loadStatus, onCommitted, onDiscarded]);
+
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
       onClose();
@@ -424,6 +452,32 @@ const GitModal: React.FC<GitModalProps> = ({
                 </div>
               </div>
 
+              {discardConfirm && (
+                <div className="git-modal__confirm-bar">
+                  <AlertTriangle size={14} />
+                  <span>
+                    确认撤销 {selectedFiles.size} 个文件的变更？未跟踪/新增的文件将被删除，此操作不可恢复
+                  </span>
+                  <div className="git-modal__confirm-actions">
+                    <button
+                      className="git-modal__small-btn git-modal__small-btn--cancel"
+                      onClick={() => setDiscardConfirm(false)}
+                      disabled={isDiscarding}
+                    >
+                      取消
+                    </button>
+                    <button
+                      className="git-modal__small-btn git-modal__small-btn--danger"
+                      onClick={handleDiscard}
+                      disabled={isDiscarding}
+                    >
+                      {isDiscarding ? <Loader2 size={12} className="git-modal__spin" /> : <RotateCcw size={12} />}
+                      确认撤销
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="git-modal__field">
                 <div className="git-modal__label-row">
                   <label className="git-modal__label">提交信息</label>
@@ -570,26 +624,37 @@ const GitModal: React.FC<GitModalProps> = ({
 
         {activeTab === 'changes' && (
           <div className="git-modal__footer">
-            <button className="git-modal__cancel-btn" onClick={onClose}>
-              取消
-            </button>
             <button
-              className="git-modal__commit-btn"
-              onClick={handleCommit}
-              disabled={isCommitting || selectedFiles.size === 0 || !commitMessage.trim()}
+              className="git-modal__discard-btn"
+              onClick={() => { setDiscardConfirm(true); clearTransient(); }}
+              disabled={isCommitting || isDiscarding || selectedFiles.size === 0 || isLoadingStatus}
+              title="撤销选中文件的未提交变更，未跟踪/新增文件将被删除"
             >
-              {isCommitting ? (
-                <>
-                  <Loader2 size={14} className="git-modal__spin" />
-                  <span>提交中...</span>
-                </>
-              ) : (
-                <>
-                  <GitCommit size={14} />
-                  <span>提交</span>
-                </>
-              )}
+              <RotateCcw size={14} />
+              <span>撤销变更</span>
             </button>
+            <div className="git-modal__footer-actions">
+              <button className="git-modal__cancel-btn" onClick={onClose}>
+                取消
+              </button>
+              <button
+                className="git-modal__commit-btn"
+                onClick={handleCommit}
+                disabled={isCommitting || selectedFiles.size === 0 || !commitMessage.trim()}
+              >
+                {isCommitting ? (
+                  <>
+                    <Loader2 size={14} className="git-modal__spin" />
+                    <span>提交中...</span>
+                  </>
+                ) : (
+                  <>
+                    <GitCommit size={14} />
+                    <span>提交</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         )}
       </div>
