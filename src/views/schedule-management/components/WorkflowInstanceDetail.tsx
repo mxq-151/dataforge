@@ -169,17 +169,20 @@ const WorkflowInstanceDetail: React.FC<WorkflowInstanceDetailProps> = ({
   const [environments, setEnvironments] = useState<DSEnvironment[]>([]);
   const [workerGroups, setWorkerGroups] = useState<DSWorkerGroup[]>([]);
 
-  // 加载环境与 Worker 组，供任务配置/详情弹窗回显环境配置与 Worker 组
+  // 加载环境与 Worker 组，供任务配置/详情弹窗回显环境配置与 Worker 组。
+  // StrictMode 双挂载会对 effect 执行两次，用 projectCode 幂等去重，避免重复请求
+  const configLoadedKey = useRef<number | null>(null);
   useEffect(() => {
-    let cancelled = false;
+    if (configLoadedKey.current === projectCode) return;
+    configLoadedKey.current = projectCode;
     const loadConfigData = async () => {
       try {
         const envRes = await api.environment.list({ pageNo: 1, pageSize: 100 });
-        if (!cancelled && envRes.code === 0 && envRes.data) {
+        if (envRes.code === 0 && envRes.data) {
           setEnvironments(Array.isArray(envRes.data) ? envRes.data : (envRes.data.totalList || []));
         }
         const wgRes = await api.workerGroup.list(projectCode, { pageNo: 1, pageSize: 100 });
-        if (!cancelled && wgRes.code === 0 && wgRes.data) {
+        if (wgRes.code === 0 && wgRes.data) {
           setWorkerGroups(Array.isArray(wgRes.data) ? wgRes.data : (wgRes.data.totalList || []));
         }
       } catch (err) {
@@ -187,12 +190,15 @@ const WorkflowInstanceDetail: React.FC<WorkflowInstanceDetailProps> = ({
       }
     };
     loadConfigData();
-    return () => { cancelled = true; };
   }, [api, projectCode]);
 
   const canvasRef = useRef<HTMLDivElement>(null);
 
+  const detailLoadedKey = useRef<number | null>(null);
   useEffect(() => {
+    // StrictMode 双挂载会对 effect 执行两次，按 instance.id 幂等去重，避免重复请求
+    if (detailLoadedKey.current === instance.id) return;
+    detailLoadedKey.current = instance.id;
     const loadDetail = async () => {
 
       try {
