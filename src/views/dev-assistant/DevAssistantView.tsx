@@ -12,7 +12,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useDataSourceCache } from '../../contexts/DataSourceContext';
 import { StatusBarInfo, Tab, FileNode } from '../../types';
 import { generateId, generateFileHeader } from '../../utils';
-import { getBaseName, splitPath } from '../../utils/pathUtils';
+import { getBaseName, splitPath, toNativePath, samePath, isPathUnder, pathKey } from '../../utils/pathUtils';
 import { extractMetricsFromMarkdown, expandCalcExprBatch } from '../../utils/extractMetrics';
 import { generateCommitSummary } from '../../utils/commitSummary';
 import { mapCodeFileToTask } from '../../utils/schedulerMapping';
@@ -28,7 +28,7 @@ import { ArrowLeft, FolderKanban } from 'lucide-react';
 import GlobalSearch from './GlobalSearch';
 import { useToast } from '../../components/Toast';
 import { invoke } from '../../bridge/ipc';
-import { registerDefinitionOpener, readJavaClassFileContent, uriToPath } from '../../services/lsp';
+import { registerDefinitionOpener, readJavaClassFileContent, uriToPath, isFileUri } from '../../services/lsp';
 import useProjectDependencyConfig from '../../hooks/useProjectDependencyConfig';
 import ProjectDependencyModal from './ProjectDependencyModal';
 import { Package } from 'lucide-react';
@@ -177,9 +177,11 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
       for (const loc of locations) {
         const uriStr = loc.uri;
         invoke('trace_log', { msg: `[DEF>opener] uri=${uriStr}` }).catch(() => undefined);
-        if (uriStr.startsWith('file://') && uriStr.includes('/.metals/readonly/')) {
+        if (isFileUri(uriStr) && uriStr.includes('/.metals/readonly/')) {
+          // uriToPath 已按平台归一化（Windows → C:\...\.metals\readonly\...），
+          // 取文件名必须走 getBaseName，不能再按 '/' 切。
           const diskPath = uriToPath(uriStr);
-          const base = diskPath.split('/').pop() || 'source';
+          const base = getBaseName(diskPath) || 'source';
           const tabId = `metals-${hashStr(diskPath)}`;
           // 关键：保留原始 file:// URI 作为 Tab path（而非转成 metals://）。
           // Metals 服务器原生返回的就是 file://.../.metals/readonly/... URI，它认识这种路径；
@@ -257,12 +259,14 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
               })
               .finally(() => { fetchingTabsRef.current.delete(tabId); });
           }
-        } else if (uriStr.startsWith('file://')) {
-          // 项目内文件：走现有逻辑打开为普通 Tab，并定位到定义所在行
+        } else if (isFileUri(uriStr)) {
+          // 项目内文件：走现有逻辑打开为普通 Tab，并定位到定义所在行。
+          // isFileUri 兼容单斜杠 file:/C:/...（Java File.toURI() 输出）等形式，
+          // 只认 file:// 会把这类 URI 误判成「不支持的目标」并 toast 出带 / 的路径。
           const r = loc.range?.start;
           const reveal = r ? { line: (r.line ?? 0) + 1, column: (r.character ?? 0) + 1 } : undefined;
           const diskPath = uriToPath(uriStr);
-          invoke('trace_log', { msg: `[DEF>file] path=${diskPath} reveal=${JSON.stringify(reveal)} handler=${!!handleFileSelectRef.current}` }).catch(() => undefined);
+          invoke('trace_log', { msg: `[DEF>file] uri=${uriStr} path=${diskPath} reveal=${JSON.stringify(reveal)} handler=${!!handleFileSelectRef.current}` }).catch(() => undefined);
           handleFileSelectRef.current?.(diskPath, reveal);
         } else {
           // 无法路由的 scheme（既非 metals readonly、也非 jdt、也非项目内 file://）
@@ -390,9 +394,10 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
 
     // 2. 刷新当前打开的标签页中匹配变更路径的内容
     if (changedPaths.length > 0 && tabs.length > 0) {
-      const changedSet = new Set(changedPaths);
+      // 后端（opencode / JVM）返回的路径分隔符可能与前端 Tab 路径不同，按归一化键比较
+      const changedSet = new Set(changedPaths.map(p => pathKey(p)));
       for (const tab of tabs) {
-        if (changedSet.has(tab.path)) {
+        if (changedSet.has(pathKey(tab.path))) {
           readFileContent(tab.path)
             .then(content => {
               setEditorContent(prev => ({ ...prev, [tab.id]: content }));
@@ -557,7 +562,7 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
 
     await refreshTree();
 
-    const tab = tabs.find(t => t.path === fp);
+    const tab = tabs.find(t => samePath(t.path, fp));
     if (tab) {
       setEditorContent(prev => ({ ...prev, [tab.id]: content }));
       setTabs(prev => prev.map(t => t.id === tab.id ? { ...t, isModified: false } : t));
@@ -585,7 +590,7 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
     }
     await refreshTree();
     // 若文件已打开，重新读取内容刷新编辑器
-    const tab = tabs.find(t => t.path === filePath);
+    const tab = tabs.find(t => samePath(t.path, filePath));
     if (tab) {
       const content = await readFileContent(filePath);
       setEditorContent(prev => ({ ...prev, [tab.id]: content }));
@@ -601,7 +606,12 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
     return gitFileHasChanges(projectCwd, rel);
   }, [projectCwd]);
 
-  const handleFileSelect = useCallback(async (filePath: string, revealRange?: { line: number; column: number }) => {
+  const handleFileSelect = useCallback(async (rawPath: string, revealRange?: { line: number; column: number }) => {
+    // 统一成本地路径形式（Windows → C:\a\b.java）。跳转目标来自 LSP file:// URI，
+    // 文件树点击来自 useFileSystem 的 '/' 拼接，二者分隔符不同；不归一化会让同一文件被
+    // 开成两个 Tab，后续保存/运行/git 也会按不同路径各算一份。
+    const filePath = toNativePath(rawPath);
+
     if (isCodeFile(filePath) && !user?.isSuperAdmin && !isDeveloper(user?.roles || [])) {
       toast.warning(`当前角色无权编辑代码文件（.${filePath.split('.').pop()}），仅数据开发工程师可操作 Scala/SQL/Java/Python 文件`);
       setSelectedFile(filePath);
@@ -610,7 +620,8 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
     setSelectedFile(filePath);
 
     const fileName = getBaseName(filePath);
-    const existingTab = tabs.find(t => t.path === filePath);
+    // 按归一化后的路径比较：忽略分隔符差异，Windows 再忽略盘符/目录大小写
+    const existingTab = tabs.find(t => samePath(t.path, filePath));
 
     if (!existingTab) {
       const newTab: Tab = {
@@ -665,7 +676,8 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
     });
   }, []);
 
-  const handleViewDiff = useCallback((filePath: string, patch: string) => {
+  const handleViewDiff = useCallback((rawPath: string, patch: string) => {
+    const filePath = toNativePath(rawPath);
     const filename = getBaseName(filePath);
     const diffTabId = `__diff__${filePath}`;
 
@@ -755,22 +767,23 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
     const success = await deleteNode(nodePath, nodeType);
     if (success) {
       if (nodeType === 'file') {
-        const tabToClose = tabs.find(t => t.path === nodePath);
+        // 文件树路径与 Tab 路径分隔符可能不同（跳转打开的 Tab 是本地分隔符），按归一化比较
+        const tabToClose = tabs.find(t => samePath(t.path, nodePath));
         if (tabToClose) {
           handleTabClose(tabToClose.id);
         }
-        if (selectedFile === nodePath) {
+        if (samePath(selectedFile, nodePath)) {
           setSelectedFile(null);
         }
       }
       if (nodeType === 'folder') {
         setExpandedFolders(prev => {
           const newSet = new Set(prev);
-          const pathsToRemove = Array.from(newSet).filter(p => p.startsWith(nodePath));
+          const pathsToRemove = Array.from(newSet).filter(p => isPathUnder(p, nodePath));
           pathsToRemove.forEach(p => newSet.delete(p));
           return newSet;
         });
-        const tabsToClose = tabs.filter(t => t.path.startsWith(nodePath + '/'));
+        const tabsToClose = tabs.filter(t => isPathUnder(t.path, nodePath));
         tabsToClose.forEach(tab => handleTabClose(tab.id));
       }
     }
@@ -906,8 +919,8 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
           partID: change.partID,
         });
 
-        // 关闭已打开的标签页
-        const tab = tabs.find(t => t.path === filePath);
+        // 关闭已打开的标签页（AI 返回的路径分隔符可能与 Tab 不同，按归一化比较）
+        const tab = tabs.find(t => samePath(t.path, filePath));
         if (tab) {
           setTabs(prev => prev.filter(t => t.id !== tab.id));
           setEditorContent(prev => { const next = { ...prev }; delete next[tab.id]; return next; });
@@ -917,7 +930,7 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
       } else if (change.type === 'write') {
         // SDK 不可用时的降级方案：新建文件直接删除
         await deleteNode(filePath, 'file');
-        const tab = tabs.find(t => t.path === filePath);
+        const tab = tabs.find(t => samePath(t.path, filePath));
         if (tab) {
           setTabs(prev => prev.filter(t => t.id !== tab.id));
           setEditorContent(prev => { const next = { ...prev }; delete next[tab.id]; return next; });

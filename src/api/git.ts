@@ -1,4 +1,4 @@
-import { isWindows as checkIsWindows, joinPath, normalizePath } from '../utils/pathUtils';
+import { isWindows as checkIsWindows, joinPath, normalizePath, isPathUnder, toRelativePath } from '../utils/pathUtils';
 import { Command } from '../bridge/shell';
 
 export interface GitFileStatus {
@@ -698,18 +698,15 @@ export const gitFileHasChanges = async (
   }
 };
 
-/** 计算磁盘绝对路径相对仓库根的 POSIX 相对路径 */
+/**
+ * 计算磁盘绝对路径相对仓库根的 POSIX 相对路径。
+ *
+ * 两侧分隔符可能不同（渲染层拼的是 '/'，跳转/后端给的是 Windows 的 '\'），
+ * 旧实现按 filePath 的分隔符去切 repoPath，遇到混合分隔符会直接失配、
+ * 把整条绝对路径当成相对路径传给 git，导致 git 报「不在仓库内」。
+ */
 export const toRepoRelativePath = (filePath: string, repoPath: string): string => {
-  const sep = filePath.includes('\\') ? '\\' : '/';
-  const parts = filePath.split(sep);
-  const repoParts = repoPath.split(sep);
-  const diff: string[] = [];
-  const max = Math.max(parts.length, repoParts.length);
-  for (let i = 0; i < max; i++) {
-    if (parts[i] !== repoParts[i]) {
-      for (let j = i; j < parts.length; j++) diff.push(parts[j]);
-      break;
-    }
-  }
-  return diff.length > 0 ? diff.join('/') : (filePath.split(/[/\\]/).pop() || filePath);
+  return isPathUnder(filePath, repoPath)
+    ? toRelativePath(filePath, repoPath)
+    : (filePath.split(/[/\\]/).pop() || filePath);
 };

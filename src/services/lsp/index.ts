@@ -19,4 +19,4 @@ export {
 
 export { ensureVscodeApiStarted } from './bootstrapVscode';
 
-export { pathToUri, uriToPath } from './uri';
+export { pathToUri, uriToPath, uriKey, isFileUri } from './uri';

@@ -3,7 +3,7 @@ import { fetchDependencyList, type DependencyRecord } from '../api/dependency';
 import { fetchProjectConfigByFilePath } from '../api/devProject';
 import type { SavedConfig } from '../utils/schedulerMapping';
 import { mergeDependencyNames, type DependencyItemLite } from '../utils/dependencyMerge';
-import { getBaseName } from '../utils/pathUtils';
+import { getBaseName, toRelativePath } from '../utils/pathUtils';
 import { getApiHost } from '../api/index';
 
 export interface UnifiedCompileOptions {
@@ -63,9 +63,7 @@ export async function unifiedCompile(options: UnifiedCompileOptions): Promise<Co
 
     if (configuredDepNames.length === 0 && projectId && filePath) {
       try {
-        const relativePathForDep = rootPath && filePath.startsWith(rootPath + '/')
-          ? filePath.slice(rootPath.length + 1)
-          : filePath;
+        const relativePathForDep = toRelativePath(filePath, rootPath);
         const configRes = await fetchProjectConfigByFilePath(projectId, relativePathForDep);
         if (configRes.code === 200 && configRes.data?.jarDependencyCatalogs?.length) {
           for (const name of configRes.data.jarDependencyCatalogs) {

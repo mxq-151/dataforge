@@ -19,6 +19,7 @@ import type { MonacoLanguageClient } from 'monaco-languageclient';
 import type { BaseLanguageClient, Middleware } from 'vscode-languageclient';
 import { stabilizeIncompleteResult, hoverIsComplete, hoverContentLen } from './stabilizeHover';
 import { parseJdtClassUri } from './jdtClassUri';
+import { uriKey } from './uri';
 
 export type LspLanguageId = 'java' | 'scala';
 
@@ -407,6 +408,10 @@ function createNavigationMiddleware(languageId: LspLanguageId): Middleware {
         ? document.uri
         : document.uri.toString()
       : '';
+    // Windows 下 Monaco 文档 URI 与 LSP 返回的 URI 可能在「盘符大小写」「冒号是否百分号
+    // 编码」「分隔符」上不同（如 file:///c%3A/a/b vs file:///C:/a/b），直接字符串比较会把
+    // 同文件目标误判成外部目标 → 当前文件被重复开成新 Tab。用 uriKey 归一化后比较。
+    const docUriKey = docUri ? uriKey(docUri) : '';
 
     const sameFile: any[] = [];
     const external: Array<{ uri: string; range?: any }> = [];
@@ -416,7 +421,7 @@ function createNavigationMiddleware(languageId: LspLanguageId): Middleware {
       if (!rawUri) continue;
       const uriStr = typeof rawUri === 'string' ? rawUri : rawUri.toString();
       const range = loc?.range ?? loc?.targetRange;
-      if (docUri && uriStr === docUri) {
+      if (docUriKey && uriKey(uriStr) === docUriKey) {
         sameFile.push(loc);
       } else {
         external.push({ uri: uriStr, range });

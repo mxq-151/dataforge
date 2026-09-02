@@ -620,12 +620,13 @@ export async function readMetalsSource(args: { path: string }): Promise<string> 
     /* 落到 ZIP 兜底 */
   }
 
-  // 兜底：极少数环境未解压、<name>-sources.jar 为真实 ZIP 时，按 JAR 内部路径读取
-  const jarMarker = '.jar/';
-  const jarPos = raw.indexOf(jarMarker);
-  if (jarPos !== -1) {
-    const jarPath = raw.slice(0, jarPos + 4);
-    const internalPath = raw.slice(jarPos + 5);
+  // 兜底：极少数环境未解压、<name>-sources.jar 为真实 ZIP 时，按 JAR 内部路径读取。
+  // Windows 下渲染进程传来的是本地分隔符（...\x-sources.jar\org\a\b.scala），
+  // 标记必须同时匹配两种分隔符，且 zip 条目名一律用 '/'。
+  const jarMatch = /\.jar[\\/]/.exec(raw);
+  if (jarMatch) {
+    const jarPath = raw.slice(0, jarMatch.index + 4);
+    const internalPath = raw.slice(jarMatch.index + jarMatch[0].length).replace(/\\/g, '/');
     if (fs.existsSync(jarPath) && fs.statSync(jarPath).isFile()) {
       try {
         const zip = new AdmZip(jarPath);

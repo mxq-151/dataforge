@@ -1,5 +1,6 @@
 import React from 'react';
 import { X, Circle } from 'lucide-react';
+import { toRelativePath } from '../../utils/pathUtils';
 import './TabBar.css';
 
 interface Tab {
@@ -18,14 +19,10 @@ interface TabBarProps {
   rootPath?: string;
 }
 
+// 复用统一实现：Tab 路径可能是 Windows 本地形式（跳转打开的），rootPath 由 joinPath 拼成
+// （'/' 分隔），必须忽略分隔符差异才能正确显示相对路径。
 const getRelativePath = (fullPath: string, rootPath?: string): string => {
-  if (!rootPath) return fullPath;
-  const normalizedRoot = rootPath.replace(/\/$/, '');
-  const normalizedPath = fullPath.replace(/\\/g, '/');
-  if (normalizedPath.startsWith(normalizedRoot + '/')) {
-    return normalizedPath.substring(normalizedRoot.length + 1);
-  }
-  return normalizedPath;
+  return toRelativePath(fullPath, rootPath);
 };
 
 const TabBar: React.FC<TabBarProps> = ({ tabs, activeTabId, onTabSelect, onTabClose, rootPath }) => {

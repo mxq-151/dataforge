@@ -1,6 +1,7 @@
 import type { DSTaskType, DSWorkflowTaskNode, DSWorkflowEdge, DSWorkflowGlobalParam, DSLocalParam, DSDependentTaskParams } from '../types/dolphinscheduler';
 import { getDefaultTaskParams, ExecutionType, Priority, TASK_CATEGORIES, TASK_TYPE_LABELS } from '../types/dolphinscheduler';
 import { parseFileHeader } from './index';
+import { toRelativePath } from './pathUtils';
 
 function extractCodePackage(code: string): string {
   const match = code.match(/^\s*package\s+([\w.]+)\s*;?\s*$/m);
@@ -564,15 +565,14 @@ function extractDataDependencies(codeContent: string, header: ReturnType<typeof 
 function getRelativePath(filePath?: string, rootPath?: string): string {
   if (!filePath) return '';
   if (!rootPath) return filePath.split(/[/\\]/).pop() || filePath;
-  if (filePath.startsWith(rootPath + '/')) {
-    return filePath.slice(rootPath.length + 1);
-  }
-  return filePath;
+  // 忽略分隔符差异：跳转打开的 Tab 路径是 Windows 本地形式（C:\a\b.java），
+  // 而 rootPath 由 joinPath 拼成（C:/a）。直接 startsWith 会取不到相对路径。
+  return toRelativePath(filePath, rootPath);
 }
 
 function getDirectoryPath(relativePath: string): string {
   if (!relativePath) return '';
-  const lastSlash = relativePath.lastIndexOf('/');
+  const lastSlash = Math.max(relativePath.lastIndexOf('/'), relativePath.lastIndexOf('\\'));
   if (lastSlash <= 0) return '';
   return relativePath.substring(0, lastSlash);
 }

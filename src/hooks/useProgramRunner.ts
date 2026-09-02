@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { generateId, parseFileHeader, validateFileHeader } from '../utils';
 import { validateYarnJobName } from '../utils/schedulerMapping';
+import { toRelativePath } from '../utils/pathUtils';
 import type { CodeExecutionResult } from '../api/codeExecution';
 import { unifiedCompile } from '../services/unifiedCompile';
 import { TaskExecutionService } from '../services/taskExecutionService';
@@ -328,7 +329,7 @@ export function useProgramRunner({
 
     // 校验文件头
     const headerValidation = validateFileHeader(content, fileName,
-      filePath && projectCwd && filePath.startsWith(projectCwd + '/') ? filePath.slice(projectCwd.length + 1) : undefined,
+      filePath && projectCwd ? toRelativePath(filePath, projectCwd) : undefined,
       project.projectCode || undefined
     );
     if (!headerValidation.valid) {
@@ -559,8 +560,7 @@ export function useProgramRunner({
       return;
     }
 
-    const relativePath = projectCwd && filePath.startsWith(projectCwd + '/')
-      ? filePath.slice(projectCwd.length + 1) : filePath;
+    const relativePath = toRelativePath(filePath, projectCwd);
 
     const headerValidation = validateFileHeader(content, fileName, relativePath, project.projectCode || undefined);
     if (!headerValidation.valid) {

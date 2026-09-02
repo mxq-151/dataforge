@@ -15,6 +15,80 @@ export const normalizePath = (path: string): string => {
   return path.replace(/\\/g, '/');
 };
 
+/**
+ * 带 scheme 前缀的字符串不是磁盘路径，不能做分隔符/盘符转换。
+ * - scheme 至少两个字母后跟 : 或 :/ 或 ://（jdt://、metals:、https://、file: 任意斜杠数）
+ * - 单字母 + ':' 是 Windows 盘符（C:/a/b），不算 scheme，必须继续转换
+ */
+const HAS_SCHEME = /^(?:file:|[a-zA-Z]{2,}[a-zA-Z0-9+.-]*:\/{0,2})/;
+
+/**
+ * 转成当前平台的本地路径形式：
+ * - Windows：`\` 分隔、盘符大写（c:/a/b.txt → C:\a\b.txt）
+ * - 其它平台：`/` 分隔
+ *
+ * 用于把「外部来源」的路径（LSP file:// URI 解码结果、后端/命令行返回等）统一成与本机
+ * 文件系统一致的表示。否则同一文件会因分隔符或盘符大小写不同被当成两个文件：
+ * 定义跳转重复开 Tab、文件浏览器不高亮、git / 编译按路径取配置时取不到。
+ *
+ * 带 scheme 的字符串（file://、jdt://、metals://）原样返回。
+ */
+export const toNativePath = (path: string): string => {
+  if (!path || HAS_SCHEME.test(path)) return path;
+
+  let p = normalizePath(path);
+  // UNC（\\server\share\...）的前导双分隔符必须保留
+  const isUnc = p.startsWith('//');
+  p = p.replace(/\/{2,}/g, '/');
+
+  if (!isWindows()) return p;
+
+  p = p.replace(/\//g, '\\');
+  if (isUnc) p = `\\${p}`;
+  return p.replace(/^([A-Za-z]):/, (_m, drive) => `${drive.toUpperCase()}:`);
+};
+
+/**
+ * 路径比较键：统一分隔符、去尾部斜杠；Windows 再忽略大小写（盘符/目录名大小写不敏感）。
+ * 只用于比较，不要用于展示。
+ */
+export const pathKey = (path: string): string => {
+  const key = normalizePath(path).replace(/\/+$/, '');
+  return isWindows() ? key.toLowerCase() : key;
+};
+
+/** 两个路径是否指向同一文件/目录（忽略分隔符差异；Windows 再忽略大小写） */
+export const samePath = (a?: string | null, b?: string | null): boolean => {
+  if (!a || !b) return false;
+  return pathKey(a) === pathKey(b);
+};
+
+/** fullPath 是否位于 rootPath 之下（含自身），忽略分隔符差异 */
+export const isPathUnder = (fullPath: string, rootPath: string): boolean => {
+  if (!fullPath || !rootPath) return false;
+  const full = pathKey(fullPath);
+  const root = pathKey(rootPath).replace(/\/+$/, '');
+  if (!root) return false;
+  return full === root || full.startsWith(`${root}/`);
+};
+
+/**
+ * 剥离 rootPath 前缀得到相对路径（`/` 分隔，便于传给 git / 后端），忽略两侧的分隔符差异。
+ * 不在 rootPath 之下时返回统一成 `/` 分隔的 fullPath（保留原始大小写）。
+ */
+export const toRelativePath = (fullPath: string, rootPath?: string): string => {
+  if (!rootPath) return fullPath;
+  const full = normalizePath(fullPath).replace(/\/+$/, '');
+  const root = normalizePath(rootPath).replace(/\/+$/, '');
+  if (!root) return full;
+
+  const fullKey = isWindows() ? full.toLowerCase() : full;
+  const rootKey = isWindows() ? root.toLowerCase() : root;
+  if (fullKey === rootKey) return '';
+  if (fullKey.startsWith(`${rootKey}/`)) return full.slice(root.length + 1);
+  return full;
+};
+
 /** 按 / 和 \ 分割路径，返回各段 */
 export const splitPath = (path: string): string[] => {
   return normalizePath(path).split('/').filter(Boolean);
