@@ -515,7 +515,7 @@ function useOpencodeClientImpl(
     }
   }, [fileChangesApproved, fileChangesRejected, messages, extractFileChangesFromMessages, currentSessionId]);
 
-  const rejectFileChange = useCallback((filePath: string, change: { type: 'edit' | 'write' | 'apply_patch'; messageID?: string; partID?: string }) => {
+  const rejectFileChange = useCallback(async (filePath: string, change: { type: 'edit' | 'write' | 'apply_patch'; messageID?: string; partID?: string }) => {
     // 审批状态按 partID 追踪（每个工具调用独立审批，不继承同文件旧轮次的状态）
     const changeKey = change.partID || filePath;
     const newRejected = new Set(fileChangesRejected);
@@ -530,7 +530,23 @@ function useOpencodeClientImpl(
       fileReviewStore.save(sid, 'approved', Array.from(newApproved));
       fileReviewStore.save(sid, 'rejected', Array.from(newRejected));
     }
-  }, [fileChangesApproved, fileChangesRejected, messages, extractFileChangesFromMessages, currentSessionId]);
+    // 通过 SDK session.revert API 回退文件，让「拒绝」真正撤销该部分对应的文件变更。
+    // 这是通用实现（dev-assistant 在视图层另有覆盖，此处作为各智能体对话模块的兜底）。
+    if (!client || !sid || !change.messageID) {
+      // 无法通过 SDK 回退时（无 client / 无会话 / 无 messageID），仅更新审批状态，
+      // 由视图层决定降级处理（如新建文件直接删除）。
+      return;
+    }
+    try {
+      await client.session.revert({
+        sessionID: sid,
+        messageID: change.messageID,
+        partID: change.partID,
+      });
+    } catch (err) {
+      console.warn('[opencode] 拒绝文件变更回退失败:', err);
+    }
+  }, [fileChangesApproved, fileChangesRejected, messages, extractFileChangesFromMessages, currentSessionId, client]);
 
   const approveAllFileChanges = useCallback(() => {
     const newApproved = new Set(fileChangesApproved);
