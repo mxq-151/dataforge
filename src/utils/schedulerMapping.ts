@@ -212,20 +212,25 @@ export function buildDependentTaskNode(
   y?: number,
 ): DSWorkflowTaskNode {
   const taskParams: DSDependentTaskParams = {
-    relation: 'AND',
-    dependTaskList: [
-      deps.map(d => ({
-        projectCode: d.projectCode,
-        definitionCode: d.definitionCode,
-        depTaskCode: d.taskCode,
-        cycle: 'day',
-        dateValue: 'today',
-      })),
-    ],
-    failurePolicy: 'DEPENDENT_FAILURE_FAILURE',
-    // 扩展字段（DS 允许额外字段）
-    checkInterval: 10,
-    failureWaitingTime: 0,
+    dependence: {
+      relation: 'AND',
+      dependTaskList: [
+        {
+          relation: 'AND',
+          dependItemList: deps.map(d => ({
+            projectCode: d.projectCode,
+            definitionCode: d.definitionCode,
+            depTaskCode: d.taskCode,
+            cycle: 'day',
+            dateValue: 'today',
+          })),
+        },
+      ],
+      failurePolicy: 'DEPENDENT_FAILURE_FAILURE',
+      // 扩展字段（DS 允许额外字段）
+      checkInterval: 10,
+      failureWaitingTime: 0,
+    },
   };
   return {
     code,

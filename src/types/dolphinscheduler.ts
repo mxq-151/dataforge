@@ -586,12 +586,25 @@ export interface DSDependentTaskItem {
   dateValue: string;
 }
 
-export interface DSDependentTaskParams {
+/**
+ * DEPENDENT 任务中的一个依赖组。DolphinScheduler 的 DEPENDENT 任务参数结构为：
+ * dependTaskList 是 List<DependentTaskModel>，每个模型包含 dependItemList（该组内的依赖项）
+ * 和组内关系 relation；最外层是任务级 relation。注意不能写成「列表嵌套列表」。
+ * DS 3.4.x 起，全部参数统一包裹在 dependence 对象下（DependentParameters.dependence）。
+ */
+export interface DSDependentTaskModel {
+  dependItemList: DSDependentTaskItem[];
   relation: 'AND' | 'OR';
-  dependTaskList: DSDependentTaskItem[][];
-  failurePolicy: 'DEPENDENT_FAILURE_FAILURE' | 'DEPENDENT_FAILURE_WAITING';
-  checkInterval: number;
-  failureWaitingTime: number;
+}
+
+export interface DSDependentTaskParams {
+  dependence: {
+    relation: 'AND' | 'OR';
+    dependTaskList: DSDependentTaskModel[];
+    failurePolicy: 'DEPENDENT_FAILURE_FAILURE' | 'DEPENDENT_FAILURE_WAITING';
+    checkInterval: number;
+    failureWaitingTime: number;
+  };
 }
 
 export interface DSConditionsTaskParams {
@@ -908,7 +921,7 @@ export function getDefaultTaskParams(taskType: DSTaskType): Record<string, unkno
     case 'MR':
       return { programType: 'SCALA', mainClass: '', mainJar: '', appName: '', mainArgs: '', others: '', yarnQueue: '', localParams: [], resourceList: [] };
     case 'DEPENDENT':
-      return { relation: 'AND', dependTaskList: [], failurePolicy: 'DEPENDENT_FAILURE_FAILURE', checkInterval: 10, failureWaitingTime: 0 };
+      return { dependence: { relation: 'AND', dependTaskList: [], failurePolicy: 'DEPENDENT_FAILURE_FAILURE', checkInterval: 10, failureWaitingTime: 0 } };
     case 'CONDITIONS':
       return { relation: 'AND', dependTaskList: [], successBranch: null, failedBranch: null };
     case 'SWITCH':

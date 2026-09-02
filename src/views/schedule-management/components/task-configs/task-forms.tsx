@@ -4,7 +4,7 @@ import type {
   DSShellTaskParams, DSSqlTaskParams, DSPythonTaskParams,
   DSDataXTaskParams, DSSparkTaskParams, DSFlinkTaskParams,
   DSHttpTaskParams, DSSubProcessTaskParams, DSProcedureTaskParams,
-  DSMrTaskParams, DSDependentTaskParams, DSConditionsTaskParams,
+  DSMrTaskParams, DSDependentTaskParams, DSDependentTaskModel, DSConditionsTaskParams,
   DSSwitchTaskParams, DSSeaTunnelTaskParams, DSK8sTaskParams,
   DSJavaTaskParams, DSWorkflowTaskNode,
   DSFlinkStreamTaskParams, DSSqoopTaskParams, DSGrpcTaskParams,
@@ -805,31 +805,50 @@ export function SubProcessForm({ params, onChange, workflowDefinitions }: TaskFo
 }
 
 export function DependentForm({ params, onChange, allNodes, currentCode }: TaskFormProps<DSDependentTaskParams>) {
-  const set = <K extends keyof DSDependentTaskParams>(key: K, val: DSDependentTaskParams[K]) =>
-    onChange({ ...params, [key]: val });
+  const dependence = params.dependence ?? {
+    relation: 'AND' as const,
+    dependTaskList: [] as DSDependentTaskModel[],
+    failurePolicy: 'DEPENDENT_FAILURE_FAILURE' as const,
+    checkInterval: 10,
+    failureWaitingTime: 0,
+  };
+  const patch = (p: Partial<typeof dependence>) => onChange({ ...params, dependence: { ...dependence, ...p } });
   const otherNodes = allNodes.filter(n => n.code !== currentCode);
 
   const addGroup = () => {
-    const next = [...params.dependTaskList, [{ projectCode: 0, definitionCode: 0, depTaskCode: 0, cycle: 'day' as const, dateValue: 'today' }]];
-    set('dependTaskList', next);
+    const next = [...dependence.dependTaskList, { dependItemList: [], relation: 'AND' as const }];
+    patch({ dependTaskList: next });
   };
-  const removeGroup = (gi: number) => set('dependTaskList', params.dependTaskList.filter((_, i) => i !== gi));
+  const removeGroup = (gi: number) => patch({ dependTaskList: dependence.dependTaskList.filter((_, i) => i !== gi) });
   const addItem = (gi: number) => {
-    const next = [...params.dependTaskList];
-    next[gi] = [...next[gi], { projectCode: 0, definitionCode: 0, depTaskCode: 0, cycle: 'day' as const, dateValue: 'today' }];
-    set('dependTaskList', next);
+    const next = [...dependence.dependTaskList];
+    const model = next[gi];
+    next[gi] = { ...model, dependItemList: [...model.dependItemList, { projectCode: 0, definitionCode: 0, depTaskCode: 0, cycle: 'day' as const, dateValue: 'today' }] };
+    patch({ dependTaskList: next });
+  };
+  const setGroupRelation = (gi: number, relation: 'AND' | 'OR') => {
+    const next = [...dependence.dependTaskList];
+    next[gi] = { ...next[gi], relation };
+    patch({ dependTaskList: next });
   };
   const removeItem = (gi: number, ii: number) => {
-    const next = [...params.dependTaskList];
-    next[gi] = next[gi].filter((_, i) => i !== ii);
-    if (next[gi].length === 0) next.splice(gi, 1);
-    set('dependTaskList', next);
+    const next = [...dependence.dependTaskList];
+    const model = next[gi];
+    const dependItemList = model.dependItemList.filter((_, i) => i !== ii);
+    if (dependItemList.length === 0) {
+      next.splice(gi, 1);
+    } else {
+      next[gi] = { ...model, dependItemList };
+    }
+    patch({ dependTaskList: next });
   };
   const updateItem = (gi: number, ii: number, field: string, value: string | number) => {
-    const next = [...params.dependTaskList];
-    next[gi] = [...next[gi]];
-    next[gi][ii] = { ...next[gi][ii], [field]: value };
-    set('dependTaskList', next);
+    const next = [...dependence.dependTaskList];
+    const model = next[gi];
+    const dependItemList = [...model.dependItemList];
+    dependItemList[ii] = { ...dependItemList[ii], [field]: value };
+    next[gi] = { ...model, dependItemList };
+    patch({ dependTaskList: next });
   };
 
   return (
@@ -838,11 +857,11 @@ export function DependentForm({ params, onChange, allNodes, currentCode }: TaskF
         <label>依赖关系</label>
         <div className="tc-radio-group">
           <label className="tc-radio">
-            <input type="radio" name="dependentRelation" checked={params.relation === 'AND'} onChange={() => set('relation', 'AND')} />
+            <input type="radio" name="dependentRelation" checked={dependence.relation === 'AND'} onChange={() => patch({ relation: 'AND' })} />
             <span>AND (所有依赖满足)</span>
           </label>
           <label className="tc-radio">
-            <input type="radio" name="dependentRelation" checked={params.relation === 'OR'} onChange={() => set('relation', 'OR')} />
+            <input type="radio" name="dependentRelation" checked={dependence.relation === 'OR'} onChange={() => patch({ relation: 'OR' })} />
             <span>OR (任一依赖满足)</span>
           </label>
         </div>
@@ -850,13 +869,23 @@ export function DependentForm({ params, onChange, allNodes, currentCode }: TaskF
       <div className="tc-field">
         <label>依赖任务列表</label>
         <div className="tc-dynamic-list">
-          {params.dependTaskList.map((group, gi) => (
+          {dependence.dependTaskList.map((group, gi) => (
             <div key={gi} style={{ border: '1px solid #3c3c3c', borderRadius: 4, padding: 8, marginBottom: 6 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                 <span style={{ fontSize: 11, color: '#888' }}>依赖组 {gi + 1}</span>
-                <button className="tc-dynamic-list__remove" onClick={() => removeGroup(gi)}><X size={12} /></button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <select
+                    style={{ minWidth: 70 }}
+                    value={group.relation}
+                    onChange={e => setGroupRelation(gi, e.target.value as 'AND' | 'OR')}
+                  >
+                    <option value="AND">AND</option>
+                    <option value="OR">OR</option>
+                  </select>
+                  <button className="tc-dynamic-list__remove" onClick={() => removeGroup(gi)}><X size={12} /></button>
+                </div>
               </div>
-              {group.map((item, ii) => (
+              {group.dependItemList.map((item, ii) => (
                 <div key={ii} className="tc-dynamic-list__item" style={{ marginBottom: 4 }}>
                   <select value={item.depTaskCode} onChange={e => updateItem(gi, ii, 'depTaskCode', Number(e.target.value))}>
                     <option value={0}>选择任务</option>
@@ -886,7 +915,7 @@ export function DependentForm({ params, onChange, allNodes, currentCode }: TaskF
       </div>
       <div className="tc-field">
         <label>失败策略</label>
-        <select value={params.failurePolicy} onChange={e => set('failurePolicy', e.target.value as DSDependentTaskParams['failurePolicy'])}>
+        <select value={dependence.failurePolicy} onChange={e => patch({ failurePolicy: e.target.value as 'DEPENDENT_FAILURE_FAILURE' | 'DEPENDENT_FAILURE_WAITING' })}>
           <option value="DEPENDENT_FAILURE_FAILURE">依赖失败则失败</option>
           <option value="DEPENDENT_FAILURE_WAITING">依赖失败则等待</option>
         </select>
@@ -894,12 +923,12 @@ export function DependentForm({ params, onChange, allNodes, currentCode }: TaskF
       <div className="tc-row">
         <div className="tc-field">
           <label>检查间隔(秒)</label>
-          <input type="number" value={params.checkInterval} onChange={e => set('checkInterval', parseInt(e.target.value) || 10)} min={1} />
+          <input type="number" value={dependence.checkInterval} onChange={e => patch({ checkInterval: parseInt(e.target.value) || 10 })} min={1} />
         </div>
-        {params.failurePolicy === 'DEPENDENT_FAILURE_WAITING' && (
+        {dependence.failurePolicy === 'DEPENDENT_FAILURE_WAITING' && (
           <div className="tc-field">
             <label>等待时间(分钟)</label>
-            <input type="number" value={params.failureWaitingTime} onChange={e => set('failureWaitingTime', parseInt(e.target.value) || 0)} min={0} />
+            <input type="number" value={dependence.failureWaitingTime} onChange={e => patch({ failureWaitingTime: parseInt(e.target.value) || 0 })} min={0} />
           </div>
         )}
       </div>
