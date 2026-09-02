@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import type {
   DSWorkflowInstance, DSTaskInstance, DSWorkflowTaskNode, DSWorkflowEdge, DSTaskType,
-  DolphinSchedulerApi,
+  DSEnvironment, DSWorkerGroup, DolphinSchedulerApi,
 } from '../../../types/dolphinscheduler';
 import { WorkflowExecutionStatus, TaskExecutionStatus } from '../../../types/dolphinscheduler';
 import TaskConfigModal from './task-configs/TaskConfigModal';
@@ -166,6 +166,29 @@ const WorkflowInstanceDetail: React.FC<WorkflowInstanceDetailProps> = ({
   const [logLoading, setLogLoading] = useState(false);
   const [logTaskId, setLogTaskId] = useState<number | null>(null);
   const [viewingTaskNode, setViewingTaskNode] = useState<DSWorkflowTaskNode | null>(null);
+  const [environments, setEnvironments] = useState<DSEnvironment[]>([]);
+  const [workerGroups, setWorkerGroups] = useState<DSWorkerGroup[]>([]);
+
+  // 加载环境与 Worker 组，供任务配置/详情弹窗回显环境配置与 Worker 组
+  useEffect(() => {
+    let cancelled = false;
+    const loadConfigData = async () => {
+      try {
+        const envRes = await api.environment.list({ pageNo: 1, pageSize: 100 });
+        if (!cancelled && envRes.code === 0 && envRes.data) {
+          setEnvironments(Array.isArray(envRes.data) ? envRes.data : (envRes.data.totalList || []));
+        }
+        const wgRes = await api.workerGroup.list(projectCode, { pageNo: 1, pageSize: 100 });
+        if (!cancelled && wgRes.code === 0 && wgRes.data) {
+          setWorkerGroups(Array.isArray(wgRes.data) ? wgRes.data : (wgRes.data.totalList || []));
+        }
+      } catch (err) {
+        console.warn('[WorkflowInstanceDetail] 加载环境/Worker组失败:', err);
+      }
+    };
+    loadConfigData();
+    return () => { cancelled = true; };
+  }, [api, projectCode]);
 
   const canvasRef = useRef<HTMLDivElement>(null);
 
@@ -726,6 +749,9 @@ const WorkflowInstanceDetail: React.FC<WorkflowInstanceDetailProps> = ({
           task={viewingTaskNode}
           allNodes={nodes}
           edges={edges}
+          workflowDefinitions={[]}
+          workerGroups={workerGroups}
+          environments={environments}
           api={api}
           onSave={() => {}}
           onClose={() => setViewingTaskNode(null)}

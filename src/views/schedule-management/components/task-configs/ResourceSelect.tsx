@@ -48,6 +48,16 @@ export function ResourceSelect({
     }
   }, [isOpen]);
 
+  // 挂载时若已传入回显值，预加载资源中心目录，确保主Jar包能正确显示选中项
+  // （否则 resources 为空、下拉未打开时 selectedResource 匹配不到，会显示成占位符）
+  useEffect(() => {
+    if (value) {
+      loadBaseDirAndResources();
+    }
+    // 仅在初始挂载执行一次，回显依赖初始 value
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
@@ -129,14 +139,34 @@ export function ResourceSelect({
     getRelativePath(resource.fullName).toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const selectedResource = flattenNodes(resources).find(r =>
-    getRelativePath(r.fullName) === value || r.name === value
-  );
+  // 归一化路径：去掉 hdfs:// 协议头与首尾斜杠。mainJar 从 JSON 解析可能是对象（{resourceName}）或数字等，
+  // 先做类型防御避免 (p||"").replace 抛错
+  const normalizePath = (p: unknown): string => {
+    const v = typeof p === 'string' ? p : '';
+    return v.replace(/^[a-zA-Z]+:\/\/[^/]*/, '').replace(/^\/+/, '').replace(/\/+$/, '');
+  };
+
+  // 从可能为对象（DS 3.x 的 mainJar 形如 {resourceName: "完整路径"}）的 value 中提取字符串
+  const rawValue: string =
+    typeof value === 'string'
+      ? value
+      : value && typeof value === 'object' && 'resourceName' in value && typeof (value as any).resourceName === 'string'
+        ? (value as any).resourceName
+        : '';
+
+  // 回显匹配：优先完整路径 fullName（与 mainJar.resourceName 一致），再按相对路径、纯文件名兜底。
+  // 避免 DS 返回的 mainJar 带 baseDir 前缀/hdfs:///前导斜杠时匹配失败、显示成占位符
+  const selectedResource = flattenNodes(resources).find(r => {
+    const full = normalizePath(r.fullName);
+    const rel = normalizePath(getRelativePath(r.fullName));
+    const val = normalizePath(rawValue);
+    return full === val || r.fullName === rawValue || rel === val || r.name === val || rel.endsWith('/' + val);
+  });
 
   const renderTreeNode = (node: ResourceNode, level: number = 0): React.ReactNode => {
     const relativePath = getRelativePath(node.fullName);
     const isExpanded = expandedNodes.has(relativePath);
-    const isSelected = value === relativePath || value === node.name;
+    const isSelected = rawValue === relativePath || rawValue === node.name;
     const hasChildren = node.directory && node.children && node.children.length > 0;
 
     return (
@@ -188,7 +218,7 @@ export function ResourceSelect({
           {selectedResource ? (
             <span className="tc-resource-select__selected">
               <FileText size={14} />
-              {value}
+              {rawValue}
             </span>
           ) : (
             <span className="tc-resource-select__placeholder">{placeholder}</span>
@@ -234,7 +264,7 @@ export function ResourceSelect({
               {filteredFlatResources.map(resource => (
                 <div
                   key={resource.id || resource.fullName}
-                  className={`tc-resource-select__item ${value === getRelativePath(resource.fullName) || value === resource.name ? 'tc-resource-select__item--active' : ''}`}
+                  className={`tc-resource-select__item ${rawValue === getRelativePath(resource.fullName) || rawValue === resource.name ? 'tc-resource-select__item--active' : ''}`}
                   onClick={() => {
                     onChange(getRelativePath(resource.fullName));
                     setIsOpen(false);

@@ -410,14 +410,14 @@ export default function TaskConfigModal({ task, allNodes, edges, workflowDefinit
                 <div className="tc-field">
                   <label>环境</label>
                   <select
-                    value={form.environmentCode}
-                    onChange={e => setFormField('environmentCode', parseInt(e.target.value))}
+                    value={String(form.environmentCode ?? -1)}
+                    onChange={e => setFormField('environmentCode', e.target.value === '-1' ? -1 : Number(e.target.value))}
                   >
-                    <option value={-1}>默认环境</option>
+                    <option value="-1">默认环境</option>
                     {environments && environments
                       .filter(env => !form.workerGroup || !env.workerGroups || env.workerGroups.length === 0 || env.workerGroups.includes(form.workerGroup))
                       .map(env => (
-                        <option key={env.code} value={env.code}>{env.name}{env.description ? ` (${env.description})` : ''}</option>
+                        <option key={env.code} value={String(env.code)}>{env.name}{env.description ? ` (${env.description})` : ''}</option>
                       ))}
                   </select>
                   {form.workerGroup && environments && environments.some(env => env.workerGroups && env.workerGroups.length > 0 && !env.workerGroups.includes(form.workerGroup)) && (
