@@ -22,6 +22,30 @@ interface CompileConfig {
   mavenArtifactId?: string;
 }
 
+// 数值型任务参数非负校验：默认值为负数的参数（如 cpuQuota/memoryMax 的 -1 表示不限制）除外。
+// 提取为独立函数，供校验（不重复触发编译）与提交（轻量再校验）两处复用。
+interface TaskTypeParamDef {
+  key: string;
+  label: string;
+  type: string;
+  default?: string | number | boolean;
+}
+
+function collectNegativeNumericErrors(
+  params: TaskTypeParamDef[],
+  values: Record<string, string | boolean>,
+): ValidationError[] {
+  const errors: ValidationError[] = [];
+  for (const param of params) {
+    if (param.type !== 'number' || Number(param.default ?? 0) < 0) continue;
+    const raw = values[param.key];
+    if (raw !== undefined && raw !== '' && Number(raw) < 0) {
+      errors.push({ field: `taskParam.${param.key}`, message: `${param.label}不能为负数` });
+    }
+  }
+  return errors;
+}
+
 interface SubmitToSchedulerModalProps {
   visible: boolean;
   fileName: string;
@@ -736,6 +760,11 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
       });
     }
 
+    // 数值型任务参数非负校验：默认值为负数的参数（如 cpuQuota/memoryMax 的 -1 表示不限制）除外
+    if (currentTaskTypeConfig) {
+      errors.push(...collectNegativeNumericErrors(currentTaskTypeConfig.params, taskTypeParams));
+    }
+
     // 代码头 @依赖 声明的前置任务存在性校验：前置任务不存在时提示用户
     if ((currentMapping?.headerDependencies?.length || 0) > 0 && selectedProjectCode) {
       const depRes = await scanHeaderDependencyTasks(selectedProjectCode);
@@ -856,11 +885,23 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
     const passed = errors.length === 0;
     setValidationPassed(passed);
     return errors;
-  }, [effectiveMapping, currentMapping, selectedProjectCode, workflowName, selectedWorkflowCode, isRealApi, projectCode, projects, projectMismatch, needsDatasource, selectedDatasourceId, codeDatasourceName, datasourceMismatch, isCompilableTask, compileConfig, fileName, codeContent, filePath, rootPath, savedConfig, scanHeaderDependencyTasks]);
+  }, [effectiveMapping, currentMapping, selectedProjectCode, workflowName, selectedWorkflowCode, isRealApi, projectCode, projects, projectMismatch, needsDatasource, selectedDatasourceId, codeDatasourceName, datasourceMismatch, isCompilableTask, compileConfig, fileName, codeContent, filePath, rootPath, savedConfig, scanHeaderDependencyTasks, currentTaskTypeConfig, taskTypeParams]);
 
   const handleSubmit = useCallback(async () => {
 
     if (!effectiveMapping || !selectedProjectCode || !dsApi) return;
+
+    // 提交前仅做数值参数非负的轻量校验（不做完整校验，避免重复编译），
+    // 防止校验通过后将参数改成负数再直接提交
+    const numParamErrors = currentTaskTypeConfig
+      ? collectNegativeNumericErrors(currentTaskTypeConfig.params, taskTypeParams)
+      : [];
+    if (numParamErrors.length > 0) {
+      setValidationErrors(numParamErrors);
+      setShowValidation(true);
+      setStep('config');
+      return;
+    }
 
     // 提交前通过接口校验代码头 @依赖 声明的前置任务是否存在；存在缺失时不允许提交并提示用户先创建前置任务
     const dependencyMap = (currentMapping?.headerDependencies?.length || 0) > 0
@@ -1102,7 +1143,8 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
 
           await dsApi.workflowDefinition.update(selectedProjectCode, selectedWorkflowCode, {
             name: workflowDefinition.name,
-            description: workflowDefinition.description,
+            // 工作流 description 不填写（description 是任务属性，非工作流属性），置空避免写入残留的任务描述
+            description: '',
             executionType: workflowDefinition.executionType,
             timeout: workflowDefinition.timeout,
             globalParams,
@@ -1132,10 +1174,8 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
           throw new Error('获取工作流详情失败');
         }
       } else {
-        const workflowData = buildWorkflowFromCodeFile(
-          mappingWithDatasource,
-          workflowDesc || mappingWithDatasource.description,
-        );
+        // 工作流 description 不应填写任务描述（description 是任务属性，非工作流属性），保持为空
+        const workflowData = buildWorkflowFromCodeFile(mappingWithDatasource, '');
 
         // 根据代码头 @依赖 配置前置任务依赖：在新建工作流中插入 DEPENDENT 前置节点并建立边关系
         if (resolvedDeps.length > 0) {
@@ -1186,7 +1226,7 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
       setStep('error');
     }
   }, [
-    handleValidate, effectiveMapping, selectedProjectCode, selectedWorkflowCode,
+    effectiveMapping, selectedProjectCode, selectedWorkflowCode,
     projects, workflowDesc, autoOnline, autoTrigger, dsApi, onSuccess,
     compiledJarPath, needsDatasource, selectedDatasourceId, dsDataSources,
     selectedWorkerGroup, selectedEnvironmentCode, openlineageTransportUrl, projectCode,
