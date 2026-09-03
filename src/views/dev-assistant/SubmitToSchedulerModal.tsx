@@ -198,7 +198,6 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
   const [workflowName, setWorkflowName] = useState('');
   const [taskName, setTaskName] = useState('');
   const [workflowDesc, setWorkflowDesc] = useState('');
-  const [autoOnline, setAutoOnline] = useState(false);
   const [autoTrigger, setAutoTrigger] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successInfo, setSuccessInfo] = useState<{ projectName: string; workflowName: string } | null>(null);
@@ -574,7 +573,6 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
       setSelectedWorkflowCode(null);
       setWorkflowName('');
       setWorkflowDesc('');
-      setAutoOnline(true);
       setAutoTrigger(false);
       setErrorMsg(null);
       setSuccessInfo(null);
@@ -1343,11 +1341,7 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
             }
           });
 
-          if (autoOnline) {
-            await dsApi.workflowDefinition.release(selectedProjectCode, selectedWorkflowCode, ReleaseState.ONLINE);
-          }
-
-          if (autoTrigger && autoOnline) {
+          if (autoTrigger) {
             await dsApi.workflowDefinition.trigger(selectedProjectCode, {
               processDefinitionCode: selectedWorkflowCode,
             });
@@ -1401,11 +1395,7 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
           createdWorkflowCode = listRes.data.totalList[0].code;
         }
 
-        if (autoOnline && createdWorkflowCode) {
-          await dsApi.workflowDefinition.release(selectedProjectCode, createdWorkflowCode, ReleaseState.ONLINE);
-        }
-
-        if (autoTrigger && autoOnline && createdWorkflowCode) {
+        if (autoTrigger && createdWorkflowCode) {
           await dsApi.workflowDefinition.trigger(selectedProjectCode, {
             processDefinitionCode: createdWorkflowCode,
           });
@@ -1421,7 +1411,7 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
     }
   }, [
     effectiveMapping, selectedProjectCode, selectedWorkflowCode,
-    projects, workflowDesc, autoOnline, autoTrigger, dsApi, onSuccess,
+    projects, workflowDesc, autoTrigger, dsApi, onSuccess,
     compiledJarPath, needsDatasource, selectedDatasourceId, dsDataSources,
     selectedWorkerGroup, selectedEnvironmentCode, openlineageTransportUrl, projectCode,
     currentMapping, scanHeaderDependencyTasks, persistRememberNow,
