@@ -156,6 +156,8 @@ const WorkflowInstanceDetail: React.FC<WorkflowInstanceDetailProps> = ({
   const [taskInstances, setTaskInstances] = useState<DSTaskInstance[]>([]);
   const [nodes, setNodes] = useState<DSWorkflowTaskNode[]>([]);
   const [edges, setEdges] = useState<DSWorkflowEdge[]>([]);
+  // 当前实例最新数据，定时刷新时更新（初始为传入的实例）
+  const [curInstance, setCurInstance] = useState<DSWorkflowInstance>(instance);
   const [selectedTaskCode, setSelectedTaskCode] = useState<number | null>(null);
   const [canvasOffset, setCanvasOffset] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
@@ -282,6 +284,37 @@ const WorkflowInstanceDetail: React.FC<WorkflowInstanceDetailProps> = ({
     };
     loadDetail();
   }, [projectCode, instance.id, api]);
+
+  // 工作流实例详情定时刷新：每 5 秒静默刷新当前实例信息与任务实例状态（不重建 DAG）
+  useEffect(() => {
+    const timer = setInterval(async () => {
+      try {
+        const [detailRes, taskRes] = await Promise.all([
+          api.workflowInstance.detail(instance.id, projectCode),
+          api.workflowInstance.tasks(instance.id, projectCode),
+        ]);
+        if (detailRes.code === 0 && detailRes.data) {
+          const fullInstance = detailRes.data as any;
+          setCurInstance(prev => ({ ...prev, ...fullInstance }));
+        }
+        if (taskRes.code === 0 && taskRes.data) {
+          const rawData = taskRes.data as any;
+          const rawTasks = Array.isArray(rawData?.taskList)
+            ? rawData.taskList
+            : Array.isArray(rawData)
+              ? rawData
+              : [];
+          setTaskInstances(rawTasks.map((task: any) => ({
+            ...task,
+            state: TASK_STATE_STRING_TO_ENUM[task.state] ?? task.state,
+          })));
+        }
+      } catch (error) {
+        console.warn('[WorkflowInstanceDetail] 定时刷新失败:', error);
+      }
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [instance.id, projectCode, api]);
 
   const taskStatusMap = new Map<number, DSTaskInstance>();
   taskInstances.forEach(t => taskStatusMap.set(t.taskCode, t));
@@ -441,7 +474,7 @@ const WorkflowInstanceDetail: React.FC<WorkflowInstanceDetailProps> = ({
     );
   };
 
-  const statusCfg = WORKFLOW_STATUS_CONFIG[WORKFLOW_STATE_STRING_TO_ENUM[instance.state as unknown as string] ?? instance.state];
+  const statusCfg = WORKFLOW_STATUS_CONFIG[WORKFLOW_STATE_STRING_TO_ENUM[curInstance.state as unknown as string] ?? curInstance.state];
 
   return (
     <div className="wi-detail">
@@ -450,7 +483,7 @@ const WorkflowInstanceDetail: React.FC<WorkflowInstanceDetailProps> = ({
           <button className="sm-btn sm-btn--ghost" onClick={onBack} title="返回列表">
             <ArrowLeft size={14} />
           </button>
-          <span className="wi-toolbar__name">{instance.name}</span>
+          <span className="wi-toolbar__name">{curInstance.name}</span>
           {statusCfg && (
             <span className="sm-status-badge" style={{ color: statusCfg.color, backgroundColor: statusCfg.bgColor }}>
               {statusCfg.isSpin && <RefreshCw size={10} className="sm-spin-icon" />}
@@ -475,28 +508,28 @@ const WorkflowInstanceDetail: React.FC<WorkflowInstanceDetailProps> = ({
           </button>
         </div>
         <div className="wi-toolbar__right">
-          {(instance.state === WorkflowExecutionStatus.FAILURE || instance.state === WorkflowExecutionStatus.STOP) && (
-            <button className="sm-btn sm-btn--primary sm-btn--xs" onClick={() => onExecute(instance, 'REPEAT_RUNNING')} title="重跑">
+          {(curInstance.state === WorkflowExecutionStatus.FAILURE || curInstance.state === WorkflowExecutionStatus.STOP) && (
+            <button className="sm-btn sm-btn--primary sm-btn--xs" onClick={() => onExecute(curInstance, 'REPEAT_RUNNING')} title="重跑">
               <RotateCcw size={12} /> 重跑
             </button>
           )}
-          {instance.state === WorkflowExecutionStatus.FAILURE && (
-            <button className="sm-btn sm-btn--success sm-btn--xs" onClick={() => onExecute(instance, 'RESUME_WAITING_THREAD')} title="恢复">
+          {curInstance.state === WorkflowExecutionStatus.FAILURE && (
+            <button className="sm-btn sm-btn--success sm-btn--xs" onClick={() => onExecute(curInstance, 'RESUME_WAITING_THREAD')} title="恢复">
               <Play size={12} /> 恢复
             </button>
           )}
-          {instance.state === WorkflowExecutionStatus.RUNNING_EXECUTION && (
+          {curInstance.state === WorkflowExecutionStatus.RUNNING_EXECUTION && (
             <>
-              <button className="sm-btn sm-btn--warning sm-btn--xs" onClick={() => onExecute(instance, 'PAUSE')} title="暂停">
+              <button className="sm-btn sm-btn--warning sm-btn--xs" onClick={() => onExecute(curInstance, 'PAUSE')} title="暂停">
                 <Pause size={12} /> 暂停
               </button>
-              <button className="sm-btn sm-btn--danger sm-btn--xs" onClick={() => onExecute(instance, 'STOP')} title="停止">
+              <button className="sm-btn sm-btn--danger sm-btn--xs" onClick={() => onExecute(curInstance, 'STOP')} title="停止">
                 <StopCircle size={12} /> 停止
               </button>
             </>
           )}
-          {instance.state === WorkflowExecutionStatus.PAUSE && (
-            <button className="sm-btn sm-btn--primary sm-btn--xs" onClick={() => onExecute(instance, 'RESUME_WAITING_THREAD')} title="恢复">
+          {curInstance.state === WorkflowExecutionStatus.PAUSE && (
+            <button className="sm-btn sm-btn--primary sm-btn--xs" onClick={() => onExecute(curInstance, 'RESUME_WAITING_THREAD')} title="恢复">
               <Play size={12} /> 恢复
             </button>
           )}
@@ -583,31 +616,31 @@ const WorkflowInstanceDetail: React.FC<WorkflowInstanceDetailProps> = ({
                   <h4 className="wi-info__title">基本信息</h4>
                   <div className="wi-info__row">
                     <span className="wi-info__label"><User size={12} /> 执行人</span>
-                    <span className="wi-info__value">{instance.executorName || '-'}</span>
+                    <span className="wi-info__value">{curInstance.executorName || '-'}</span>
                   </div>
                   <div className="wi-info__row">
                     <span className="wi-info__label"><Clock size={12} /> 调度时间</span>
-                    <span className="wi-info__value">{formatDateTime(instance.scheduleTime)}</span>
+                    <span className="wi-info__value">{formatDateTime(curInstance.scheduleTime)}</span>
                   </div>
                   <div className="wi-info__row">
                     <span className="wi-info__label"><Clock size={12} /> 开始时间</span>
-                    <span className="wi-info__value">{formatDateTime(instance.startTime)}</span>
+                    <span className="wi-info__value">{formatDateTime(curInstance.startTime)}</span>
                   </div>
                   <div className="wi-info__row">
                     <span className="wi-info__label"><Clock size={12} /> 结束时间</span>
-                    <span className="wi-info__value">{formatDateTime(instance.endTime)}</span>
+                    <span className="wi-info__value">{formatDateTime(curInstance.endTime)}</span>
                   </div>
                   <div className="wi-info__row">
                     <span className="wi-info__label"><Clock size={12} /> 耗时</span>
-                    <span className="wi-info__value">{instance.duration || '-'}</span>
+                    <span className="wi-info__value">{curInstance.duration || '-'}</span>
                   </div>
                   <div className="wi-info__row">
                     <span className="wi-info__label"><RefreshCw size={12} /> 运行次数</span>
-                    <span className="wi-info__value">{instance.runTimes}</span>
+                    <span className="wi-info__value">{curInstance.runTimes}</span>
                   </div>
                   <div className="wi-info__row">
                     <span className="wi-info__label"><HardDrive size={12} /> Host</span>
-                    <span className="wi-info__value">{instance.host || '-'}</span>
+                    <span className="wi-info__value">{curInstance.host || '-'}</span>
                   </div>
                 </div>
 
@@ -615,15 +648,15 @@ const WorkflowInstanceDetail: React.FC<WorkflowInstanceDetailProps> = ({
                   <h4 className="wi-info__title">工作流定义</h4>
                   <div className="wi-info__row">
                     <span className="wi-info__label">名称</span>
-                    <span className="wi-info__value">{instance.processDefinitionName}</span>
+                    <span className="wi-info__value">{curInstance.processDefinitionName}</span>
                   </div>
                   <div className="wi-info__row">
                     <span className="wi-info__label">优先级</span>
-                    <span className="wi-info__value">{instance.processInstancePriority}</span>
+                    <span className="wi-info__value">{curInstance.processInstancePriority}</span>
                   </div>
                   <div className="wi-info__row">
                     <span className="wi-info__label">Worker组</span>
-                    <span className="wi-info__value">{instance.workerGroup || '-'}</span>
+                    <span className="wi-info__value">{curInstance.workerGroup || '-'}</span>
                   </div>
                 </div>
 

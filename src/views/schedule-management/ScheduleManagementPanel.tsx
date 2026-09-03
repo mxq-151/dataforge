@@ -323,10 +323,12 @@ const ScheduleManagementPanelInner: React.FC<{ api: DolphinSchedulerApi }> = ({ 
     }
   }, [currentProject, workflowDefsPage, workflowDefsSearch]);
 
-  const fetchWorkflowInstances = useCallback(async () => {
+  const fetchWorkflowInstances = useCallback(async (silent = false) => {
     if (!currentProject) return;
-    setLoading(true);
-    setError(null);
+    if (!silent) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const res = await api.workflowInstance.list({
         pageNo: workflowInstancesPage,
@@ -342,20 +344,22 @@ const ScheduleManagementPanelInner: React.FC<{ api: DolphinSchedulerApi }> = ({ 
         }));
         setWorkflowInstances(instances);
         setWorkflowInstancesTotal(res.data.total || 0);
-      } else {
+      } else if (!silent) {
         setError(res.msg || '获取工作流实例失败');
       }
     } catch (e: any) {
-      setError(e.message || '请求失败');
+      if (!silent) setError(e.message || '请求失败');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [currentProject, workflowInstancesPage, workflowInstancesSearch, workflowInstanceStatusFilter]);
 
-  const fetchTaskInstances = useCallback(async () => {
+  const fetchTaskInstances = useCallback(async (silent = false) => {
     if (!currentProject) return;
-    setLoading(true);
-    setError(null);
+    if (!silent) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const res = await api.taskInstance.list({
         pageNo: taskInstancesPage,
@@ -371,13 +375,13 @@ const ScheduleManagementPanelInner: React.FC<{ api: DolphinSchedulerApi }> = ({ 
         }));
         setTaskInstances(tasks);
         setTaskInstancesTotal(res.data.total || 0);
-      } else {
+      } else if (!silent) {
         setError(res.msg || '获取任务实例失败');
       }
     } catch (e: any) {
-      setError(e.message || '请求失败');
+      if (!silent) setError(e.message || '请求失败');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [currentProject, taskInstancesPage, taskInstancesSearch, taskInstanceStatusFilter]);
 
@@ -448,6 +452,26 @@ const ScheduleManagementPanelInner: React.FC<{ api: DolphinSchedulerApi }> = ({ 
       fetchTaskInstances();
     }
   }, [fetchTaskInstances, projectSubTab]);
+
+  // 工作流实例列表定时刷新：每 5 秒静默刷新当前激活的列表（进入详情视图时暂停）
+  useEffect(() => {
+    if (!currentProject || projectSubTab !== 'workflowInstances') return;
+    if (viewingWorkflowInstance || viewingTaskInstance) return;
+    const timer = setInterval(() => {
+      fetchWorkflowInstances(true);
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [currentProject, projectSubTab, viewingWorkflowInstance, viewingTaskInstance, fetchWorkflowInstances]);
+
+  // 任务实例列表定时刷新：每 5 秒静默刷新当前激活的列表（进入详情视图时暂停）
+  useEffect(() => {
+    if (!currentProject || projectSubTab !== 'taskInstances') return;
+    if (viewingWorkflowInstance || viewingTaskInstance) return;
+    const timer = setInterval(() => {
+      fetchTaskInstances(true);
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [currentProject, projectSubTab, viewingWorkflowInstance, viewingTaskInstance, fetchTaskInstances]);
 
   const handleEnterProject = (project: DSProject) => {
     setCurrentProject(project);
@@ -1071,7 +1095,7 @@ const ScheduleManagementPanelInner: React.FC<{ api: DolphinSchedulerApi }> = ({ 
             <option value="3">已暂停</option>
             <option value="5">已停止</option>
           </select>
-          <button className="sm-btn sm-btn--ghost" onClick={fetchWorkflowInstances}>
+          <button className="sm-btn sm-btn--ghost" onClick={() => fetchWorkflowInstances()}>
             <RefreshCw size={14} />
           </button>
         </div>
@@ -1170,7 +1194,7 @@ const ScheduleManagementPanelInner: React.FC<{ api: DolphinSchedulerApi }> = ({ 
             <option value="5">已停止</option>
             <option value="9">已Kill</option>
           </select>
-          <button className="sm-btn sm-btn--ghost" onClick={fetchTaskInstances}>
+          <button className="sm-btn sm-btn--ghost" onClick={() => fetchTaskInstances()}>
             <RefreshCw size={14} />
           </button>
         </div>
