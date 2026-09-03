@@ -8,7 +8,7 @@ import {
 import type {
   DSWorkflowTaskNode, DSWorkflowEdge, DSWorkflowGlobalParam,
   DSTaskType, DSWorkflowSaveForm, DSWorkflowTriggerForm,
-  DSWorkerGroup, DSEnvironment, DSAlertGroup, DolphinSchedulerApi,
+  DSWorkerGroup, DSEnvironment, DSAlertGroup, DolphinSchedulerApi, DSTenant, DSStartParam,
 } from '../../../types/dolphinscheduler';
 import {
   TASK_CATEGORIES, TASK_TYPE_LABELS, ExecutionType, FailureStrategy,
@@ -74,6 +74,7 @@ interface WorkflowDefinitionEditorProps {
   workerGroups?: DSWorkerGroup[];
   environments?: DSEnvironment[];
   alertGroups?: DSAlertGroup[];
+  tenants?: DSTenant[];
   api?: DolphinSchedulerApi;
   onSave: (data: {
     name: string;
@@ -102,6 +103,7 @@ const WorkflowDefinitionEditor: React.FC<WorkflowDefinitionEditorProps> = ({
   workerGroups,
   environments,
   alertGroups,
+  tenants,
   api,
   onSave,
   onTrigger,
@@ -151,13 +153,15 @@ const WorkflowDefinitionEditor: React.FC<WorkflowDefinitionEditorProps> = ({
 
   const [triggerForm, setTriggerForm] = useState<DSWorkflowTriggerForm>({
     failureStrategy: FailureStrategy.CONTINUE,
-    taskDependType: 'TASK_POST',
     warningType: WarningType.NONE,
     warningGroupId: null,
     processInstancePriority: Priority.MEDIUM,
     workerGroup: 'default',
     environmentCode: null,
+    tenantCode: null,
     dryRun: 0,
+    complementRun: false,
+    startParams: [],
   });
 
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -662,6 +666,7 @@ const WorkflowDefinitionEditor: React.FC<WorkflowDefinitionEditorProps> = ({
 
       {showTriggerModal && onTrigger && (
         <TriggerWorkflowModal
+          workflowName={initialName}
           form={triggerForm}
           onChange={setTriggerForm}
           onConfirm={() => {
@@ -672,6 +677,7 @@ const WorkflowDefinitionEditor: React.FC<WorkflowDefinitionEditorProps> = ({
           workerGroups={workerGroups}
           environments={environments}
           alertGroups={alertGroups}
+          tenants={tenants}
         />
       )}
     </div>
@@ -846,7 +852,8 @@ function SaveWorkflowModal({ form, onChange, onConfirm, onClose }: SaveWorkflowM
   );
 }
 
-interface TriggerWorkflowModalProps {
+export interface TriggerWorkflowModalProps {
+  workflowName: string;
   form: DSWorkflowTriggerForm;
   onChange: (form: DSWorkflowTriggerForm) => void;
   onConfirm: () => void;
@@ -854,17 +861,45 @@ interface TriggerWorkflowModalProps {
   workerGroups?: DSWorkerGroup[];
   environments?: DSEnvironment[];
   alertGroups?: DSAlertGroup[];
+  tenants?: DSTenant[];
 }
 
-function TriggerWorkflowModal({ form, onChange, onConfirm, onClose, workerGroups, environments, alertGroups }: TriggerWorkflowModalProps) {
+export function TriggerWorkflowModal({ workflowName, form, onChange, onConfirm, onClose, workerGroups, environments, alertGroups, tenants }: TriggerWorkflowModalProps) {
+  const addStartParam = () => {
+    onChange({
+      ...form,
+      startParams: [...form.startParams, { key: '', value: '' } as DSStartParam],
+    });
+  };
+
+  const removeStartParam = (index: number) => {
+    onChange({
+      ...form,
+      startParams: form.startParams.filter((_, i) => i !== index),
+    });
+  };
+
+  const updateStartParam = (index: number, field: keyof DSStartParam, value: string) => {
+    const newParams = [...form.startParams];
+    newParams[index] = { ...newParams[index], [field]: value };
+    onChange({ ...form, startParams: newParams });
+  };
+
+  const priorityOrder: Priority[] = [Priority.HIGHEST, Priority.HIGH, Priority.MEDIUM, Priority.LOW, Priority.LOWEST];
+
   return (
     <div className="sm-modal-overlay" onClick={onClose}>
       <div className="sm-modal sm-modal--trigger" onClick={e => e.stopPropagation()}>
         <div className="sm-modal__header">
           <Zap size={18} />
-          <span>运行工作流</span>
+          <span>启动前请设置参数</span>
         </div>
         <div className="sm-modal__body sm-modal__body--scroll">
+          <div className="sm-modal__field">
+            <label>工作流名称</label>
+            <div className="sm-modal__readonly-text">{workflowName || '-'}</div>
+          </div>
+
           <div className="sm-modal__field">
             <label>失败策略</label>
             <div className="sm-modal__radio-group">
@@ -890,41 +925,7 @@ function TriggerWorkflowModal({ form, onChange, onConfirm, onClose, workerGroups
               </label>
             </div>
           </div>
-          <div className="sm-modal__field">
-            <label>节点执行方式</label>
-            <div className="sm-modal__radio-group">
-              <label className="sm-modal__radio">
-                <input
-                  type="radio"
-                  name="taskDependType"
-                  value="TASK_POST"
-                  checked={form.taskDependType === 'TASK_POST'}
-                  onChange={() => onChange({ ...form, taskDependType: 'TASK_POST' })}
-                />
-                <span>向后执行</span>
-              </label>
-              <label className="sm-modal__radio">
-                <input
-                  type="radio"
-                  name="taskDependType"
-                  value="TASK_PRE"
-                  checked={form.taskDependType === 'TASK_PRE'}
-                  onChange={() => onChange({ ...form, taskDependType: 'TASK_PRE' })}
-                />
-                <span>向前执行</span>
-              </label>
-              <label className="sm-modal__radio">
-                <input
-                  type="radio"
-                  name="taskDependType"
-                  value="TASK_ONLY"
-                  checked={form.taskDependType === 'TASK_ONLY'}
-                  onChange={() => onChange({ ...form, taskDependType: 'TASK_ONLY' })}
-                />
-                <span>仅当前节点</span>
-              </label>
-            </div>
-          </div>
+
           <div className="sm-modal__field">
             <label>通知策略</label>
             <select
@@ -932,87 +933,163 @@ function TriggerWorkflowModal({ form, onChange, onConfirm, onClose, workerGroups
               onChange={e => onChange({ ...form, warningType: e.target.value as WarningType })}
               className="sm-select"
             >
-              <option value="NONE">不通知</option>
-              <option value="SUCCESS">成功通知</option>
-              <option value="FAILURE">失败通知</option>
-              <option value="ALL">全部通知</option>
+              <option value={WarningType.NONE}>都不发</option>
+              <option value={WarningType.SUCCESS}>成功发</option>
+              <option value={WarningType.FAILURE}>失败发</option>
+              <option value={WarningType.ALL}>成功失败都发</option>
             </select>
           </div>
+
+          {form.warningType !== WarningType.NONE && (
+            <div className="sm-modal__field">
+              <label>告警组</label>
+              <select
+                value={form.warningGroupId ?? ''}
+                onChange={e => onChange({ ...form, warningGroupId: e.target.value ? Number(e.target.value) : null })}
+                className="sm-select"
+              >
+                <option value="">请选择告警组</option>
+                {alertGroups && alertGroups.map(ag => (
+                  <option key={ag.id} value={ag.id}>
+                    {ag.groupName}{ag.description ? ` (${ag.description})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <div className="sm-modal__field">
-            <label>优先级</label>
+            <label>流程优先级</label>
             <select
               value={form.processInstancePriority}
               onChange={e => onChange({ ...form, processInstancePriority: e.target.value as Priority })}
-              className="sm-select"
+              className="sm-select sm-select--with-icon"
             >
-              <option value="HIGHEST">HIGHEST</option>
-              <option value="HIGH">HIGH</option>
-              <option value="MEDIUM">MEDIUM</option>
-              <option value="LOW">LOW</option>
-              <option value="LOWEST">LOWEST</option>
-            </select>
-          </div>
-          <div className="sm-modal__field">
-            <label>告警组</label>
-            <select
-              value={form.warningGroupId ?? ''}
-              onChange={e => onChange({ ...form, warningGroupId: e.target.value ? Number(e.target.value) : null })}
-              className="sm-select"
-            >
-              <option value="">不通知</option>
-              {alertGroups && alertGroups.map(ag => (
-                <option key={ag.id} value={ag.id}>{ag.groupName}{ag.description ? ` (${ag.description})` : ''}</option>
+              {priorityOrder.map(p => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
               ))}
             </select>
           </div>
-          <div className="sm-modal__row">
-            <div className="sm-modal__field sm-modal__field--half">
-              <label>Worker组</label>
-              <select
-                value={form.workerGroup}
-                onChange={e => onChange({ ...form, workerGroup: e.target.value })}
-                className="sm-select"
-              >
-                {workerGroups && workerGroups.length > 0 ? (
-                  workerGroups.map(wg => (
-                    <option key={wg.workerGroup} value={wg.workerGroup}>{wg.workerGroup}</option>
-                  ))
-                ) : (
-                  <option value="default">default</option>
-                )}
-              </select>
-            </div>
-            <div className="sm-modal__field sm-modal__field--half">
-              <label>环境</label>
-              <select
-                value={form.environmentCode ?? ''}
-                onChange={e => onChange({ ...form, environmentCode: e.target.value ? Number(e.target.value) : null })}
-                className="sm-select"
-              >
-                <option value="">默认环境</option>
-                {environments && environments
-                  .filter(env => !form.workerGroup || !env.workerGroups || env.workerGroups.length === 0 || env.workerGroups.includes(form.workerGroup))
-                  .map(env => (
-                    <option key={env.code} value={env.code}>{env.name}</option>
-                  ))}
-              </select>
-            </div>
-          </div>
+
           <div className="sm-modal__field">
-            <label>空跑</label>
+            <label>Worker分组</label>
             <select
-              value={form.dryRun}
-              onChange={e => onChange({ ...form, dryRun: Number(e.target.value) })}
+              value={form.workerGroup}
+              onChange={e => onChange({ ...form, workerGroup: e.target.value })}
               className="sm-select"
             >
-              <option value={0}>否</option>
-              <option value={1}>是</option>
+              {workerGroups && workerGroups.length > 0 ? (
+                workerGroups.map(wg => (
+                  <option key={wg.workerGroup} value={wg.workerGroup}>{wg.workerGroup}</option>
+                ))
+              ) : (
+                <option value="default">default</option>
+              )}
             </select>
+          </div>
+
+          <div className="sm-modal__field">
+            <label>租户</label>
+            <select
+              value={form.tenantCode ?? ''}
+              onChange={e => onChange({ ...form, tenantCode: e.target.value || null })}
+              className="sm-select"
+            >
+              <option value="">请选择租户</option>
+              {tenants && tenants.map(t => (
+                <option key={t.tenantCode} value={t.tenantCode}>
+                  {t.tenantCode}{t.description ? ` (${t.description})` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="sm-modal__field">
+            <label>环境名称</label>
+            <select
+              value={form.environmentCode ?? ''}
+              onChange={e => onChange({ ...form, environmentCode: e.target.value ? Number(e.target.value) : null })}
+              className="sm-select"
+            >
+              <option value="">默认环境</option>
+              {environments && environments
+                .filter(env => !form.workerGroup || !env.workerGroups || env.workerGroups.length === 0 || env.workerGroups.includes(form.workerGroup))
+                .map(env => (
+                  <option key={env.code} value={env.code}>{env.name}</option>
+                ))}
+            </select>
+          </div>
+
+          <div className="sm-modal__field">
+            <label>补数</label>
+            <div className="sm-modal__checkbox-row">
+              <label className="sm-modal__checkbox">
+                <input
+                  type="checkbox"
+                  checked={form.complementRun}
+                  onChange={e => onChange({ ...form, complementRun: e.target.checked })}
+                />
+                <span>是否是补数</span>
+              </label>
+            </div>
+          </div>
+
+          <div className="sm-modal__field">
+            <label>启动参数</label>
+            <div className="wf-start-params">
+              {form.startParams.length === 0 ? null : (
+                <div className="wf-start-param__list">
+                  {form.startParams.map((p, idx) => (
+                    <div key={idx} className="wf-start-param__row">
+                      <input
+                        value={p.key}
+                        onChange={e => updateStartParam(idx, 'key', e.target.value)}
+                        placeholder="参数名"
+                        className="wf-start-param__input"
+                      />
+                      <span className="wf-start-param__eq">=</span>
+                      <input
+                        value={p.value}
+                        onChange={e => updateStartParam(idx, 'value', e.target.value)}
+                        placeholder="参数值"
+                        className="wf-start-param__input"
+                      />
+                      <button
+                        className="sm-btn sm-btn--danger sm-btn--xs wf-start-param__btn-action"
+                        onClick={() => removeStartParam(idx)}
+                        title="删除"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <button className="sm-btn sm-btn--ghost sm-btn--block wf-start-param__add-btn" onClick={addStartParam}>
+                <Plus size={12} /> 添加
+              </button>
+            </div>
+          </div>
+
+          <div className="sm-modal__field">
+            <label>是否空跑</label>
+            <div className="sm-modal__switch-row">
+              <label className={`sm-switch ${form.dryRun === 1 ? 'sm-switch--on' : ''}`}>
+                <input
+                  type="checkbox"
+                  checked={form.dryRun === 1}
+                  onChange={e => onChange({ ...form, dryRun: e.target.checked ? 1 : 0 })}
+                />
+                <span className="sm-switch__slider" />
+              </label>
+            </div>
           </div>
         </div>
         <div className="sm-modal__footer">
           <button className="sm-btn sm-btn--secondary" onClick={onClose}>取消</button>
-          <button className="sm-btn sm-btn--primary" onClick={onConfirm}>确认运行</button>
+          <button className="sm-btn sm-btn--primary" onClick={onConfirm}>确定</button>
         </div>
       </div>
     </div>

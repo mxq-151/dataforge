@@ -607,3 +607,122 @@
   align-self: flex-start;
   margin-top: 4px;
 }
+
+/* ========== 启动弹窗（trigger）：统一控件高度与视觉 ========== */
+.sm-modal--trigger .sm-modal__field input[type="text"],
+.sm-modal--trigger .sm-modal__field input:not([type]) {
+  width: 100%;
+  height: 28px;
+  box-sizing: border-box;
+  padding: 4px 10px;
+  background-color: #3c3c3c;
+  border: 1px solid #555555;
+  border-radius: 3px;
+  color: #cccccc;
+  font-size: 13px;
+  line-height: 1;
+  outline: none;
+}
+
+.sm-modal--trigger .sm-modal__field input:focus {
+  border-color: #0078d4;
+}
+
+.sm-modal--trigger .sm-modal__field .sm-select,
+.sm-modal--trigger .sm-modal__field select {
+  width: 100%;
+  height: 28px;
+  box-sizing: border-box;
+  padding: 0 30px 0 10px;
+  -webkit-appearance: none;
+  appearance: none;
+  background-color: #3c3c3c;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23aaaaaa' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 12px 12px;
+  border: 1px solid #555555;
+  border-radius: 3px;
+  color: #cccccc;
+  font-size: 13px;
+  line-height: 26px;
+  outline: none;
+  cursor: pointer;
+}
+
+.sm-modal--trigger .sm-modal__field .sm-select:focus,
+.sm-modal--trigger .sm-modal__field select:focus {
+  border-color: #0078d4;
+}
+
+/* 优先级下拉：选项前面显示「↑」作为辅助指示前缀，这里通过颜色强化文字 */
+.sm-select--with-icon {
+  font-weight: 500;
+  letter-spacing: 0.3px;
+}
+
+/* ========== 启动参数动态列表 ========== */
+.wf-start-params {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  background-color: rgba(60, 60, 60, 0.3);
+  border: 1px dashed #4a4a4a;
+  border-radius: 4px;
+}
+
+.wf-start-param__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wf-start-param__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wf-start-param__input {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  box-sizing: border-box;
+  padding: 4px 8px;
+  background-color: #3c3c3c;
+  border: 1px solid #555555;
+  border-radius: 3px;
+  color: #cccccc;
+  font-size: 12px;
+  line-height: 1;
+  outline: none;
+}
+
+.wf-start-param__input:focus {
+  border-color: #0078d4;
+}
+
+.wf-start-param__eq {
+  color: #888888;
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.wf-start-param__btn-action {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.wf-start-param__add-btn {
+  gap: 4px;
+  height: 32px;
+  border-style: dashed !important;
+  border-width: 1px !important;
+  background-color: transparent !important;
+}

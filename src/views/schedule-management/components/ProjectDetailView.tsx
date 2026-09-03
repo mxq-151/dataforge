@@ -8,13 +8,13 @@ import type {
   DolphinSchedulerApi,
   DSProject, DSWorkflowDefinition, DSWorkflowInstance, DSTaskInstance,
   DSWorkflowTaskNode, DSWorkflowEdge, DSWorkflowGlobalParam, DSWorkflowTriggerForm,
-  DSWorkerGroup, DSEnvironment, DSAlertGroup,
+  DSWorkerGroup, DSEnvironment, DSAlertGroup, DSTenant,
 } from '../../../types/dolphinscheduler';
 import {
-  ReleaseState, parseReleaseState,
+  ReleaseState, parseReleaseState, FailureStrategy, WarningType, Priority,
   WorkflowExecutionStatus, TaskExecutionStatus, ExecutionType,
 } from '../../../types/dolphinscheduler';
-import WorkflowDefinitionEditor from './WorkflowDefinitionEditor';
+import WorkflowDefinitionEditor, { TriggerWorkflowModal } from './WorkflowDefinitionEditor';
 import WorkflowInstanceDetail from './WorkflowInstanceDetail';
 import TaskInstanceDetailView from './TaskInstanceDetail';
 import {
@@ -100,6 +100,22 @@ const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
   const [viewingTaskInstance, setViewingTaskInstance] = useState<DSTaskInstance | null>(null);
 
   const [workerGroups, setWorkerGroups] = useState<DSWorkerGroup[]>([]);
+  const [tenants, setTenants] = useState<DSTenant[]>([]);
+
+  // 列表「运行」按钮弹出的启动前参数设置
+  const [triggeringWorkflow, setTriggeringWorkflow] = useState<DSWorkflowDefinition | null>(null);
+  const [triggerForm, setTriggerForm] = useState<DSWorkflowTriggerForm>({
+    failureStrategy: FailureStrategy.CONTINUE,
+    warningType: WarningType.NONE,
+    warningGroupId: null,
+    processInstancePriority: Priority.MEDIUM,
+    workerGroup: 'default',
+    environmentCode: null,
+    tenantCode: null,
+    dryRun: 0,
+    complementRun: false,
+    startParams: [],
+  });
 
   // Worker 分组是按项目维度拉取的，跟着本组件的项目走
   useEffect(() => {
@@ -122,6 +138,27 @@ const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
     fetchWorkerGroups();
     return () => { cancelled = true; };
   }, [api, project.code]);
+
+  // 租户是全局维度拉取的
+  useEffect(() => {
+    let cancelled = false;
+    const fetchTenants = async () => {
+      try {
+        const res = await api.tenant.list({ pageNo: 1, pageSize: 100 });
+        if (cancelled) return;
+        if (res.code === 0 || (res as any).status === 'SUCCESS') {
+          const list = Array.isArray(res.data) ? res.data : (res.data?.totalList || []);
+          setTenants(list);
+        } else {
+          console.warn('[ScheduleManagement] Tenants response:', res);
+        }
+      } catch (err) {
+        console.error('[ScheduleManagement] Failed to load tenants:', err);
+      }
+    };
+    fetchTenants();
+    return () => { cancelled = true; };
+  }, [api]);
 
   const fetchWorkflowDefs = useCallback(async () => {
     setLoading(true);
@@ -319,9 +356,21 @@ const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
     }
   };
 
-  const handleTriggerWorkflowWithForm = async (defCode: number, _form: DSWorkflowTriggerForm) => {
+  const handleTriggerWorkflowWithForm = async (defCode: number, form: DSWorkflowTriggerForm) => {
     try {
-      const res = await api.workflowDefinition.trigger(project.code, { processDefinitionCode: defCode });
+      const res = await api.workflowDefinition.trigger(project.code, {
+        processDefinitionCode: defCode,
+        failureStrategy: form.failureStrategy,
+        warningType: form.warningType,
+        warningGroupId: form.warningGroupId ?? 0,
+        processInstancePriority: form.processInstancePriority,
+        workerGroup: form.workerGroup,
+        environmentCode: form.environmentCode ?? undefined,
+        tenantCode: form.tenantCode ?? undefined,
+        dryRun: form.dryRun,
+        complementRun: form.complementRun,
+        startParams: form.startParams,
+      });
       if (res.code === 0) {
         setEditingWorkflow(null);
         setProjectSubTab('workflowInstances');
@@ -379,22 +428,20 @@ const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
   };
 
   const handleTriggerWorkflow = (def: DSWorkflowDefinition) => {
-    setConfirmModal({
-      message: `确定要运行工作流「${def.name}」吗？`,
-      onConfirm: async () => {
-        setConfirmModal(null);
-        try {
-          const res = await api.workflowDefinition.trigger(project.code, { processDefinitionCode: def.code });
-          if (res.code === 0) {
-            setProjectSubTab('workflowInstances');
-          } else {
-            setError(res.msg || '运行工作流失败');
-          }
-        } catch (e: any) {
-          setError(e.message || '运行失败');
-        }
-      },
+    // 重置为默认启动参数，避免残留上一次的值
+    setTriggerForm({
+      failureStrategy: FailureStrategy.CONTINUE,
+      warningType: WarningType.NONE,
+      warningGroupId: null,
+      processInstancePriority: Priority.MEDIUM,
+      workerGroup: 'default',
+      environmentCode: null,
+      tenantCode: null,
+      dryRun: 0,
+      complementRun: false,
+      startParams: [],
     });
+    setTriggeringWorkflow(def);
   };
 
   const handleCopyWorkflowDef = (def: DSWorkflowDefinition) => {
@@ -807,6 +854,7 @@ const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
       workerGroups={workerGroups}
       environments={environments}
       alertGroups={alertGroups}
+      tenants={tenants}
       api={api}
       onSave={handleSaveWorkflow}
       onTrigger={editingWorkflow.mode === 'edit' && editingWorkflow.definition ? (form) => handleTriggerWorkflowWithForm(editingWorkflow.definition!.code, form) : undefined}
@@ -892,6 +940,23 @@ const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
       {inputModal && <InputModal {...inputModal} />}
       {logModal && (
         <LogModal log={logModal.log} loading={logModal.loading} onClose={() => setLogModal(null)} />
+      )}
+      {triggeringWorkflow && (
+        <TriggerWorkflowModal
+          workflowName={triggeringWorkflow.name}
+          form={triggerForm}
+          onChange={setTriggerForm}
+          onClose={() => setTriggeringWorkflow(null)}
+          onConfirm={() => {
+            const def = triggeringWorkflow;
+            setTriggeringWorkflow(null);
+            handleTriggerWorkflowWithForm(def.code, triggerForm);
+          }}
+          workerGroups={workerGroups}
+          environments={environments}
+          alertGroups={alertGroups}
+          tenants={tenants}
+        />
       )}
     </div>
   );

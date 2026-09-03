@@ -434,19 +434,37 @@ export function createRealDolphinSchedulerApi(apiUrl: string, token: string): Do
       },
 
       trigger(projectCode, params) {
+        const formData: Record<string, string> = {
+          workflowDefinitionCode: String(params.processDefinitionCode),
+          scheduleTime: params.scheduleTime || '',
+          failureStrategy: params.failureStrategy || 'END',
+          warningType: params.warningType || 'NONE',
+          warningGroupId: String(params.warningGroupId ?? 0),
+          runMode: 'RUN_MODE_SERIAL',
+          processInstancePriority: params.processInstancePriority || 'MEDIUM',
+          workerGroup: params.workerGroup || 'default',
+          dryRun: String(params.dryRun ?? 0),
+        };
+        if (params.environmentCode !== undefined && params.environmentCode !== null) {
+          formData.environmentCode = String(params.environmentCode);
+        }
+        if (params.tenantCode) {
+          formData.tenantCode = params.tenantCode;
+        }
+        if (params.startParams && params.startParams.length > 0) {
+          formData.startParamsList = JSON.stringify(
+            params.startParams
+              .filter(p => p && p.key)
+              .map(p => ({ prop: p.key, direct: 'IN', type: 'VARCHAR', value: p.value || '' })),
+          );
+        }
+        if (params.complementRun) {
+          formData.execType = 'COMPLEMENT_DATA';
+          formData.commandType = 'COMPLEMENT_DATA';
+        }
         return dsRequest(`/projects/${projectCode}/executors/start-workflow-instance`, {
           method: 'POST',
-          formData: {
-            workflowDefinitionCode: String(params.processDefinitionCode),
-            scheduleTime: '',
-            failureStrategy: 'END',
-            warningType: 'FAILURE',
-            warningGroupId: '0',
-            runMode: 'RUN_MODE_SERIAL',
-            processInstancePriority: 'MEDIUM',
-            workerGroup: 'default',
-            dryRun: '0',
-          },
+          formData,
         });
       },
     },

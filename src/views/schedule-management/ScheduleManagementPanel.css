@@ -715,6 +715,106 @@
   margin-left: 2px;
 }
 
+/* modal 字段：只读文本展示 */
+.sm-modal__readonly-text {
+  padding: 6px 10px;
+  background-color: #353535;
+  border: 1px solid #444444;
+  border-radius: 3px;
+  color: #e0e0e0;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+/* checkbox 所在行（非 toggle-switch 风格的普通 checkbox） */
+.sm-modal__checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 28px;
+  box-sizing: border-box;
+}
+
+.sm-modal__checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #cccccc;
+  white-space: nowrap;
+  transform: translateY(-0.5px);
+}
+
+.sm-modal__checkbox input[type="checkbox"] {
+  accent-color: #0078d4;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  flex-shrink: 0;
+}
+
+/* switch 开关：「是否空跑」这类 iOS 风格 toggle */
+.sm-modal__switch-row {
+  display: flex;
+  align-items: center;
+  min-height: 28px;
+}
+
+.sm-switch {
+  position: relative;
+  display: inline-block;
+  width: 40px;
+  height: 22px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.sm-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.sm-switch__slider {
+  position: absolute;
+  inset: 0;
+  background-color: #3c3c3c;
+  border: 1px solid #555555;
+  border-radius: 22px;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+
+.sm-switch__slider::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background-color: #cccccc;
+  border-radius: 50%;
+  transition: transform 0.2s, background-color 0.2s;
+}
+
+.sm-switch--on .sm-switch__slider {
+  background-color: #0078d4;
+  border-color: #0078d4;
+}
+
+.sm-switch--on .sm-switch__slider::before {
+  transform: translateX(18px);
+  background-color: #ffffff;
+}
+
+/* 块级按钮（占满容器宽度） */
+.sm-btn--block {
+  width: 100%;
+  justify-content: center;
+  display: inline-flex;
+  align-items: center;
+}
+
 .sm-modal__footer {
   display: flex;
   justify-content: flex-end;

@@ -191,20 +191,27 @@ export interface DSTaskInstance {
   updateTime: string;
 }
 
+export interface DSStartParam {
+  key: string;
+  value: string;
+}
+
 export interface DSTriggerWorkflowParams {
   processDefinitionCode: number;
   failureStrategy?: FailureStrategy;
   warningType?: WarningType;
   warningGroupId?: number;
   scheduleTime?: string;
-  taskDependType?: string;
   execType?: string;
   startNodeList?: string;
   runMode?: string;
   processInstancePriority?: Priority;
   workerGroup?: string;
   environmentCode?: number;
+  tenantCode?: string;
   dryRun?: number;
+  startParams?: DSStartParam[];
+  complementRun?: boolean;
 }
 
 export type ScheduleSubTab = 'projects' | 'workflowDefinitions' | 'workflowInstances' | 'taskInstances';
@@ -384,13 +391,15 @@ export interface DSWorkflowSaveForm {
 
 export interface DSWorkflowTriggerForm {
   failureStrategy: FailureStrategy;
-  taskDependType: 'TASK_POST' | 'TASK_PRE' | 'TASK_ONLY';
   warningType: WarningType;
   warningGroupId: number | null;
   processInstancePriority: Priority;
   workerGroup: string;
   environmentCode: number | null;
+  tenantCode: string | null;
   dryRun: number;
+  complementRun: boolean;
+  startParams: DSStartParam[];
 }
 
 export const EXECUTION_TYPE_OPTIONS = [
@@ -1012,7 +1021,7 @@ export interface DolphinSchedulerApi {
     }): Promise<DolphinSchedulerResponse<null>>;
     release(projectCode: number, code: number, releaseState: ReleaseState): Promise<DolphinSchedulerResponse<null>>;
     delete(projectCode: number, code: number): Promise<DolphinSchedulerResponse<null>>;
-    trigger(projectCode: number, params: { processDefinitionCode: number }): Promise<DolphinSchedulerResponse<number[]>>;
+    trigger(projectCode: number, params: DSTriggerWorkflowParams): Promise<DolphinSchedulerResponse<number[]>>;
   };
   workflowInstance: {
     list(params: { pageNo: number; pageSize: number; searchVal?: string; projectCode?: string; executionStatus?: string }): Promise<DolphinSchedulerResponse<PageResult<DSWorkflowInstance>>>;
