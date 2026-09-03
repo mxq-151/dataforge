@@ -109,6 +109,39 @@ function enforceMinSpacing(nodes: import('../../types/dolphinscheduler').DSWorkf
   }
 }
 
+// —— 提交调度「记住上一次配置」——
+// 通过 localStorage 按任务类型记住常用的运行参数（内存/CPU/运行模式/实例数等），
+// 以及全局的调度运行环境（worker 组 / 环境），下次打开时自动回填。
+const DS_REMEMBER_KEY = 'ds-submit-remember-v1';
+
+/** 记忆对象：taskTypes 按任务类型存常用运行参数；workerGroup/environmentCode 为调度运行环境 */
+interface DSRememberState {
+  taskTypes: Record<string, Record<string, string | boolean>>;
+  workerGroup?: string;
+  environmentCode?: number;
+}
+
+function loadRemember(): DSRememberState {
+  try {
+    const raw = localStorage.getItem(DS_REMEMBER_KEY);
+    if (!raw) return { taskTypes: {} };
+    const parsed = JSON.parse(raw);
+    return {
+      taskTypes: parsed && typeof parsed.taskTypes === 'object' ? parsed.taskTypes : {},
+      workerGroup: typeof parsed?.workerGroup === 'string' ? parsed.workerGroup : undefined,
+      environmentCode: typeof parsed?.environmentCode === 'number' ? parsed.environmentCode : undefined,
+    };
+  } catch {
+    return { taskTypes: {} };
+  }
+}
+
+/** 程序/文件推导类字段不参与记忆，避免跨文件串值（mainArgs/others 属于用户填写，可记忆） */
+const REMEMBER_EXCLUDE_KEYS = new Set([
+  'mainJar', 'mainClass', 'appName', 'connParams',
+  'displayRows', 'sqlType', 'programType',
+]);
+
 interface SubmitToSchedulerModalProps {
   visible: boolean;
   fileName: string;
@@ -456,13 +489,18 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
           fromMapping[param.key] = typeof mappingVal === 'boolean' ? mappingVal : String(mappingVal);
         }
       }
-      // 除「其他参数(others)」外，所有输入项均以当前文件的推导值 + 默认值重建，不记忆上一次的编辑值；
-      // 每次点开「提交调度」都会重新填充。others 单独保留上一次的取值，方便跨会话沿用。
+      // 除「其他参数(others)」外，输入项以 默认值 + 文件推导值 为基础，再叠加 localStorage 中
+      // 记住的上一次运行参数（内存/CPU/运行模式/实例数等），使重复提交沿用之前的取值。
+      const remembered = loadRemember().taskTypes[currentMapping.taskType] || {};
       setTaskTypeParams(prev => {
         const preservedOthers = (prev && typeof prev.others === 'string' && prev.others.trim())
           ? prev.others
           : '';
         const merged: Record<string, string | boolean> = { ...defaults, ...fromMapping };
+        for (const [k, v] of Object.entries(remembered)) {
+          if (REMEMBER_EXCLUDE_KEYS.has(k)) continue;
+          merged[k] = typeof v === 'boolean' ? v : String(v);
+        }
         if (preservedOthers) merged.others = preservedOthers;
         return merged;
       });
@@ -499,6 +537,25 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
   const effectiveMapping = useMemo(() => {
     return applyTaskTypeParamsToMapping(currentMapping);
   }, [currentMapping, applyTaskTypeParamsToMapping]);
+
+  // 将当前的常用运行参数（按任务类型）与调度运行环境（worker 组 / 环境）写入 localStorage，
+  // 供下次打开「提交调度」时自动回填。
+  const persistRememberNow = useCallback(() => {
+    const taskType = currentMapping?.taskType;
+    if (!taskType) return;
+    try {
+      const state = loadRemember();
+      const taskMap = { ...(state.taskTypes[taskType] || {}) };
+      for (const [k, v] of Object.entries(taskTypeParams)) {
+        if (REMEMBER_EXCLUDE_KEYS.has(k)) continue;
+        if (v !== undefined && v !== null && v !== '') taskMap[k] = v;
+      }
+      state.taskTypes[taskType] = taskMap;
+      if (selectedWorkerGroup) state.workerGroup = selectedWorkerGroup;
+      if (selectedEnvironmentCode !== -1) state.environmentCode = selectedEnvironmentCode;
+      localStorage.setItem(DS_REMEMBER_KEY, JSON.stringify(state));
+    } catch { /* 忽略写入失败 */ }
+  }, [currentMapping?.taskType, taskTypeParams, selectedWorkerGroup, selectedEnvironmentCode]);
 
   const matchedDatasource = useMemo(() => {
     if (!codeDatasourceName || dsDataSources.length === 0) return null;
@@ -627,7 +684,13 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
             console.log('[SubmitModal] Worker groups loaded:', list.length, list);
             setWorkerGroups(list);
             const defaultWg = list.find((wg: DSWorkerGroup) => wg.workerGroup === 'default');
-            if (defaultWg) setSelectedWorkerGroup(defaultWg.workerGroup);
+            // 优先回填上次记忆的 worker 组；若已不在当前项目可用列表中则退回 default
+            const rememberWg = loadRemember().workerGroup;
+            if (rememberWg && list.some((wg: DSWorkerGroup) => wg.workerGroup === rememberWg)) {
+              setSelectedWorkerGroup(rememberWg);
+            } else if (defaultWg) {
+              setSelectedWorkerGroup(defaultWg.workerGroup);
+            }
           } else {
             console.warn('[SubmitModal] Worker groups response:', wgRes);
           }
@@ -637,6 +700,11 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
           const list = Array.isArray(envRes.data) ? envRes.data : (envRes.data.totalList || []);
           console.log('[SubmitModal] Environments loaded:', list.length, list);
           setEnvList(list);
+          // 优先回填上次记忆的运行环境；不在可用列表中则保持未选择
+          const rememberEnv = loadRemember().environmentCode;
+          if (rememberEnv != null && list.some((e: DSEnvironment) => e.code === rememberEnv)) {
+            setSelectedEnvironmentCode(rememberEnv);
+          }
         } else {
           console.warn('[SubmitModal] Environments response:', envRes);
         }
@@ -1151,6 +1219,9 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
       const targetProject = projects.find(p => p.code === selectedProjectCode);
       const projectName = targetProject?.name || '';
 
+      // 提交前记住本次填写的运行参数与调度运行环境，供下次自动回填
+      persistRememberNow();
+
       if (selectedWorkflowCode) {
         const detailRes = await dsApi.workflowDefinition.detail(selectedProjectCode, selectedWorkflowCode);
         if (detailRes.code === 0 && detailRes.data) {
@@ -1353,7 +1424,7 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
     projects, workflowDesc, autoOnline, autoTrigger, dsApi, onSuccess,
     compiledJarPath, needsDatasource, selectedDatasourceId, dsDataSources,
     selectedWorkerGroup, selectedEnvironmentCode, openlineageTransportUrl, projectCode,
-    currentMapping, scanHeaderDependencyTasks,
+    currentMapping, scanHeaderDependencyTasks, persistRememberNow,
   ]);
 
   if (!visible) return null;
