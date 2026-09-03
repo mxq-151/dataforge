@@ -699,8 +699,9 @@ export function buildWorkflowFromCodeFile(
     timeoutFlag: 'CLOSE',
     timeout: 0,
     delayTime: 0,
-    x: 200,
-    y: 100,
+    // 与工作流 DAG 网格布局一致的起始坐标（横向间距 450 / 纵向间距 260），保证节点不紧挨
+    x: 300,
+    y: 140,
   };
 
   return {

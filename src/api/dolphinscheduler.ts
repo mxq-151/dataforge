@@ -285,8 +285,9 @@ export function createRealDolphinSchedulerApi(apiUrl: string, token: string): Do
               }
 
               const loc = locationsMap.get(td.code) || {
-                x: 100 + taskNodes.length * 200,
-                y: 80 + (taskNodes.length % 3) * 100
+                // 无历史坐标时的默认网格位置：每行 3 个，横向间距 450、纵向间距 260，避免节点紧挨
+                x: 300 + (taskNodes.length % 3) * 450,
+                y: 140 + Math.floor(taskNodes.length / 3) * 260
               };
 
               taskNodes.push({

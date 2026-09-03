@@ -46,6 +46,69 @@ function collectNegativeNumericErrors(
   return errors;
 }
 
+// 工作流 DAG 节点网格布局常量：节点间距需大于节点尺寸（约 270 x 110），避免节点过近紧挨。
+// 采用每行 3 列的网格排布，横向间距 450、纵向间距 260，整体更均匀美观。
+const GRID_COLS = 3;
+const GRID_GAP_X = 450;
+const GRID_GAP_Y = 260;
+const GRID_START_X = 300;
+const GRID_START_Y = 140;
+
+/** 根据顺序索引计算网格中的节点坐标（每 COL 个换一行） */
+function gridPos(index: number): { x: number; y: number } {
+  const col = index % GRID_COLS;
+  const row = Math.floor(index / GRID_COLS);
+  return {
+    x: GRID_START_X + col * GRID_GAP_X,
+    y: GRID_START_Y + row * GRID_GAP_Y,
+  };
+}
+
+/**
+ * 对提交前的工作流节点做最小间距强制：凡是在横向(GRID_GAP_X)与纵向(GRID_GAP_Y)两个方向
+ * 上都与其它节点过近（紧挨/重叠）的节点，统一向右推至保持最小间距。
+ * 这样即便旧工作流中已存在坐标过近的节点，重新提交时也会被自动拉开。
+ */
+function enforceMinSpacing(nodes: import('../../types/dolphinscheduler').DSWorkflowTaskNode[]): void {
+  if (nodes.length < 2) return;
+  // 稳定顺序：先按 x 再按 y，保证结果可复现
+  const order = nodes
+    .map((n, i) => ({ n, i }))
+    .sort((a, b) => (a.n.x - b.n.x) || (a.n.y - b.n.y) || (a.i - b.i));
+  const placed = new Map<number, { x: number; y: number }>();
+
+  for (const { n } of order) {
+    let x = n.x;
+    let y = n.y;
+    let guard = 0;
+    const maxGuard = Math.max(nodes.length * 4, 8);
+    let moved = true;
+
+    while (moved && guard++ < maxGuard) {
+      moved = false;
+      for (const [code, p] of placed) {
+        if (code === n.code) continue;
+        const dx = x - p.x;
+        const dy = y - p.y;
+        // 仅当横向与纵向都过近时才视为紧挨，向右错开一列间距
+        if (Math.abs(dx) < GRID_GAP_X && Math.abs(dy) < GRID_GAP_Y) {
+          x = p.x + GRID_GAP_X;
+          moved = true;
+        }
+      }
+    }
+    placed.set(n.code, { x, y });
+  }
+
+  for (const n of nodes) {
+    const p = placed.get(n.code);
+    if (p) {
+      n.x = p.x;
+      n.y = p.y;
+    }
+  }
+}
+
 interface SubmitToSchedulerModalProps {
   visible: boolean;
   fileName: string;
@@ -1106,6 +1169,14 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
           console.log('[SubmitToSchedulerModal] 提交前 taskParams=', mappingWithDatasource.taskParams);
           console.log('[SubmitToSchedulerModal] taskParams.others=', mappingWithDatasource.taskParams?.others);
 
+          // 网格坐标：新增主任务与新增前置依赖各占一个槽位。若同时新增两者，主任务顺延一位，
+          // 使前置依赖节点落在主任务的左/上方，避免紧挨重叠；已存在的节点保留原坐标。
+          const existingDepInWorkflow = taskNodes.some(n => n.taskType === 'DEPENDENT' && n.name === '前置依赖');
+          const willAddDep = resolvedDeps.length > 0 && !existingDepInWorkflow;
+          const mainSlot = existingIndex < 0 ? taskNodes.length + (willAddDep ? 1 : 0) : taskNodes.length;
+          const mainPos = existingIndex < 0 ? gridPos(mainSlot) : null;
+          const depPos = willAddDep ? gridPos(taskNodes.length) : null;
+
           const newNode: import('../../types/dolphinscheduler').DSWorkflowTaskNode = {
             code: taskCode,
             name: mappingWithDatasource.taskName,
@@ -1121,8 +1192,8 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
             timeoutFlag: 'CLOSE',
             timeout: 0,
             delayTime: 0,
-            x: existingIndex >= 0 ? taskNodes[existingIndex].x : 200 + taskNodes.length * 200,
-            y: existingIndex >= 0 ? taskNodes[existingIndex].y : 100 + (taskNodes.length % 3) * 100,
+            x: existingIndex >= 0 ? taskNodes[existingIndex].x : (mainPos ? mainPos.x : 200),
+            y: existingIndex >= 0 ? taskNodes[existingIndex].y : (mainPos ? mainPos.y : 100),
           };
 
           let updatedNodes: import('../../types/dolphinscheduler').DSWorkflowTaskNode[];
@@ -1147,10 +1218,13 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
           // 根据代码头 @依赖 配置前置任务依赖：构建 DEPENDENT 任务节点作为主任务（新建或更新）的前置。
           // 若工作流中已存在同名「前置依赖」节点，则原地替换其内容并复用既有 code 与边关系，避免重复节点
           if (resolvedDeps.length > 0) {
-            const depNode = buildDependentTaskNode(resolvedDeps, depCode);
             const existingDepIndex = updatedNodes.findIndex(
               n => n.taskType === 'DEPENDENT' && n.name === '前置依赖',
             );
+            // 复用已有节点时保留其坐标，新增节点时落到网格槽位，避免覆盖/重叠
+            const depX = existingDepIndex >= 0 ? updatedNodes[existingDepIndex].x : (depPos ? depPos.x : 100);
+            const depY = existingDepIndex >= 0 ? updatedNodes[existingDepIndex].y : (depPos ? depPos.y : 100);
+            const depNode = buildDependentTaskNode(resolvedDeps, depCode, depX, depY);
             if (existingDepIndex >= 0) {
               const existingDepCode = updatedNodes[existingDepIndex].code;
               depNode.code = existingDepCode;
@@ -1178,6 +1252,9 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
               updatedEdges = updatedEdges.filter(e => e.sourceCode !== staleCode && e.targetCode !== staleCode);
             }
           }
+
+          // 提交前强制节点最小间距，拉开历史遗留的过近/重叠节点
+          enforceMinSpacing(updatedNodes);
 
           await dsApi.workflowDefinition.update(selectedProjectCode, selectedWorkflowCode, {
             name: workflowDefinition.name,
@@ -1215,11 +1292,16 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
         // 工作流 description 不应填写任务描述（description 是任务属性，非工作流属性），保持为空
         const workflowData = buildWorkflowFromCodeFile(mappingWithDatasource, '');
 
-        // 根据代码头 @依赖 配置前置任务依赖：在新建工作流中插入 DEPENDENT 前置节点并建立边关系
+        // 根据代码头 @依赖 配置前置任务依赖：在新建工作流中插入 DEPENDENT 前置节点并建立边关系。
+        // 前置依赖位于主任务左侧相邻网格槽位，间隔足够且不重叠。
         if (resolvedDeps.length > 0) {
           const mainNode = workflowData.nodes[0];
           const depCode = mainNode.code + 1;
-          const depNode = buildDependentTaskNode(resolvedDeps, depCode);
+          const depPos0 = gridPos(0);
+          const mainPos0 = gridPos(1);
+          mainNode.x = mainPos0.x;
+          mainNode.y = mainPos0.y;
+          const depNode = buildDependentTaskNode(resolvedDeps, depCode, depPos0.x, depPos0.y);
           workflowData.nodes = [depNode, mainNode];
           workflowData.edges = [{
             id: `e_${depCode}_${mainNode.code}`,
@@ -1227,6 +1309,9 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
             targetCode: mainNode.code,
           }];
         }
+
+        // 提交前强制节点最小间距，保证新建工作流初始布局疏朗
+        enforceMinSpacing(workflowData.nodes);
 
         const createRes = await dsApi.workflowDefinition.createWithTasks(selectedProjectCode, workflowData);
 
