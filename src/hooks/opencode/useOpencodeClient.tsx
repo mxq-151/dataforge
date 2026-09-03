@@ -1196,31 +1196,14 @@ function useOpencodeClientImpl(
   }, [resetState, setCurrentSessionId, isDataExplore, dataExploreService, setWorkingDirectory]);
 
   /**
-   * 首次进入数据探索时兜底：若 individual/ 下没有任何会话目录，
-   * 自动创建第一个（保证首次进入即有可编辑的 SQL 文件并让智能体工作目录落到该目录）。
+   * 首次进入数据探索：不自动打开任何会话文件、不自动创建会话目录、
+   * 不自动切换 AI 工作目录，仅显示空白编辑器（可输入 SQL）。
+   * 会话的打开/新建及工作目录/会话关联由用户在任务下拉选择或新建会话时兜底处理。
    */
   const ensureFirstDataExploreDir = useCallback(async () => {
     if (!isDataExplore || !dataExploreService || scannedDeDirsRef.current) return;
-    const dirs = await dataExploreService.listDirs();
     scannedDeDirsRef.current = true;
-    if (dirs.length > 0) {
-      // 默认仅打开最新的一个会话文件；其余由任务下拉勾选再打开
-      setDataExploreDirs([dirs[0]]);
-      // 复用已有会话时也必须把 AI 工作目录切到会话时间戳子目录（individual/{ts}）。
-      // 否则 opencode 会停留在 individual/ 基础目录，新会话被创建在基础目录下
-      // （session.directory = .../individual），而不是 individual/{ts}/。
-      if (dirs[0].dir !== currentDirectory) {
-        await setWorkingDirectory(dirs[0].dir);
-      }
-      return;
-    }
-    const created = await dataExploreService.createDir();
-    if (!created) return;
-    pendingDeDirRef.current = created.dir;
-    await setWorkingDirectory(created.dir);
-    setDataExploreDirs([created]);
-    bumpDeVersion();
-  }, [isDataExplore, dataExploreService, setWorkingDirectory, currentDirectory]);
+  }, [isDataExplore, dataExploreService]);
 
   // data-explore 连接就绪后执行首次 scan（含兜底创建）
   useEffect(() => {
