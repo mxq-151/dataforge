@@ -90,7 +90,9 @@ export default function ExecutionResultTabs({
   const [resultContextMenu, setResultContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [panelHeight, setPanelHeight] = useState(() => {
     const saved = localStorage.getItem('exec-panel-height');
-    return saved ? Number(saved) : 220;
+    if (saved) return Number(saved);
+    // 默认占窗口高度的较大比例，让日志区更充分铺满窗口
+    return Math.min(Math.max(window.innerHeight * 0.6, 220), window.innerHeight * 0.7);
   });
   const isResizing = useRef(false);
   const startY = useRef(0);
