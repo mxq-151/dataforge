@@ -210,6 +210,7 @@ export function buildDependentTaskNode(
   code: number,
   x?: number,
   y?: number,
+  name?: string,
 ): DSWorkflowTaskNode {
   const taskParams: DSDependentTaskParams = {
     dependence: {
@@ -234,7 +235,7 @@ export function buildDependentTaskNode(
   };
   return {
     code,
-    name: '前置依赖',
+    name: name ?? '前置依赖',
     taskType: 'DEPENDENT',
     description: `等待前置任务完成: ${deps.map(d => d.label).join(', ')}`,
     taskParams: JSON.stringify(taskParams),
@@ -250,6 +251,244 @@ export function buildDependentTaskNode(
     x: x ?? 100,
     y: y ?? 100,
   };
+}
+
+/** 任务专属前置依赖（DEPENDENT）节点名：前置依赖_{任务名}，与旧版共享节点「前置依赖」区分 */
+export function dependentNodeName(taskName: string): string {
+  return `前置依赖_${sanitizeDsName(taskName)}`;
+}
+
+/**
+ * 依赖关系重建上下文：提交调度时以「工作流全量节点/边 + 本地代码头 @依赖」为唯一事实来源，
+ * 重建工作流内各任务的依赖关系。任务是一个个提交的、没有全局视角，因此每次提交都拉取
+ * 工作流当前全量节点与依赖边，与本地文件代码头声明的依赖对比后整体重建，避免：
+ * - 新任务被无条件串行连接到工作流最后一个任务（A->B、C->D 变成 A->B->C->D）；
+ * - 多个任务共享同一个「前置依赖」DEPENDENT 节点导致依赖被后提交的任务覆盖；
+ * - 提交无依赖任务时误删其他任务仍在使用的前置依赖节点。
+ */
+export interface WorkflowDependencyReconcileContext {
+  /** 工作流节点（已包含本次提交的主任务：同名原地替换或新追加） */
+  nodes: DSWorkflowTaskNode[];
+  /** 工作流现有边 */
+  edges: DSWorkflowEdge[];
+  /** 本地代码文件头 @依赖：sanitizeDsName(任务名) -> 依赖声明（本次提交文件以编辑器实时内容为准） */
+  localHeaderDeps: Map<string, HeaderDependency[]>;
+  /** 本次提交任务名（sanitizeDsName 后）：重建时优先处理，便于配合网格槽位安排 */
+  mainTaskName: string;
+  /** 已解析的前置依赖（label -> 解析结果），通常为本次提交任务已校验通过的 @依赖 */
+  resolvedLabels: Map<string, ResolvedDependency>;
+  /** 按需解析其余跨工作流/跨项目前置任务：传入待解析 label 集合，返回 label -> 解析结果 */
+  resolveExternalDeps: (labels: Set<string>) => Promise<Map<string, ResolvedDependency>>;
+  /** 分配新节点 code（须大于工作流现有全部 code） */
+  allocateCode: () => number;
+  /** 分配新节点网格槽位坐标 */
+  nextSlot: () => { x: number; y: number };
+}
+
+export interface WorkflowDependencyReconcileResult {
+  nodes: DSWorkflowTaskNode[];
+  edges: DSWorkflowEdge[];
+  /** 重建过程中的告警（前置任务不存在、自依赖等），不阻断提交 */
+  warnings: string[];
+  /** 重建摘要：每个被重建任务的直接前置（同工作流边）与专属前置依赖节点 */
+  rebuilt: { taskName: string; directFrom: string[]; dependentNode: string | null }[];
+}
+
+/**
+ * 按本地代码头 @依赖 重建工作流依赖关系：
+ * 1. 找出工作流中与本地文件同名的任务节点（含本次提交任务）作为重建目标；
+ * 2. 每个目标的依赖声明解析为两类——
+ *    a. 同工作流前置任务：直接建立 源任务 -> 目标任务 的边；
+ *    b. 跨工作流/跨项目前置任务：建立/复用目标任务专属的 DEPENDENT 节点（前置依赖_{任务名}）；
+ * 3. 丢弃重建目标的全部原有入边（含旧的串行边、共享前置依赖节点的边），按上述期望重建；
+ * 4. 工作流中与本地文件不匹配的任务（用户手工维护等）保持原有边不变；
+ * 5. 清理不再被任何任务引用的孤儿 DEPENDENT 节点（含旧版共享「前置依赖」节点）。
+ */
+export async function reconcileWorkflowDependencies(
+  ctx: WorkflowDependencyReconcileContext,
+): Promise<WorkflowDependencyReconcileResult> {
+  const warnings: string[] = [];
+  let nodes: DSWorkflowTaskNode[] = ctx.nodes.map(n => ({ ...n }));
+
+  const nameOf = (n: DSWorkflowTaskNode) => sanitizeDsName(n.name);
+  const labelOf = (d: HeaderDependency) => [d.projectCode, d.taskName].filter(Boolean).join('.');
+
+  // 重建目标：非 DEPENDENT 且存在同名本地代码文件的任务节点；本次提交任务排在最前
+  const targets = nodes
+    .filter(n => n.taskType !== 'DEPENDENT' && ctx.localHeaderDeps.has(nameOf(n)))
+    .sort((a, b) => {
+      if (nameOf(a) === ctx.mainTaskName) return -1;
+      if (nameOf(b) === ctx.mainTaskName) return 1;
+      return 0;
+    });
+  const targetCodes = new Set(targets.map(t => t.code));
+
+  const nodeByName = new Map<string, DSWorkflowTaskNode>();
+  for (const n of nodes) {
+    if (!nodeByName.has(nameOf(n))) nodeByName.set(nameOf(n), n);
+  }
+
+  // 计算每个目标的期望依赖：同工作流直接前置 + 待解析的跨工作流依赖
+  interface Desired {
+    node: DSWorkflowTaskNode;
+    directSources: DSWorkflowTaskNode[];
+    externals: HeaderDependency[];
+  }
+  const desiredList: Desired[] = [];
+  const unresolvedLabels = new Set<string>();
+  for (const t of targets) {
+    const deps = ctx.localHeaderDeps.get(nameOf(t)) || [];
+    const directSources: DSWorkflowTaskNode[] = [];
+    const externals: HeaderDependency[] = [];
+    for (const dep of deps) {
+      const src = nodeByName.get(sanitizeDsName(dep.taskName));
+      if (src && src.taskType !== 'DEPENDENT') {
+        if (src.code === t.code) {
+          warnings.push(`任务「${t.name}」的代码头 @依赖 声明了自身，已忽略该依赖`);
+        } else {
+          directSources.push(src);
+        }
+      } else {
+        externals.push(dep);
+        unresolvedLabels.add(labelOf(dep));
+      }
+    }
+    desiredList.push({ node: t, directSources, externals });
+  }
+
+  // 解析跨工作流依赖：优先复用已解析结果，其余按需调用外部解析器
+  const resolutions = new Map(ctx.resolvedLabels);
+  const missingLabels = [...unresolvedLabels].filter(l => !resolutions.has(l));
+  if (missingLabels.length > 0) {
+    try {
+      const external = await ctx.resolveExternalDeps(new Set(missingLabels));
+      external.forEach((v, k) => resolutions.set(k, v));
+    } catch { /* 解析失败时按未找到处理 */ }
+  }
+
+  // 每个目标 upsert 专属 DEPENDENT 节点（无跨工作流依赖时移除旧专属节点）
+  const rebuilt: WorkflowDependencyReconcileResult['rebuilt'] = [];
+  const depNodeByTarget = new Map<number, DSWorkflowTaskNode | null>();
+  for (const d of desiredList) {
+    const extRes: ResolvedDependency[] = [];
+    for (const dep of d.externals) {
+      const hit = resolutions.get(labelOf(dep));
+      if (hit) {
+        extRes.push(hit);
+      } else {
+        warnings.push(`任务「${d.node.name}」的前置任务「${labelOf(dep)}」在调度项目中不存在，未建立该依赖`);
+      }
+    }
+
+    let depNode: DSWorkflowTaskNode | null = null;
+    const dn = dependentNodeName(d.node.name);
+    if (extRes.length > 0) {
+      const existingIdx = nodes.findIndex(n => n.taskType === 'DEPENDENT' && nameOf(n) === dn);
+      if (existingIdx >= 0) {
+        // 复用既有专属节点：保留 code/坐标/版本，仅替换依赖内容
+        const old = nodes[existingIdx];
+        depNode = { ...buildDependentTaskNode(extRes, old.code, old.x, old.y, dn), id: old.id, version: old.version };
+        nodes[existingIdx] = depNode;
+      } else {
+        const pos = ctx.nextSlot();
+        depNode = buildDependentTaskNode(extRes, ctx.allocateCode(), pos.x, pos.y, dn);
+        nodes.push(depNode);
+      }
+    } else {
+      // 无跨工作流依赖：移除该任务残留的专属前置依赖节点
+      nodes = nodes.filter(n => !(n.taskType === 'DEPENDENT' && nameOf(n) === dn));
+    }
+    depNodeByTarget.set(d.node.code, depNode);
+    rebuilt.push({
+      taskName: d.node.name,
+      directFrom: d.directSources.map(s => s.name),
+      dependentNode: depNode ? depNode.name : null,
+    });
+  }
+
+  // 重建边：丢弃重建目标的全部原有入边（旧串行边/共享前置依赖边/过期依赖边），
+  // 未重建任务的边原样保留（保留 conditionType/conditionParams 等既有属性），并剔除悬空边
+  const finalEdges: DSWorkflowEdge[] = [];
+  const seenEdge = new Set<string>();
+  const pushEdge = (base: DSWorkflowEdge) => {
+    const key = `${base.sourceCode}->${base.targetCode}`;
+    if (seenEdge.has(key)) return;
+    seenEdge.add(key);
+    finalEdges.push(base);
+  };
+  const nodeCodes = new Set(nodes.map(n => n.code));
+  for (const e of ctx.edges) {
+    if (targetCodes.has(e.targetCode)) continue;
+    if (!nodeCodes.has(e.sourceCode) || !nodeCodes.has(e.targetCode)) continue;
+    pushEdge(e);
+  }
+  for (const d of desiredList) {
+    for (const s of d.directSources) {
+      pushEdge({ id: `e_${s.code}_${d.node.code}`, sourceCode: s.code, targetCode: d.node.code });
+    }
+    const depNode = depNodeByTarget.get(d.node.code);
+    if (depNode) {
+      pushEdge({ id: `e_${depNode.code}_${d.node.code}`, sourceCode: depNode.code, targetCode: d.node.code });
+    }
+  }
+
+  // 清理孤儿 DEPENDENT 节点：重建后不再有任何出边（含旧版共享「前置依赖」节点）
+  const sourcesSet = new Set(finalEdges.map(e => e.sourceCode));
+  const orphanCodes = new Set(
+    nodes.filter(n => n.taskType === 'DEPENDENT' && !sourcesSet.has(n.code)).map(n => n.code),
+  );
+  if (orphanCodes.size > 0) {
+    nodes = nodes.filter(n => !orphanCodes.has(n.code));
+  }
+
+  return { nodes, edges: finalEdges, warnings, rebuilt };
+}
+
+/**
+ * 检测工作流依赖关系中的环（按节点 code 深度优先搜索）。
+ * 返回构成环的任务名路径（如 ['A', 'B', 'A']），无环时返回 null。
+ */
+export function findDependencyCycle(
+  nodes: DSWorkflowTaskNode[],
+  edges: DSWorkflowEdge[],
+): string[] | null {
+  const adj = new Map<number, number[]>();
+  for (const e of edges) {
+    if (!adj.has(e.sourceCode)) adj.set(e.sourceCode, []);
+    adj.get(e.sourceCode)!.push(e.targetCode);
+  }
+  const nameByCode = new Map<number, string>(nodes.map(n => [n.code, n.name] as const));
+  const color = new Map<number, 0 | 1 | 2>();
+  const path: number[] = [];
+
+  const dfs = (u: number): number[] | null => {
+    color.set(u, 1);
+    path.push(u);
+    for (const v of adj.get(u) || []) {
+      const c = color.get(v) ?? 0;
+      if (c === 1) {
+        const start = path.indexOf(v);
+        return [...path.slice(start), v];
+      }
+      if (c === 0) {
+        const cycle = dfs(v);
+        if (cycle) return cycle;
+      }
+    }
+    color.set(u, 2);
+    path.pop();
+    return null;
+  };
+
+  for (const n of nodes) {
+    if ((color.get(n.code) ?? 0) === 0) {
+      const cycle = dfs(n.code);
+      if (cycle) {
+        return cycle.map(c => nameByCode.get(c) || String(c));
+      }
+    }
+  }
+  return null;
 }
 
 export interface SavedConfig {

@@ -3,10 +3,10 @@ import { X, Send, Loader2, FolderKanban, GitBranch, CheckCircle, AlertTriangle, 
 import type { DolphinSchedulerApi, DSProject, DSWorkflowDefinition, DSTaskType, DSDataSource, DSWorkerGroup, DSEnvironment, DSWorkflowTaskNode } from '../../types/dolphinscheduler';
 import { TASK_TYPE_LABELS, ReleaseState, Priority, parseReleaseState } from '../../types/dolphinscheduler';
 import type { CodeFileMapping, SavedConfig, ValidationError } from '../../utils/schedulerMapping';
-import { buildWorkflowFromCodeFile, validateSubmission, getAvailableTaskTypes, mapCodeFileToTask, sanitizeDsName, validateYarnJobName, buildDependentTaskNode, buildJarsArg, type ResolvedDependency } from '../../utils/schedulerMapping';
+import { buildWorkflowFromCodeFile, validateSubmission, getAvailableTaskTypes, mapCodeFileToTask, sanitizeDsName, validateYarnJobName, buildDependentTaskNode, buildJarsArg, parseDependencyHeader, reconcileWorkflowDependencies, findDependencyCycle, dependentNodeName, type ResolvedDependency, type HeaderDependency } from '../../utils/schedulerMapping';
 import { type CompileResult } from '../../services/compileService';
 import { unifiedCompile } from '../../services/unifiedCompile';
-import { validateFileHeader } from '../../utils/index';
+import { validateFileHeader, parseFileHeader } from '../../utils/index';
 import { splitPath, getBaseName } from '../../utils/pathUtils';
 import { useToast } from '../../components/Toast';
 import './SubmitToSchedulerModal.css';
@@ -780,29 +780,16 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
   }, [dsApi, selectedProjectCode]);
 
   /**
-   * 扫描提交目标项目及各依赖声明指定项目中的所有工作流任务节点，确认代码头 @依赖 声明的每个前置任务是否存在。
-   * 返回 Map，key 为 {调度项目}.{前置任务名称}，value 为解析结果；找不到的 found=false。
-   * 仅当代码头声明了 @依赖 时才真正发起查询，否则返回空 Map。
+   * 扫描指定项目集合中的全部工作流任务节点，建立 taskName(净化后) -> { 项目code, 工作流code, 任务code } 索引
+   * （同名只取首个）。供 @依赖 存在性校验与依赖关系重建时的跨工作流解析共用。
    */
-  const scanHeaderDependencyTasks = useCallback(
-    async (projectCodeNum: number | null): Promise<Map<string, DependencyResolution>> => {
-      const declaredDeps = currentMapping?.headerDependencies || [];
-      const resultMap = new Map<string, DependencyResolution>();
-      if (!dsApi || declaredDeps.length === 0) return resultMap;
-
-      // 需要扫描的项目集合：提交目标项目 + 各依赖声明中指定的 {调度项目}
-      const scanProjectCodes = new Set<number>();
-      if (projectCodeNum != null) scanProjectCodes.add(projectCodeNum);
-      for (const dep of declaredDeps) {
-        const matched = dep.projectCode ? projects.find(p => p.name === dep.projectCode) : null;
-        if (matched?.code != null) scanProjectCodes.add(matched.code);
-      }
-
-      // taskName(净化后) -> { 项目code, 工作流code, 任务code }（同名只取首个）
+  const buildProjectTaskIndex = useCallback(
+    async (scanProjectCodes: Set<number>): Promise<Map<string, { projectCode: number; definitionCode: number; taskCode: number }>> => {
       const byName = new Map<string, { projectCode: number; definitionCode: number; taskCode: number }>();
+      if (!dsApi) return byName;
       for (const scanCode of scanProjectCodes) {
         try {
-          // 分页拉取项目内全部工作流，避免前置任务所在工作流在第一页之外被漏检
+          // 分页拉取项目内全部工作流，避免目标任务所在工作流在第一页之外被漏检
           const pageSize = 100;
           for (let page = 1; ; page++) {
             const wfRes = await dsApi.workflowDefinition.list(scanCode, { pageNo: page, pageSize });
@@ -825,6 +812,31 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
           }
         } catch { /* 项目扫描失败则跳过 */ }
       }
+      return byName;
+    },
+    [dsApi],
+  );
+
+  /**
+   * 扫描提交目标项目及各依赖声明指定项目中的所有工作流任务节点，确认代码头 @依赖 声明的每个前置任务是否存在。
+   * 返回 Map，key 为 {调度项目}.{前置任务名称}，value 为解析结果；找不到的 found=false。
+   * 仅当代码头声明了 @依赖 时才真正发起查询，否则返回空 Map。
+   */
+  const scanHeaderDependencyTasks = useCallback(
+    async (projectCodeNum: number | null): Promise<Map<string, DependencyResolution>> => {
+      const declaredDeps = currentMapping?.headerDependencies || [];
+      const resultMap = new Map<string, DependencyResolution>();
+      if (!dsApi || declaredDeps.length === 0) return resultMap;
+
+      // 需要扫描的项目集合：提交目标项目 + 各依赖声明中指定的 {调度项目}
+      const scanProjectCodes = new Set<number>();
+      if (projectCodeNum != null) scanProjectCodes.add(projectCodeNum);
+      for (const dep of declaredDeps) {
+        const matched = dep.projectCode ? projects.find(p => p.name === dep.projectCode) : null;
+        if (matched?.code != null) scanProjectCodes.add(matched.code);
+      }
+
+      const byName = await buildProjectTaskIndex(scanProjectCodes);
 
       for (const dep of declaredDeps) {
         const label = [dep.projectCode, dep.taskName].filter(Boolean).join('.');
@@ -835,7 +847,93 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
       }
       return resultMap;
     },
-    [dsApi, currentMapping, projects],
+    [dsApi, currentMapping, projects, buildProjectTaskIndex],
+  );
+
+  /**
+   * 按需解析跨工作流/跨项目前置任务（供依赖关系重建使用）：
+   * 输入待解析的 @依赖 label 集合（{调度项目}.{前置任务名称}），返回 label -> 解析结果。
+   */
+  const resolveExternalDeps = useCallback(
+    async (labels: Set<string>): Promise<Map<string, ResolvedDependency>> => {
+      const result = new Map<string, ResolvedDependency>();
+      if (!dsApi || labels.size === 0) return result;
+
+      const deps: HeaderDependency[] = [...labels].map(label => {
+        const dotIdx = label.indexOf('.');
+        return dotIdx >= 0
+          ? { projectCode: label.slice(0, dotIdx), taskName: label.slice(dotIdx + 1) }
+          : { projectCode: '', taskName: label };
+      });
+
+      // 需要扫描的项目集合：提交目标项目 + 各依赖声明中指定的 {调度项目}
+      const scanProjectCodes = new Set<number>();
+      if (selectedProjectCode != null) scanProjectCodes.add(selectedProjectCode);
+      for (const dep of deps) {
+        const matched = dep.projectCode ? projects.find(p => p.name === dep.projectCode) : null;
+        if (matched?.code != null) scanProjectCodes.add(matched.code);
+      }
+
+      const byName = await buildProjectTaskIndex(scanProjectCodes);
+      for (const dep of deps) {
+        const label = [dep.projectCode, dep.taskName].filter(Boolean).join('.');
+        const hit = byName.get(sanitizeDsName(dep.taskName));
+        if (hit) {
+          result.set(label, { projectCode: hit.projectCode, definitionCode: hit.definitionCode, taskCode: hit.taskCode, taskName: dep.taskName, label });
+        }
+      }
+      return result;
+    },
+    [dsApi, selectedProjectCode, projects, buildProjectTaskIndex],
+  );
+
+  /**
+   * 递归扫描本地项目目录下全部代码文件的代码头 @依赖 声明，
+   * 返回 sanitizeDsName(任务名) -> 依赖声明列表。本地文件是依赖关系的唯一事实来源，
+   * 供提交时与工作流全量节点/边对比后整体重建依赖关系（任务逐个提交也能得到正确的全局依赖图）。
+   */
+  const scanLocalHeaderDependencies = useCallback(
+    async (): Promise<Map<string, HeaderDependency[]>> => {
+      const result = new Map<string, HeaderDependency[]>();
+      if (!rootPath) return result;
+      try {
+        const { readDir, readFile } = await import('../../bridge/fs');
+        const CODE_EXTS = new Set(['sql', 'hql', 'py', 'sh', 'bash', 'java', 'scala']);
+        const walk = async (dir: string, depth: number): Promise<void> => {
+          if (depth > 10) return;
+          let entries;
+          try {
+            entries = await readDir(dir);
+          } catch {
+            return;
+          }
+          for (const entry of entries) {
+            const child = dir.endsWith('/') ? `${dir}${entry.name}` : `${dir}/${entry.name}`;
+            if (entry.isDirectory) {
+              // 跳过隐藏目录（.git 等）与构建产物目录
+              if (entry.name.startsWith('.') || ['node_modules', 'target', 'dist', 'build'].includes(entry.name)) continue;
+              await walk(child, depth + 1);
+            } else if (entry.isFile) {
+              const ext = entry.name.includes('.') ? (entry.name.split('.').pop() || '').toLowerCase() : '';
+              if (!CODE_EXTS.has(ext)) continue;
+              try {
+                const bytes = await readFile(child);
+                const text = new TextDecoder('utf-8').decode(bytes);
+                const header = parseFileHeader(text);
+                const deps = parseDependencyHeader(header?.dependency);
+                const taskName = sanitizeDsName(entry.name.replace(/\.[^.]+$/, ''));
+                if (taskName && !result.has(taskName)) result.set(taskName, deps);
+              } catch { /* 跳过不可读文件 */ }
+            }
+          }
+        };
+        await walk(rootPath, 0);
+      } catch (e) {
+        console.warn('[SubmitToSchedulerModal] 本地代码头依赖扫描失败，仅按当前文件重建:', e);
+      }
+      return result;
+    },
+    [rootPath],
   );
 
   useEffect(() => {
@@ -1225,26 +1323,35 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
         if (detailRes.code === 0 && detailRes.data) {
           const { taskNodes, edges, globalParams, workflowDefinition } = detailRes.data;
 
-          // 判断工作流中是否已存在同名任务：存在则原地更新内容（保留原 code 以维持既有边关系），
-          // 不再新增重复节点，也不在任务之间建立前后依赖
+          // 判断工作流中是否已存在同名任务：存在则原地更新内容（保留原 code），
+          // 不再新增重复节点；新任务也不再与最后任务串行连接，依赖关系完全由代码头 @依赖 重建
           const sanitizedTaskName = sanitizeDsName(mappingWithDatasource.taskName);
           const existingIndex = taskNodes.findIndex(node => sanitizeDsName(node.name) === sanitizedTaskName);
           const existingCodes = taskNodes.map(n => n.code);
           const taskCode = existingIndex >= 0
             ? taskNodes[existingIndex].code
             : (Date.now() > Math.max(0, ...existingCodes) ? Date.now() : Math.max(0, ...existingCodes) + 1);
-          const depCode = Math.max(taskCode, 0, ...existingCodes) + 1;
+          let nextCode = Math.max(taskCode, 0, ...existingCodes) + 1;
 
           console.log('[SubmitToSchedulerModal] 提交前 taskParams=', mappingWithDatasource.taskParams);
           console.log('[SubmitToSchedulerModal] taskParams.others=', mappingWithDatasource.taskParams?.others);
 
-          // 网格坐标：新增主任务与新增前置依赖各占一个槽位。若同时新增两者，主任务顺延一位，
-          // 使前置依赖节点落在主任务的左/上方，避免紧挨重叠；已存在的节点保留原坐标。
-          const existingDepInWorkflow = taskNodes.some(n => n.taskType === 'DEPENDENT' && n.name === '前置依赖');
-          const willAddDep = resolvedDeps.length > 0 && !existingDepInWorkflow;
-          const mainSlot = existingIndex < 0 ? taskNodes.length + (willAddDep ? 1 : 0) : taskNodes.length;
-          const mainPos = existingIndex < 0 ? gridPos(mainSlot) : null;
-          const depPos = willAddDep ? gridPos(taskNodes.length) : null;
+          // 网格坐标：新增主任务占一个槽位；若本次提交将新建专属前置依赖节点（跨工作流依赖），
+          // 主任务顺延一位，使前置依赖节点落在主任务的左/上方；已存在的节点保留原坐标
+          const willHaveOwnDepNode = existingIndex < 0 && resolvedDeps.some(r =>
+            sanitizedTaskName !== sanitizeDsName(r.taskName)
+            && !taskNodes.some(n => n.taskType !== 'DEPENDENT' && sanitizeDsName(n.name) === sanitizeDsName(r.taskName)),
+          );
+          const mainSlot = existingIndex < 0 ? taskNodes.length + (willHaveOwnDepNode ? 1 : 0) : -1;
+          const usedSlots = new Set<number>(mainSlot >= 0 ? [mainSlot] : []);
+          let slotCursor = taskNodes.length;
+          const nextSlot = () => {
+            while (usedSlots.has(slotCursor)) slotCursor++;
+            const slot = slotCursor;
+            usedSlots.add(slot);
+            slotCursor++;
+            return gridPos(slot);
+          };
 
           const newNode: import('../../types/dolphinscheduler').DSWorkflowTaskNode = {
             code: taskCode,
@@ -1261,66 +1368,49 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
             timeoutFlag: 'CLOSE',
             timeout: 0,
             delayTime: 0,
-            x: existingIndex >= 0 ? taskNodes[existingIndex].x : (mainPos ? mainPos.x : 200),
-            y: existingIndex >= 0 ? taskNodes[existingIndex].y : (mainPos ? mainPos.y : 100),
+            x: existingIndex >= 0 ? taskNodes[existingIndex].x : gridPos(mainSlot).x,
+            y: existingIndex >= 0 ? taskNodes[existingIndex].y : gridPos(mainSlot).y,
           };
 
-          let updatedNodes: import('../../types/dolphinscheduler').DSWorkflowTaskNode[];
-          let updatedEdges: import('../../types/dolphinscheduler').DSWorkflowEdge[] = [...edges];
+          // 同名任务：原地替换内容；新任务：追加节点（不串行连接，依赖关系见下方重建）
+          const nodesAfterMain = existingIndex >= 0
+            ? taskNodes.map((n, i) => (i === existingIndex ? newNode : n))
+            : [...taskNodes, newNode];
 
-          if (existingIndex >= 0) {
-            // 同名任务已存在：用新内容替换该节点，保持其 code 与既有边，不新增串行边
-            updatedNodes = taskNodes.map((n, i) => (i === existingIndex ? newNode : n));
-          } else {
-            // 不存在同名任务：追加新节点，并与原最后一个任务串行连接
-            updatedNodes = [...taskNodes, newNode];
-            if (taskNodes.length > 0) {
-              const lastNode = taskNodes[taskNodes.length - 1];
-              updatedEdges.push({
-                id: `e_${lastNode.code}_${taskCode}`,
-                sourceCode: lastNode.code,
-                targetCode: taskCode,
-              });
-            }
+          // ====== 依赖关系重建 ======
+          // 任务是一个个提交的、没有全局视角：每次提交拉取工作流全量节点与依赖边，
+          // 与本地文件代码头 @依赖 对比后整体重建，确保 A->B、C->D 不会被串成 A->B->C->D，
+          // 且各任务的跨工作流前置依赖使用专属 DEPENDENT 节点（前置依赖_{任务名}）互不覆盖
+          const localHeaderDeps = await scanLocalHeaderDependencies();
+          // 本次提交文件以编辑器实时内容为准（磁盘内容可能未保存）
+          localHeaderDeps.set(sanitizedTaskName, currentMapping?.headerDependencies || []);
+
+          const resolvedLabels = new Map<string, ResolvedDependency>();
+          resolvedDeps.forEach(r => resolvedLabels.set(r.label, r));
+
+          const recon = await reconcileWorkflowDependencies({
+            nodes: nodesAfterMain,
+            edges,
+            localHeaderDeps,
+            mainTaskName: sanitizedTaskName,
+            resolvedLabels,
+            resolveExternalDeps,
+            allocateCode: () => nextCode++,
+            nextSlot,
+          });
+          if (recon.warnings.length > 0) {
+            recon.warnings.forEach(w => console.warn('[SubmitToSchedulerModal] 依赖重建:', w));
+          }
+          console.log('[SubmitToSchedulerModal] 依赖重建摘要:', recon.rebuilt);
+
+          // 重建后校验依赖图无环，避免代码头声明了循环依赖导致整次更新失败
+          const cycle = findDependencyCycle(recon.nodes, recon.edges);
+          if (cycle) {
+            throw new Error(`重建后的依赖关系存在环（${cycle.join(' -> ')}），请检查代码头 @依赖 声明`);
           }
 
-          // 根据代码头 @依赖 配置前置任务依赖：构建 DEPENDENT 任务节点作为主任务（新建或更新）的前置。
-          // 若工作流中已存在同名「前置依赖」节点，则原地替换其内容并复用既有 code 与边关系，避免重复节点
-          if (resolvedDeps.length > 0) {
-            const existingDepIndex = updatedNodes.findIndex(
-              n => n.taskType === 'DEPENDENT' && n.name === '前置依赖',
-            );
-            // 复用已有节点时保留其坐标，新增节点时落到网格槽位，避免覆盖/重叠
-            const depX = existingDepIndex >= 0 ? updatedNodes[existingDepIndex].x : (depPos ? depPos.x : 100);
-            const depY = existingDepIndex >= 0 ? updatedNodes[existingDepIndex].y : (depPos ? depPos.y : 100);
-            const depNode = buildDependentTaskNode(resolvedDeps, depCode, depX, depY);
-            if (existingDepIndex >= 0) {
-              const existingDepCode = updatedNodes[existingDepIndex].code;
-              depNode.code = existingDepCode;
-              updatedNodes = updatedNodes.map((n, i) => (i === existingDepIndex ? depNode : n));
-              // 确保 前置依赖 -> 主任务 的边存在
-              if (!updatedEdges.some(e => e.sourceCode === existingDepCode && e.targetCode === taskCode)) {
-                updatedEdges.push({ id: `e_${existingDepCode}_${taskCode}`, sourceCode: existingDepCode, targetCode: taskCode });
-              }
-            } else {
-              updatedNodes.push(depNode);
-              updatedEdges.push({
-                id: `e_${depCode}_${taskCode}`,
-                sourceCode: depCode,
-                targetCode: taskCode,
-              });
-            }
-          } else {
-            // 无 @依赖：若此前残留前置依赖节点则移除，避免仍等待旧依赖
-            const staleDepIndex = updatedNodes.findIndex(
-              n => n.taskType === 'DEPENDENT' && n.name === '前置依赖',
-            );
-            if (staleDepIndex >= 0) {
-              const staleCode = updatedNodes[staleDepIndex].code;
-              updatedNodes = updatedNodes.filter((_, i) => i !== staleDepIndex);
-              updatedEdges = updatedEdges.filter(e => e.sourceCode !== staleCode && e.targetCode !== staleCode);
-            }
-          }
+          const updatedNodes = recon.nodes;
+          const updatedEdges = recon.edges;
 
           // 提交前强制节点最小间距，拉开历史遗留的过近/重叠节点
           enforceMinSpacing(updatedNodes);
@@ -1357,7 +1447,8 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
         // 工作流 description 不应填写任务描述（description 是任务属性，非工作流属性），保持为空
         const workflowData = buildWorkflowFromCodeFile(mappingWithDatasource, '');
 
-        // 根据代码头 @依赖 配置前置任务依赖：在新建工作流中插入 DEPENDENT 前置节点并建立边关系。
+        // 根据代码头 @依赖 配置前置任务依赖：新建工作流内只有主任务，@依赖 均为跨工作流依赖，
+        // 为主任务创建专属 DEPENDENT 前置节点（前置依赖_{任务名}），不再使用共享节点。
         // 前置依赖位于主任务左侧相邻网格槽位，间隔足够且不重叠。
         if (resolvedDeps.length > 0) {
           const mainNode = workflowData.nodes[0];
@@ -1366,7 +1457,13 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
           const mainPos0 = gridPos(1);
           mainNode.x = mainPos0.x;
           mainNode.y = mainPos0.y;
-          const depNode = buildDependentTaskNode(resolvedDeps, depCode, depPos0.x, depPos0.y);
+          const depNode = buildDependentTaskNode(
+            resolvedDeps,
+            depCode,
+            depPos0.x,
+            depPos0.y,
+            dependentNodeName(mainNode.name),
+          );
           workflowData.nodes = [depNode, mainNode];
           workflowData.edges = [{
             id: `e_${depCode}_${mainNode.code}`,
@@ -1415,6 +1512,7 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
     compiledJarPath, needsDatasource, selectedDatasourceId, dsDataSources,
     selectedWorkerGroup, selectedEnvironmentCode, openlineageTransportUrl, projectCode,
     currentMapping, scanHeaderDependencyTasks, persistRememberNow,
+    resolveExternalDeps, scanLocalHeaderDependencies,
   ]);
 
   if (!visible) return null;

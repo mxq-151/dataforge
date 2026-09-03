@@ -1,5 +1,258 @@
 import { describe, it, expect } from 'vitest';
-import { buildJarsArg, mapCodeFileToTask, type SavedConfig } from './schedulerMapping';
+import { buildJarsArg, mapCodeFileToTask, type SavedConfig, reconcileWorkflowDependencies, findDependencyCycle, dependentNodeName, type HeaderDependency } from './schedulerMapping';
+import type { DSWorkflowTaskNode, DSWorkflowEdge } from '../types/dolphinscheduler';
+
+function mkNode(code: number, name: string, taskType = 'SPARK'): DSWorkflowTaskNode {
+  return {
+    code,
+    name,
+    taskType: taskType as DSWorkflowTaskNode['taskType'],
+    description: '',
+    taskParams: '{}',
+    flag: 'YES',
+    taskPriority: 'MEDIUM',
+    workerGroup: 'default',
+    environmentCode: -1,
+    failRetryTimes: 0,
+    failRetryInterval: 1,
+    timeoutFlag: 'CLOSE',
+    timeout: 0,
+    delayTime: 0,
+    x: 100,
+    y: 100,
+  };
+}
+
+function edge(src: number, dst: number): DSWorkflowEdge {
+  return { id: `e_${src}_${dst}`, sourceCode: src, targetCode: dst };
+}
+
+/** 简易跨工作流解析器：taskName -> code */
+function mkResolver(index: Map<string, number>) {
+  return async (labels: Set<string>) => {
+    const result = new Map();
+    for (const label of labels) {
+      const taskName = label.includes('.') ? label.slice(label.indexOf('.') + 1) : label;
+      const code = index.get(taskName);
+      if (code != null) {
+        result.set(label, { projectCode: 1, definitionCode: 900, taskCode: code, taskName, label });
+      }
+    }
+    return result;
+  };
+}
+
+function mkLocalDeps(entries: Record<string, string>): Map<string, HeaderDependency[]> {
+  const map = new Map<string, HeaderDependency[]>();
+  for (const [task, depStr] of Object.entries(entries)) {
+    const deps: HeaderDependency[] = (depStr && depStr !== '无')
+      ? depStr.split(',').map(t => {
+          const dot = t.indexOf('.');
+          return dot >= 0 ? { projectCode: t.slice(0, dot), taskName: t.slice(dot + 1) } : { projectCode: '', taskName: t };
+        })
+      : [];
+    map.set(task, deps);
+  }
+  return map;
+}
+
+describe('reconcileWorkflowDependencies — 依赖关系重建', () => {
+  it('同工作流内 A->B、C->D 两条独立链，不被串成 A->B->C->D', async () => {
+    // 工作流已有 A、B（B 依赖 A），本次提交 D（依赖 C），C 为无依赖任务
+    const nodes = [mkNode(1, 'A'), mkNode(2, 'B'), mkNode(3, 'C'), mkNode(4, 'D')];
+    const edges = [edge(1, 2)]; // A->B
+    const localDeps = mkLocalDeps({ A: '无', B: 'A', C: '无', D: 'C' });
+
+    const res = await reconcileWorkflowDependencies({
+      nodes,
+      edges,
+      localHeaderDeps: localDeps,
+      mainTaskName: 'D',
+      resolvedLabels: new Map(),
+      resolveExternalDeps: mkResolver(new Map()),
+      allocateCode: (() => { let c = 100; return () => c++; })(),
+      nextSlot: (() => { let i = 0; return () => ({ x: 300 + i++ * 450, y: 140 }); })(),
+    });
+
+    expect(res.edges.map(e => `${e.sourceCode}->${e.targetCode}`).sort()).toEqual(['1->2', '3->4']);
+    expect(res.nodes.map(n => n.name).sort()).toEqual(['A', 'B', 'C', 'D']);
+    expect(res.warnings).toEqual([]);
+  });
+
+  it('清除旧逻辑遗留的错误串行边（A->B->C->D 修正为 A->B、C->D）', async () => {
+    // 模拟旧版串行连接产生的工作流：A->B->C->D，本地代码头声明 B 依赖 A、D 依赖 C
+    const nodes = [mkNode(1, 'A'), mkNode(2, 'B'), mkNode(3, 'C'), mkNode(4, 'D')];
+    const edges = [edge(1, 2), edge(2, 3), edge(3, 4)];
+    const localDeps = mkLocalDeps({ A: '无', B: 'A', C: '无', D: 'C' });
+
+    const res = await reconcileWorkflowDependencies({
+      nodes,
+      edges,
+      localHeaderDeps: localDeps,
+      mainTaskName: 'D',
+      resolvedLabels: new Map(),
+      resolveExternalDeps: mkResolver(new Map()),
+      allocateCode: (() => { let c = 100; return () => c++; })(),
+      nextSlot: (() => { let i = 0; return () => ({ x: 300 + i++ * 450, y: 140 }); })(),
+    });
+
+    expect(res.edges.map(e => `${e.sourceCode}->${e.targetCode}`).sort()).toEqual(['1->2', '3->4']);
+  });
+
+  it('跨工作流依赖：每个任务使用专属前置依赖节点，互不覆盖', async () => {
+    // 工作流内 dim_campaign（依赖外部 ods_campaign）与 dim_creative（依赖外部 ods_ads）并存
+    const externalIndex = new Map([['ods_campaign_load_f', 501], ['ods_ads_load_f', 502]]);
+    const nodes = [mkNode(11, 'dim_campaign_load_f'), mkNode(12, 'dim_creative_load_f')];
+    const edges: DSWorkflowEdge[] = [];
+    const localDeps = mkLocalDeps({
+      dim_campaign_load_f: 'proj.ods_campaign_load_f',
+      dim_creative_load_f: 'proj.ods_ads_load_f',
+    });
+
+    const res = await reconcileWorkflowDependencies({
+      nodes,
+      edges,
+      localHeaderDeps: localDeps,
+      mainTaskName: 'dim_creative_load_f',
+      resolvedLabels: new Map(),
+      resolveExternalDeps: mkResolver(externalIndex),
+      allocateCode: (() => { let c = 100; return () => c++; })(),
+      nextSlot: (() => { let i = 0; return () => ({ x: 300 + i++ * 450, y: 140 }); })(),
+    });
+
+    const depNodes = res.nodes.filter(n => n.taskType === 'DEPENDENT');
+    expect(depNodes.map(n => n.name).sort()).toEqual([
+      '前置依赖_dim_campaign_load_f',
+      '前置依赖_dim_creative_load_f',
+    ]);
+    // 每个专属前置依赖节点只指向自己的目标任务
+    const byName = new Map(res.nodes.map(n => [n.name, n] as const));
+    const campaignDep = byName.get('前置依赖_dim_campaign_load_f')!;
+    const creativeDep = byName.get('前置依赖_dim_creative_load_f')!;
+    expect(res.edges).toContainEqual(expect.objectContaining({ sourceCode: campaignDep.code, targetCode: 11 }));
+    expect(res.edges).toContainEqual(expect.objectContaining({ sourceCode: creativeDep.code, targetCode: 12 }));
+    // 两个 DEPENDENT 节点的依赖内容各自正确
+    expect(JSON.parse(campaignDep.taskParams).dependence.dependTaskList[0].dependItemList[0].depTaskCode).toBe(501);
+    expect(JSON.parse(creativeDep.taskParams).dependence.dependTaskList[0].dependItemList[0].depTaskCode).toBe(502);
+  });
+
+  it('提交无依赖任务时不再误删其他任务的依赖（旧版共享节点缺陷）', async () => {
+    // 工作流内 B（依赖 A）已就绪，本次提交无依赖任务 C
+    const nodes = [mkNode(1, 'A'), mkNode(2, 'B'), mkNode(3, 'C')];
+    const edges = [edge(1, 2)];
+    const localDeps = mkLocalDeps({ A: '无', B: 'A', C: '无' });
+
+    const res = await reconcileWorkflowDependencies({
+      nodes,
+      edges,
+      localHeaderDeps: localDeps,
+      mainTaskName: 'C',
+      resolvedLabels: new Map(),
+      resolveExternalDeps: mkResolver(new Map()),
+      allocateCode: (() => { let c = 100; return () => c++; })(),
+      nextSlot: (() => { let i = 0; return () => ({ x: 300 + i++ * 450, y: 140 }); })(),
+    });
+
+    expect(res.edges).toEqual([edge(1, 2)]);
+  });
+
+  it('清理旧版共享「前置依赖」节点与孤儿 DEPENDENT 节点', async () => {
+    // 旧版遗留：共享「前置依赖」节点指向 B，但 B 的代码头依赖的是同工作流任务 A
+    const sharedDep = { ...mkNode(90, '前置依赖', 'DEPENDENT'), taskParams: '{}' };
+    const nodes = [mkNode(1, 'A'), mkNode(2, 'B'), sharedDep];
+    const edges = [edge(90, 2)];
+    const localDeps = mkLocalDeps({ A: '无', B: 'A' });
+
+    const res = await reconcileWorkflowDependencies({
+      nodes,
+      edges,
+      localHeaderDeps: localDeps,
+      mainTaskName: 'B',
+      resolvedLabels: new Map(),
+      resolveExternalDeps: mkResolver(new Map()),
+      allocateCode: (() => { let c = 100; return () => c++; })(),
+      nextSlot: (() => { let i = 0; return () => ({ x: 300 + i++ * 450, y: 140 }); })(),
+    });
+
+    // B 的依赖被重建为直接边 A->B，共享节点无出边被清理
+    expect(res.edges.map(e => `${e.sourceCode}->${e.targetCode}`)).toEqual(['1->2']);
+    expect(res.nodes.map(n => n.name).sort()).toEqual(['A', 'B']);
+  });
+
+  it('更新任务依赖：由 A 改为 C 时替换入边；去掉全部依赖时清空入边', async () => {
+    const nodes = [mkNode(1, 'A'), mkNode(2, 'B'), mkNode(3, 'C')];
+    const edges = [edge(1, 2)];
+    // B 的依赖从 A 改为 C
+    let localDeps = mkLocalDeps({ A: '无', B: 'C', C: '无' });
+    let res = await reconcileWorkflowDependencies({
+      nodes, edges, localHeaderDeps: localDeps, mainTaskName: 'B',
+      resolvedLabels: new Map(), resolveExternalDeps: mkResolver(new Map()),
+      allocateCode: (() => { let c = 100; return () => c++; })(),
+      nextSlot: (() => { let i = 0; return () => ({ x: 300 + i++ * 450, y: 140 }); })(),
+    });
+    expect(res.edges.map(e => `${e.sourceCode}->${e.targetCode}`)).toEqual(['3->2']);
+
+    // B 的依赖改为无
+    localDeps = mkLocalDeps({ A: '无', B: '无', C: '无' });
+    res = await reconcileWorkflowDependencies({
+      nodes, edges: res.edges, localHeaderDeps: localDeps, mainTaskName: 'B',
+      resolvedLabels: new Map(), resolveExternalDeps: mkResolver(new Map()),
+      allocateCode: (() => { let c = 100; return () => c++; })(),
+      nextSlot: (() => { let i = 0; return () => ({ x: 300 + i++ * 450, y: 140 }); })(),
+    });
+    expect(res.edges).toEqual([]);
+  });
+
+  it('本地不存在对应文件的任务保持原有边不变', async () => {
+    const nodes = [mkNode(1, 'A'), mkNode(2, 'B'), mkNode(3, 'Manual')];
+    const edges = [edge(1, 2), edge(2, 3)];
+    // 本地只有 A、B 的文件，Manual 为用户手工维护任务
+    const localDeps = mkLocalDeps({ A: '无', B: 'A' });
+
+    const res = await reconcileWorkflowDependencies({
+      nodes, edges, localHeaderDeps: localDeps, mainTaskName: 'B',
+      resolvedLabels: new Map(), resolveExternalDeps: mkResolver(new Map()),
+      allocateCode: (() => { let c = 100; return () => c++; })(),
+      nextSlot: (() => { let i = 0; return () => ({ x: 300 + i++ * 450, y: 140 }); })(),
+    });
+
+    expect(res.edges.map(e => `${e.sourceCode}->${e.targetCode}`).sort()).toEqual(['1->2', '2->3']);
+  });
+
+  it('自依赖声明产生告警并被忽略', async () => {
+    const nodes = [mkNode(1, 'A')];
+    const localDeps = mkLocalDeps({ A: 'A' });
+    const res = await reconcileWorkflowDependencies({
+      nodes, edges: [], localHeaderDeps: localDeps, mainTaskName: 'A',
+      resolvedLabels: new Map(), resolveExternalDeps: mkResolver(new Map()),
+      allocateCode: (() => { let c = 100; return () => c++; })(),
+      nextSlot: (() => { let i = 0; return () => ({ x: 300 + i++ * 450, y: 140 }); })(),
+    });
+    expect(res.edges).toEqual([]);
+    expect(res.warnings.some(w => w.includes('自身'))).toBe(true);
+  });
+});
+
+describe('findDependencyCycle — 依赖环检测', () => {
+  it('无环时返回 null', () => {
+    const nodes = [mkNode(1, 'A'), mkNode(2, 'B'), mkNode(3, 'C')];
+    expect(findDependencyCycle(nodes, [edge(1, 2), edge(1, 3)])).toBeNull();
+  });
+
+  it('检测出环并返回任务名路径', () => {
+    const nodes = [mkNode(1, 'A'), mkNode(2, 'B'), mkNode(3, 'C')];
+    const cycle = findDependencyCycle(nodes, [edge(1, 2), edge(2, 3), edge(3, 1)]);
+    expect(cycle).not.toBeNull();
+    expect(new Set(cycle!)).toEqual(new Set(['A', 'B', 'C']));
+    expect(cycle![0]).toBe(cycle![cycle!.length - 1]);
+  });
+});
+
+describe('dependentNodeName', () => {
+  it('生成任务专属前置依赖节点名', () => {
+    expect(dependentNodeName('dwd_ad_event_detail_etl_f')).toBe('前置依赖_dwd_ad_event_detail_etl_f');
+  });
+});
 
 describe('buildJarsArg', () => {
   it('jarPath 为目录时拼接 jarPath(去尾斜杠) + jarName', () => {
