@@ -282,10 +282,9 @@ function resolveBinFromDir(dir: string, name: string): string | null {
   }
   const triples: Record<string, string> = {
     'darwin-arm64': `${name}-aarch64-apple-darwin`,
-    'darwin-x64': `${name}-x86_64-apple-darwin`,
-    'linux-arm64': `${name}-aarch64-unknown-linux-gnu`,
-    'linux-x64': `${name}-x86_64-unknown-linux-gnu`,
-    'win32-x64': `${name}-x86_64-pc-windows-msvc.exe`,
+    'darwin-x64': `opencode-darwin-x64`,
+    'win32-x64': `opencode-windows-x64.exe`,
+    'win32-arm64': `opencode-windows-arm64.exe`,
   };
   const triple = triples[`${process.platform}-${process.arch}`];
   const preferred = [name, triple].filter(Boolean);

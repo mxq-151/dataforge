@@ -53,13 +53,6 @@
         "filter": [
           "**/*"
         ]
-      },
-      {
-        "from": "resources/binaries",
-        "to": "binaries",
-        "filter": [
-          "opencode*"
-        ]
       }
     ],
     "mac": {
@@ -75,7 +68,17 @@
         "zip"
       ],
       "hardenedRuntime": false,
-      "identity": null
+      "identity": null,
+      "extraResources": [
+        {
+          "from": "resources/binaries",
+          "to": "binaries",
+          "filter": [
+            "opencode-aarch64-apple-darwin",
+            "opencode-darwin-x64"
+          ]
+        }
+      ]
     },
     "win": {
       "target": [
@@ -86,6 +89,16 @@
         "zh-CN",
         "zh-TW",
         "en-US"
+      ],
+      "extraResources": [
+        {
+          "from": "resources/binaries",
+          "to": "binaries",
+          "filter": [
+            "opencode-windows-x64.exe",
+            "opencode-windows-arm64.exe"
+          ]
+        }
       ]
     },
     "nsis": {
