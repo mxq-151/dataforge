@@ -55,8 +55,11 @@
         ]
       },
       {
-        "from": "resources/binaries/opencode-aarch64-apple-darwin",
-        "to": "binaries/opencode"
+        "from": "resources/binaries",
+        "to": "binaries",
+        "filter": [
+          "opencode*"
+        ]
       }
     ],
     "mac": {
@@ -78,7 +81,7 @@
       "target": [
         "nsis"
       ],
-      "icon": "build/icon.png",
+      "icon": "build/icon.ico",
       "electronLanguages": [
         "zh-CN",
         "zh-TW",
@@ -90,8 +93,8 @@
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "license": "软件使用许可协议.txt",
-      "installerIcon": "build/icon.png",
-      "uninstallerIcon": "build/icon.png"
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico"
     }
   },
   "dependencies": {
