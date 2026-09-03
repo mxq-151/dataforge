@@ -156,6 +156,13 @@ const ConfigParamsModal: React.FC<ConfigParamsModalProps> = ({
   useEffect(() => {
     if (!visible) return;
 
+    // 每次打开弹窗或切换文件时，先重置为默认（空）状态，避免残留上一文件的配置
+    setDeps(dependencies);
+    setProgParams(programParams);
+    setTaskParamList(taskParams);
+    setLineage(extractLineageFromParams(taskParams));
+    setSelectedDepIds(new Set());
+
     const header = fileContent ? parseFileHeader(fileContent) : null;
     const engine = header?.engine || '';
     setEngineInfo(engine ? { engine, warehouse: header?.warehouse || '' } : null);
@@ -167,16 +174,13 @@ const ConfigParamsModal: React.FC<ConfigParamsModalProps> = ({
       fetchByFilePath(projectId || 1, relativePath).then(loaded => {
         const effectiveEngine = loaded?.engine || engine;
         if (effectiveEngine) setEngineInfo({ engine: effectiveEngine, warehouse: '' });
-        if (loaded) {
-          if (loaded.dependencies.length > 0) setDeps(loaded.dependencies);
-          if (loaded.programParams.length > 0) setProgParams(loaded.programParams);
-          const savedAll = loaded.taskParams;
-          const savedUser = savedAll.filter(p => !isLineageKey(p.key));
-          setLineage(extractLineageFromParams(savedAll));
-          setTaskParamList(mergeWithBaseParams(savedUser, effectiveEngine));
-        } else if (effectiveEngine) {
-          setTaskParamList(mergeWithBaseParams([], effectiveEngine));
-        }
+        // 用当前文件加载结果完全覆盖状态；即使为空数组也覆盖，确保新文件不残留旧文件配置
+        setDeps(loaded?.dependencies || []);
+        setProgParams(loaded?.programParams || []);
+        const savedAll = loaded?.taskParams || [];
+        const savedUser = savedAll.filter(p => !isLineageKey(p.key));
+        setLineage(extractLineageFromParams(savedAll));
+        setTaskParamList(mergeWithBaseParams(savedUser, effectiveEngine));
       });
     } else if (engine) {
       setTaskParamList(mergeWithBaseParams([], engine));
