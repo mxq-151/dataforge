@@ -376,9 +376,9 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                   value={getFieldValue('scalaVersion')}
                   onChange={e => handleFieldChange('scalaVersion', e.target.value)}
                   readOnly={!isEditing}
-                  placeholder="2.13.18"
+                  placeholder="2.12.21"
                 />
-                <span className="settings-field__hint">编译 Scala 程序时使用的 Scala 版本（如 2.13.18、2.12.18、3.3.1）；不填写时默认 2.13.18</span>
+                <span className="settings-field__hint">编译 Scala 程序时使用的 Scala 版本（如 2.12.21、2.12.18、3.3.1）；不填写时默认 2.12.21</span>
               </div>
               <div className="settings-field">
                 <label className="settings-field__label">Maven groupId</label>

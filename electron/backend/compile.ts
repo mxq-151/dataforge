@@ -273,14 +273,14 @@ export async function compileJavaScala(req: CompileRequest): Promise<CompileResu
 
   const needsScala = req.codeType === 'scala' || hasUtilsScala;
 
-  // Scala 版本：用户配置 > SCALA_HOME/lib 检测 > 默认 2.13.18
+  // Scala 版本：用户配置 > SCALA_HOME/lib 检测 > 默认 2.12.21
   let scalaVersion = '';
   if (needsScala) {
     if (req.scalaVersion?.trim()) {
       scalaVersion = req.scalaVersion.trim();
     } else if (scalaHome) {
       const libDir = path.join(scalaHome, 'lib');
-      let detected = '2.13.18';
+      let detected = '2.12.21';
       try {
         const entries = await fsp.readdir(libDir);
         for (const name of entries) {
@@ -292,7 +292,7 @@ export async function compileJavaScala(req: CompileRequest): Promise<CompileResu
       } catch { /* 忽略 */ }
       scalaVersion = detected;
     } else {
-      scalaVersion = '2.13.18';
+      scalaVersion = '2.12.21';
     }
   }
 

@@ -97,7 +97,7 @@ export async function ensurePomReady(
     const depRes = await fetchDependencyList();
     const depRecords = depRes?.data?.records || [];
 
-    const scalaVer = options?.scalaVersion?.trim() || '2.13.18';
+    const scalaVer = options?.scalaVersion?.trim() || '2.12.21';
     const groupId = options?.mavenGroupId?.trim() || 'com.dataforge';
     const artifactId = options?.mavenArtifactId?.trim() || 'data_procs';
 

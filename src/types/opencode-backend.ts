@@ -316,7 +316,7 @@ export const DEFAULT_CONFIG: OpenCodeConfig = {
   marquezApiUrl: '',
   openlineageTransportUrl: '',
   pomTemplate: DEFAULT_POM_TEMPLATE,
-  scalaVersion: '2.13.18',
+  scalaVersion: '2.12.21',
   mavenGroupId: 'com.dataforge',
   mavenArtifactId: 'data_procs',
   maxTurns: 20,
