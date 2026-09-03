@@ -1144,15 +1144,39 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
             }
           }
 
-          // 根据代码头 @依赖 配置前置任务依赖：构建 DEPENDENT 任务节点作为主任务（新建或更新）的前置
+          // 根据代码头 @依赖 配置前置任务依赖：构建 DEPENDENT 任务节点作为主任务（新建或更新）的前置。
+          // 若工作流中已存在同名「前置依赖」节点，则原地替换其内容并复用既有 code 与边关系，避免重复节点
           if (resolvedDeps.length > 0) {
             const depNode = buildDependentTaskNode(resolvedDeps, depCode);
-            updatedNodes.push(depNode);
-            updatedEdges.push({
-              id: `e_${depCode}_${taskCode}`,
-              sourceCode: depCode,
-              targetCode: taskCode,
-            });
+            const existingDepIndex = updatedNodes.findIndex(
+              n => n.taskType === 'DEPENDENT' && n.name === '前置依赖',
+            );
+            if (existingDepIndex >= 0) {
+              const existingDepCode = updatedNodes[existingDepIndex].code;
+              depNode.code = existingDepCode;
+              updatedNodes = updatedNodes.map((n, i) => (i === existingDepIndex ? depNode : n));
+              // 确保 前置依赖 -> 主任务 的边存在
+              if (!updatedEdges.some(e => e.sourceCode === existingDepCode && e.targetCode === taskCode)) {
+                updatedEdges.push({ id: `e_${existingDepCode}_${taskCode}`, sourceCode: existingDepCode, targetCode: taskCode });
+              }
+            } else {
+              updatedNodes.push(depNode);
+              updatedEdges.push({
+                id: `e_${depCode}_${taskCode}`,
+                sourceCode: depCode,
+                targetCode: taskCode,
+              });
+            }
+          } else {
+            // 无 @依赖：若此前残留前置依赖节点则移除，避免仍等待旧依赖
+            const staleDepIndex = updatedNodes.findIndex(
+              n => n.taskType === 'DEPENDENT' && n.name === '前置依赖',
+            );
+            if (staleDepIndex >= 0) {
+              const staleCode = updatedNodes[staleDepIndex].code;
+              updatedNodes = updatedNodes.filter((_, i) => i !== staleDepIndex);
+              updatedEdges = updatedEdges.filter(e => e.sourceCode !== staleCode && e.targetCode !== staleCode);
+            }
           }
 
           await dsApi.workflowDefinition.update(selectedProjectCode, selectedWorkflowCode, {
