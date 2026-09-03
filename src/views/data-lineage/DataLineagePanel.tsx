@@ -96,7 +96,8 @@ const DataLineagePanel: React.FC<DataLineagePanelProps> = ({ marquezApiUrl, jump
     setShowResults(true);
     try {
       const res = await api.search.query(searchQuery.trim(), undefined, undefined, 20, selectedNamespace || undefined);
-      setSearchResults(res.results || []);
+      // 过滤节点ID以 .deserialize_to_object 结尾的搜索结果
+      setSearchResults((res.results || []).filter(r => !r.nodeId.endsWith('.deserialize_to_object')));
     } catch (e: any) {
       setSearchResults([]);
     } finally {
@@ -252,7 +253,8 @@ const DataLineagePanel: React.FC<DataLineagePanelProps> = ({ marquezApiUrl, jump
     (async () => {
       try {
         const res = await api.search.query(datasetName, undefined, undefined, 20, namespace || undefined);
-        const results = res.results || [];
+        // 过滤节点ID以 .deserialize_to_object 结尾的搜索结果
+        const results = (res.results || []).filter(r => !r.nodeId.endsWith('.deserialize_to_object'));
         setSearchResults(results);
         const firstDataset = results.find(r => r.type === 'DATASET') ?? results[0];
         if (firstDataset) {

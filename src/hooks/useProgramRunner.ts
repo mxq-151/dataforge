@@ -304,8 +304,16 @@ export function useProgramRunner({
     void ensureHistoryStore().then(() => {
       if (cancelled) return;
       const stored = readHistory(historyStorageKeyRef.current, reviveRecord);
-      accumulatedHistoryRef.current = stored;
-      setExecutionHistory(stored);
+      // 按 id 去重：旧版本 generateId 用 Date.now()+Math.random()，同一毫秒内浮点精度
+      // 丢失可能产生重复 id，导致 React 列表 key 重复告警（保留最新记录）
+      const seen = new Set<string>();
+      const deduped = stored.filter(item => {
+        if (seen.has(item.id)) return false;
+        seen.add(item.id);
+        return true;
+      });
+      accumulatedHistoryRef.current = deduped;
+      setExecutionHistory(deduped);
     });
     return () => { cancelled = true; };
   }, [historyStorageKey]);

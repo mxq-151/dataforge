@@ -40,7 +40,9 @@ function getNodeType(type: NodeType): string {
   }
 }
 
-function computeLayout(graph: Lineage['graph']): { nodes: Node[]; edges: Edge[] } {
+function computeLayout(rawGraph: Lineage['graph']): { nodes: Node[]; edges: Edge[] } {
+  // 自动过滤节点ID以 .deserialize_to_object 结尾的节点，不渲染其关系图
+  const graph = rawGraph.filter((n) => !n.id.endsWith('.deserialize_to_object'));
   const adjacency = new Map<string, string[]>();
 
   for (const n of graph) {
@@ -103,8 +105,8 @@ function computeLayout(graph: Lineage['graph']): { nodes: Node[]; edges: Edge[] 
     levelGroups.get(level)!.push(nodeId);
   }
 
-  const HORIZONTAL_SPACING = 260;
-  const VERTICAL_SPACING = 80;
+  const HORIZONTAL_SPACING = 400;
+  const VERTICAL_SPACING = 120;
 
   const rfNodes: Node[] = graph.map((n) => {
     const id = buildNodeId(n.id);
