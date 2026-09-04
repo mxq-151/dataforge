@@ -1,9 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import type { Graph, Node } from '@antv/x6';
 import {
-  ChevronDown, ChevronRight, Save, ArrowLeft, Trash2, ZoomIn, ZoomOut,
-  Maximize2, Move, Plus, X, Terminal, Database, Code2,
-  GitBranch, Zap, Globe, ArrowRightLeft, GitMerge, Shuffle, Waves,
-  Container, Coffee, Cloud, Brain, Radio, Server, Network,
+  ArrowLeft, Save, Trash2, ZoomIn, ZoomOut, Maximize2, Maximize,
+  Move, Plus, X, Zap, Search, Download, LayoutGrid, GitBranch,
 } from 'lucide-react';
 import type {
   DSWorkflowTaskNode, DSWorkflowEdge, DSWorkflowGlobalParam,
@@ -11,55 +10,22 @@ import type {
   DSWorkerGroup, DSEnvironment, DSAlertGroup, DolphinSchedulerApi, DSTenant, DSStartParam,
 } from '../../../types/dolphinscheduler';
 import {
-  TASK_CATEGORIES, TASK_TYPE_LABELS, ExecutionType, FailureStrategy,
+  TASK_TYPE_LABELS, ExecutionType, FailureStrategy,
   WarningType, Priority, EXECUTION_TYPE_OPTIONS, GLOBAL_PARAM_TYPE_OPTIONS,
   GLOBAL_PARAM_DIRECT_OPTIONS, getDefaultTaskParams,
 } from '../../../types/dolphinscheduler';
 import TaskConfigModal from './task-configs/TaskConfigModal';
+import DagCanvas from '../dag/DagCanvas';
+import DagSidebar from '../dag/DagSidebar';
+import DagContextMenu from '../dag/DagContextMenu';
+import DagAutoLayoutModal from '../dag/DagAutoLayoutModal';
+import {
+  buildNode, buildEdge, buildGraph, extractNodes, extractEdges,
+  truncateText, getTaskTypeIcon,
+} from '../dag/useCustomCellBuilder';
+import { formatGraph, DEFAULT_LAYOUT_CONFIG } from '../dag/useGraphAutoLayout';
+import type { LayoutConfig } from '../dag/useGraphAutoLayout';
 import './WorkflowDefinitionEditor.css';
-
-const TASK_TYPE_ICONS: Record<DSTaskType, React.ReactNode> = {
-  SHELL: <Terminal size={14} />,
-  SUB_PROCESS: <GitBranch size={14} />,
-  PROCEDURE: <Database size={14} />,
-  SQL: <Database size={14} />,
-  SPARK: <Zap size={14} />,
-  FLINK: <Waves size={14} />,
-  FLINK_STREAM: <Waves size={14} />,
-  MR: <Zap size={14} />,
-  PYTHON: <Code2 size={14} />,
-  DEPENDENT: <GitMerge size={14} />,
-  HTTP: <Globe size={14} />,
-  DATAX: <ArrowRightLeft size={14} />,
-  SQOOP: <ArrowRightLeft size={14} />,
-  CONDITIONS: <GitMerge size={14} />,
-  SWITCH: <Shuffle size={14} />,
-  SEATUNNEL: <Waves size={14} />,
-  K8S: <Container size={14} />,
-  JAVA: <Coffee size={14} />,
-  GRPC: <Radio size={14} />,
-  EMR: <Cloud size={14} />,
-  ZEPPELIN: <Code2 size={14} />,
-  JUPYTER: <Code2 size={14} />,
-  MLFLOW: <Brain size={14} />,
-  OPENMLDB: <Database size={14} />,
-  DVC: <GitBranch size={14} />,
-  DINKY: <Database size={14} />,
-  SAGEMAKER: <Brain size={14} />,
-  CHUNJUN: <ArrowRightLeft size={14} />,
-  HIVECLI: <Database size={14} />,
-  DMS: <Database size={14} />,
-  DATASYNC: <ArrowRightLeft size={14} />,
-  KUBEFLOW: <Container size={14} />,
-  LINKIS: <Server size={14} />,
-  DATA_FACTORY: <Network size={14} />,
-  REMOTESHELL: <Terminal size={14} />,
-  ALIYUN_SERVERLESS_SPARK: <Cloud size={14} />,
-};
-
-const NODE_WIDTH = 180;
-const NODE_HEIGHT = 44;
-const GRID_SIZE = 20;
 
 interface WorkflowDefinitionEditorProps {
   workflowName: string;
@@ -109,25 +75,25 @@ const WorkflowDefinitionEditor: React.FC<WorkflowDefinitionEditorProps> = ({
   onTrigger,
   onClose,
 }) => {
+  // 节点/边状态由 graph 事件同步而来，供弹窗等消费
   const [nodes, setNodes] = useState<DSWorkflowTaskNode[]>(existingNodes || []);
   const [edges, setEdges] = useState<DSWorkflowEdge[]>(existingEdges || []);
+  const graphRef = useRef<Graph | null>(null);
   const taskCodeCounter = useRef(1);
   const nextTaskCode = useCallback(() => Date.now() + taskCodeCounter.current++, []);
-  const [selectedNodeCode, setSelectedNodeCode] = useState<number | null>(null);
-  const [connectingFrom, setConnectingFrom] = useState<number | null>(null);
-  const [connectingMousePos, setConnectingMousePos] = useState<{ x: number; y: number } | null>(null);
-  const [canvasOffset, setCanvasOffset] = useState({ x: 0, y: 0 });
+  const [selectedCellIds, setSelectedCellIds] = useState<string[]>([]);
   const [zoom, setZoom] = useState(1);
-  const [isPanning, setIsPanning] = useState(false);
-  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
-  const [draggingNode, setDraggingNode] = useState<number | null>(null);
-  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
-  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(['universal']));
+
+  const [showTaskModal, setShowTaskModal] = useState(false);
+  const [editingTask, setEditingTask] = useState<DSWorkflowTaskNode | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; cellId: string } | null>(null);
+  const [searchVisible, setSearchVisible] = useState(false);
+  const [searchValue, setSearchValue] = useState('');
+  const [layoutModalVisible, setLayoutModalVisible] = useState(false);
+  const [layoutForm, setLayoutForm] = useState<LayoutConfig>({ ...DEFAULT_LAYOUT_CONFIG });
 
   const [showSaveModal, setShowSaveModal] = useState(false);
-  const [showTaskModal, setShowTaskModal] = useState(false);
   const [showTriggerModal, setShowTriggerModal] = useState(false);
-  const [editingTask, setEditingTask] = useState<DSWorkflowTaskNode | null>(null);
 
   const [saveForm, setSaveForm] = useState<DSWorkflowSaveForm>({
     name: initialName || '',
@@ -164,24 +130,64 @@ const WorkflowDefinitionEditor: React.FC<WorkflowDefinitionEditorProps> = ({
     startParams: [],
   });
 
-  const canvasRef = useRef<HTMLDivElement>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
 
-  const toggleCategory = (catId: string) => {
-    setExpandedCategories(prev => {
-      const next = new Set(prev);
-      if (next.has(catId)) next.delete(catId);
-      else next.add(catId);
-      return next;
+  // ---------- graph 就绪后接线 ----------
+  const handleGraphReady = useCallback((graph: Graph) => {
+    graphRef.current = graph;
+
+    const syncNodes = () => setNodes(extractNodes(graph.getNodes()));
+    const syncEdges = () => setEdges(extractEdges(graph.getEdges()));
+
+    graph.on('node:added', syncNodes);
+    graph.on('node:removed', syncNodes);
+    graph.on('node:move:end', syncNodes);
+    graph.on('edge:added', syncEdges);
+    graph.on('edge:removed', syncEdges);
+    graph.on('scale', ({ sx }) => setZoom(Math.round(sx * 100) / 100));
+    graph.on('selection:changed', ({ selected }) =>
+      setSelectedCellIds(selected.map((c) => c.id))
+    );
+
+    // 双击节点 → 编辑
+    graph.on('node:dblclick', ({ node }) => {
+      const data = node.getData() as { task?: DSWorkflowTaskNode } | undefined;
+      if (data?.task) handleEditNode(data.task);
     });
-  };
 
-  const handleAddNode = useCallback((taskType: DSTaskType) => {
+    // 右键节点 → 上下文菜单
+    graph.on('node:contextmenu', ({ node, x, y }) => {
+      const p = graph.localToPage(x, y);
+      graph.select(node);
+      graph.lockScroller();
+      setContextMenu({ x: p.x, y: p.y, cellId: node.id });
+    });
+    graph.on('blank:contextmenu', () => closeContextMenu());
+
+    // 回填已有节点/边（StrictMode 双挂载时每次 graph 就绪都执行，幂等）
+    if (existingNodes && existingNodes.length > 0) {
+      graph.fromJSON(buildGraph(existingNodes, existingEdges || []));
+    }
+  }, [existingNodes, existingEdges]);
+
+  const handleEditNode = useCallback((node: DSWorkflowTaskNode) => {
     if (readonly) return;
+    setEditingTask({ ...node });
+    setShowTaskModal(true);
+  }, [readonly]);
+
+  const closeContextMenu = useCallback(() => {
+    setContextMenu(null);
+    graphRef.current?.unlockScroller();
+  }, []);
+
+  // ---------- 节点操作 ----------
+  const makeDefaultNode = useCallback((taskType: DSTaskType, x: number, y: number, nameSuffix?: string): DSWorkflowTaskNode => {
     const newCode = nextTaskCode();
-    const offset = nodes.length * 30;
-    const newNode: DSWorkflowTaskNode = {
+    const count = nodes.length;
+    return {
       code: newCode,
-      name: `${TASK_TYPE_LABELS[taskType]}_${nodes.length + 1}`,
+      name: nameSuffix || `${TASK_TYPE_LABELS[taskType]}_${count + 1}`,
       taskType,
       description: '',
       taskParams: JSON.stringify(getDefaultTaskParams(taskType)),
@@ -194,332 +200,172 @@ const WorkflowDefinitionEditor: React.FC<WorkflowDefinitionEditorProps> = ({
       timeoutFlag: 'CLOSE',
       timeout: 0,
       delayTime: 0,
-      x: 100 + offset,
-      y: 100 + offset,
+      x,
+      y,
     };
-    setNodes(prev => [...prev, newNode]);
-    setSelectedNodeCode(newCode);
-  }, [nodes, readonly]);
+  }, [nextTaskCode, nodes.length]);
 
-  const handleNodeDragStart = useCallback((e: React.MouseEvent, nodeCode: number) => {
+  const handleAddNode = useCallback((taskType: DSTaskType) => {
     if (readonly) return;
-    e.stopPropagation();
-    const node = nodes.find(n => n.code === nodeCode);
-    if (!node) return;
-    setDraggingNode(nodeCode);
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (rect) {
-      setDragOffset({
-        x: e.clientX - rect.left - node.x * zoom + canvasOffset.x,
-        y: e.clientY - rect.top - node.y * zoom + canvasOffset.y,
-      });
-    }
-  }, [nodes, readonly, zoom, canvasOffset]);
+    const graph = graphRef.current;
+    if (!graph) return;
+    const offset = nodes.length * 30;
+    const node = makeDefaultNode(taskType, 100 + offset, 100 + offset);
+    graph.addNode(buildNode(node, { x: node.x, y: node.y }));
+    setSelectedCellIds([String(node.code)]);
+  }, [readonly, nodes.length, makeDefaultNode]);
 
-  const handleCanvasMouseMove = useCallback((e: React.MouseEvent) => {
-    if (draggingNode !== null) {
-      const rect = canvasRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const rawX = (e.clientX - rect.left - canvasOffset.x - dragOffset.x) / zoom;
-      const rawY = (e.clientY - rect.top - canvasOffset.y - dragOffset.y) / zoom;
-      const x = Math.max(0, Math.round(rawX / GRID_SIZE) * GRID_SIZE);
-      const y = Math.max(0, Math.round(rawY / GRID_SIZE) * GRID_SIZE);
-      setNodes(prev => prev.map(n => n.code === draggingNode ? { ...n, x, y } : n));
-    }
-    if (isPanning) {
-      const dx = e.clientX - panStart.x;
-      const dy = e.clientY - panStart.y;
-      setCanvasOffset(prev => ({ x: prev.x + dx, y: prev.y + dy }));
-      setPanStart({ x: e.clientX, y: e.clientY });
-    }
-    if (connectingFrom !== null) {
-      const rect = canvasRef.current?.getBoundingClientRect();
-      if (rect) {
-        const svgX = (e.clientX - rect.left - canvasOffset.x) / zoom;
-        const svgY = (e.clientY - rect.top - canvasOffset.y) / zoom;
-        setConnectingMousePos({ x: svgX, y: svgY });
-      }
-    }
-  }, [draggingNode, isPanning, panStart, dragOffset, zoom, canvasOffset, connectingFrom]);
-
-  const handleCanvasMouseUp = useCallback(() => {
-    setDraggingNode(null);
-    setIsPanning(false);
-    if (connectingFrom !== null) {
-      setConnectingFrom(null);
-      setConnectingMousePos(null);
-    }
-  }, [connectingFrom]);
-
-  const handleCanvasMouseDown = useCallback((e: React.MouseEvent) => {
-    const target = e.target as HTMLElement;
-    const classList = target?.classList;
-    // .wf-canvas__grid 设置了 pointer-events:none，点击背景时事件目标实际落到 <svg>(.wf-canvas) 上
-    const isBackground =
-      target === canvasRef.current ||
-      classList?.contains('wf-canvas') ||
-      classList?.contains('wf-canvas__grid');
-    if (isBackground) {
-      setSelectedNodeCode(null);
-      setConnectingFrom(null);
-      setConnectingMousePos(null);
-      // 左键或中键拖动画布背景即可平移视图
-      if (e.button === 1 || e.button === 0) {
-        setIsPanning(true);
-        setPanStart({ x: e.clientX, y: e.clientY });
-      }
-    }
-  }, []);
-
-  const handleNodeClick = useCallback((e: React.MouseEvent, nodeCode: number) => {
-    e.stopPropagation();
-    if (connectingFrom !== null && connectingFrom !== nodeCode) {
-      const exists = edges.some(e => e.sourceCode === connectingFrom && e.targetCode === nodeCode);
-      const selfLoop = connectingFrom === nodeCode;
-      if (!exists && !selfLoop) {
-        setEdges(prev => [...prev, {
-          id: `edge_${connectingFrom}_${nodeCode}`,
-          sourceCode: connectingFrom,
-          targetCode: nodeCode,
-        }]);
-      }
-      setConnectingFrom(null);
-      setConnectingMousePos(null);
-    } else if (connectingFrom === null) {
-      setSelectedNodeCode(nodeCode);
-    }
-  }, [connectingFrom, edges]);
-
-  const handleNodeRightClick = useCallback((e: React.MouseEvent, nodeCode: number) => {
+  // 侧栏拖入画布
+  const handleCanvasDrop = useCallback((e: React.DragEvent) => {
+    const taskType = e.dataTransfer.getData('taskType') as DSTaskType;
+    if (!taskType || readonly) return;
     e.preventDefault();
-    e.stopPropagation();
-    if (readonly) return;
-    setConnectingFrom(nodeCode);
-  }, [readonly]);
+    const graph = graphRef.current;
+    if (!graph) return;
+    const { x, y } = graph.clientToLocal(e.clientX, e.clientY);
+    const node = makeDefaultNode(taskType, Math.max(0, Math.round(x)), Math.max(0, Math.round(y)));
+    graph.addNode(buildNode(node, { x: node.x, y: node.y }));
+    setSelectedCellIds([String(node.code)]);
+  }, [readonly, makeDefaultNode]);
 
-  const handleOutputPortMouseDown = useCallback((e: React.MouseEvent, nodeCode: number) => {
-    if (readonly) return;
-    e.stopPropagation();
-    e.preventDefault();
-    setConnectingFrom(nodeCode);
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (rect) {
-      const svgX = (e.clientX - rect.left - canvasOffset.x) / zoom;
-      const svgY = (e.clientY - rect.top - canvasOffset.y) / zoom;
-      setConnectingMousePos({ x: svgX, y: svgY });
-    }
-  }, [readonly, canvasOffset, zoom]);
-
-  const handleNodeMouseUp = useCallback((e: React.MouseEvent, nodeCode: number) => {
-    if (connectingFrom !== null && connectingFrom !== nodeCode) {
-      e.stopPropagation();
-      const exists = edges.some(e => e.sourceCode === connectingFrom && e.targetCode === nodeCode);
-      if (!exists) {
-        setEdges(prev => [...prev, {
-          id: `edge_${connectingFrom}_${nodeCode}`,
-          sourceCode: connectingFrom,
-          targetCode: nodeCode,
-        }]);
-      }
-      setConnectingFrom(null);
-      setConnectingMousePos(null);
-    }
-  }, [connectingFrom, edges]);
-
-  const handleDeleteSelected = useCallback(() => {
-    if (readonly || selectedNodeCode === null) return;
-    setNodes(prev => prev.filter(n => n.code !== selectedNodeCode));
-    setEdges(prev => prev.filter(e => e.sourceCode !== selectedNodeCode && e.targetCode !== selectedNodeCode));
-    setSelectedNodeCode(null);
-  }, [readonly, selectedNodeCode]);
-
-  const handleDeleteEdge = useCallback((edgeId: string) => {
-    if (readonly) return;
-    setEdges(prev => prev.filter(e => e.id !== edgeId));
-  }, [readonly]);
-
-  const handleEditNode = useCallback((node: DSWorkflowTaskNode) => {
-    if (readonly) return;
-    setEditingTask({ ...node });
-    setShowTaskModal(true);
-  }, [readonly]);
-
+  // ---------- 任务配置保存 ----------
   const handleSaveTask = useCallback((task: DSWorkflowTaskNode, newEdges?: DSWorkflowEdge[]) => {
-    setNodes(prev => prev.map(n => n.code === task.code ? task : n));
-    if (newEdges) {
-      setEdges(newEdges);
+    const graph = graphRef.current;
+    if (graph) {
+      const cell = graph.getCellById(String(task.code)) as Node | undefined;
+      if (cell) {
+        cell.setData({
+          ...cell.getData(),
+          task,
+          taskType: task.taskType,
+          taskName: task.name,
+          flag: task.flag,
+        });
+        cell.attr('title/text', truncateText(task.name));
+        cell.attr('image/href', getTaskTypeIcon(task.taskType));
+      }
+      if (newEdges) {
+        // 重建全部边（modal 返回的是全量边列表）
+        graph.clearCells({ edges: true, nodes: false });
+        newEdges.forEach((edge) => {
+          graph.addEdge(buildEdge(String(edge.sourceCode), String(edge.targetCode)));
+        });
+      }
     }
     setShowTaskModal(false);
     setEditingTask(null);
   }, []);
 
-  const handleZoomIn = () => setZoom(prev => Math.min(prev + 0.1, 2));
-  const handleZoomOut = () => setZoom(prev => Math.max(prev - 0.1, 0.3));
-  const handleResetView = () => { setZoom(1); setCanvasOffset({ x: 0, y: 0 }); };
+  // ---------- 删除 ----------
+  const handleDeleteSelected = useCallback(() => {
+    if (readonly) return;
+    const graph = graphRef.current;
+    if (!graph) return;
+    graph.removeCells(graph.getSelectedCells());
+    setSelectedCellIds([]);
+  }, [readonly]);
 
+  const deleteNode = useCallback((cellId: string) => {
+    const graph = graphRef.current;
+    if (!graph) return;
+    const cell = graph.getCellById(cellId);
+    if (cell) graph.removeCell(cell);
+  }, []);
+
+  // ---------- 复制 ----------
+  const copyNode = useCallback((cellId: string) => {
+    const graph = graphRef.current;
+    if (!graph) return;
+    const cell = graph.getCellById(cellId) as Node | undefined;
+    if (!cell) return;
+    const data = cell.getData() as { task?: DSWorkflowTaskNode } | undefined;
+    if (!data?.task) return;
+    const pos = cell.getPosition();
+    const copy = makeDefaultNode(data.task.taskType, pos.x + 100, pos.y + 100, `${data.task.name}_复制`);
+    const copiedTask: DSWorkflowTaskNode = {
+      ...data.task,
+      code: copy.code,
+      name: copy.name,
+      x: copy.x,
+      y: copy.y,
+    };
+    graph.addNode(buildNode(copiedTask, { x: copiedTask.x, y: copiedTask.y }));
+  }, [makeDefaultNode]);
+
+  // ---------- 视图 ----------
+  const handleZoomIn = () => graphRef.current?.zoom(0.1);
+  const handleZoomOut = () => graphRef.current?.zoom(-0.1);
+  const handleResetView = () => {
+    const graph = graphRef.current;
+    if (!graph) return;
+    graph.zoomTo(1);
+    graph.centerContent();
+  };
+
+  const handleDownloadPng = () => {
+    const graph = graphRef.current;
+    if (!graph) return;
+    graph.toPNG((dataUri: string) => {
+      const link = document.createElement('a');
+      link.download = `${initialName || 'workflow'}.png`;
+      link.href = dataUri;
+      link.click();
+    }, { backgroundColor: '#1e1e1e' });
+  };
+
+  const handleFullscreen = () => {
+    const el = editorRef.current;
+    if (!el) return;
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    } else {
+      el.requestFullscreen();
+    }
+  };
+
+  const handleSearchNavigate = (code: string) => {
+    const graph = graphRef.current;
+    if (!graph) return;
+    const cell = graph.getCellById(code);
+    if (cell) {
+      graph.scrollToCell(cell, { animation: { duration: 600 } });
+      graph.cleanSelection();
+      graph.select(cell);
+    }
+    setSearchValue(code);
+    setSearchVisible(false);
+  };
+
+  // ---------- 键盘快捷键 ----------
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (selectedNodeCode !== null && !showTaskModal && !showSaveModal && !showTriggerModal) {
+        if (!showTaskModal && !showSaveModal && !showTriggerModal) {
           handleDeleteSelected();
         }
       }
       if (e.key === 'Escape') {
-        setConnectingFrom(null);
-        setConnectingMousePos(null);
-        setSelectedNodeCode(null);
+        closeContextMenu();
+        graphRef.current?.cleanSelection();
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [selectedNodeCode, handleDeleteSelected, showTaskModal, showSaveModal, showTriggerModal]);
+  }, [handleDeleteSelected, closeContextMenu, showTaskModal, showSaveModal, showTriggerModal]);
 
-  // 滚轮 / 触控板双指滑动平移画布，无需按键
-  useEffect(() => {
-    const el = canvasRef.current;
-    if (!el) return;
-    const onWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      setCanvasOffset(prev => ({
-        x: prev.x - e.deltaX,
-        y: prev.y - e.deltaY,
-      }));
-    };
-    el.addEventListener('wheel', onWheel, { passive: false });
-    return () => el.removeEventListener('wheel', onWheel);
-  }, []);
-
-  const renderEdge = (edge: DSWorkflowEdge) => {
-    const sourceNode = nodes.find(n => n.code === edge.sourceCode);
-    const targetNode = nodes.find(n => n.code === edge.targetCode);
-    if (!sourceNode || !targetNode) return null;
-
-    const sx = sourceNode.x + NODE_WIDTH / 2;
-    const sy = sourceNode.y + NODE_HEIGHT;
-    const tx = targetNode.x + NODE_WIDTH / 2;
-    const ty = targetNode.y;
-
-    const midY = (sy + ty) / 2;
-    const path = `M ${sx} ${sy} C ${sx} ${midY}, ${tx} ${midY}, ${tx} ${ty}`;
-
-    const angle = Math.atan2(ty - midY, 0);
-    const arrowSize = 16;
-    const cos = Math.cos(angle);
-    const sin = Math.sin(angle);
-    const p1x = tx + (-arrowSize / 2) * cos - (-arrowSize) * sin;
-    const p1y = ty + (-arrowSize / 2) * sin + (-arrowSize) * cos;
-    const p2x = tx + (arrowSize / 2) * cos - (-arrowSize) * sin;
-    const p2y = ty + (arrowSize / 2) * sin + (-arrowSize) * cos;
-    const arrowPoints = `${p1x},${p1y} ${p2x},${p2y} ${tx},${ty}`;
-
-    return (
-      <g key={edge.id} className="wf-edge" onDoubleClick={() => handleDeleteEdge(edge.id)}>
-        <path d={path} className="wf-edge__hitarea" />
-        <path d={path} className="wf-edge__line" />
-        <polygon points={arrowPoints} className="wf-edge__arrow" />
-      </g>
-    );
-  };
-
-  const renderTempConnection = () => {
-    if (connectingFrom === null || connectingMousePos === null) return null;
-    const sourceNode = nodes.find(n => n.code === connectingFrom);
-    if (!sourceNode) return null;
-
-    const sx = sourceNode.x + NODE_WIDTH / 2;
-    const sy = sourceNode.y + NODE_HEIGHT;
-    const tx = connectingMousePos.x;
-    const ty = connectingMousePos.y;
-
-    const midY = (sy + ty) / 2;
-    const path = `M ${sx} ${sy} C ${sx} ${midY}, ${tx} ${midY}, ${tx} ${ty}`;
-
-    return (
-      <path d={path} className="wf-edge__temp" />
-    );
-  };
-
-  const renderNode = (node: DSWorkflowTaskNode) => {
-    const isSelected = selectedNodeCode === node.code;
-    const isConnecting = connectingFrom === node.code;
-    const isConnectingTarget = connectingFrom !== null && connectingFrom !== node.code;
-    const icon = TASK_TYPE_ICONS[node.taskType] || <Terminal size={14} />;
-
-    return (
-      <g
-        key={node.code}
-        className={`wf-node ${isSelected ? 'wf-node--selected' : ''} ${isConnecting ? 'wf-node--connecting' : ''} ${isConnectingTarget ? 'wf-node--connect-target' : ''}`}
-        transform={`translate(${node.x}, ${node.y})`}
-        onMouseDown={e => handleNodeDragStart(e, node.code)}
-        onClick={e => handleNodeClick(e, node.code)}
-        onContextMenu={e => handleNodeRightClick(e, node.code)}
-        onDoubleClick={() => handleEditNode(node)}
-        onMouseUp={e => handleNodeMouseUp(e, node.code)}
-      >
-        <rect
-          width={NODE_WIDTH}
-          height={NODE_HEIGHT}
-          rx={6}
-          ry={6}
-          className="wf-node__bg"
-        />
-        <rect
-          width={4}
-          height={NODE_HEIGHT}
-          rx={2}
-          ry={2}
-          className="wf-node__indicator"
-        />
-        <g transform={`translate(12, ${(NODE_HEIGHT - 14) / 2})`}>
-          {icon}
-        </g>
-        <text x={32} y={NODE_HEIGHT / 2} className="wf-node__name" dominantBaseline="middle">
-          {node.name}
-        </text>
-        <text x={NODE_WIDTH - 8} y={NODE_HEIGHT / 2} className="wf-node__type" dominantBaseline="middle" textAnchor="end">
-          {node.taskType}
-        </text>
-        {isSelected && (
-          <rect
-            width={NODE_WIDTH}
-            height={NODE_HEIGHT}
-            rx={6}
-            ry={6}
-            className="wf-node__selection"
-          />
-        )}
-        {!readonly && (
-          <>
-            <circle
-              cx={NODE_WIDTH / 2}
-              cy={NODE_HEIGHT}
-              r={6}
-              className="wf-node__port wf-node__port--out"
-              onMouseDown={e => handleOutputPortMouseDown(e, node.code)}
-            />
-            <circle
-              cx={NODE_WIDTH / 2}
-              cy={NODE_HEIGHT}
-              r={14}
-              className="wf-node__port-hitarea"
-              onMouseDown={e => handleOutputPortMouseDown(e, node.code)}
-            />
-          </>
-        )}
-        {isConnectingTarget && (
-          <circle
-            cx={NODE_WIDTH / 2}
-            cy={0}
-            r={6}
-            className="wf-node__port wf-node__port--in"
-          />
-        )}
-      </g>
-    );
-  };
+  // ---------- 上下文菜单项 ----------
+  const contextMenuItems = [
+    { key: 'edit', label: '编辑', onClick: () => {
+      const cell = graphRef.current?.getCellById(contextMenu?.cellId || '');
+      const task = (cell as Node)?.getData()?.task as DSWorkflowTaskNode | undefined;
+      if (task) handleEditNode(task);
+    }, disabled: readonly },
+    { key: 'copy', label: '复制', onClick: () => contextMenu && copyNode(contextMenu.cellId), disabled: readonly },
+    { key: 'delete', label: '删除', onClick: () => contextMenu && deleteNode(contextMenu.cellId), disabled: readonly },
+  ];
 
   return (
-    <div className="wf-editor">
+    <div className="wf-editor" ref={editorRef}>
       <div className="wf-editor__toolbar">
         <div className="wf-toolbar__left">
           <button className="sm-btn sm-btn--ghost" onClick={onClose} title="返回">
@@ -539,15 +385,48 @@ const WorkflowDefinitionEditor: React.FC<WorkflowDefinitionEditorProps> = ({
           <button className="sm-btn sm-btn--ghost sm-btn--xs" onClick={handleResetView} title="重置视图">
             <Maximize2 size={14} />
           </button>
+          <button className="sm-btn sm-btn--ghost sm-btn--xs" onClick={handleFullscreen} title="全屏">
+            <Maximize size={14} />
+          </button>
           <div className="wf-toolbar__separator" />
-          <button className="sm-btn sm-btn--ghost sm-btn--xs" onClick={handleDeleteSelected} disabled={selectedNodeCode === null || readonly} title="删除选中">
+          <button className="sm-btn sm-btn--ghost sm-btn--xs" onClick={() => setSearchVisible(v => !v)} title="节点搜索">
+            <Search size={14} />
+          </button>
+          <button className="sm-btn sm-btn--ghost sm-btn--xs" onClick={handleDownloadPng} title="下载 PNG">
+            <Download size={14} />
+          </button>
+          {!readonly && (
+            <button className="sm-btn sm-btn--ghost sm-btn--xs" onClick={() => setLayoutModalVisible(true)} title="自动布局">
+              <LayoutGrid size={14} />
+            </button>
+          )}
+          <button className="sm-btn sm-btn--ghost sm-btn--xs" onClick={handleDeleteSelected} disabled={selectedCellIds.length === 0 || readonly} title="删除选中">
             <Trash2 size={14} />
           </button>
-          <button className="sm-btn sm-btn--ghost sm-btn--xs" title="移动画布 (Alt+拖拽)">
+          <button className="sm-btn sm-btn--ghost sm-btn--xs" title="移动画布：滚轮平移 / Ctrl+滚轮缩放 / 拖拽空白处框选">
             <Move size={14} />
           </button>
         </div>
         <div className="wf-toolbar__right">
+          {searchVisible && (
+            <div className="wf-toolbar__search">
+              <input
+                value={searchValue}
+                onChange={e => setSearchValue(e.target.value)}
+                placeholder="搜索节点..."
+                autoFocus
+              />
+              <div className="wf-toolbar__search-list">
+                {nodes
+                  .filter(n => n.name.toLowerCase().includes(searchValue.toLowerCase()))
+                  .map(n => (
+                    <button key={n.code} onClick={() => handleSearchNavigate(String(n.code))}>
+                      {n.name}
+                    </button>
+                  ))}
+              </div>
+            </div>
+          )}
           {!readonly && (
             <button className="sm-btn sm-btn--primary sm-btn--xs" onClick={() => setShowSaveModal(true)}>
               <Save size={14} /> 保存
@@ -562,95 +441,46 @@ const WorkflowDefinitionEditor: React.FC<WorkflowDefinitionEditorProps> = ({
       </div>
 
       <div className="wf-editor__body">
-        {!readonly && (
-          <div className="wf-editor__sidebar">
-            <div className="wf-sidebar__header">
-              <span>任务节点</span>
-            </div>
-            <div className="wf-sidebar__content">
-              {TASK_CATEGORIES.map(cat => (
-                <div key={cat.id} className="wf-sidebar__category">
-                  <button
-                    className="wf-sidebar__category-header"
-                    onClick={() => toggleCategory(cat.id)}
-                  >
-                    {expandedCategories.has(cat.id) ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                    <span>{cat.label}</span>
-                    <span className="wf-sidebar__count">{cat.tasks.length}</span>
-                  </button>
-                  {expandedCategories.has(cat.id) && (
-                    <div className="wf-sidebar__category-tasks">
-                      {cat.tasks.map(taskType => (
-                        <button
-                          key={taskType}
-                          className="wf-sidebar__task-item"
-                          onDoubleClick={() => handleAddNode(taskType)}
-                          draggable
-                          onDragStart={e => {
-                            e.dataTransfer.setData('taskType', taskType);
-                          }}
-                        >
-                          <span className="wf-sidebar__task-icon">
-                            {TASK_TYPE_ICONS[taskType] || <Terminal size={14} />}
-                          </span>
-                          <span className="wf-sidebar__task-name">{TASK_TYPE_LABELS[taskType]}</span>
-                          <Plus size={12} className="wf-sidebar__task-add" />
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-            {connectingFrom !== null && (
-              <div className="wf-sidebar__hint">
-                点击目标节点完成连线，按 Esc 取消
-              </div>
-            )}
-          </div>
-        )}
+        {!readonly && <DagSidebar onAddTask={handleAddNode} />}
 
         <div
           className="wf-editor__canvas-container"
-          ref={canvasRef}
-          onMouseDown={handleCanvasMouseDown}
-          onMouseMove={handleCanvasMouseMove}
-          onMouseUp={handleCanvasMouseUp}
-          onMouseLeave={handleCanvasMouseUp}
-          onDrop={e => {
-            e.preventDefault();
-            const taskType = e.dataTransfer.getData('taskType') as DSTaskType;
-            if (taskType) handleAddNode(taskType);
-          }}
+          onDrop={handleCanvasDrop}
           onDragOver={e => e.preventDefault()}
         >
-          <svg
-            className="wf-canvas"
-            style={{
-              transform: `translate(${canvasOffset.x}px, ${canvasOffset.y}px) scale(${zoom})`,
-              transformOrigin: '0 0',
-            }}
-          >
-            <defs>
-              <pattern id="grid" width={GRID_SIZE} height={GRID_SIZE} patternUnits="userSpaceOnUse">
-                <path d={`M ${GRID_SIZE} 0 L 0 0 0 ${GRID_SIZE}`} fill="none" stroke="#2a2d2e" strokeWidth="0.5" />
-              </pattern>
-            </defs>
-            <rect className="wf-canvas__grid" width="10000" height="10000" fill="url(#grid)" />
-            {edges.map(renderEdge)}
-            {renderTempConnection()}
-            {nodes.map(renderNode)}
-          </svg>
-
-          {nodes.length === 0 && (
-            <div className="wf-canvas__empty">
-              <GitBranch size={48} strokeWidth={1} />
-              <p>点击左侧任务节点添加到画布</p>
-              <span>双击节点编辑配置，拖拽底部端口创建连线</span>
-            </div>
-          )}
+          <DagCanvas readonly={readonly} onGraphReady={handleGraphReady}>
+            {nodes.length === 0 && (
+              <div className="wf-canvas__empty">
+                <GitBranch size={48} strokeWidth={1} />
+                <p>点击左侧任务节点添加到画布</p>
+                <span>双击节点编辑配置，拖拽节点底部端口创建连线</span>
+              </div>
+            )}
+          </DagCanvas>
         </div>
       </div>
+
+      <DagContextMenu
+        visible={!!contextMenu}
+        x={contextMenu?.x ?? 0}
+        y={contextMenu?.y ?? 0}
+        items={contextMenuItems}
+        onClose={closeContextMenu}
+      />
+
+      <DagAutoLayoutModal
+        visible={layoutModalVisible}
+        formValue={layoutForm}
+        onChange={setLayoutForm}
+        onConfirm={() => {
+          const graph = graphRef.current;
+          if (graph) {
+            formatGraph(graph, layoutForm);
+          }
+          setLayoutModalVisible(false);
+        }}
+        onClose={() => setLayoutModalVisible(false)}
+      />
 
       {showTaskModal && editingTask && (
         <TaskConfigModal
@@ -671,14 +501,15 @@ const WorkflowDefinitionEditor: React.FC<WorkflowDefinitionEditorProps> = ({
           form={saveForm}
           onChange={setSaveForm}
           onConfirm={() => {
+            const graph = graphRef.current;
             onSave({
               name: saveForm.name || '',
               description: saveForm.description || '',
               executionType: saveForm.executionType,
               timeout: saveForm.timeoutFlag ? saveForm.timeout : 0,
               globalParams: saveForm.globalParams,
-              nodes,
-              edges,
+              nodes: graph ? extractNodes(graph.getNodes()) : nodes,
+              edges: graph ? extractEdges(graph.getEdges()) : edges,
               release: saveForm.release,
             });
             setShowSaveModal(false);

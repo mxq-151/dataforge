@@ -73,38 +73,6 @@
   background-color: #1e1e1e;
 }
 
-.wi-canvas {
-  width: 100%;
-  height: 100%;
-}
-
-.wi-canvas__grid {
-  pointer-events: none;
-}
-
-.wi-edge__line {
-  fill: none;
-  stroke: #555555;
-  stroke-width: 1.5;
-}
-
-.wi-edge__arrow {
-  fill: #888888;
-}
-
-.wi-node {
-  cursor: pointer;
-}
-
-.wi-node--running {
-  animation: wi-pulse 1.5s ease-in-out infinite;
-}
-
-@keyframes wi-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
-
 .wi-canvas__empty {
   position: absolute;
   top: 50%;
@@ -112,6 +80,8 @@
   transform: translate(-50%, -50%);
   text-align: center;
   color: #555555;
+  z-index: 2;
+  pointer-events: none;
 }
 
 .wi-canvas__empty p {
@@ -131,6 +101,8 @@
   border-radius: 4px;
   font-size: 11px;
   color: #aaaaaa;
+  z-index: 2;
+  pointer-events: none;
 }
 
 .wi-legend__item {

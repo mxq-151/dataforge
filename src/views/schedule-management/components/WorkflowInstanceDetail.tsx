@@ -1,58 +1,22 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   ArrowLeft, ZoomIn, ZoomOut, Maximize2, Move,
-  Terminal, Database, Code2, GitBranch, Zap, Globe,
-  ArrowRightLeft, GitMerge, Shuffle, Waves, Container,
-  Coffee, Cloud, Brain, Radio, Server, Network,
-  RefreshCw, Play, Pause, StopCircle, RotateCcw, Eye,
+  GitBranch, RefreshCw, Play, Pause, StopCircle, RotateCcw, Eye,
   CheckCircle, Clock, User, HardDrive,
 } from 'lucide-react';
+import { createRoot } from 'react-dom/client';
+import type { Root } from 'react-dom/client';
+import type { Graph, Node, Markup } from '@antv/x6';
 import type {
-  DSWorkflowInstance, DSTaskInstance, DSWorkflowTaskNode, DSWorkflowEdge, DSTaskType,
+  DSWorkflowInstance, DSTaskInstance, DSWorkflowTaskNode, DSWorkflowEdge,
   DSEnvironment, DSWorkerGroup, DolphinSchedulerApi,
 } from '../../../types/dolphinscheduler';
 import { WorkflowExecutionStatus, TaskExecutionStatus } from '../../../types/dolphinscheduler';
 import TaskConfigModal from './task-configs/TaskConfigModal';
+import DagCanvas from '../dag/DagCanvas';
+import { buildGraph } from '../dag/useCustomCellBuilder';
+import { NODE, NODE_STATUS_MARKUP } from '../dag/dag-config';
 import './WorkflowInstanceDetail.css';
-
-const TASK_TYPE_ICONS: Record<DSTaskType, React.ReactNode> = {
-  SHELL: <Terminal size={14} />,
-  SUB_PROCESS: <GitBranch size={14} />,
-  PROCEDURE: <Database size={14} />,
-  SQL: <Database size={14} />,
-  SPARK: <Zap size={14} />,
-  FLINK: <Waves size={14} />,
-  FLINK_STREAM: <Waves size={14} />,
-  MR: <Zap size={14} />,
-  PYTHON: <Code2 size={14} />,
-  DEPENDENT: <GitMerge size={14} />,
-  HTTP: <Globe size={14} />,
-  DATAX: <ArrowRightLeft size={14} />,
-  SQOOP: <ArrowRightLeft size={14} />,
-  CONDITIONS: <GitMerge size={14} />,
-  SWITCH: <Shuffle size={14} />,
-  SEATUNNEL: <Waves size={14} />,
-  K8S: <Container size={14} />,
-  JAVA: <Coffee size={14} />,
-  GRPC: <Radio size={14} />,
-  EMR: <Cloud size={14} />,
-  ZEPPELIN: <Code2 size={14} />,
-  JUPYTER: <Code2 size={14} />,
-  MLFLOW: <Brain size={14} />,
-  OPENMLDB: <Database size={14} />,
-  DVC: <GitBranch size={14} />,
-  DINKY: <Database size={14} />,
-  SAGEMAKER: <Brain size={14} />,
-  CHUNJUN: <ArrowRightLeft size={14} />,
-  HIVECLI: <Database size={14} />,
-  DMS: <Database size={14} />,
-  DATASYNC: <ArrowRightLeft size={14} />,
-  KUBEFLOW: <Container size={14} />,
-  LINKIS: <Server size={14} />,
-  DATA_FACTORY: <Network size={14} />,
-  REMOTESHELL: <Terminal size={14} />,
-  ALIYUN_SERVERLESS_SPARK: <Cloud size={14} />,
-};
 
 const WORKFLOW_STATUS_CONFIG: Record<number, { label: string; color: string; bgColor: string; isSpin?: boolean }> = {
   [WorkflowExecutionStatus.SUBMITTED_SUCCESS]: { label: '提交成功', color: '#75beff', bgColor: '#1e3a5f' },
@@ -124,9 +88,6 @@ const TASK_STATE_STRING_TO_ENUM: Record<string, TaskExecutionStatus> = {
   'DELAY_EXECUTION': TaskExecutionStatus.DELAY_EXECUTION,
 };
 
-const NODE_WIDTH = 180;
-const NODE_HEIGHT = 44;
-
 function formatDateTime(dt: string | null | undefined): string {
   if (!dt) return '-';
   try {
@@ -159,10 +120,7 @@ const WorkflowInstanceDetail: React.FC<WorkflowInstanceDetailProps> = ({
   // 当前实例最新数据，定时刷新时更新（初始为传入的实例）
   const [curInstance, setCurInstance] = useState<DSWorkflowInstance>(instance);
   const [selectedTaskCode, setSelectedTaskCode] = useState<number | null>(null);
-  const [canvasOffset, setCanvasOffset] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
-  const [isPanning, setIsPanning] = useState(false);
-  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [rightPanelTab, setRightPanelTab] = useState<'info' | 'tasks'>('info');
   const [logContent, setLogContent] = useState<string>('');
   const [logLoading, setLogLoading] = useState(false);
@@ -194,7 +152,9 @@ const WorkflowInstanceDetail: React.FC<WorkflowInstanceDetailProps> = ({
     loadConfigData();
   }, [api, projectCode]);
 
-  const canvasRef = useRef<HTMLDivElement>(null);
+  const graphRef = useRef<Graph | null>(null);
+  // 任务状态徽标对应的 React root，graph 重建时需清理
+  const statusRootsRef = useRef<Map<string, Root>>(new Map());
 
   const detailLoadedKey = useRef<number | null>(null);
   useEffect(() => {
@@ -319,33 +279,77 @@ const WorkflowInstanceDetail: React.FC<WorkflowInstanceDetailProps> = ({
   const taskStatusMap = new Map<number, DSTaskInstance>();
   taskInstances.forEach(t => taskStatusMap.set(t.taskCode, t));
 
-  const handleCanvasMouseDown = useCallback((e: React.MouseEvent) => {
-    if (e.target === canvasRef.current || (e.target as HTMLElement).classList.contains('wi-canvas__grid')) {
+  const handleGraphReady = useCallback((graph: Graph) => {
+    graphRef.current = graph;
+    // graph 重建后旧的 React root 已失效（foreignObject DOM 被重建）
+    statusRootsRef.current.forEach((root) => root.unmount());
+    statusRootsRef.current.clear();
+
+    graph.on('scale', ({ sx }) => setZoom(Math.round(sx * 100) / 100));
+    // 点击节点 → 联动右侧任务面板
+    graph.on('node:click', ({ node }) => {
+      setSelectedTaskCode(Number(node.id));
+      setRightPanelTab('tasks');
+      graph.cleanSelection();
+      graph.select(node);
+    });
+    // 双击节点 → 只读查看任务配置
+    graph.on('node:dblclick', ({ node }) => {
+      const data = node.getData() as { task?: DSWorkflowTaskNode } | undefined;
+      if (data?.task) setViewingTaskNode(data.task);
+    });
+    // 点击空白 → 取消选中
+    graph.on('blank:click', () => {
       setSelectedTaskCode(null);
-      if (e.button === 1 || (e.button === 0 && e.altKey)) {
-        setIsPanning(true);
-        setPanStart({ x: e.clientX, y: e.clientY });
-      }
-    }
+      graph.cleanSelection();
+    });
   }, []);
 
-  const handleCanvasMouseMove = useCallback((e: React.MouseEvent) => {
-    if (isPanning) {
-      const dx = e.clientX - panStart.x;
-      const dy = e.clientY - panStart.y;
-      setCanvasOffset(prev => ({ x: prev.x + dx, y: prev.y + dy }));
-      setPanStart({ x: e.clientX, y: e.clientY });
-    }
-  }, [isPanning, panStart]);
-
-  const handleCanvasMouseUp = useCallback(() => {
-    setIsPanning(false);
-  }, []);
-
-  const handleNodeClick = useCallback((e: React.MouseEvent, taskCode: number) => {
-    e.stopPropagation();
-    setSelectedTaskCode(taskCode);
+  // 从右侧任务列表选中 → 联动画布节点高亮
+  const selectNodeByCode = useCallback((code: number) => {
+    setSelectedTaskCode(code);
     setRightPanelTab('tasks');
+    const graph = graphRef.current;
+    if (!graph) return;
+    const cell = graph.getCellById(String(code));
+    if (cell) {
+      graph.cleanSelection();
+      graph.select(cell);
+    }
+  }, []);
+
+  // 回填 DAG 并叠加任务状态徽标（幂等：图已有节点时仅刷新状态）
+  useEffect(() => {
+    const graph = graphRef.current;
+    if (!graph || nodes.length === 0) return;
+
+    if (graph.getNodes().length === 0) {
+      graph.fromJSON(buildGraph(nodes, edges));
+    }
+
+    taskInstances.forEach((taskInst) => {
+      const node = graph.getCellById(String(taskInst.taskCode)) as Node | undefined;
+      if (!node) return;
+      // 首次为节点追加状态徽标 foreignObject markup
+      const markup = node.getMarkup() as Markup.JSONMarkup[];
+      if (!markup.some((m) => m.selector === 'status-fo')) {
+        node.setMarkup([...NODE.markup, ...NODE_STATUS_MARKUP]);
+      }
+      const view = graph.findViewByCell(node);
+      const el = view?.find('div')[0];
+      if (!el) return;
+      const root = statusRootsRef.current.get(node.id) ?? createRoot(el);
+      statusRootsRef.current.set(node.id, root);
+      root.render(<TaskStatusBadge status={taskInst.state} />);
+    });
+  }, [nodes, edges, taskInstances]);
+
+  // 组件卸载时清理状态徽标 React root
+  useEffect(() => {
+    return () => {
+      statusRootsRef.current.forEach((root) => root.unmount());
+      statusRootsRef.current.clear();
+    };
   }, []);
 
   const handleViewLog = useCallback(async (task: DSTaskInstance) => {
@@ -379,100 +383,16 @@ const WorkflowInstanceDetail: React.FC<WorkflowInstanceDetailProps> = ({
     }
   }, [api]);
 
-  const handleZoomIn = () => setZoom(prev => Math.min(prev + 0.1, 2));
-  const handleZoomOut = () => setZoom(prev => Math.max(prev - 0.1, 0.3));
-  const handleResetView = () => { setZoom(1); setCanvasOffset({ x: 0, y: 0 }); };
+  const handleZoomIn = () => graphRef.current?.zoom(0.1);
+  const handleZoomOut = () => graphRef.current?.zoom(-0.1);
+  const handleResetView = () => {
+    const graph = graphRef.current;
+    if (!graph) return;
+    graph.zoomTo(1);
+    graph.centerContent();
+  };
 
   const selectedTaskInstance = selectedTaskCode ? taskStatusMap.get(selectedTaskCode) : null;
-
-  const renderEdge = (edge: DSWorkflowEdge) => {
-    const sourceNode = nodes.find(n => n.code === edge.sourceCode);
-    const targetNode = nodes.find(n => n.code === edge.targetCode);
-    if (!sourceNode || !targetNode) return null;
-
-    const sx = sourceNode.x + NODE_WIDTH / 2;
-    const sy = sourceNode.y + NODE_HEIGHT;
-    const tx = targetNode.x + NODE_WIDTH / 2;
-    const ty = targetNode.y;
-    const midY = (sy + ty) / 2;
-    const path = `M ${sx} ${sy} C ${sx} ${midY}, ${tx} ${midY}, ${tx} ${ty}`;
-
-    const angle = Math.atan2(ty - midY, 0);
-    const arrowSize = 16;
-    const cos = Math.cos(angle);
-    const sin = Math.sin(angle);
-    const p1x = tx + (-arrowSize / 2) * cos - (-arrowSize) * sin;
-    const p1y = ty + (-arrowSize / 2) * sin + (-arrowSize) * cos;
-    const p2x = tx + (arrowSize / 2) * cos - (-arrowSize) * sin;
-    const p2y = ty + (arrowSize / 2) * sin + (-arrowSize) * cos;
-    const arrowPoints = `${p1x},${p1y} ${p2x},${p2y} ${tx},${ty}`;
-
-    return (
-      <g key={edge.id} className="wi-edge">
-        <path d={path} className="wi-edge__line" />
-        <polygon points={arrowPoints} className="wi-edge__arrow" />
-      </g>
-    );
-  };
-
-  const renderNode = (node: DSWorkflowTaskNode) => {
-    const taskInst = taskStatusMap.get(node.code);
-    const status = taskInst?.state;
-    const isSelected = selectedTaskCode === node.code;
-    const colors = status !== undefined ? NODE_STATUS_COLORS[status] : { border: '#555555', bg: '#2d2d30', indicator: '#555555' };
-    const icon = TASK_TYPE_ICONS[node.taskType] || <Terminal size={14} />;
-
-    return (
-      <g
-        key={node.code}
-        className={`wi-node ${isSelected ? 'wi-node--selected' : ''}`}
-        transform={`translate(${node.x}, ${node.y})`}
-        onClick={e => handleNodeClick(e, node.code)}
-        onDoubleClick={e => { e.stopPropagation(); setViewingTaskNode(node); }}
-        style={{ cursor: 'pointer' }}
-      >
-        <rect
-          width={NODE_WIDTH}
-          height={NODE_HEIGHT}
-          rx={6}
-          ry={6}
-          fill={colors.bg}
-          stroke={colors.border}
-          strokeWidth={isSelected ? 2 : 1}
-        />
-        <rect
-          width={4}
-          height={NODE_HEIGHT}
-          rx={2}
-          ry={2}
-          fill={colors.indicator}
-        />
-        <g transform={`translate(12, ${(NODE_HEIGHT - 14) / 2})`}>
-          {icon}
-        </g>
-        <text x={32} y={NODE_HEIGHT / 2} fill="#ffffff" fontSize={12} dominantBaseline="middle">
-          {node.name}
-        </text>
-        {status !== undefined && (
-          <text x={NODE_WIDTH - 8} y={NODE_HEIGHT / 2} fill={TASK_STATUS_CONFIG[status]?.color || '#999'} fontSize={10} dominantBaseline="middle" textAnchor="end">
-            {TASK_STATUS_CONFIG[status]?.label || ''}
-          </text>
-        )}
-        {taskInst && taskInst.state === TaskExecutionStatus.RUNNING_EXECUTION && (
-          <rect
-            width={NODE_WIDTH}
-            height={NODE_HEIGHT}
-            rx={6}
-            ry={6}
-            fill="none"
-            stroke="#89d185"
-            strokeWidth={2}
-            className="wi-node--running"
-          />
-        )}
-      </g>
-    );
-  };
 
   const statusCfg = WORKFLOW_STATUS_CONFIG[WORKFLOW_STATE_STRING_TO_ENUM[curInstance.state as unknown as string] ?? curInstance.state];
 
@@ -537,39 +457,16 @@ const WorkflowInstanceDetail: React.FC<WorkflowInstanceDetailProps> = ({
       </div>
 
       <div className="wi-detail__body">
-        <div
-          className="wi-detail__canvas-container"
-          ref={canvasRef}
-          onMouseDown={handleCanvasMouseDown}
-          onMouseMove={handleCanvasMouseMove}
-          onMouseUp={handleCanvasMouseUp}
-          onMouseLeave={handleCanvasMouseUp}
-        >
-          <svg
-            className="wi-canvas"
-            style={{
-              transform: `translate(${canvasOffset.x}px, ${canvasOffset.y}px) scale(${zoom})`,
-              transformOrigin: '0 0',
-            }}
-          >
-            <defs>
-              <pattern id="wi-grid" width={20} height={20} patternUnits="userSpaceOnUse">
-                <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#2a2d2e" strokeWidth="0.5" />
-              </pattern>
-            </defs>
-            <rect className="wi-canvas__grid" width="10000" height="10000" fill="url(#wi-grid)" />
-            {edges.map(renderEdge)}
-            {nodes.map(renderNode)}
-          </svg>
+        <div className="wi-detail__canvas-container">
+          <DagCanvas readonly showHoverLabel={false} onGraphReady={handleGraphReady}>
+            {nodes.length === 0 && (
+              <div className="wi-canvas__empty">
+                <GitBranch size={48} strokeWidth={1} />
+                <p>暂无工作流节点数据</p>
+              </div>
+            )}
 
-          {nodes.length === 0 && (
-            <div className="wi-canvas__empty">
-              <GitBranch size={48} strokeWidth={1} />
-              <p>暂无工作流节点数据</p>
-            </div>
-          )}
-
-          <div className="wi-canvas__legend">
+            <div className="wi-canvas__legend">
             <div className="wi-legend__item">
               <span className="wi-legend__dot" style={{ backgroundColor: '#89d185' }}></span>
               <span>成功</span>
@@ -591,6 +488,7 @@ const WorkflowInstanceDetail: React.FC<WorkflowInstanceDetailProps> = ({
               <span>停止/Kill</span>
             </div>
           </div>
+          </DagCanvas>
         </div>
 
         <div className="wi-detail__right-panel">
@@ -746,7 +644,7 @@ const WorkflowInstanceDetail: React.FC<WorkflowInstanceDetailProps> = ({
                       <div
                         key={task.id}
                         className={`wi-task-item ${selectedTaskCode === task.taskCode ? 'wi-task-item--selected' : ''}`}
-                        onClick={() => { setSelectedTaskCode(task.taskCode); }}
+                        onClick={() => { selectNodeByCode(task.taskCode); }}
                       >
                         <span className="wi-task-item__indicator" style={{ backgroundColor: cfg?.color || '#555' }}></span>
                         <span className="wi-task-item__name">{task.name}</span>
@@ -809,6 +707,27 @@ function StatusBadge({ status }: { status: number }) {
       {cfg.isSpin && <RefreshCw size={10} className="sm-spin-icon" />}
       {cfg.label}
     </span>
+  );
+}
+
+/** 渲染在 x6 节点上方 foreignObject 内的任务状态徽标（复用 NODE_STATUS_COLORS 色值）。 */
+function TaskStatusBadge({ status }: { status: number }) {
+  const colors = NODE_STATUS_COLORS[status];
+  const cfg = TASK_STATUS_CONFIG[status];
+  if (!colors || !cfg) return null;
+  return (
+    <div
+      className="dag-node-status"
+      style={{
+        backgroundColor: colors.bg,
+        border: `1px solid ${colors.border}`,
+        color: colors.indicator,
+      }}
+    >
+      <span className="dag-node-status__dot" />
+      {cfg.isSpin && <RefreshCw size={10} className="sm-spin-icon" />}
+      <span>{cfg.label}</span>
+    </div>
   );
 }
 
