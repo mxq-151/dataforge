@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildJarsArg, mapCodeFileToTask, type SavedConfig, reconcileWorkflowDependencies, findDependencyCycle, dependentNodeName, type HeaderDependency } from './schedulerMapping';
+import { buildJarsArg, mapCodeFileToTask, type SavedConfig, reconcileWorkflowDependencies, findDependencyCycle, dependentNodeName, layoutWorkflowByDependency, GRID_START_X, GRID_START_Y, GRID_GAP_X, GRID_GAP_Y, type HeaderDependency } from './schedulerMapping';
 import type { DSWorkflowTaskNode, DSWorkflowEdge } from '../types/dolphinscheduler';
 
 function mkNode(code: number, name: string, taskType = 'SPARK'): DSWorkflowTaskNode {
@@ -408,5 +408,68 @@ public class TestJob {
     ]));
     expect(mapping.taskType).toBe('FLINK');
     expect(mapping.taskParams.others || '').not.toContain('--jars');
+  });
+});
+
+describe('layoutWorkflowByDependency — 前置节点在依赖节点左侧', () => {
+  it('任务 A 是 B 的前置依赖，则 A 位于 B 左侧', () => {
+    const nodes = [mkNode(1, 'A'), mkNode(2, 'B')];
+    layoutWorkflowByDependency(nodes, [edge(1, 2)]);
+    const a = nodes.find(n => n.name === 'A')!;
+    const b = nodes.find(n => n.name === 'B')!;
+    expect(a.x).toBeLessThan(b.x);
+    expect(b.x - a.x).toBe(GRID_GAP_X);
+    expect(b.y).toBe(a.y);
+  });
+
+  it('同工作流与跨工作流(k: 前置依赖节点->任务)均满足 前置在左', () => {
+    const depNode = mkNode(10, '前置依赖_B', 'DEPENDENT');
+    const a = mkNode(1, 'A');
+    const b = mkNode(2, 'B');
+    const c = mkNode(3, 'C');
+    const nodes = [a, b, c, depNode];
+    // A->B 同工作流直接前置；前置依赖_B -> C 跨工作流前置
+    const edges = [edge(1, 2), edge(10, 3)];
+    layoutWorkflowByDependency(nodes, edges);
+
+    const x = (name: string) => nodes.find(n => n.name === name)!.x;
+    expect(x('A')).toBeLessThan(x('B'));
+    expect(x('前置依赖_B')).toBeLessThan(x('C'));
+    // DEPENDENT 节点作为源节点落入第 0 层，恒在最左侧
+    expect(x('前置依赖_B')).toBe(x('A'));
+  });
+
+  it('单链 A->B->C 依次左到右，每步间距恰为横向间距', () => {
+    const nodes = [mkNode(1, 'A'), mkNode(2, 'B'), mkNode(3, 'C')];
+    layoutWorkflowByDependency(nodes, [edge(1, 2), edge(2, 3)]);
+    const x = (name: string) => nodes.find(n => n.name === name)!.x;
+    expect(x('A')).toBe(GRID_START_X);
+    expect(x('B')).toBe(x('A') + GRID_GAP_X);
+    expect(x('C')).toBe(x('A') + 2 * GRID_GAP_X);
+  });
+
+  it('同一层多个独立节点自上而下均匀分布、不重叠', () => {
+    // S 依赖 M1、M2；根因 M1/M2 无依赖，同处第 0 层
+    const m1 = mkNode(1, 'M1');
+    const m2 = mkNode(2, 'M2');
+    const s = mkNode(3, 'S');
+    const nodes = [m1, m2, s];
+    layoutWorkflowByDependency(nodes, [edge(1, 3), edge(2, 3)]);
+    const xs = nodes.map(n => n.x);
+    expect(xs[0]).toBe(xs[1]);
+    expect(xs[2]).toBe(xs[0] + GRID_GAP_X);
+    // 同层节点纵向错开
+    expect(Math.abs(m1.y - m2.y)).toBe(GRID_GAP_Y);
+    expect(m1.x).toBe(GRID_START_X);
+    expect(m1.y).toBe(GRID_START_Y);
+  });
+
+  it('无依赖边(仅一个节点或全独立)时坐标稳定为起始格', () => {
+    const nodes = [mkNode(1, 'A'), mkNode(2, 'B')];
+    layoutWorkflowByDependency(nodes, []);
+    for (const n of nodes) {
+      expect(n.x).toBe(GRID_START_X);
+    }
+    expect(Math.abs(nodes[0].y - nodes[1].y)).toBe(GRID_GAP_Y);
   });
 });

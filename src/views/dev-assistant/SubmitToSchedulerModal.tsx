@@ -3,7 +3,7 @@ import { X, Send, Loader2, FolderKanban, GitBranch, CheckCircle, AlertTriangle, 
 import type { DolphinSchedulerApi, DSProject, DSWorkflowDefinition, DSTaskType, DSDataSource, DSWorkerGroup, DSEnvironment, DSWorkflowTaskNode } from '../../types/dolphinscheduler';
 import { TASK_TYPE_LABELS, ReleaseState, Priority, parseReleaseState } from '../../types/dolphinscheduler';
 import type { CodeFileMapping, SavedConfig, ValidationError } from '../../utils/schedulerMapping';
-import { buildWorkflowFromCodeFile, validateSubmission, getAvailableTaskTypes, mapCodeFileToTask, sanitizeDsName, validateYarnJobName, buildDependentTaskNode, buildJarsArg, parseDependencyHeader, reconcileWorkflowDependencies, findDependencyCycle, dependentNodeName, type ResolvedDependency, type HeaderDependency } from '../../utils/schedulerMapping';
+import { buildWorkflowFromCodeFile, validateSubmission, getAvailableTaskTypes, mapCodeFileToTask, sanitizeDsName, validateYarnJobName, buildDependentTaskNode, buildJarsArg, parseDependencyHeader, reconcileWorkflowDependencies, findDependencyCycle, dependentNodeName, layoutWorkflowByDependency, type ResolvedDependency, type HeaderDependency } from '../../utils/schedulerMapping';
 import { type CompileResult } from '../../services/compileService';
 import { unifiedCompile } from '../../services/unifiedCompile';
 import { validateFileHeader, parseFileHeader } from '../../utils/index';
@@ -1412,8 +1412,9 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
           const updatedNodes = recon.nodes;
           const updatedEdges = recon.edges;
 
-          // 提交前强制节点最小间距，拉开历史遗留的过近/重叠节点
-          enforceMinSpacing(updatedNodes);
+          // 提交前按依赖关系分层布局：前置节点（含 DEPENDENT 前置依赖节点）总在依赖节点左侧，
+          // 数据流自左向右，并自动拉开历史遗留的过近/重叠节点
+          layoutWorkflowByDependency(updatedNodes, updatedEdges);
 
           await dsApi.workflowDefinition.update(selectedProjectCode, selectedWorkflowCode, {
             name: workflowDefinition.name,

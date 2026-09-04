@@ -491,6 +491,63 @@ export function findDependencyCycle(
   return null;
 }
 
+/** 工作流 DAG 节点分层布局常量：横向间距 450 / 纵向间距 260，均大于节点尺寸（约 270x110），保证节点不紧挨。 */
+export const GRID_START_X = 300;
+export const GRID_START_Y = 140;
+export const GRID_GAP_X = 450;
+export const GRID_GAP_Y = 260;
+
+/**
+ * 按工作流依赖关系对节点做分层布局（自左向右 = 自前向后的数据流）：
+ * 以「最长路径」为每个节点计算层号，凡存在依赖边 前置任务 -> 后置任务
+ * （含「前置依赖_任务名」DEPENDENT 节点 -> 目标任务），前置任务所在层恒小于后置任务所在层，
+ * 从而保证任一前置节点（含前置依赖节点）总在对应的依赖节点左侧。
+ * - x = 起始X + 层号 * 横向间距，因此相邻层节点自动保持最小横向间距；
+ * - 同一层内按原 y 排序后自上而下均匀放置，纵向间距固定，避免同层多个节点重叠/紧挨。
+ * 该函数就地修改传入 nodes 的 x / y。
+ */
+export function layoutWorkflowByDependency(
+  nodes: DSWorkflowTaskNode[],
+  edges: DSWorkflowEdge[],
+): void {
+  if (nodes.length === 0) return;
+
+  // 前驱邻接表（按边 源->目标 构建，用于计算每个节点的最深依赖层）
+  const pred = new Map<number, number[]>();
+  for (const n of nodes) pred.set(n.code, []);
+  for (const e of edges) {
+    if (pred.has(e.sourceCode) && pred.has(e.targetCode)) {
+      pred.get(e.targetCode)!.push(e.sourceCode);
+    }
+  }
+
+  const layerMemo = new Map<number, number>();
+  const layerOf = (code: number): number => {
+    const cached = layerMemo.get(code);
+    if (cached !== undefined) return cached;
+    let l = 0;
+    for (const p of pred.get(code) || []) l = Math.max(l, layerOf(p) + 1);
+    layerMemo.set(code, l);
+    return l;
+  };
+
+  const byLayer = new Map<number, DSWorkflowTaskNode[]>();
+  for (const n of nodes) {
+    const l = layerOf(n.code);
+    if (!byLayer.has(l)) byLayer.set(l, []);
+    byLayer.get(l)!.push(n);
+  }
+
+  for (const [l, group] of [...byLayer.entries()].sort((a, b) => a[0] - b[0])) {
+    const sorted = group.slice().sort((a, b) => a.y - b.y || a.x - b.x || a.code - b.code);
+    const x = GRID_START_X + l * GRID_GAP_X;
+    sorted.forEach((n, i) => {
+      n.x = x;
+      n.y = GRID_START_Y + i * GRID_GAP_Y;
+    });
+  }
+}
+
 export interface SavedConfig {
   dependencies: { id: string; name: string; version: string; source?: string; jarPath?: string; groupId?: string; scope?: string; autoChoose?: number | null; basePath?: string }[];
   programParams: { id: string; key: string; value: string }[];
