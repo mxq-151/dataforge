@@ -3,7 +3,6 @@ import {
   ReactFlow,
   Background,
   Controls,
-  MiniMap,
   useNodesState,
   useEdgesState,
   type Node,
@@ -14,6 +13,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import type { Lineage, NodeType } from '../../types/marquez';
 import { nodeTypes } from './LineageNodes';
+import { shouldHideNode } from './lineageFilter';
 import { Database } from 'lucide-react';
 
 interface LineageGraphProps {
@@ -41,8 +41,8 @@ function getNodeType(type: NodeType): string {
 }
 
 function computeLayout(rawGraph: Lineage['graph']): { nodes: Node[]; edges: Edge[] } {
-  // 自动过滤节点ID以 .deserialize_to_object 结尾的节点，不渲染其关系图
-  const graph = rawGraph.filter((n) => !n.id.endsWith('.deserialize_to_object'));
+  // 过滤需要隐藏的中间节点（如以 .adaptive_spark_plan、.deserialize_to_object 结尾），不渲染其关系图
+  const graph = rawGraph.filter((n) => !shouldHideNode(n.id));
   const adjacency = new Map<string, string[]>();
 
   for (const n of graph) {
@@ -206,15 +206,6 @@ const LineageGraph: React.FC<LineageGraphProps> = ({ lineage, onNodeClick }) => 
         <Controls
           showInteractive={false}
           style={{ background: '#2d2d2d', borderRadius: '6px', border: '1px solid #444' }}
-        />
-        <MiniMap
-          nodeColor={(node) => {
-            if (node.type === 'job') return '#d4915e';
-            if (node.type === 'field') return '#9b7ed8';
-            return '#4ec9b0';
-          }}
-          maskColor="rgba(0, 0, 0, 0.6)"
-          style={{ background: '#1e1e1e', border: '1px solid #444', borderRadius: '6px' }}
         />
       </ReactFlow>
     </div>

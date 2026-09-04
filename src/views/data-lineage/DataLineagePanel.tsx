@@ -5,6 +5,7 @@ import { createMarquezApi } from '../../api/marquez';
 import { fetchProjectList, type ProjectInfo } from '../../api/devProject';
 import { useToast } from '../../components/Toast';
 import LineageGraph from './LineageGraph';
+import { shouldHideNode } from './lineageFilter';
 import './DataLineagePanel.css';
 
 interface DataLineagePanelProps {
@@ -253,8 +254,8 @@ const DataLineagePanel: React.FC<DataLineagePanelProps> = ({ marquezApiUrl, jump
     (async () => {
       try {
         const res = await api.search.query(datasetName, undefined, undefined, 20, namespace || undefined);
-        // 过滤节点ID以 .deserialize_to_object 结尾的搜索结果
-        const results = (res.results || []).filter(r => !r.nodeId.endsWith('.deserialize_to_object'));
+        // 过滤需要隐藏的中间节点（如以 .adaptive_spark_plan、.deserialize_to_object 结尾）
+        const results = (res.results || []).filter(r => !shouldHideNode(r.nodeId));
         setSearchResults(results);
         const firstDataset = results.find(r => r.type === 'DATASET') ?? results[0];
         if (firstDataset) {
