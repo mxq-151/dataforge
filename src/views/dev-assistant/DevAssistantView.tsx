@@ -803,6 +803,32 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
     }
   }, [activeTabId, tabs]);
 
+  // 关闭除指定标签页外的所有标签页
+  const handleTabCloseOthers = useCallback((tabId: string) => {
+    const keepTab = tabs.find(t => t.id === tabId);
+    setTabs(keepTab ? [keepTab] : []);
+    setEditorContent(prev => {
+      const newContent: Record<string, string> = {};
+      Object.entries(prev).forEach(([id, content]) => {
+        if (id === tabId) newContent[id] = content;
+      });
+      return newContent;
+    });
+    if (!keepTab) return;
+    if (activeTabId !== tabId) {
+      setActiveTabId(tabId);
+      setSelectedFile(keepTab.path);
+    }
+  }, [activeTabId, tabs]);
+
+  // 关闭全部标签页
+  const handleTabCloseAll = useCallback(() => {
+    setTabs([]);
+    setEditorContent({});
+    setActiveTabId(null);
+    setSelectedFile(null);
+  }, []);
+
   // Git 模态框「撒销变更」后：刷新受影响文件的编辑器内容，被删除的文件则关闭对应标签页
   const handleGitDiscarded = useCallback(async (filePaths: string[]) => {
     if (filePaths.length === 0) return;
@@ -1092,6 +1118,8 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
           activeTabId={activeTabId}
           onTabSelect={handleTabSelect}
           onTabClose={handleTabClose}
+          onTabCloseOthers={handleTabCloseOthers}
+          onTabCloseAll={handleTabCloseAll}
           value={currentContent}
           onChange={handleEditorChange}
           statusInfo={statusInfo}

@@ -40,6 +40,10 @@ interface EditorAreaProps {
   activeTabId: string | null;
   onTabSelect: (id: string) => void;
   onTabClose: (id: string) => void;
+  /** 关闭除指定标签外的所有标签 */
+  onTabCloseOthers?: (id: string) => void;
+  /** 关闭全部标签 */
+  onTabCloseAll?: () => void;
   value: string;
   // 第二参数始终为「当前激活 Tab 的 id」（与 <Editor> 的 key 一一对应），
   // 由 EditorArea 在渲染期闭包捕获后传入，避免 onChange 在 Tab 切换瞬间把内容写错 Tab。
@@ -102,6 +106,8 @@ const EditorArea = forwardRef<EditorAreaHandle, EditorAreaProps>(({
   activeTabId,
   onTabSelect,
   onTabClose,
+  onTabCloseOthers,
+  onTabCloseAll,
   value,
   onChange,
   statusInfo,
@@ -850,6 +856,8 @@ const EditorArea = forwardRef<EditorAreaHandle, EditorAreaProps>(({
         activeTabId={activeTabId}
         onTabSelect={onTabSelect}
         onTabClose={onTabClose}
+        onTabCloseOthers={onTabCloseOthers}
+        onTabCloseAll={onTabCloseAll}
         rootPath={rootPath}
       />
 

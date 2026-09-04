@@ -546,6 +546,18 @@ const DataExploreEditor: React.FC<DataExploreEditorProps> = ({
     onCloseFile?.(id);
   }, [onCloseFile]);
 
+  /** 关闭除指定会话目录外的所有标签页 */
+  const handleTabCloseOthers = useCallback((id: string) => {
+    (sessionDirs || []).forEach(d => {
+      if (d.dir !== id) onCloseFile?.(d.dir);
+    });
+  }, [sessionDirs, onCloseFile]);
+
+  /** 关闭全部标签页 */
+  const handleTabCloseAll = useCallback(() => {
+    (sessionDirs || []).forEach(d => onCloseFile?.(d.dir));
+  }, [sessionDirs, onCloseFile]);
+
   /** 统一执行入口：单条/多条语句均通过 TaskExecutionService 提交 */
   const handleExecute = useCallback(async () => {
     const service = serviceRef.current;
@@ -815,6 +827,8 @@ const DataExploreEditor: React.FC<DataExploreEditorProps> = ({
           }, 16);
         }}
         onTabClose={handleTabClose}
+        onTabCloseOthers={handleTabCloseOthers}
+        onTabCloseAll={handleTabCloseAll}
         rootPath=""
       />
 

@@ -107,3 +107,40 @@
   background-color: rgba(255, 255, 255, 0.1);
   color: #ffffff;
 }
+
+/* 标签页右键菜单 */
+.tab-bar__context-menu {
+  position: fixed;
+  z-index: 10000;
+  min-width: 150px;
+  background-color: #252526;
+  border: 1px solid #3c3c3c;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  padding: 4px 0;
+  overflow: hidden;
+}
+
+.tab-bar__context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 16px;
+  border: none;
+  background: transparent;
+  color: #cccccc;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background-color 0.1s;
+  text-align: left;
+}
+
+.tab-bar__context-menu-item:hover:not(:disabled) {
+  background-color: #094771;
+}
+
+.tab-bar__context-menu-item:disabled {
+  color: #5a5a5a;
+  cursor: not-allowed;
+}
