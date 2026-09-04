@@ -313,6 +313,62 @@ export function clearJavaClassFileCache(): void {
 }
 
 // ---------------------------------------------------------------------------
+// 工作区文件变更通知（workspace/didChangeWatchedFiles）
+// ---------------------------------------------------------------------------
+//
+// 本应用的工程文件（新建 / 重命名 / 删除）由独立 IPC 桥（window.dataforge.fs）直接操作磁盘，
+// 不经由 monaco-languageclient 的文件系统/文件监视器，因此 JDT.LS / Metals 的「文件监视」
+// 从不感知这些变更，导致其内存中的 Java/Scala 工程模型（JavaModel / 包结构）一直停留在旧状态：
+// - 在新建目录 test_project2/test 下的测试 Java 文件时，JDT.LS 因尚未看到该新目录，会把该文件
+//   错误归属到上层包 test_project2 → 弹出
+//   "The declared package "test_project2.test" does not match the expected package "test_project2""
+//   的诊断，且该陈旧诊断一直保留，直到关闭文件重开触发 didOpen 才会重算。
+// 修复：文件桥完成增删改后，主动向已连接的 Java/Scala 客户端补发 didChangeWatchedFiles，
+// 触发语言服务器 reconcile，及时收敛包/类结构，清掉过期诊断。
+
+/** didChangeWatchedFiles 的变更类型（LSP 协议）：Created / Changed / Deleted */
+export const WatchChangeType = {
+  Created: 1,
+  Changed: 2,
+  Deleted: 3,
+} as const;
+
+export interface WatchedFileChange {
+  uri: string;
+  type: (typeof WatchChangeType)[keyof typeof WatchChangeType];
+}
+
+let watchedFileClientsWarned = false;
+
+/**
+ * 向当前已连接的 Java(Scala) 语言客户端广播 workspace/didChangeWatchedFiles。
+ * @param changes 文件(夹)变更列表（uri 为 file:// 形式）
+ */
+export function notifyWatchedFilesChanges(changes: WatchedFileChange[]): void {
+  if (!changes || changes.length === 0) return;
+  const targets = [currentJavaClient, currentMetalsClient].filter(
+    (c): c is MonacoLanguageClient => c != null,
+  );
+  if (targets.length === 0) {
+    if (!watchedFileClientsWarned) {
+      watchedFileClientsWarned = true;
+      console.warn(
+        '[LSP] notifyWatchedFilesChanges 无可用客户端（JDT.LS/Metals 未启动），跳过文件变更通知',
+      );
+    }
+    return;
+  }
+  const params = { changes };
+  for (const client of targets) {
+    try {
+      client.sendNotification('workspace/didChangeWatchedFiles', params);
+    } catch (e) {
+      console.warn('[LSP] 发送 workspace/didChangeWatchedFiles 失败:', e);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Metals 依赖源码跳转支持
 // ---------------------------------------------------------------------------
 

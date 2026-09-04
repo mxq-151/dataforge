@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { FileNode } from '../types';
 import { generateId, generateFileHeader } from '../utils';
+import { notifyWatchedFilesChanges, WatchChangeType, pathToUri } from '../services/lsp';
 
 // 纯函数实现已迁至 utils/workspacePath，此处 re-export 保持既有引用可用
 export { getPlatformDefaultWorkspace } from '../utils/workspacePath';
@@ -529,6 +530,13 @@ const useFileSystem = (initialPath?: string) => {
 
       await api.writeFile(newPath, contentData);
 
+      // 通知 JDT.LS / Metals：新文件（含其父目录）已创建，及时收敛包/类结构，
+      // 清除因工程模型陈旧导致的 "declared package does not match expected package" 诊断
+      notifyWatchedFilesChanges([
+        { uri: pathToUri(newPath), type: WatchChangeType.Created },
+        { uri: pathToUri(parentPath), type: WatchChangeType.Created },
+      ]);
+
       const newNode: FileNode = {
         id: generateId().toString(),
         name: fileName,
@@ -560,6 +568,11 @@ const useFileSystem = (initialPath?: string) => {
       const newPath = `${parentPath}${parentPath.endsWith('/') || parentPath.endsWith('\\') ? '' : '/'}${folderName}`;
 
       await api.createDir(newPath);
+
+      // 通知 JDT.LS / Metals：新目录已创建（新包目录会改变 Java/Scala 的包结构）
+      notifyWatchedFilesChanges([
+        { uri: pathToUri(newPath), type: WatchChangeType.Created },
+      ]);
 
       const newNode: FileNode = {
         id: generateId().toString(),
@@ -605,6 +618,8 @@ const useFileSystem = (initialPath?: string) => {
         await api.removeDir(nodePath);
       }
       setFileTree(prev => removeFromTree(prev, nodePath));
+      // 通知 JDT.LS / Metals：文件/目录已删除
+      notifyWatchedFilesChanges([{ uri: pathToUri(nodePath), type: WatchChangeType.Deleted }]);
       await refreshTree();
       return true;
     } catch (error) {
@@ -635,6 +650,12 @@ const useFileSystem = (initialPath?: string) => {
       const newPath = `${parentPath}${separator}${newName.trim()}`;
 
       await api.rename(oldPath, newPath);
+
+      // 通知 JDT.LS / Metals：原路径删除 + 新路径创建（包/类归属可能随重命名变化）
+      notifyWatchedFilesChanges([
+        { uri: pathToUri(oldPath), type: WatchChangeType.Deleted },
+        { uri: pathToUri(newPath), type: WatchChangeType.Created },
+      ]);
 
       // 刷新文件树以反映重命名
       await refreshTree();
@@ -678,6 +699,12 @@ const useFileSystem = (initialPath?: string) => {
       }
 
       await api.rename(srcPath, newPath);
+
+      // 通知 JDT.LS / Metals：原路径删除 + 新路径创建（跨目录移动改变包归属）
+      notifyWatchedFilesChanges([
+        { uri: pathToUri(srcPath), type: WatchChangeType.Deleted },
+        { uri: pathToUri(newPath), type: WatchChangeType.Created },
+      ]);
 
       // 刷新文件树以反映移动
       await refreshTree();
@@ -725,6 +752,11 @@ const useFileSystem = (initialPath?: string) => {
       }
 
       await api.copy(srcPath, destPath);
+
+      // 通知 JDT.LS / Metals：复制产生了新文件/目录
+      notifyWatchedFilesChanges([
+        { uri: pathToUri(destPath), type: WatchChangeType.Created },
+      ]);
 
       // 刷新文件树以反映复制结果
       await refreshTree();

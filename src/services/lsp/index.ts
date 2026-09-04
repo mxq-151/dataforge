@@ -13,6 +13,9 @@ export {
   registerDefinitionOpener,
   readJavaClassFileContent,
   clearJavaClassFileCache,
+  notifyWatchedFilesChanges,
+  WatchChangeType,
+  type WatchedFileChange,
   type LspLanguageId,
   type LspClientStatus,
 } from './languageClient';
