@@ -105,7 +105,12 @@ export async function ensurePomReady(
     depsXml += `        <dependency>\n            <groupId>org.scala-lang</groupId>\n            <artifactId>scala-library</artifactId>\n            <version>${scalaVer}</version>\n        </dependency>\n`;
 
     // 1) 全局依赖目录中的全部记录（与编译路径一致：autoChoose 与普通依赖都在内）
+    // 跨两段共享去重，避免同一 artifact 在全局目录与项目级配置中都出现时被重复写入
+    const seenGlob = new Set<string>();
     for (const dep of depRecords) {
+      const key = dep.artifactId || dep.jarName || '';
+      if (key && seenGlob.has(key)) continue;
+      if (key) seenGlob.add(key);
       depsXml += buildDepXml(dep);
     }
 
@@ -123,16 +128,18 @@ export async function ensurePomReady(
         if (names.length > 0) {
           const seen = new Set<string>();
           for (const name of names) {
-            if (!name || seen.has(name)) continue;
+            if (!name || seen.has(name) || seenGlob.has(name)) continue;
             seen.add(name);
             const rec = depRecords.find(
               (d: any) => d.artifactId === name || d.jarName === name
             );
             if (rec) {
+              seenGlob.add(name);
               const xml = buildDepXml(rec);
               if (xml) depsXml += xml;
             } else if (name.includes(':')) {
               // 项目配置直接写了 GAV 坐标，兜底写入
+              seenGlob.add(name);
               depsXml += buildGavDepXml(name);
             } else {
               console.warn(`[ensurePomReady] 项目依赖「${name}」未在依赖目录匹配到记录，已忽略`);
