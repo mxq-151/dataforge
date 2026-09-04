@@ -63,6 +63,7 @@ const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
     nodes: DSWorkflowTaskNode[];
     edges: DSWorkflowEdge[];
     globalParams: DSWorkflowGlobalParam[];
+    readonly?: boolean;
   } | null>(null);
 
   /**
@@ -308,6 +309,30 @@ const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
           nodes: res.data.taskNodes || [],
           edges: res.data.edges || [],
           globalParams: res.data.globalParams || [],
+          readonly: false,
+        });
+      } else {
+        setError(res.msg || '获取工作流详情失败');
+      }
+    } catch (e: any) {
+      setError(e.message || '获取工作流详情失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleViewWorkflowDef = async (def: DSWorkflowDefinition) => {
+    try {
+      setLoading(true);
+      const res = await api.workflowDefinition.detail(project.code, def.code);
+      if (res.code === 0 && res.data) {
+        setEditingWorkflow({
+          mode: 'edit',
+          definition: res.data.workflowDefinition,
+          nodes: res.data.taskNodes || [],
+          edges: res.data.edges || [],
+          globalParams: res.data.globalParams || [],
+          readonly: parseReleaseState(def.releaseState) === ReleaseState.ONLINE,
         });
       } else {
         setError(res.msg || '获取工作流详情失败');
@@ -584,7 +609,9 @@ const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
               workflowDefs.map((d, idx) => (
                 <tr key={d.code}>
                   <td className="sm-table__index">{(workflowDefsPage - 1) * PAGE_SIZE + idx + 1}</td>
-                  <td className="sm-table__name">{d.name}</td>
+                  <td className="sm-table__name">
+                    <button className="sm-table__link" onClick={() => handleViewWorkflowDef(d)} title="查看定义">{d.name}</button>
+                  </td>
                   <td>
                     <button className="sm-btn sm-btn--ghost sm-btn--icon" title="复制名称" onClick={() => navigator.clipboard?.writeText(d.name)}>
                       <Copy size={12} />
@@ -849,7 +876,7 @@ const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
       existingGlobalParams={editingWorkflow.globalParams}
       existingExecutionType={editingWorkflow.mode === 'edit' && editingWorkflow.definition ? editingWorkflow.definition.executionType : undefined}
       existingTimeout={editingWorkflow.mode === 'edit' && editingWorkflow.definition ? editingWorkflow.definition.timeout : undefined}
-      readonly={editingWorkflow.mode === 'edit' && editingWorkflow.definition ? parseReleaseState(editingWorkflow.definition.releaseState) === ReleaseState.ONLINE : false}
+      readonly={editingWorkflow.readonly ?? (editingWorkflow.mode === 'edit' && editingWorkflow.definition ? parseReleaseState(editingWorkflow.definition.releaseState) === ReleaseState.ONLINE : false)}
       workflowDefinitions={workflowDefs.map(d => ({ code: d.code, name: d.name }))}
       workerGroups={workerGroups}
       environments={environments}

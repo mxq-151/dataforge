@@ -449,13 +449,7 @@ const WorkflowDefinitionEditor: React.FC<WorkflowDefinitionEditorProps> = ({
           onDragOver={e => e.preventDefault()}
         >
           <DagCanvas readonly={readonly} onGraphReady={handleGraphReady}>
-            {nodes.length === 0 && (
-              <div className="wf-canvas__empty">
-                <GitBranch size={48} strokeWidth={1} />
-                <p>点击左侧任务节点添加到画布</p>
-                <span>双击节点编辑配置，拖拽节点底部端口创建连线</span>
-              </div>
-            )}
+
           </DagCanvas>
         </div>
       </div>
