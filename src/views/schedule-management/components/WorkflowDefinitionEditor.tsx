@@ -252,11 +252,19 @@ const WorkflowDefinitionEditor: React.FC<WorkflowDefinitionEditorProps> = ({
   }, [connectingFrom]);
 
   const handleCanvasMouseDown = useCallback((e: React.MouseEvent) => {
-    if (e.target === canvasRef.current || (e.target as HTMLElement).classList.contains('wf-canvas__grid')) {
+    const target = e.target as HTMLElement;
+    const classList = target?.classList;
+    // .wf-canvas__grid 设置了 pointer-events:none，点击背景时事件目标实际落到 <svg>(.wf-canvas) 上
+    const isBackground =
+      target === canvasRef.current ||
+      classList?.contains('wf-canvas') ||
+      classList?.contains('wf-canvas__grid');
+    if (isBackground) {
       setSelectedNodeCode(null);
       setConnectingFrom(null);
       setConnectingMousePos(null);
-      if (e.button === 1 || (e.button === 0 && e.altKey)) {
+      // 左键或中键拖动画布背景即可平移视图
+      if (e.button === 1 || e.button === 0) {
         setIsPanning(true);
         setPanStart({ x: e.clientX, y: e.clientY });
       }
@@ -365,6 +373,21 @@ const WorkflowDefinitionEditor: React.FC<WorkflowDefinitionEditorProps> = ({
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [selectedNodeCode, handleDeleteSelected, showTaskModal, showSaveModal, showTriggerModal]);
+
+  // 滚轮 / 触控板双指滑动平移画布，无需按键
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      setCanvasOffset(prev => ({
+        x: prev.x - e.deltaX,
+        y: prev.y - e.deltaY,
+      }));
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
 
   const renderEdge = (edge: DSWorkflowEdge) => {
     const sourceNode = nodes.find(n => n.code === edge.sourceCode);

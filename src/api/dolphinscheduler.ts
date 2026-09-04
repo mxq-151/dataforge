@@ -248,6 +248,10 @@ export function createRealDolphinSchedulerApi(apiUrl: string, token: string): Do
               taskRelationList = raw.taskRelationList;
             } else if (Array.isArray(processDef.taskRelationList)) {
               taskRelationList = processDef.taskRelationList;
+            } else if (Array.isArray(raw.workflowTaskRelationList)) {
+              // 实际 DS 接口返回字段为 data.workflowTaskRelationList（edgeList），
+              // taskRelationList 在旧版/文档接口中作为兼容别名保留
+              taskRelationList = raw.workflowTaskRelationList;
             }
 
             const locationsMap = new Map<number, { x: number; y: number }>();
@@ -321,10 +325,12 @@ export function createRealDolphinSchedulerApi(apiUrl: string, token: string): Do
             const edges: DSWorkflowEdge[] = [];
             for (let i = 0; i < taskRelationList.length; i++) {
               const tr = taskRelationList[i];
-              if (!tr || !tr.preTaskCode || !tr.postTaskCode) {
+              if (!tr || !tr.postTaskCode) {
                 console.warn('[Real API] Skipping invalid task relation at index', i, tr);
                 continue;
               }
+              // preTaskCode 为 0 表示工作流头节点（无前置任务），非真实依赖边，静默跳过
+              if (!tr.preTaskCode) continue;
 
               edges.push({
                 id: `e_${tr.preTaskCode}_${tr.postTaskCode}`,
