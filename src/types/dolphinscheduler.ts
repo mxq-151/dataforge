@@ -588,11 +588,13 @@ export interface DSMrTaskParams {
 }
 
 export interface DSDependentTaskItem {
+  dependentType?: 'DEPENDENT_ON_WORKFLOW' | 'DEPENDENT_ON_TASK';
   projectCode: number;
   definitionCode: number;
   depTaskCode: number;
   cycle: 'day' | 'hour' | 'week' | 'month';
   dateValue: string;
+  parameterPassing?: boolean;
 }
 
 /**

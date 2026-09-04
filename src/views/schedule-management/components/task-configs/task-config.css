@@ -259,6 +259,68 @@
   background-color: #3c1f1f;
 }
 
+.tc-depend-group {
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  padding: 10px;
+  margin-bottom: 4px;
+}
+
+.tc-depend-group__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.tc-depend-group__title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #95d0ff;
+}
+
+.tc-inline-select {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #888888;
+}
+
+.tc-inline-select select {
+  padding: 4px 8px;
+  height: 28px;
+  background-color: #3c3c3c;
+  border: 1px solid #555555;
+  border-radius: 3px;
+  color: #cccccc;
+  font-size: 12px;
+  outline: none;
+  box-sizing: border-box;
+  cursor: pointer;
+  appearance: auto;
+}
+
+.tc-depend-item {
+  border: 1px solid #3c3c3c;
+  border-left: 3px solid #75beff;
+  background-color: #26262a;
+  border-radius: 4px;
+  padding: 10px;
+  margin-bottom: 8px;
+}
+
+.tc-depend-item .tc-row {
+  margin-bottom: 0;
+}
+
+.tc-depend-item__foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+}
+
 .tc-params-table {
   width: 100%;
   border-collapse: collapse;
@@ -361,52 +423,6 @@
 
 .tc-collapsible__body {
   padding: 12px;
-}
-
-.tc-tabs {
-  display: flex;
-  border-bottom: 1px solid #3c3c3c;
-  margin-bottom: 12px;
-  position: relative;
-  z-index: 2;
-}
-
-.tc-tab {
-  position: relative;
-  z-index: 1;
-  padding: 8px 16px;
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  color: #888888;
-  font-size: 12px;
-  line-height: 1;
-  height: 32px;
-  box-sizing: border-box;
-  cursor: pointer;
-  -webkit-appearance: none;
-  appearance: none;
-  transition: all 0.15s;
-  -webkit-user-select: none;
-  user-select: none;
-}
-
-.tc-tab:hover {
-  color: #cccccc;
-}
-
-.tc-tab:focus-visible {
-  outline: 1px solid #0078d4;
-  outline-offset: -2px;
-}
-
-.tc-tab:focus {
-  outline: none;
-}
-
-.tc-tab--active {
-  color: #ffffff;
-  border-bottom-color: #0078d4;
 }
 
 .tc-help-text {

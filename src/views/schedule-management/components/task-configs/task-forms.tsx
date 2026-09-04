@@ -1,10 +1,11 @@
+import { useEffect, useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import type {
   DSLocalParam, DSHttpParam, DSDatasource, DSTaskType,
   DSShellTaskParams, DSSqlTaskParams, DSPythonTaskParams,
   DSDataXTaskParams, DSSparkTaskParams, DSFlinkTaskParams,
   DSHttpTaskParams, DSSubProcessTaskParams, DSProcedureTaskParams,
-  DSMrTaskParams, DSDependentTaskParams, DSDependentTaskModel, DSConditionsTaskParams,
+  DSMrTaskParams, DSDependentTaskParams, DSDependentTaskModel, DSDependentTaskItem, DSConditionsTaskParams,
   DSSwitchTaskParams, DSSeaTunnelTaskParams, DSK8sTaskParams,
   DSJavaTaskParams, DSWorkflowTaskNode,
   DSFlinkStreamTaskParams, DSSqoopTaskParams, DSGrpcTaskParams,
@@ -128,6 +129,18 @@ export function ShellForm({ params, onChange }: TaskFormProps<DSShellTaskParams>
 
   return (
     <>
+      <div className="tc-row">
+        <div className="tc-field">
+          <label>CPU配额</label>
+          <input type="number" value={params.cpuQuota} onChange={e => set('cpuQuota', parseInt(e.target.value) || -1)} min={-1} />
+          <div className="tc-help-text">-1 表示不限制</div>
+        </div>
+        <div className="tc-field">
+          <label>最大内存(MB)</label>
+          <input type="number" value={params.memoryMax} onChange={e => set('memoryMax', parseInt(e.target.value) || -1)} min={-1} />
+          <div className="tc-help-text">-1 表示不限制</div>
+        </div>
+      </div>
       <div className="tc-field">
         <label>脚本<span className="sm-required">*</span></label>
         <textarea
@@ -141,18 +154,6 @@ export function ShellForm({ params, onChange }: TaskFormProps<DSShellTaskParams>
       <div className="tc-field">
         <label>自定义参数</label>
         <LocalParamsEditor params={params.localParams} onChange={p => set('localParams', p)} />
-      </div>
-      <div className="tc-row">
-        <div className="tc-field">
-          <label>CPU配额</label>
-          <input type="number" value={params.cpuQuota} onChange={e => set('cpuQuota', parseInt(e.target.value) || -1)} min={-1} />
-          <div className="tc-help-text">-1 表示不限制</div>
-        </div>
-        <div className="tc-field">
-          <label>最大内存(MB)</label>
-          <input type="number" value={params.memoryMax} onChange={e => set('memoryMax', parseInt(e.target.value) || -1)} min={-1} />
-          <div className="tc-help-text">-1 表示不限制</div>
-        </div>
       </div>
     </>
   );
@@ -468,6 +469,10 @@ export function SparkForm({ params, onChange, api }: TaskFormProps<DSSparkTaskPa
           </select>
         </div>
       </div>
+      <div className="tc-field">
+        <label>应用名称</label>
+        <input type="text" value={params.appName} onChange={e => set('appName', e.target.value)} placeholder="Spark Application" />
+      </div>
       <div className="tc-row">
         <div className="tc-field">
           <label>Driver核心数</label>
@@ -488,23 +493,17 @@ export function SparkForm({ params, onChange, api }: TaskFormProps<DSSparkTaskPa
           <input type="text" value={params.executorMemory} onChange={e => set('executorMemory', e.target.value)} placeholder="2G" />
         </div>
       </div>
-      <div className="tc-row">
-        <div className="tc-field">
-          <label>Executor核心数</label>
-          <input type="number" value={params.executorCores} onChange={e => set('executorCores', parseInt(e.target.value) || 2)} min={1} />
-        </div>
-        <div className="tc-field">
-          <label>应用名称</label>
-          <input type="text" value={params.appName} onChange={e => set('appName', e.target.value)} placeholder="Spark Application" />
-        </div>
-      </div>
       <div className="tc-field">
-        <label>主参数</label>
-        <textarea value={params.mainArgs} onChange={e => set('mainArgs', e.target.value)} placeholder="程序运行参数" rows={3} />
+        <label>Executor核心数</label>
+        <input type="number" value={params.executorCores} onChange={e => set('executorCores', parseInt(e.target.value) || 2)} min={1} />
       </div>
       <div className="tc-field">
         <label>YARN队列</label>
         <input type="text" value={params.yarnQueue} onChange={e => set('yarnQueue', e.target.value)} placeholder="default" />
+      </div>
+      <div className="tc-field">
+        <label>主参数</label>
+        <textarea value={params.mainArgs} onChange={e => set('mainArgs', e.target.value)} placeholder="程序运行参数" rows={3} />
       </div>
       <div className="tc-field">
         <label>其他参数</label>
@@ -525,24 +524,14 @@ export function FlinkForm({ params, onChange, api }: TaskFormProps<DSFlinkTaskPa
 
   return (
     <>
-      <div className="tc-row">
-        <div className="tc-field">
-          <label>程序类型</label>
-          <select value={params.programType} onChange={e => set('programType', e.target.value as DSFlinkTaskParams['programType'])}>
-            <option value="JAVA">JAVA</option>
-            <option value="SCALA">SCALA</option>
-            <option value="PYTHON">PYTHON</option>
-            <option value="SQL">SQL</option>
-          </select>
-        </div>
-        <div className="tc-field">
-          <label>Flink版本</label>
-          <select value={params.flinkVersion} onChange={e => set('flinkVersion', e.target.value)}>
-            <option value="&lt;1.10">&lt;1.10</option>
-            <option value="1.10-1.12">1.10-1.12</option>
-            <option value="&gt;=1.12">&gt;=1.12</option>
-          </select>
-        </div>
+      <div className="tc-field">
+        <label>程序类型</label>
+        <select value={params.programType} onChange={e => set('programType', e.target.value as DSFlinkTaskParams['programType'])}>
+          <option value="JAVA">JAVA</option>
+          <option value="SCALA">SCALA</option>
+          <option value="PYTHON">PYTHON</option>
+          <option value="SQL">SQL</option>
+        </select>
       </div>
       {!isSql && (
         <div className="tc-field">
@@ -594,6 +583,18 @@ export function FlinkForm({ params, onChange, api }: TaskFormProps<DSFlinkTaskPa
           </div>
         </>
       )}
+      <div className="tc-field">
+        <label>Flink版本</label>
+        <select value={params.flinkVersion} onChange={e => set('flinkVersion', e.target.value)}>
+          <option value="&lt;1.10">&lt;1.10</option>
+          <option value="1.10-1.12">1.10-1.12</option>
+          <option value="&gt;=1.12">&gt;=1.12</option>
+        </select>
+      </div>
+      <div className="tc-field">
+        <label>应用名称</label>
+        <input type="text" value={params.appName} onChange={e => set('appName', e.target.value)} placeholder="Flink Application" />
+      </div>
       <div className="tc-row">
         <div className="tc-field">
           <label>JobManager内存</label>
@@ -619,16 +620,12 @@ export function FlinkForm({ params, onChange, api }: TaskFormProps<DSFlinkTaskPa
         </div>
       </div>
       <div className="tc-field">
-        <label>应用名称</label>
-        <input type="text" value={params.appName} onChange={e => set('appName', e.target.value)} placeholder="Flink Application" />
+        <label>YARN队列</label>
+        <input type="text" value={params.yarnQueue} onChange={e => set('yarnQueue', e.target.value)} placeholder="default" />
       </div>
       <div className="tc-field">
         <label>主参数</label>
         <textarea value={params.mainArgs} onChange={e => set('mainArgs', e.target.value)} placeholder="程序运行参数" rows={3} />
-      </div>
-      <div className="tc-field">
-        <label>YARN队列</label>
-        <input type="text" value={params.yarnQueue} onChange={e => set('yarnQueue', e.target.value)} placeholder="default" />
       </div>
       <div className="tc-field">
         <label>其他参数</label>
@@ -804,7 +801,7 @@ export function SubProcessForm({ params, onChange, workflowDefinitions }: TaskFo
   );
 }
 
-export function DependentForm({ params, onChange, allNodes, currentCode }: TaskFormProps<DSDependentTaskParams>) {
+export function DependentForm({ params, onChange, allNodes, currentCode, workflowDefinitions, api }: TaskFormProps<DSDependentTaskParams>) {
   const dependence = params.dependence ?? {
     relation: 'AND' as const,
     dependTaskList: [] as DSDependentTaskModel[],
@@ -812,8 +809,59 @@ export function DependentForm({ params, onChange, allNodes, currentCode }: TaskF
     checkInterval: 10,
     failureWaitingTime: 0,
   };
+  const [projects, setProjects] = useState<{ code: number; name: string }[]>([]);
+  // 跨工作流上游任务码 -> 任务名，用于「任务名称」下拉回显真实上游名称
+  const [taskNameMap, setTaskNameMap] = useState<Record<number, string>>({});
+  useEffect(() => {
+    if (!api) return;
+    let cancelled = false;
+    // 汇总所有依赖项涉及的工作流（项目 + 工作流定义），拉取其任务清单以解析任务名
+    const pairs = new Map<number, number>();
+    dependence.dependTaskList.forEach(g => {
+      g.dependItemList.forEach(it => {
+        if (it.definitionCode && it.projectCode) pairs.set(it.definitionCode, it.projectCode);
+      });
+    });
+    const entries = Array.from(pairs.entries());
+    if (entries.length === 0) return;
+    Promise.all(
+      entries.map(([defCode, projCode]) =>
+        api.workflowDefinition.detail(projCode, defCode)
+          .then(res => res?.data?.taskNodes ?? [])
+          .catch(() => [] as DSWorkflowTaskNode[])
+      )
+    ).then((taskSets) => {
+      if (cancelled) return;
+      const map: Record<number, string> = {};
+      taskSets.forEach(nodes => nodes.forEach(n => { if (n && n.code) map[n.code] = n.name; }));
+      setTaskNameMap(map);
+    });
+    return () => { cancelled = true; };
+  }, [api]);
+  useEffect(() => {
+    if (!api) return;
+    let cancelled = false;
+    api.project.list({ pageNo: 1, pageSize: 100 })
+      .then((resp: unknown) => {
+        if (cancelled) return;
+        // 兼容两种返回结构：data 直接为数组，或为分页对象 { totalList: [...] }
+        const raw = (resp as { data?: unknown })?.data;
+        const list = Array.isArray(raw)
+          ? raw
+          : Array.isArray((raw as { totalList?: unknown })?.totalList)
+            ? (raw as { totalList: { code: number; name: string }[] }).totalList
+            : [];
+        setProjects(list as { code: number; name: string }[]);
+      })
+      .catch(() => { /* 项目列表加载失败则仅显示项目编码 */ });
+    return () => { cancelled = true; };
+  }, [api]);
   const patch = (p: Partial<typeof dependence>) => onChange({ ...params, dependence: { ...dependence, ...p } });
   const otherNodes = allNodes.filter(n => n.code !== currentCode);
+  const workflowList = workflowDefinitions && workflowDefinitions.length > 0 ? workflowDefinitions : null;
+  const nodeCodeSet = new Set(otherNodes.map(n => n.code));
+  const workflowCodeSet = new Set((workflowList ?? []).map(wf => wf.code));
+  const projectCodeSet = new Set(projects.map(p => p.code));
 
   const addGroup = () => {
     const next = [...dependence.dependTaskList, { dependItemList: [], relation: 'AND' as const }];
@@ -823,7 +871,18 @@ export function DependentForm({ params, onChange, allNodes, currentCode }: TaskF
   const addItem = (gi: number) => {
     const next = [...dependence.dependTaskList];
     const model = next[gi];
-    next[gi] = { ...model, dependItemList: [...model.dependItemList, { projectCode: 0, definitionCode: 0, depTaskCode: 0, cycle: 'day' as const, dateValue: 'today' }] };
+    next[gi] = {
+      ...model,
+      dependItemList: [...model.dependItemList, {
+        dependentType: 'DEPENDENT_ON_TASK' as const,
+        projectCode: 0,
+        definitionCode: workflowList ? workflowList[0].code : 0,
+        depTaskCode: 0,
+        cycle: 'day' as const,
+        dateValue: 'today',
+        parameterPassing: false,
+      }],
+    };
     patch({ dependTaskList: next });
   };
   const setGroupRelation = (gi: number, relation: 'AND' | 'OR') => {
@@ -842,7 +901,7 @@ export function DependentForm({ params, onChange, allNodes, currentCode }: TaskF
     }
     patch({ dependTaskList: next });
   };
-  const updateItem = (gi: number, ii: number, field: string, value: string | number) => {
+  const updateItem = (gi: number, ii: number, field: keyof DSDependentTaskItem, value: string | number | boolean) => {
     const next = [...dependence.dependTaskList];
     const model = next[gi];
     const dependItemList = [...model.dependItemList];
@@ -851,60 +910,171 @@ export function DependentForm({ params, onChange, allNodes, currentCode }: TaskF
     patch({ dependTaskList: next });
   };
 
+  const cycleOptions: { value: DSDependentTaskItem['cycle']; label: string }[] = [
+    { value: 'day', label: '天' },
+    { value: 'hour', label: '小时' },
+    { value: 'week', label: '周' },
+    { value: 'month', label: '月' },
+  ];
+  const dateOptions: Record<string, { value: string; label: string }[]> = {
+    day: [
+      { value: 'today', label: '今天' },
+      { value: 'last1Days', label: '前1天' },
+      { value: 'last2Days', label: '前2天' },
+      { value: 'last3Days', label: '前3天' },
+      { value: 'last7Days', label: '前7天' },
+    ],
+    hour: [
+      { value: 'currentHour', label: '当前小时' },
+      { value: 'last1Hour', label: '前1小时' },
+      { value: 'last2Hours', label: '前2小时' },
+      { value: 'last3Hours', label: '前3小时' },
+      { value: 'last24Hours', label: '前24小时' },
+    ],
+    week: [
+      { value: 'thisWeek', label: '本周' },
+      { value: 'lastWeek', label: '上周' },
+      { value: 'thisWeekBegin', label: '本周周初' },
+      { value: 'lastWeekBegin', label: '上周周初' },
+      { value: 'lastWeekEnd', label: '上周周末' },
+    ],
+    month: [
+      { value: 'thisMonth', label: '本月' },
+      { value: 'lastMonth', label: '上月' },
+      { value: 'thisMonthBegin', label: '本月初' },
+      { value: 'lastMonthBegin', label: '上月初' },
+      { value: 'lastMonthEnd', label: '上月末' },
+    ],
+  };
+
   return (
     <>
-      <div className="tc-field">
-        <label>依赖关系</label>
-        <div className="tc-radio-group">
-          <label className="tc-radio">
-            <input type="radio" name="dependentRelation" checked={dependence.relation === 'AND'} onChange={() => patch({ relation: 'AND' })} />
-            <span>AND (所有依赖满足)</span>
-          </label>
-          <label className="tc-radio">
-            <input type="radio" name="dependentRelation" checked={dependence.relation === 'OR'} onChange={() => patch({ relation: 'OR' })} />
-            <span>OR (任一依赖满足)</span>
-          </label>
-        </div>
-      </div>
       <div className="tc-field">
         <label>依赖任务列表</label>
         <div className="tc-dynamic-list">
           {dependence.dependTaskList.map((group, gi) => (
-            <div key={gi} style={{ border: '1px solid #3c3c3c', borderRadius: 4, padding: 8, marginBottom: 6 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                <span style={{ fontSize: 11, color: '#888' }}>依赖组 {gi + 1}</span>
+            <div key={gi} className="tc-depend-group">
+              <div className="tc-depend-group__head">
+                <span className="tc-depend-group__title">依赖组 {gi + 1}</span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <select
-                    style={{ minWidth: 70 }}
-                    value={group.relation}
-                    onChange={e => setGroupRelation(gi, e.target.value as 'AND' | 'OR')}
-                  >
-                    <option value="AND">AND</option>
-                    <option value="OR">OR</option>
-                  </select>
-                  <button className="tc-dynamic-list__remove" onClick={() => removeGroup(gi)}><X size={12} /></button>
+                  <label className="tc-inline-select">
+                    <span>组内关系</span>
+                    <select
+                      style={{ minWidth: 70 }}
+                      value={group.relation}
+                      onChange={e => setGroupRelation(gi, e.target.value as 'AND' | 'OR')}
+                    >
+                      <option value="AND">AND (且)</option>
+                      <option value="OR">OR (或)</option>
+                    </select>
+                  </label>
+                  <button className="tc-dynamic-list__remove" onClick={() => removeGroup(gi)} title="删除依赖组"><X size={12} /></button>
                 </div>
               </div>
               {group.dependItemList.map((item, ii) => (
-                <div key={ii} className="tc-dynamic-list__item" style={{ marginBottom: 4 }}>
-                  <select value={item.depTaskCode} onChange={e => updateItem(gi, ii, 'depTaskCode', Number(e.target.value))}>
-                    <option value={0}>选择任务</option>
-                    {otherNodes.map(n => <option key={n.code} value={n.code}>{n.name}</option>)}
-                  </select>
-                  <select value={item.cycle} onChange={e => updateItem(gi, ii, 'cycle', e.target.value)}>
-                    <option value="day">天</option>
-                    <option value="hour">小时</option>
-                    <option value="week">周</option>
-                    <option value="month">月</option>
-                  </select>
-                  <select value={item.dateValue} onChange={e => updateItem(gi, ii, 'dateValue', e.target.value)}>
-                    <option value="today">当天</option>
-                    <option value="last1Day">前1天</option>
-                    <option value="last2Days">前2天</option>
-                    <option value="last3Days">前3天</option>
-                    <option value="last7Days">前7天</option>
-                  </select>
-                  <button className="tc-dynamic-list__remove" onClick={() => removeItem(gi, ii)}><X size={12} /></button>
+                <div key={ii} className="tc-depend-item">
+                  <div className="tc-row">
+                    <div className="tc-field">
+                      <label>依赖类型</label>
+                      <select
+                        value={item.dependentType ?? 'DEPENDENT_ON_TASK'}
+                        onChange={e => {
+                          updateItem(gi, ii, 'dependentType', e.target.value);
+                          // 切换依赖类型时重置目标任务
+                          updateItem(gi, ii, 'depTaskCode', 0);
+                        }}
+                      >
+                        <option value="DEPENDENT_ON_TASK">依赖于任务</option>
+                        <option value="DEPENDENT_ON_WORKFLOW">依赖于工作流</option>
+                      </select>
+                    </div>
+                    <div className="tc-field">
+                      <label>项目名称<span className="sm-required">*</span></label>
+                      <select
+                        value={item.projectCode}
+                        onChange={e => updateItem(gi, ii, 'projectCode', Number(e.target.value))}
+                      >
+                        {projects.length > 0 ? (
+                          <>
+                            <option value={0}>选择项目</option>
+                            {projects.map(p => <option key={p.code} value={p.code}>{p.name}</option>)}
+                            {item.projectCode !== 0 && !projectCodeSet.has(item.projectCode) && (
+                              <option value={item.projectCode}>项目 #{item.projectCode}</option>
+                            )}
+                          </>
+                        ) : (
+                          <option value={item.projectCode}>项目 #{item.projectCode}</option>
+                        )}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="tc-row">
+                    <div className="tc-field">
+                      <label>工作流名称<span className="sm-required">*</span></label>
+                      <select
+                        value={item.definitionCode}
+                        onChange={e => updateItem(gi, ii, 'definitionCode', Number(e.target.value))}
+                      >
+                        {workflowList && item.definitionCode !== 0 && !workflowCodeSet.has(item.definitionCode) && (
+                          <option value={item.definitionCode}>工作流 #{item.definitionCode}</option>
+                        )}
+                        {workflowList ? (
+                          workflowList.map(wf => <option key={wf.code} value={wf.code}>{wf.name}</option>)
+                        ) : (
+                          <option value={0}>当前工作流</option>
+                        )}
+                      </select>
+                    </div>
+                    <div className="tc-field">
+                      <label>任务名称<span className="sm-required">*</span></label>
+                      <select
+                        value={item.depTaskCode}
+                        onChange={e => updateItem(gi, ii, 'depTaskCode', Number(e.target.value))}
+                      >
+                        <option value={0}>选择任务</option>
+                        {otherNodes.map(n => <option key={n.code} value={n.code}>{n.name}</option>)}
+                        {item.depTaskCode !== 0 && !nodeCodeSet.has(item.depTaskCode) && (
+                          <option value={item.depTaskCode}>
+                            {taskNameMap[item.depTaskCode] ? taskNameMap[item.depTaskCode] : `任务 #${item.depTaskCode}（未在当前工作流）`}
+                          </option>
+                        )}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="tc-field">
+                    <label>时间周期<span className="sm-required">*</span></label>
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <select
+                        style={{ flex: 1 }}
+                        value={item.cycle}
+                        onChange={e => {
+                          const cycle = e.target.value as DSDependentTaskItem['cycle'];
+                          updateItem(gi, ii, 'cycle', cycle);
+                          updateItem(gi, ii, 'dateValue', dateOptions[cycle][0].value);
+                        }}
+                      >
+                        {cycleOptions.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                      </select>
+                      <select
+                        style={{ flex: 1.4 }}
+                        value={item.dateValue}
+                        onChange={e => updateItem(gi, ii, 'dateValue', e.target.value)}
+                      >
+                        {(dateOptions[item.cycle] || dateOptions.day).map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="tc-depend-item__foot">
+                    <label className="tc-switch">
+                      <input
+                        type="checkbox"
+                        checked={!!item.parameterPassing}
+                        onChange={e => updateItem(gi, ii, 'parameterPassing', e.target.checked)}
+                      />
+                      <span>参数传递</span>
+                    </label>
+                    <button className="tc-dynamic-list__remove" onClick={() => removeItem(gi, ii)} title="删除依赖"><X size={12} /></button>
+                  </div>
                 </div>
               ))}
               <button className="tc-dynamic-list__add" onClick={() => addItem(gi)}><Plus size={12} /> 添加依赖项</button>

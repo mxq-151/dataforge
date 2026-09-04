@@ -75,7 +75,6 @@ export default function TaskConfigModal({ task, allNodes, edges, workflowDefinit
   const [taskParamsObj, setTaskParamsObj] = useState<Record<string, unknown>>(() =>
     parseTaskParams(form.taskType, form.taskParams)
   );
-  const [activeTab, setActiveTab] = useState<'basic' | 'advanced'>('basic');
   const [selectedPreTasks, setSelectedPreTasks] = useState<number[]>([]);
 
   React.useEffect(() => {
@@ -120,7 +119,9 @@ export default function TaskConfigModal({ task, allNodes, edges, workflowDefinit
 
   const TaskFormComponent = TASK_FORM_MAP[form.taskType];
 
-  const hasNoAdvanced = form.taskType === 'DEPENDENT' || form.taskType === 'CONDITIONS' || form.taskType === 'SWITCH' || form.taskType === 'SUB_PROCESS';
+  // 条件(conditions)/分支(switch)类任务不包含「超时告警」与「延迟执行时间」配置项，
+  // 依赖(dependent)/子流程(sub_process)等类型与 DolphinScheduler 一致保留超时配置。
+  const showDelayTimeout = form.taskType !== 'CONDITIONS' && form.taskType !== 'SWITCH';
 
   return (
     <div className="sm-modal-overlay" onClick={onClose}>
@@ -131,102 +132,199 @@ export default function TaskConfigModal({ task, allNodes, edges, workflowDefinit
           {readonly && <span className="wf-toolbar__readonly-badge">只读</span>}
         </div>
 
-        <div className="tc-tabs">
-          <button
-            className={`tc-tab ${activeTab === 'basic' ? 'tc-tab--active' : ''}`}
-            onClick={() => setActiveTab('basic')}
-          >
-            基本配置
-          </button>
-          {!hasNoAdvanced && (
-            <button
-              className={`tc-tab ${activeTab === 'advanced' ? 'tc-tab--active' : ''}`}
-              onClick={() => setActiveTab('advanced')}
-            >
-              高级设置
-            </button>
-          )}
-        </div>
-
         <div className="sm-modal__body tc-modal__body">
-          {activeTab === 'basic' && (
-            <>
-              <div className="tc-section">
-                <div className="tc-section__header">
-                  <Terminal size={14} />
-                  <span>基础信息</span>
+          {/* 基础信息 */}
+          <div className="tc-section">
+            <div className="tc-section__header">
+              <Terminal size={14} />
+              <span>基础信息</span>
+            </div>
+            <div className="tc-row">
+              <div className="tc-field">
+                <label>任务名称<span className="sm-required">*</span></label>
+                <input
+                  type="text"
+                  value={form.name}
+                  onChange={e => setFormField('name', e.target.value)}
+                  placeholder="请输入任务名称"
+                />
+              </div>
+              <div className="tc-field">
+                <label>任务类型</label>
+                <input type="text" value={TASK_TYPE_LABELS[form.taskType]} disabled />
+              </div>
+            </div>
+            <div className="tc-field">
+              <label>运行标志</label>
+              <div className="tc-radio-group">
+                <label className="tc-radio">
+                  <input
+                    type="radio"
+                    name="runFlag"
+                    checked={form.flag === 'YES'}
+                    onChange={() => setFormField('flag', 'YES')}
+                  />
+                  <span>正常执行</span>
+                </label>
+                <label className="tc-radio">
+                  <input
+                    type="radio"
+                    name="runFlag"
+                    checked={form.flag === 'NO'}
+                    onChange={() => setFormField('flag', 'NO')}
+                  />
+                  <span>禁止执行</span>
+                </label>
+              </div>
+            </div>
+            <div className="tc-field">
+              <label>描述</label>
+              <textarea
+                value={form.description}
+                onChange={e => setFormField('description', e.target.value)}
+                placeholder="请输入任务描述"
+                rows={2}
+              />
+            </div>
+          </div>
+
+          {/* 运行配置 */}
+          <div className="tc-section">
+            <div className="tc-section__header">
+              <Zap size={14} />
+              <span>运行配置</span>
+            </div>
+            <div className="tc-row">
+              <div className="tc-field">
+                <label>任务优先级</label>
+                <select
+                  value={form.taskPriority}
+                  onChange={e => setFormField('taskPriority', e.target.value as Priority)}
+                >
+                  <option value="HIGHEST">HIGHEST</option>
+                  <option value="HIGH">HIGH</option>
+                  <option value="MEDIUM">MEDIUM</option>
+                  <option value="LOW">LOW</option>
+                  <option value="LOWEST">LOWEST</option>
+                </select>
+              </div>
+              <div className="tc-field">
+                <label>Worker组</label>
+                <select
+                  value={form.workerGroup}
+                  onChange={e => setFormField('workerGroup', e.target.value)}
+                >
+                  {workerGroups && workerGroups.length > 0 ? (
+                    workerGroups.map(wg => (
+                      <option key={wg.workerGroup} value={wg.workerGroup}>{wg.workerGroup}</option>
+                    ))
+                  ) : (
+                    <option value="default">default</option>
+                  )}
+                </select>
+              </div>
+            </div>
+            <div className="tc-field">
+              <label>环境</label>
+              <select
+                value={String(form.environmentCode ?? -1)}
+                onChange={e => setFormField('environmentCode', e.target.value === '-1' ? -1 : Number(e.target.value))}
+              >
+                <option value="-1">默认环境</option>
+                {environments && environments
+                  .filter(env => !form.workerGroup || !env.workerGroups || env.workerGroups.length === 0 || env.workerGroups.includes(form.workerGroup))
+                  .map(env => (
+                    <option key={env.code} value={String(env.code)}>{env.name}{env.description ? ` (${env.description})` : ''}</option>
+                  ))}
+              </select>
+              {form.workerGroup && environments && environments.some(env => env.workerGroups && env.workerGroups.length > 0 && !env.workerGroups.includes(form.workerGroup)) && (
+                <div style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
+                  仅显示「{form.workerGroup}」Worker组可用的环境
                 </div>
+              )}
+            </div>
+            <div className="tc-row">
+              <div className="tc-field">
+                <label>失败重试次数</label>
+                <input
+                  type="number"
+                  value={form.failRetryTimes}
+                  onChange={e => setFormField('failRetryTimes', parseInt(e.target.value) || 0)}
+                  min={0}
+                />
+              </div>
+              <div className="tc-field">
+                <label>失败重试间隔(分钟)</label>
+                <input
+                  type="number"
+                  value={form.failRetryInterval}
+                  onChange={e => setFormField('failRetryInterval', parseInt(e.target.value) || 1)}
+                  min={1}
+                />
+              </div>
+            </div>
+            {showDelayTimeout && (
+              <>
                 <div className="tc-row">
                   <div className="tc-field">
-                    <label>任务名称<span className="sm-required">*</span></label>
-                    <input
-                      type="text"
-                      value={form.name}
-                      onChange={e => setFormField('name', e.target.value)}
-                      placeholder="请输入任务名称"
-                    />
+                    <label>超时告警</label>
+                    <select
+                      value={form.timeoutFlag}
+                      onChange={e => setFormField('timeoutFlag', e.target.value as 'OPEN' | 'CLOSE')}
+                    >
+                      <option value="CLOSE">关闭</option>
+                      <option value="OPEN">开启</option>
+                    </select>
                   </div>
-                  <div className="tc-field">
-                    <label>任务类型</label>
-                    <input type="text" value={TASK_TYPE_LABELS[form.taskType]} disabled />
-                  </div>
+                  {form.timeoutFlag === 'OPEN' && (
+                    <div className="tc-field">
+                      <label>超时时间(分钟)</label>
+                      <input
+                        type="number"
+                        value={form.timeout}
+                        onChange={e => setFormField('timeout', parseInt(e.target.value) || 0)}
+                        min={1}
+                      />
+                    </div>
+                  )}
                 </div>
                 <div className="tc-field">
-                  <label>描述</label>
-                  <textarea
-                    value={form.description}
-                    onChange={e => setFormField('description', e.target.value)}
-                    placeholder="请输入任务描述"
-                    rows={2}
+                  <label>延迟执行时间(分钟)</label>
+                  <input
+                    type="number"
+                    value={form.delayTime}
+                    onChange={e => setFormField('delayTime', parseInt(e.target.value) || 0)}
+                    min={0}
                   />
                 </div>
-                <div className="tc-field">
-                  <label>运行标志</label>
-                  <div className="tc-radio-group">
-                    <label className="tc-radio">
-                      <input
-                        type="radio"
-                        name="runFlag"
-                        checked={form.flag === 'YES'}
-                        onChange={() => setFormField('flag', 'YES')}
-                      />
-                      <span>正常执行</span>
-                    </label>
-                    <label className="tc-radio">
-                      <input
-                        type="radio"
-                        name="runFlag"
-                        checked={form.flag === 'NO'}
-                        onChange={() => setFormField('flag', 'NO')}
-                      />
-                      <span>禁止执行</span>
-                    </label>
-                  </div>
-                </div>
-              </div>
+              </>
+            )}
+          </div>
 
-              <div className="tc-section">
-                <div className="tc-section__header">
-                  {TASK_TYPE_ICONS[form.taskType]}
-                  <span>{TASK_TYPE_LABELS[form.taskType]} 配置</span>
-                </div>
-                {TaskFormComponent && (
-                  <TaskFormComponent
-                    params={taskParamsObj}
-                    onChange={handleTaskParamsChange}
-                    allNodes={otherNodes}
-                    currentCode={form.code}
-                    workflowDefinitions={workflowDefinitions}
-                    api={api}
-                  />
-                )}
-              </div>
+          {/* 任务类型专属配置 */}
+          <div className="tc-section">
+            <div className="tc-section__header">
+              {TASK_TYPE_ICONS[form.taskType]}
+              <span>{TASK_TYPE_LABELS[form.taskType]} 配置</span>
+            </div>
+            {TaskFormComponent && (
+              <TaskFormComponent
+                params={taskParamsObj}
+                onChange={handleTaskParamsChange}
+                allNodes={otherNodes}
+                currentCode={form.code}
+                workflowDefinitions={workflowDefinitions}
+                api={api}
+              />
+            )}
+          </div>
 
-              <div className="tc-section">
-                <div className="tc-section__header">
-                  <GitMerge size={14} />
-                  <span>前置任务</span>
-                </div>
+          {/* 上游任务 */}
+          <div className="tc-section">
+            <div className="tc-section__header">
+              <GitMerge size={14} />
+              <span>上游任务</span>
+            </div>
                 {!readonly && (
                   <div className="tc-field">
                     <label>添加前置任务</label>
@@ -300,135 +398,7 @@ export default function TaskConfigModal({ task, allNodes, edges, workflowDefinit
                     暂未配置前置任务，可以从上方下拉框添加
                   </div>
                 )}
-              </div>
-            </>
-          )}
-
-          {activeTab === 'advanced' && !hasNoAdvanced && (
-            <>
-              <div className="tc-section">
-                <div className="tc-section__header">
-                  <Zap size={14} />
-                  <span>执行配置</span>
-                </div>
-                <div className="tc-row">
-                  <div className="tc-field">
-                    <label>任务优先级</label>
-                    <select
-                      value={form.taskPriority}
-                      onChange={e => setFormField('taskPriority', e.target.value as Priority)}
-                    >
-                      <option value="HIGHEST">HIGHEST</option>
-                      <option value="HIGH">HIGH</option>
-                      <option value="MEDIUM">MEDIUM</option>
-                      <option value="LOW">LOW</option>
-                      <option value="LOWEST">LOWEST</option>
-                    </select>
-                  </div>
-                  <div className="tc-field">
-                    <label>Worker组</label>
-                    <select
-                      value={form.workerGroup}
-                      onChange={e => setFormField('workerGroup', e.target.value)}
-                    >
-                      {workerGroups && workerGroups.length > 0 ? (
-                        workerGroups.map(wg => (
-                          <option key={wg.workerGroup} value={wg.workerGroup}>{wg.workerGroup}</option>
-                        ))
-                      ) : (
-                        <option value="default">default</option>
-                      )}
-                    </select>
-                  </div>
-                </div>
-                <div className="tc-row">
-                  <div className="tc-field">
-                    <label>失败重试次数</label>
-                    <input
-                      type="number"
-                      value={form.failRetryTimes}
-                      onChange={e => setFormField('failRetryTimes', parseInt(e.target.value) || 0)}
-                      min={0}
-                    />
-                  </div>
-                  <div className="tc-field">
-                    <label>失败重试间隔(秒)</label>
-                    <input
-                      type="number"
-                      value={form.failRetryInterval}
-                      onChange={e => setFormField('failRetryInterval', parseInt(e.target.value) || 1)}
-                      min={1}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="tc-section">
-                <div className="tc-section__header">
-                  <Container size={14} />
-                  <span>超时与延迟</span>
-                </div>
-                <div className="tc-row">
-                  <div className="tc-field">
-                    <label>超时告警</label>
-                    <select
-                      value={form.timeoutFlag}
-                      onChange={e => setFormField('timeoutFlag', e.target.value as 'OPEN' | 'CLOSE')}
-                    >
-                      <option value="CLOSE">关闭</option>
-                      <option value="OPEN">开启</option>
-                    </select>
-                  </div>
-                  {form.timeoutFlag === 'OPEN' && (
-                    <div className="tc-field">
-                      <label>超时时间(分钟)</label>
-                      <input
-                        type="number"
-                        value={form.timeout}
-                        onChange={e => setFormField('timeout', parseInt(e.target.value) || 0)}
-                        min={1}
-                      />
-                    </div>
-                  )}
-                </div>
-                <div className="tc-field">
-                  <label>延迟执行时间(分钟)</label>
-                  <input
-                    type="number"
-                    value={form.delayTime}
-                    onChange={e => setFormField('delayTime', parseInt(e.target.value) || 0)}
-                    min={0}
-                  />
-                </div>
-              </div>
-
-              <div className="tc-section">
-                <div className="tc-section__header">
-                  <Code2 size={14} />
-                  <span>环境配置</span>
-                </div>
-                <div className="tc-field">
-                  <label>环境</label>
-                  <select
-                    value={String(form.environmentCode ?? -1)}
-                    onChange={e => setFormField('environmentCode', e.target.value === '-1' ? -1 : Number(e.target.value))}
-                  >
-                    <option value="-1">默认环境</option>
-                    {environments && environments
-                      .filter(env => !form.workerGroup || !env.workerGroups || env.workerGroups.length === 0 || env.workerGroups.includes(form.workerGroup))
-                      .map(env => (
-                        <option key={env.code} value={String(env.code)}>{env.name}{env.description ? ` (${env.description})` : ''}</option>
-                      ))}
-                  </select>
-                  {form.workerGroup && environments && environments.some(env => env.workerGroups && env.workerGroups.length > 0 && !env.workerGroups.includes(form.workerGroup)) && (
-                    <div style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
-                      仅显示「{form.workerGroup}」Worker组可用的环境
-                    </div>
-                  )}
-                </div>
-              </div>
-            </>
-          )}
+          </div>
         </div>
 
         <div className="sm-modal__footer">
