@@ -1,8 +1,3 @@
-export interface DolphinSchedulerConfig {
-  apiUrl: string;
-  token: string;
-}
-
 export interface DolphinSchedulerResponse<T> {
   code: number;
   msg: string;
@@ -26,11 +21,6 @@ export interface DSProject {
   userName: string;
   createTime: string;
   updateTime: string;
-}
-
-export interface DSProjectCreateParams {
-  projectName: string;
-  description?: string;
 }
 
 export interface DSWorkflowDefinition {
@@ -213,8 +203,6 @@ export interface DSTriggerWorkflowParams {
   startParams?: DSStartParam[];
   complementRun?: boolean;
 }
-
-export type ScheduleSubTab = 'projects' | 'workflowDefinitions' | 'workflowInstances' | 'taskInstances';
 
 export type DSTaskType =
   | 'SHELL'
@@ -867,45 +855,6 @@ export interface DSAliyunServerlessSparkTaskParams {
   sparkJobConfigJSON: string;
   localParams: DSLocalParam[];
 }
-
-export type DSTaskParamsMap = {
-  SHELL: DSShellTaskParams;
-  SUB_PROCESS: DSSubProcessTaskParams;
-  PROCEDURE: DSProcedureTaskParams;
-  SQL: DSSqlTaskParams;
-  SPARK: DSSparkTaskParams;
-  FLINK: DSFlinkTaskParams;
-  FLINK_STREAM: DSFlinkStreamTaskParams;
-  MR: DSMrTaskParams;
-  PYTHON: DSPythonTaskParams;
-  DEPENDENT: DSDependentTaskParams;
-  HTTP: DSHttpTaskParams;
-  DATAX: DSDataXTaskParams;
-  SQOOP: DSSqoopTaskParams;
-  CONDITIONS: DSConditionsTaskParams;
-  SWITCH: DSSwitchTaskParams;
-  SEATUNNEL: DSSeaTunnelTaskParams;
-  K8S: DSK8sTaskParams;
-  JAVA: DSJavaTaskParams;
-  GRPC: DSGrpcTaskParams;
-  EMR: DSEmrTaskParams;
-  ZEPPELIN: DSZeppelinTaskParams;
-  JUPYTER: DSJupyterTaskParams;
-  MLFLOW: DSMlflowTaskParams;
-  OPENMLDB: DSOpenmldbTaskParams;
-  DVC: DSDvcTaskParams;
-  DINKY: DSDinkyTaskParams;
-  SAGEMAKER: DSSagemakerTaskParams;
-  CHUNJUN: DSChunjunTaskParams;
-  HIVECLI: DSHiveCliTaskParams;
-  DMS: DSDmsTaskParams;
-  DATASYNC: DSDatasyncTaskParams;
-  KUBEFLOW: DSKubeflowTaskParams;
-  LINKIS: DSLinkisTaskParams;
-  DATA_FACTORY: DSDataFactoryTaskParams;
-  REMOTESHELL: DSRemoteShellTaskParams;
-  ALIYUN_SERVERLESS_SPARK: DSAliyunServerlessSparkTaskParams;
-};
 
 export function getDefaultTaskParams(taskType: DSTaskType): Record<string, unknown> {
   switch (taskType) {

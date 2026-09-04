@@ -147,10 +147,3 @@ export function extractEdges(edges: Edge[]): DSWorkflowEdge[] {
     targetCode: Number(edge.getTargetCellId())
   }));
 }
-
-/** 边是否有标签文本 */
-export function getEdgeLabel(edge: Edge): string {
-  const labels = edge.getLabels();
-  const text = labels?.[0]?.attrs?.label?.text;
-  return typeof text === 'string' ? text : '';
-}

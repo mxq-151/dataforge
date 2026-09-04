@@ -32,6 +32,25 @@ vi.mock('./ChatInput', () => ({
 
 import AIPanel from './AIPanel';
 
+/**
+ * 当前 vitest/jsdom 环境未注入全局 localStorage（Node 22+ 实验性全局未启用）。
+ * 折叠功能涉及 localStorage 读写（宽度、折叠状态、按 moduleId 隔离），
+ * 这里提供内存版实现，让用例能正常断言而不污染真实存储。
+ */
+const storage = new Map<string, string>();
+Object.defineProperty(globalThis, 'localStorage', {
+  value: {
+    getItem: (k: string) => (storage.has(k) ? storage.get(k)! : null),
+    setItem: (k: string, v: string) => { storage.set(k, String(v)); },
+    removeItem: (k: string) => { storage.delete(k); },
+    clear: () => { storage.clear(); },
+    key: (i: number) => Array.from(storage.keys())[i] ?? null,
+    get length() { return storage.size; },
+  },
+  configurable: true,
+  writable: true,
+});
+
 /** 构造最小可用的 chatBackend 桩 */
 function createBackend() {
   return {

@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import type { Graph, Node } from '@antv/x6';
 import {
   ArrowLeft, Save, Trash2, ZoomIn, ZoomOut, Maximize2, Maximize,
-  Move, Plus, X, Zap, Search, Download, LayoutGrid, GitBranch,
+  Move, Plus, X, Zap, Search, Download, LayoutGrid,
 } from 'lucide-react';
 import type {
   DSWorkflowTaskNode, DSWorkflowEdge, DSWorkflowGlobalParam,

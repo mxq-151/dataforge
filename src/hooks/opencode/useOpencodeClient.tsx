@@ -271,11 +271,6 @@ export function OpencodeClientProvider({
 
 // ── Registry: 管理多个项目的 Provider ──
 
-export interface ClientInstance {
-  moduleId: string;
-  projectId: string;
-}
-
 // ── 实现 ──
 
 /**

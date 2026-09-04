@@ -92,16 +92,6 @@ export const fetchDatasourceTypes = () =>
 export const fetchConnectionTypes = () =>
   request<ApiResponse<string[]>>('/api/devops/datasource/connection-types');
 
-/** 当前已注册执行引擎列表（GET /devops/execution/engines），结构与 /types 一致 */
-export const fetchExecutionEngines = () =>
-  request<ApiResponse<DatasourceTypeMeta[]>>('/api/devops/execution/engines');
-
-/** 校验「引擎 + 语言」组合是否可执行（GET /devops/execution/engines/supported） */
-export const checkExecutionSupported = (engineCode: string, codeType: string) =>
-  request<ApiResponse<boolean>>('/api/devops/execution/engines/supported', {
-    params: { engineCode, codeType },
-  });
-
 export const createDatasource = (data: Partial<DataSource>) =>
   request<ApiResponse<void>>('/api/devops/datasource', {
     method: 'POST',

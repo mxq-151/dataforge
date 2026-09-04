@@ -9,12 +9,9 @@ export const X6_PORT_OUT_NAME = 'dag-port-out';
 
 const EDGE_COLOR = '#555555';
 const BG_NODE = '#2d2d30';
-const BG_HOVER = '#1e3a5f';
 const NODE_BORDER = '#3c3c3c';
 const TITLE = '#ffffff';
 const STROKE_BLUE = '#0078d4';
-const NODE_SHADOW = 'drop-shadow(3px 3px 6px rgba(0, 0, 0, 0.5))';
-const EDGE_SHADOW = 'drop-shadow(3px 3px 4px rgba(0, 0, 0, 0.5))';
 
 export const PORT = {
   groups: {
@@ -67,40 +64,6 @@ export const PORT = {
         'circle-inner': {
           r: 4,
           fill: 'transparent'
-        }
-      }
-    }
-  }
-};
-
-export const PORT_HOVER = {
-  groups: {
-    [X6_PORT_OUT_NAME]: {
-      attrs: {
-        'circle-outer': {
-          stroke: STROKE_BLUE,
-          fill: BG_HOVER,
-          r: 8
-        },
-        'circle-inner': {
-          fill: STROKE_BLUE,
-          r: 6
-        }
-      }
-    }
-  }
-};
-
-export const PORT_SELECTED = {
-  groups: {
-    [X6_PORT_OUT_NAME]: {
-      attrs: {
-        'plus-text': {
-          fill: STROKE_BLUE
-        },
-        'circle-outer': {
-          stroke: STROKE_BLUE,
-          fill: BG_NODE
         }
       }
     }
@@ -204,31 +167,6 @@ export const NODE = {
   }
 };
 
-export const NODE_HOVER = {
-  attrs: {
-    body: {
-      fill: '#353538',
-      stroke: STROKE_BLUE,
-      strokeDasharray: '5,2'
-    }
-  }
-};
-
-export const NODE_SELECTED = {
-  attrs: {
-    body: {
-      filter: NODE_SHADOW,
-      fill: BG_NODE,
-      stroke: STROKE_BLUE,
-      strokeDasharray: '5,2',
-      strokeWidth: '1.5'
-    },
-    title: {
-      fill: TITLE
-    }
-  }
-};
-
 export const EDGE = {
   attrs: {
     line: {
@@ -289,52 +227,6 @@ export const EDGE = {
       options: {
         absoluteDistance: true,
         reverseDistance: true
-      }
-    }
-  }
-};
-
-export const EDGE_HOVER = {
-  attrs: {
-    line: {
-      stroke: STROKE_BLUE,
-      targetMarker: {
-        fill: STROKE_BLUE
-      }
-    }
-  },
-  defaultLabel: {
-    attrs: {
-      label: {
-        fill: STROKE_BLUE
-      },
-      body: {
-        fill: BG_NODE,
-        stroke: STROKE_BLUE
-      }
-    }
-  }
-};
-
-export const EDGE_SELECTED = {
-  attrs: {
-    line: {
-      stroke: STROKE_BLUE,
-      targetMarker: {
-        fill: STROKE_BLUE
-      },
-      strokeWidth: 3,
-      filter: EDGE_SHADOW
-    }
-  },
-  defaultLabel: {
-    attrs: {
-      label: {
-        fill: STROKE_BLUE
-      },
-      body: {
-        fill: BG_NODE,
-        stroke: STROKE_BLUE
       }
     }
   }
