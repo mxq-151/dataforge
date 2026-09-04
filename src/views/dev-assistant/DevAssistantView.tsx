@@ -380,6 +380,14 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
     refreshTree,
   } = useFileSystem(projectCwd);
 
+  // [debug] 追踪文件浏览器 projectCwd 来源与最终 rootPath，用于定位换用户后打开目录残留
+  useEffect(() => {
+    console.log(`[DA][debug] DevAssistantView projectCwd=`, projectCwd, '| moduleKey=', project.projectCode);
+  }, [projectCwd, project.projectCode]);
+  useEffect(() => {
+    console.log(`[DA][debug] useFileSystem rootPath=`, rootPath, '| fileCount=', fileTree.length);
+  }, [rootPath, fileTree]);
+
   // git 拉取/挂载源码完成（gitRefreshSeq 递增）后刷新文件浏览器，
   // 解决首次进入项目时文件浏览器先于 git 拉取完成、看到空目录的问题。
   useEffect(() => {

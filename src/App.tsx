@@ -264,6 +264,7 @@ const AppContent: React.FC = () => {
   ), [deBaseDir, user?.username]);
   useEffect(() => {
     if (!user?.username) {
+      console.log(`[App][debug] baseWorkspace reset to '' (user=${user?.username})`);
       setBaseWorkspace('');
       return;
     }
@@ -286,6 +287,7 @@ const AppContent: React.FC = () => {
         //   git 工作空间      = {hostBase}/{gitRepoDirName}/{project_code}
         const base = joinPath(home, hostDir);
         if (cancelled) return;
+        console.log(`[App][debug] baseWorkspace set: user=${user?.username} base=`, base);
         setBaseWorkspace(base);
         // 直接写 store 并保留其它字段（后端地址仍以 store 内最新值为准），
         // 供后端 opencode 进程 / 编译 / Git 同步使用
@@ -345,8 +347,10 @@ const AppContent: React.FC = () => {
 
   // 开发助手文件浏览器根目录 = 与 opencode 工作目录一致
   const getProjectFileRoot = useCallback((project: ProjectInfo) => {
-    return getProjectCwd(project);
-  }, [getProjectCwd]);
+    const root = getProjectCwd(project);
+    console.log(`[App][debug] getProjectFileRoot: user=${user?.username} baseWorkspace=${baseWorkspace} -> root=`, root);
+    return root;
+  }, [getProjectCwd, baseWorkspace, user?.username]);
 
   const [gitSyncStatus, setGitSyncStatus] = useState<{
     syncing: boolean;
@@ -635,9 +639,12 @@ const AppContent: React.FC = () => {
           selectedProject ? (
             // 为每个已访问的项目渲染独立的 Provider，保持 hook 状态不丢失
             // 非当前选中的项目用 display:none 隐藏但保持挂载
+            // key 同时带上登录用户名：切换登录用户时强制重建整个开发助手子树，
+            // 使文件浏览器根目录/编辑器/会话按当前用户重新初始化，避免沿用上一个
+            // 用户遗留的打开目录（否则会残留默认工作区 ~/.dataforge，需手动刷新）。
             Array.from(visitedProjects.values()).map(project => (
               <div
-                key={project.projectCode}
+                key={`${project.projectCode}-${user?.username || ''}`}
                 style={{ display: selectedProject.projectCode === project.projectCode ? 'contents' : 'none', height: '100%' }}
               >
                 <OpencodeClientProvider

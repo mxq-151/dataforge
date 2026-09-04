@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { FileNode } from '../types';
 import { generateId, generateFileHeader } from '../utils';
 
@@ -360,11 +360,24 @@ const useFileSystem = (initialPath?: string) => {
   const [isLoading, setIsLoading] = useState(false);
   const [apiReady, setApiReady] = useState(false);
 
+  // 目录请求序号：openFolder / openDefaultFolder 均为异步流程，可能因 initialPath 异步就绪而
+  // 并发执行（如先触发的 openDefaultFolder 与后触发的 openFolder 交错完成）。只有「最新一次」
+  // 请求才允许最终提交 rootPath/fileTree，否则旧请求会把新设的正确路径覆盖回默认工作区
+  // （表现为换用户后文件浏览器仍停留在 ~/.dataforge，需手动刷新）。
+  const latestDirSeqRef = useRef(0);
+
   useEffect(() => {
+    console.log(`[FS][debug] useFileSystem effect fired, initialPath=`, initialPath);
     initializeFileSystem();
-  }, []);
+    // initialPath 由父级异步计算（如 baseWorkspace 需等登录后异步加载，projectCwd 才可得）。
+    // 首次挂载时 initialPath 可能为 undefined，此时会误开默认工作区（~/.dataforge）且不随用户/
+    // 项目自动纠正。将 initialPath 加入依赖，一旦其变为有效目录立即重新初始化，确保文件浏览器
+    // 根目录始终指向正确的项目根 src/{pc}，避免换用户登录后仍停留在上一个会话的默认目录。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialPath]);
 
   const initializeFileSystem = async () => {
+    console.log(`[FS][debug] initializeFileSystem start, initialPath=`, initialPath, 'current rootPath=', rootPath);
     try {
       setIsLoading(true);
       await initFileSystemAPI();
@@ -379,6 +392,7 @@ const useFileSystem = (initialPath?: string) => {
     } finally {
       setIsLoading(false);
     }
+    console.log(`[FS][debug] initializeFileSystem done, initialPath=`, initialPath, 'rootPath=', rootPath);
   };
 
   const buildFileTree = useCallback(async (dirPath: string, api: FileSystemAPI): Promise<FileNode[]> => {
@@ -414,15 +428,24 @@ const useFileSystem = (initialPath?: string) => {
   }, []);
 
   const openDefaultFolder = useCallback(async () => {
-
+    console.log(`[FS][debug] openDefaultFolder called, target=getPlatformDefaultWorkspace`);
+    const seq = ++latestDirSeqRef.current;
     try {
       setIsLoading(true);
       const api = await initFileSystemAPI();
       const workspacePath = await getPlatformDefaultWorkspace();
-
+      // 期间若已有更新的目录请求（如 initialPath 变为正确路径触发的 openFolder），放弃提交，
+      // 避免把刚设好的正确根目录覆盖回默认工作区。
+      if (seq !== latestDirSeqRef.current) {
+        console.log(`[FS][debug] openDefaultFolder superseded (seq=${seq}), skip setRootPath`);
+        return;
+      }
       setRootPath(workspacePath);
       const tree = await buildFileTree(workspacePath, api);
-      setFileTree(tree);
+      if (seq === latestDirSeqRef.current) {
+        setFileTree(tree);
+      }
+      console.log(`[FS][debug] openDefaultFolder done, rootPath=`, workspacePath, 'fileCount=', tree.length);
     } catch (error) {
       console.error('❌ [openDefaultFolder] 打开默认文件夹失败:', error);
     } finally {
@@ -431,6 +454,8 @@ const useFileSystem = (initialPath?: string) => {
   }, [buildFileTree]);
 
   const openFolder = useCallback(async (customPath?: string) => {
+    console.log(`[FS][debug] openFolder called, customPath=`, customPath);
+    const seq = ++latestDirSeqRef.current;
     try {
       setIsLoading(true);
       const api = await initFileSystemAPI();
@@ -439,7 +464,11 @@ const useFileSystem = (initialPath?: string) => {
 
       setRootPath(targetPath);
       const tree = await buildFileTree(targetPath, api);
-      setFileTree(tree);
+      // 仅最新一次请求可以写入文件树
+      if (seq === latestDirSeqRef.current) {
+        setFileTree(tree);
+      }
+      console.log(`[FS][debug] openFolder done, targetPath=`, targetPath, 'fileCount=', tree.length);
     } catch (error) {
       console.error('打开文件夹失败:', error);
     } finally {

@@ -781,6 +781,7 @@ function useOpencodeClientImpl(
       setConnected(true);
       setError(null);
       setReady(true);
+      console.log(`[OC][debug] connected working dir (module=${moduleId}, project=${projectId}):`, dir);
 
       addLog({
         source: 'opencode',
