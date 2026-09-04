@@ -101,6 +101,25 @@
         }
       ]
     },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "icon": "build/icon.png",
+      "category": "Development",
+      "maintainer": "DataForge",
+      "extraResources": [
+        {
+          "from": "resources/binaries",
+          "to": "binaries",
+          "filter": [
+            "opencode-linux-x64",
+            "opencode-linux-arm64"
+          ]
+        }
+      ]
+    },
     "nsis": {
       "oneClick": false,
       "perMachine": false,

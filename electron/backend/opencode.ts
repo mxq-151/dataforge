@@ -285,6 +285,8 @@ function resolveBinFromDir(dir: string, name: string): string | null {
     'darwin-x64': `opencode-darwin-x64`,
     'win32-x64': `opencode-windows-x64.exe`,
     'win32-arm64': `opencode-windows-arm64.exe`,
+    'linux-x64': `opencode-linux-x64`,
+    'linux-arm64': `opencode-linux-arm64`,
   };
   const triple = triples[`${process.platform}-${process.arch}`];
   const preferred = [name, triple].filter(Boolean);
