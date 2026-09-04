@@ -520,6 +520,13 @@ async function startLspWs(
     windowsHide: true,
   });
 
+  // 子进程被杀/断开后，已关闭的管道再读写会触发 EPIPE。stream 的 EPIPE 是异步
+  // 以 'error' 事件抛出的，不挂监听会成为主进程 uncaughtException 崩溃
+  // （例如退出登录回收 JVM 时渲染进程仍在发送 WS 消息）。
+  child.stdin?.on('error', () => { /* 忽略已关闭管道上的 EPIPE */ });
+  child.stdout?.on('error', () => { /* 忽略已关闭管道上的 EPIPE */ });
+  child.stderr?.on('error', () => { /* 忽略已关闭管道上的 EPIPE */ });
+
   const clientId = nextClientId++;
 
   // 绑定临时端口（WebSocketServer port:0）

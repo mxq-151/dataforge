@@ -202,6 +202,19 @@ const AppContent: React.FC = () => {
   // 项目目录初始化（建目录/软链/挂 git 工作树）的在途任务，按 projectCode 去重
   const ensureInflightRef = useRef<Map<string, Promise<void>>>(new Map());
 
+  // 记录上一次的登录状态，用于在退出登录时重置开发助手已选项目等状态
+  const prevAuthenticatedRef = useRef(authenticated);
+  useEffect(() => {
+    // 用户退出（authenticated 由 true → false）时，清空开发助手已选项目与已访问状态，
+    // 避免再次登录后直接进入上一次的项目内部，重新登录应回到项目列表。
+    if (prevAuthenticatedRef.current && !authenticated) {
+      setSelectedProject(null);
+      setVisitedProjects(new Map());
+      setGitRefreshSeq({});
+    }
+    prevAuthenticatedRef.current = authenticated;
+  }, [authenticated]);
+
   const handleTabChange = useCallback((tab: ActiveTab) => {
     setActiveTab(tab);
     setVisitedTabs(prev => {
