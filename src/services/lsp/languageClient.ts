@@ -596,12 +596,6 @@ function createNavigationMiddleware(languageId: LspLanguageId): Middleware {
     provideHover: languageId === 'java'
       ? async (document, position, token, next) => {
           const result = await next(document, position, token);
-          const text = typeof result?.contents === 'string'
-            ? result.contents
-            : JSON.stringify(result?.contents ?? null);
-          invoke('trace_log', {
-            msg: `[nav:java] hover line=${position.line}:${position.character} len=${text?.length ?? 0} 摘要=${text?.slice(0, 120) ?? '(null)'}`,
-          }).catch(() => undefined);
           return result;
         }
       : languageId === 'scala'

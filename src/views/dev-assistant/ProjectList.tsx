@@ -36,6 +36,7 @@ const ProjectList: React.FC<ProjectListProps> = ({ onSelectProject }) => {
     projectName: '',
     projectCode: '',
     description: '',
+    status: 1,
   });
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -90,7 +91,7 @@ const ProjectList: React.FC<ProjectListProps> = ({ onSelectProject }) => {
       const res = await createProject(createForm);
       if (res.code !== 200) throw new Error(res.message || '创建项目失败');
       setShowCreateModal(false);
-      setCreateForm({ projectName: '', projectCode: '', description: '' });
+      setCreateForm({ projectName: '', projectCode: '', description: '', status: 1 });
       await loadProjects(searchName, searchCode);
     } catch (e) {
       setCreateError(e instanceof Error ? e.message : '创建项目失败');
@@ -167,7 +168,7 @@ const ProjectList: React.FC<ProjectListProps> = ({ onSelectProject }) => {
           className="project-list__create-btn"
           onClick={() => {
             setCreateError(null);
-            setCreateForm({ projectName: '', projectCode: '', description: '' });
+            setCreateForm({ projectName: '', projectCode: '', description: '', status: 1 });
             setShowCreateModal(true);
           }}
         >
