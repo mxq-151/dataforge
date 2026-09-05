@@ -23,7 +23,11 @@
     "start": "electron .",
     "postinstall": "patch-package",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "bench:ai": "node scripts/ai-bench.mjs --out perf/bench.json",
+    "bench:ai:before": "node scripts/ai-bench.mjs --out perf/before.json",
+    "bench:ai:after": "node scripts/ai-bench.mjs --out perf/after.json",
+    "bench:ai:report": "node scripts/ai-bench-compare.mjs --before perf/before.json --after perf/after.json"
   },
   "build": {
     "appId": "com.dataforge.electron",

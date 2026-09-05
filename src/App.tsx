@@ -26,6 +26,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ToastProvider } from './components/Toast';
 import LoginPage from './views/login/LoginPage';
 import EditorTestPage from './views/editor-test/EditorTestPage';
+import AIBenchPage from './views/ai-bench/AIBenchPage';
 import type { ProjectInfo } from './api/devProject';
 import disableAutoCapitalize from './utils/disableAutoCapitalize';
 import LicenseGate from './components/license/LicenseGate';
@@ -157,9 +158,25 @@ const isEditorTestMode = (): boolean => {
   return false;
 };
 
+/**
+ * AI 流式渲染性能基准页入口：?page=ai-bench（或 hash 含 ai-bench）。
+ * 与编辑器测试页一样跳过登录，仅供开发/压测使用，应用内无可视入口。
+ */
+const isAIBenchMode = (): boolean => {
+  try {
+    if (new URLSearchParams(window.location.search).get('page') === 'ai-bench') return true;
+  } catch { /* ignore */ }
+  try {
+    if (window.location.hash.toLowerCase().includes('ai-bench')) return true;
+  } catch { /* ignore */ }
+  return false;
+};
+
 const App: React.FC = () => {
   // 编辑器测试页仅通过 URL 参数（?page=editor-test）或 hash（#editor-test）访问，应用内无可视入口
   const [testMode] = useState(() => isEditorTestMode());
+  // AI 性能基准页：?page=ai-bench，供 CDP 脚本驱动做优化前后对比
+  const [benchMode] = useState(() => isAIBenchMode());
 
   return (
     <LicenseGate>
@@ -170,6 +187,11 @@ const App: React.FC = () => {
             // 但不要求登录，user 为空时相关能力自动降级（数据源为空、无 LSP 客户端启动）。
             <DataSourceProvider>
               <EditorTestPage />
+            </DataSourceProvider>
+          ) : benchMode ? (
+            // 性能基准页：同样免登录，仅挂载 AI 时间线 + Monaco，用于采集优化前后对比数据
+            <DataSourceProvider>
+              <AIBenchPage />
             </DataSourceProvider>
           ) : (
             <AppContent />

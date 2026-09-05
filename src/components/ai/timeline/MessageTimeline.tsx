@@ -23,7 +23,7 @@
 
 import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import type { Part, Session, Message, SessionStatus } from '@opencode-ai/sdk/v2/client';
+import type { Part, Session, SessionStatus } from '@opencode-ai/sdk/v2/client';
 import type { MessageEntry, ToolPart, AssistantMessage, RetryState, Todo, FileChange } from '../../../types/opencode-backend';
 import { useTimelineProjection } from './useTimelineProjection';
 import { rowKey, type TimelineRow, type AssistantPartRow } from './rows';
@@ -118,20 +118,20 @@ const MessageTimeline: React.FC<MessageTimelineProps> = ({
   const scrollRef = useRef<HTMLDivElement>(null);
   const { rows } = useTimelineProjection(messages, status, showReasoning, todos, fileChanges);
 
-  // messageByID 查找表
-  const messageByID = useMemo(() => {
-    const map = new Map<string, Message>();
-    for (const entry of messages) map.set(entry.info.id, entry.info);
+  // entryByID 查找表：messageID → MessageEntry，把 renderRow / getMsgPart / assistantCopyPartID
+  // 里的 O(n) 的 messages.find 都换成 O(1) 的 Map 索引，降低长会话下每次刷新的开销。
+  const entryByID = useMemo(() => {
+    const map = new Map<string, MessageEntry>();
+    for (const entry of messages) map.set(entry.info.id, entry);
     return map;
   }, [messages]);
 
-  // getMsgPart：根据 messageID + partID 查找 part
+  // getMsgPart：根据 messageID + partID 查找 part（O(1) 索引 + 该消息 parts 内线性查找）
   const getMsgPart = useCallback(
     (messageID: string, partID: string): Part | undefined => {
-      const entry = messages.find((e) => e.info.id === messageID);
-      return entry?.parts.find((p) => p.id === partID);
+      return entryByID.get(messageID)?.parts.find((p) => p.id === partID);
     },
-    [messages],
+    [entryByID],
   );
 
   // toolOpen 状态管理（受控展开/折叠）
@@ -158,14 +158,14 @@ const MessageTimeline: React.FC<MessageTimelineProps> = ({
     }
     for (const [parentID, list] of byParent) {
       const last = list[list.length - 1];
-      const parts = messages.find((e) => e.info.id === last.id)?.parts ?? [];
+      const parts = entryByID.get(last.id)?.parts ?? [];
       const textPart = [...parts]
         .reverse()
         .find((p) => p.type === 'text' && ((p as any).text?.trim()));
       map.set(parentID, textPart?.id);
     }
     return map;
-  }, [messages]);
+  }, [messages, entryByID]);
 
   // partDefaultOpen：所有 tool 执行参数与结果默认折叠
   // 不区分状态/是否有输出，统一收起；用户点击 trigger 后展开（展开状态由 toolOpen 记忆）
@@ -215,7 +215,8 @@ const MessageTimeline: React.FC<MessageTimelineProps> = ({
         return <ContextToolGroup parts={parts} />;
       }
       // part group
-      const message = messageByID.get(group.ref.messageID);
+      const entry = entryByID.get(group.ref.messageID);
+      const message = entry?.info;
       const part = getMsgPart(group.ref.messageID, group.ref.partID);
       if (!message || !part) return null;
       const copyID = assistantCopyPartID.get(row.userMessageID);
@@ -231,7 +232,7 @@ const MessageTimeline: React.FC<MessageTimelineProps> = ({
         />
       );
     },
-    [getMsgPart, messageByID, assistantCopyPartID, partDefaultOpen, toolOpen, handleToolOpenChange],
+    [getMsgPart, entryByID, assistantCopyPartID, partDefaultOpen, toolOpen, handleToolOpenChange],
   );
 
   // 渲染单行（switch 分发）
@@ -244,7 +245,7 @@ const MessageTimeline: React.FC<MessageTimelineProps> = ({
           // comment 元数据暂不支持，渲染空占位
           return null;
         case 'UserMessage': {
-          const entry = messages.find((e) => e.info.id === row.userMessageID);
+          const entry = entryByID.get(row.userMessageID);
           if (!entry) return null;
           const message = entry.info as any;
           const text = entry.parts
@@ -330,7 +331,7 @@ const MessageTimeline: React.FC<MessageTimelineProps> = ({
           return null;
       }
     },
-    [messages, onRevert, revertDisabled, renderAssistantPartGroup, retry, todoDock, fileReview],
+    [entryByID, onRevert, revertDisabled, renderAssistantPartGroup, retry, todoDock, fileReview],
   );
 
   // PartsDataProvider 值（透传导航和流式文本读取）

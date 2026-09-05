@@ -1,13 +1,27 @@
 /**
- * PacedMarkdown — 打字机流式 Markdown 渲染
+ * PacedMarkdown — 打字机流式 Markdown 渲染（分块增量渲染版）
  *
  * 对齐 opencode 桌面版 createPacedValue + PacedMarkdown（message-part.tsx 191-286 行）。
  *
  * 核心机制：
- * - TEXT_RENDER_PACE_MS = 24：每步间隔 24ms
+ * - TEXT_RENDER_PACE_MS = 32：每步间隔 32ms
  * - TEXT_RENDER_IMMEDIATE = 512：剩余 ≤512 字符时一次性同步（不打字）
- * - step(size)：按剩余长度分级步长（2/4/8/最多256）
+ * - step(size)：按剩余长度分级步长（2/4/8/最多512）
  * - next(text, start)：在步长后 8 字符内找断词符号对齐（snap-to-punctuation）
+ *
+ * 性能优化（分块增量渲染）：
+ * 原实现每次打字机步进都用 ReactMarkdown 重新解析**整段**文本，长回复下是
+ * O(n²) 的重复解析（8k 字符回复会被重新解析数百次）。本实现将文本拆成：
+ * - 稳定前缀（stableText）：已越过安全边界的部分，用 useMemo 缓存，
+ *   只在「跨越段落边界」时才重新解析，其余步进直接复用上一次的 React 元素。
+ * - 活动尾部（activeText）：最后一段仍在增长的部分，每步重解析，但只几百字符。
+ *
+ * 这样单步的解析开销从「与总长度成正比」降为「与尾部段落长度成正比」，
+ * 消除长回复下 Markdown 重复解析导致的卡顿。
+ *
+ * 分块边界：优先在不处于围栏代码块（``` / ~~~）内的**空行（段落）**末尾拆分，
+ * 使段落/列表/表格整体固化、避免破坏代码块语法高亮；活动尾部过长时退化为换行边界。
+ * 流式结束后由 TextPartDisplay 用完整 GFM 重新渲染，最终形态与优化前完全一致。
  *
  * SolidJS → React 适配：
  * - createSignal → useState
@@ -17,7 +31,7 @@
  * - getValue() accessor → textRef.current（run 回调中读取最新值）
  */
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { markdownComponents } from './markdownComponents';
 
@@ -50,6 +64,63 @@ function next(text: string, start: number): number {
     if (TEXT_RENDER_SNAP.test(text[i] ?? '')) return i + 1;
   }
   return end;
+}
+
+// ── findStableSplit(text)：定位稳定前缀的安全拆分点 ─────────────
+//
+// 返回稳定前缀的结束位置（字节偏移）。规则（按优先级）：
+// 1. 优先在**空行边界**（段落结束处的空行之后）拆分：段落/列表/表格等完整块
+//    被整体固化，既不破坏围栏代码块的语法高亮，也避免把列表拆成多个 <ul>；
+// 2. 若空行边界过远（活动尾部超过 MAX_ACTIVE_CHARS，例如超长列表/连续段落），
+//    退化为**普通换行边界**，把尾部每次重解析的成本限制在常量级；
+// 3. 围栏代码块（``` / ~~~）内的行、以及文本最后一个（仍在增长的）行永不拆分。
+//
+// 返回值 0 表示没有安全边界（例如纯单行文本或尚未出现换行），此时整段文本都作为活动尾部。
+
+export const MAX_ACTIVE_CHARS = 1500;
+
+export function findStableSplit(text: string): number {
+  let lastParaSplit = 0; // 最后一个空行边界（段落结束）
+  let lastLineSplit = 0; // 最后一个普通换行边界
+  // fence: 当前是否处于未闭合的围栏代码块内，以及围栏开启标记（字符 + 最少长度）
+  let fence: { char: string; min: number } | null = null;
+  let lineStart = 0;
+  const len = text.length;
+
+  for (let i = 0; i <= len; i++) {
+    if (i !== len && text[i] !== '\n') continue;
+    // 处理 text.slice(lineStart, i) 这一行（不含换行符）
+    const line = text.slice(lineStart, i);
+    const trimmed = line.replace(/^[ \t]+/, '');
+
+    if (fence === null) {
+      const opener = /^(`{3,}|~{3,})/.exec(trimmed);
+      if (opener) {
+        fence = { char: opener[1][0], min: opener[1].length };
+      } else if (i < len) {
+        // 完整行且不在围栏内：普通换行边界始终可用
+        lastLineSplit = i + 1;
+        // 空行（仅空白）表示前一段落结束，可作为段落边界
+        if (trimmed.trim().length === 0) {
+          lastParaSplit = i + 1;
+        }
+      }
+    } else {
+      const closer = /^(`{3,}|~{3,})/.exec(trimmed);
+      if (closer && closer[1][0] === fence.char && closer[1].length >= fence.min) {
+        fence = null;
+      }
+      // 围栏内行不更新任何边界
+    }
+
+    lineStart = i + 1;
+  }
+
+  // 优先空行边界；若活动尾部过长，退化为普通换行边界以限制重解析成本
+  if (lastParaSplit > 0 && text.length - lastParaSplit <= MAX_ACTIVE_CHARS) {
+    return lastParaSplit;
+  }
+  return lastLineSplit;
 }
 
 // ── usePacedValue：React 适配的 createPacedValue ───────────────
@@ -162,11 +233,29 @@ export interface PacedMarkdownProps {
 const PacedMarkdown: React.FC<PacedMarkdownProps> = ({ text, cacheKey, streaming, className = '' }) => {
   const pacedText = usePacedValue(text, streaming);
 
+  // 拆分稳定前缀 / 活动尾部（useMemo 依赖 pacedText，字符串比较按值，跨步进不变时保持引用）
+  const { stableText, activeText } = useMemo(() => {
+    if (!pacedText) return { stableText: '', activeText: '' };
+    const split = findStableSplit(pacedText);
+    return {
+      stableText: split > 0 ? pacedText.slice(0, split) : '',
+      activeText: split > 0 ? pacedText.slice(split) : pacedText,
+    };
+  }, [pacedText]);
+
+  // 稳定前缀的 ReactMarkdown 元素：仅在稳定前缀内容变化（跨越换行边界）时重新解析。
+  // 复用同一元素引用时 React 会直接跳过该子树的协调，避免每步全量重解析。
+  const stableElement = useMemo(
+    () => (stableText ? <ReactMarkdown components={markdownComponents}>{stableText}</ReactMarkdown> : null),
+    [stableText],
+  );
+
   if (!pacedText) return null;
 
   return (
     <div className={`ai-panel__markdown ${className}`.trim()} key={cacheKey}>
-      <ReactMarkdown components={markdownComponents}>{pacedText}</ReactMarkdown>
+      {stableElement}
+      {activeText ? <ReactMarkdown components={markdownComponents}>{activeText}</ReactMarkdown> : null}
     </div>
   );
 };

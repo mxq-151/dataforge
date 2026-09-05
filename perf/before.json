@@ -1,0 +1,612 @@
+{
+  "meta": {
+    "generatedAt": "2026-09-05T16:10:24.957Z",
+    "url": "http://127.0.0.1:5173/bench.html",
+    "browser": "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/152.0.0.0 Safari/537.36 Edg/152.0.0.0",
+    "iterations": 3,
+    "note": "主线程阻塞 = 8ms 心跳定时器的累计延迟；提交耗时来自 React Profiler"
+  },
+  "presets": {
+    "medium": {
+      "median": {
+        "label": "medium-8k",
+        "config": {
+          "totalChars": 8000,
+          "chunkChars": 40,
+          "intervalMs": 16,
+          "typing": true,
+          "label": "medium-8k",
+          "preset": "medium"
+        },
+        "wallMs": 4304.6,
+        "emitMs": 3672.9,
+        "renderedChars": 6558,
+        "heartbeat": {
+          "count": 499,
+          "p50": 8.1,
+          "p95": 13.8,
+          "p99": 19.3,
+          "max": 81.9,
+          "total": 4304.5,
+          "blockedMs": 636.2,
+          "over50ms": 1
+        },
+        "longTask": {
+          "count": 0,
+          "totalMs": 0,
+          "maxMs": 0
+        },
+        "frames": {
+          "count": 256,
+          "fps": 59.47,
+          "p95Ms": 24.3,
+          "longFrames": 2
+        },
+        "commits": {
+          "ai-timeline": {
+            "count": 193,
+            "p50": 3.7,
+            "p95": 10.2,
+            "p99": 28.3,
+            "max": 39.8,
+            "total": 865.6,
+            "overFrame": 2
+          },
+          "editor-area": {
+            "count": 66,
+            "p50": 1.3,
+            "p95": 1.7,
+            "p99": 2.1,
+            "max": 2.1,
+            "total": 88.4,
+            "overFrame": 0
+          }
+        },
+        "editorTyping": {
+          "count": 169,
+          "p50": 1.1,
+          "p95": 6.3,
+          "p99": 11.4,
+          "max": 79,
+          "total": 352
+        },
+        "memoryMB": {
+          "before": 262.93,
+          "after": 288.38,
+          "delta": 25.45
+        }
+      },
+      "runs": [
+        {
+          "label": "medium-8k",
+          "config": {
+            "totalChars": 8000,
+            "chunkChars": 40,
+            "intervalMs": 16,
+            "typing": true,
+            "label": "medium-8k",
+            "preset": "medium"
+          },
+          "wallMs": 4304.6,
+          "emitMs": 3672.9,
+          "renderedChars": 6558,
+          "heartbeat": {
+            "count": 499,
+            "p50": 8.1,
+            "p95": 13.8,
+            "p99": 19.3,
+            "max": 81.9,
+            "total": 4304.5,
+            "blockedMs": 636.2,
+            "over50ms": 1
+          },
+          "longTask": {
+            "count": 0,
+            "totalMs": 0,
+            "maxMs": 0
+          },
+          "frames": {
+            "count": 256,
+            "fps": 59.47,
+            "p95Ms": 24.3,
+            "longFrames": 2
+          },
+          "commits": {
+            "ai-timeline": {
+              "count": 193,
+              "p50": 3.7,
+              "p95": 10.2,
+              "p99": 28.3,
+              "max": 39.8,
+              "total": 865.6,
+              "overFrame": 2
+            },
+            "editor-area": {
+              "count": 66,
+              "p50": 1.3,
+              "p95": 1.7,
+              "p99": 2.1,
+              "max": 2.1,
+              "total": 88.4,
+              "overFrame": 0
+            }
+          },
+          "editorTyping": {
+            "count": 169,
+            "p50": 1.1,
+            "p95": 6.3,
+            "p99": 11.4,
+            "max": 79,
+            "total": 352
+          },
+          "memoryMB": {
+            "before": 262.93,
+            "after": 288.38,
+            "delta": 25.45
+          }
+        },
+        {
+          "label": "medium-8k",
+          "config": {
+            "totalChars": 8000,
+            "chunkChars": 40,
+            "intervalMs": 16,
+            "typing": true,
+            "label": "medium-8k",
+            "preset": "medium"
+          },
+          "wallMs": 4280.7,
+          "emitMs": 3658.5,
+          "renderedChars": 6558,
+          "heartbeat": {
+            "count": 493,
+            "p50": 8,
+            "p95": 15.1,
+            "p99": 17.8,
+            "max": 62.9,
+            "total": 4280.6,
+            "blockedMs": 663.4,
+            "over50ms": 1
+          },
+          "longTask": {
+            "count": 0,
+            "totalMs": 0,
+            "maxMs": 0
+          },
+          "frames": {
+            "count": 255,
+            "fps": 59.56,
+            "p95Ms": 25.7,
+            "longFrames": 1
+          },
+          "commits": {
+            "ai-timeline": {
+              "count": 194,
+              "p50": 3.3,
+              "p95": 11.4,
+              "p99": 20.7,
+              "max": 27.4,
+              "total": 911.7,
+              "overFrame": 2
+            },
+            "editor-area": {
+              "count": 66,
+              "p50": 1.3,
+              "p95": 1.9,
+              "p99": 2.2,
+              "max": 2.2,
+              "total": 89.3,
+              "overFrame": 0
+            }
+          },
+          "editorTyping": {
+            "count": 170,
+            "p50": 1.4,
+            "p95": 9.2,
+            "p99": 11.3,
+            "max": 44,
+            "total": 384.5
+          },
+          "memoryMB": {
+            "before": 271.34,
+            "after": 279.78,
+            "delta": 8.44
+          }
+        },
+        {
+          "label": "medium-8k",
+          "config": {
+            "totalChars": 8000,
+            "chunkChars": 40,
+            "intervalMs": 16,
+            "typing": true,
+            "label": "medium-8k",
+            "preset": "medium"
+          },
+          "wallMs": 4201,
+          "emitMs": 3561.9,
+          "renderedChars": 6558,
+          "heartbeat": {
+            "count": 504,
+            "p50": 8,
+            "p95": 12.7,
+            "p99": 17.3,
+            "max": 44.9,
+            "total": 4200.2,
+            "blockedMs": 472.2,
+            "over50ms": 0
+          },
+          "longTask": {
+            "count": 0,
+            "totalMs": 0,
+            "maxMs": 0
+          },
+          "frames": {
+            "count": 252,
+            "fps": 59.98,
+            "p95Ms": 24,
+            "longFrames": 0
+          },
+          "commits": {
+            "ai-timeline": {
+              "count": 190,
+              "p50": 3.5,
+              "p95": 10,
+              "p99": 15.8,
+              "max": 18.3,
+              "total": 763,
+              "overFrame": 1
+            },
+            "editor-area": {
+              "count": 65,
+              "p50": 1.1,
+              "p95": 1.6,
+              "p99": 1.9,
+              "max": 1.9,
+              "total": 77.7,
+              "overFrame": 0
+            }
+          },
+          "editorTyping": {
+            "count": 167,
+            "p50": 1.2,
+            "p95": 5.1,
+            "p99": 12.4,
+            "max": 31.9,
+            "total": 305.3
+          },
+          "memoryMB": {
+            "before": 290.66,
+            "after": 265.77,
+            "delta": -24.89
+          }
+        }
+      ]
+    },
+    "long": {
+      "median": {
+        "label": "long-24k",
+        "config": {
+          "totalChars": 24000,
+          "chunkChars": 40,
+          "intervalMs": 16,
+          "typing": true,
+          "label": "long-24k",
+          "preset": "long"
+        },
+        "wallMs": 12760.8,
+        "emitMs": 12142.1,
+        "renderedChars": 19617,
+        "heartbeat": {
+          "count": 1217,
+          "p50": 8.3,
+          "p95": 24.2,
+          "p99": 30.8,
+          "max": 131.6,
+          "total": 12760.7,
+          "blockedMs": 3918.8,
+          "over50ms": 1
+        },
+        "longTask": {
+          "count": 2,
+          "totalMs": 114,
+          "maxMs": 59
+        },
+        "frames": {
+          "count": 758,
+          "fps": 59.4,
+          "p95Ms": 29.4,
+          "longFrames": 13
+        },
+        "commits": {
+          "ai-timeline": {
+            "count": 581,
+            "p50": 6.9,
+            "p95": 20.7,
+            "p99": 27.1,
+            "max": 55.4,
+            "total": 4743.4,
+            "overFrame": 86
+          },
+          "editor-area": {
+            "count": 195,
+            "p50": 0.9,
+            "p95": 1.5,
+            "p99": 1.6,
+            "max": 1.7,
+            "total": 160.1,
+            "overFrame": 0
+          }
+        },
+        "editorTyping": {
+          "count": 501,
+          "p50": 1.8,
+          "p95": 17.7,
+          "p99": 24.5,
+          "max": 143.6,
+          "total": 2424.8
+        },
+        "memoryMB": {
+          "before": 296.5,
+          "after": 296.35,
+          "delta": -0.16
+        }
+      },
+      "runs": [
+        {
+          "label": "long-24k",
+          "config": {
+            "totalChars": 24000,
+            "chunkChars": 40,
+            "intervalMs": 16,
+            "typing": true,
+            "label": "long-24k",
+            "preset": "long"
+          },
+          "wallMs": 12761.1,
+          "emitMs": 12111.2,
+          "renderedChars": 19617,
+          "heartbeat": {
+            "count": 1197,
+            "p50": 8.2,
+            "p95": 24.7,
+            "p99": 30.6,
+            "max": 128.4,
+            "total": 12761.1,
+            "blockedMs": 4003.6,
+            "over50ms": 1
+          },
+          "longTask": {
+            "count": 2,
+            "totalMs": 111,
+            "maxMs": 57
+          },
+          "frames": {
+            "count": 760,
+            "fps": 59.55,
+            "p95Ms": 29.3,
+            "longFrames": 16
+          },
+          "commits": {
+            "ai-timeline": {
+              "count": 584,
+              "p50": 7.1,
+              "p95": 21.5,
+              "p99": 24.8,
+              "max": 51.4,
+              "total": 4798.3,
+              "overFrame": 91
+            },
+            "editor-area": {
+              "count": 196,
+              "p50": 0.9,
+              "p95": 1.5,
+              "p99": 2,
+              "max": 2.3,
+              "total": 171.8,
+              "overFrame": 0
+            }
+          },
+          "editorTyping": {
+            "count": 505,
+            "p50": 1.8,
+            "p95": 16.5,
+            "p99": 21.7,
+            "max": 110.3,
+            "total": 2323.5
+          },
+          "memoryMB": {
+            "before": 277.25,
+            "after": 293.43,
+            "delta": 16.18
+          }
+        },
+        {
+          "label": "long-24k",
+          "config": {
+            "totalChars": 24000,
+            "chunkChars": 40,
+            "intervalMs": 16,
+            "typing": true,
+            "label": "long-24k",
+            "preset": "long"
+          },
+          "wallMs": 12760.8,
+          "emitMs": 12142.1,
+          "renderedChars": 19617,
+          "heartbeat": {
+            "count": 1217,
+            "p50": 8.3,
+            "p95": 24.2,
+            "p99": 30.8,
+            "max": 131.6,
+            "total": 12760.7,
+            "blockedMs": 3918.8,
+            "over50ms": 1
+          },
+          "longTask": {
+            "count": 2,
+            "totalMs": 114,
+            "maxMs": 59
+          },
+          "frames": {
+            "count": 758,
+            "fps": 59.4,
+            "p95Ms": 29.4,
+            "longFrames": 13
+          },
+          "commits": {
+            "ai-timeline": {
+              "count": 581,
+              "p50": 6.9,
+              "p95": 20.7,
+              "p99": 27.1,
+              "max": 55.4,
+              "total": 4743.4,
+              "overFrame": 86
+            },
+            "editor-area": {
+              "count": 195,
+              "p50": 0.9,
+              "p95": 1.5,
+              "p99": 1.6,
+              "max": 1.7,
+              "total": 160.1,
+              "overFrame": 0
+            }
+          },
+          "editorTyping": {
+            "count": 501,
+            "p50": 1.8,
+            "p95": 17.7,
+            "p99": 24.5,
+            "max": 143.6,
+            "total": 2424.8
+          },
+          "memoryMB": {
+            "before": 296.5,
+            "after": 296.35,
+            "delta": -0.16
+          }
+        },
+        {
+          "label": "long-24k",
+          "config": {
+            "totalChars": 24000,
+            "chunkChars": 40,
+            "intervalMs": 16,
+            "typing": true,
+            "label": "long-24k",
+            "preset": "long"
+          },
+          "wallMs": 12577.4,
+          "emitMs": 11934.6,
+          "renderedChars": 19617,
+          "heartbeat": {
+            "count": 1207,
+            "p50": 8.3,
+            "p95": 23.4,
+            "p99": 29,
+            "max": 107.6,
+            "total": 12577.5,
+            "blockedMs": 3762.9,
+            "over50ms": 1
+          },
+          "longTask": {
+            "count": 0,
+            "totalMs": 0,
+            "maxMs": 0
+          },
+          "frames": {
+            "count": 751,
+            "fps": 59.71,
+            "p95Ms": 29.6,
+            "longFrames": 17
+          },
+          "commits": {
+            "ai-timeline": {
+              "count": 581,
+              "p50": 7.1,
+              "p95": 20.8,
+              "p99": 24.8,
+              "max": 38.2,
+              "total": 4672.4,
+              "overFrame": 84
+            },
+            "editor-area": {
+              "count": 195,
+              "p50": 0.7,
+              "p95": 1.3,
+              "p99": 1.5,
+              "max": 2,
+              "total": 133.7,
+              "overFrame": 0
+            }
+          },
+          "editorTyping": {
+            "count": 494,
+            "p50": 1.8,
+            "p95": 18.8,
+            "p99": 30.5,
+            "max": 85.6,
+            "total": 2487.1
+          },
+          "memoryMB": {
+            "before": 270.35,
+            "after": 325.56,
+            "delta": 55.21
+          }
+        }
+      ]
+    }
+  },
+  "consoleErrors": [],
+  "idleBaseline": {
+    "label": "idle",
+    "config": {
+      "totalChars": 0,
+      "chunkChars": 0,
+      "intervalMs": 0,
+      "label": "idle"
+    },
+    "wallMs": 2500,
+    "emitMs": 0,
+    "renderedChars": 0,
+    "heartbeat": {
+      "count": 312,
+      "p50": 8,
+      "p95": 9.9,
+      "p99": 10.5,
+      "max": 20,
+      "total": 2505.4,
+      "blockedMs": 140.1,
+      "over50ms": 0
+    },
+    "longTask": {
+      "count": 0,
+      "totalMs": 0,
+      "maxMs": 0
+    },
+    "frames": {
+      "count": 151,
+      "fps": 60.26,
+      "p95Ms": 18.3,
+      "longFrames": 0
+    },
+    "commits": {},
+    "editorTyping": {
+      "count": 100,
+      "p50": 0.9,
+      "p95": 2.1,
+      "p99": 2.5,
+      "max": 9,
+      "total": 118.6
+    },
+    "memoryMB": {
+      "before": 262.22,
+      "after": 262.22,
+      "delta": 0
+    }
+  }
+}

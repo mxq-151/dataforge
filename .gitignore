@@ -55,3 +55,7 @@ resources/binaries/
 
 # OS files
 Thumbs.db
+
+# AI 性能基准：浏览器临时 profile 与报告快照
+.edge-bench-profile/
+.edge-debug-profile/
