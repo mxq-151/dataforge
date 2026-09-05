@@ -28,5 +28,14 @@ export async function writeStoreJSON(file: string, data: unknown): Promise<void>
   const fp = path.join(dir, path.basename(file));
   const tmp = `${fp}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2, 8)}.tmp`;
   await fsp.writeFile(tmp, JSON.stringify(data ?? {}), 'utf8');
-  await fsp.rename(tmp, fp);
+  // Windows 下目标文件可能被杀软/其他进程短暂占用导致 rename 报 EPERM，重试几次再放弃
+  for (let i = 0; i < 5; i++) {
+    try {
+      await fsp.rename(tmp, fp);
+      return;
+    } catch (err) {
+      if (i === 4) throw err;
+      await new Promise((r) => setTimeout(r, 100 * (i + 1)));
+    }
+  }
 }

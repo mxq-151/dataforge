@@ -1,5 +1,6 @@
 import { app, BrowserWindow, screen, shell } from 'electron';
 import * as path from 'node:path';
+import { installMainLogger } from './backend/logger';
 import { registerIpcHandlers } from './ipc';
 import { autoStartOpencode, stopOpencodeServer } from './backend/opencode';
 import { startCompileServer, stopCompileServer } from './backend/compileServer';
@@ -10,6 +11,9 @@ import { detectWsl, runtimeId } from './backend/platform';
 const PRELOAD_PATH = path.join(__dirname, 'preload.js');
 // 生产构建产物（vite build -> dist/index.html）
 const RENDERER_INDEX = path.join(__dirname, '../dist/index.html');
+
+// 打包版无控制台，主进程日志同时落盘到 userData/logs/main.log，便于排查
+installMainLogger();
 
 function createWindow(): void {
   // 初始尺寸为工作区 70%（与渲染层旧逻辑 initWindowSize 一致，改由主进程原生实现）

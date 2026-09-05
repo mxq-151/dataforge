@@ -259,13 +259,14 @@ export function resolveOpencodeBin(): string | null {
       }
     }
   }
-  // 开发模式：process.resourcesPath 指向 Electron 框架自身的 Resources，不含本项目二进制；
-  // 改从项目 resources/binaries/ 查找（命名沿用目标平台三元组，如 opencode-aarch64-apple-darwin）。
-  if (!app.isPackaged) {
-    const devBinDir = path.join(app.getAppPath(), 'resources', 'binaries');
-    const devBin = resolveBinFromDir(devBinDir, name);
-    if (devBin) return devBin;
-  }
+  // 三元组命名二进制（打包资源，如 opencode-windows-x64.exe / opencode-linux-arm64 /
+  // opencode-aarch64-apple-darwin）：打包版位于 Resources/binaries，开发模式位于项目
+  // resources/binaries（process.resourcesPath 此时指向 Electron 框架自身，不含本项目资源）。
+  const binDir = app.isPackaged
+    ? path.join(process.resourcesPath, 'binaries')
+    : path.join(app.getAppPath(), 'resources', 'binaries');
+  const named = resolveBinFromDir(binDir, name);
+  if (named) return named;
   // dev 兜底：PATH 中的 opencode
   const onPath = findOnPath(name);
   if (onPath) return onPath;
@@ -274,12 +275,6 @@ export function resolveOpencodeBin(): string | null {
 
 /** 在目录中查找 opencode 二进制：优先标准名，其次当前平台 triple 命名的构建产物。 */
 function resolveBinFromDir(dir: string, name: string): string | null {
-  let files: string[];
-  try {
-    files = fs.readdirSync(dir).filter((f) => f === name || f.startsWith(`${name}-`));
-  } catch {
-    return null;
-  }
   const triples: Record<string, string> = {
     'darwin-arm64': `${name}-aarch64-apple-darwin`,
     'darwin-x64': `opencode-darwin-x64`,
@@ -290,6 +285,15 @@ function resolveBinFromDir(dir: string, name: string): string | null {
   };
   const triple = triples[`${process.platform}-${process.arch}`];
   const preferred = [name, triple].filter(Boolean);
+  // 无扩展名前缀：Windows 下 name 为 opencode.exe，实际产物是 opencode-windows-x64.exe
+  // （不以 opencode.exe- 开头），需按去掉扩展名后的前缀匹配
+  const bare = name.includes('.') ? name.slice(0, name.indexOf('.')) : name;
+  let files: string[];
+  try {
+    files = fs.readdirSync(dir).filter((f) => preferred.includes(f) || f.startsWith(`${bare}-`));
+  } catch {
+    return null;
+  }
   for (const p of [...preferred, ...files]) {
     if (!files.includes(p)) continue;
     const full = path.join(dir, p);
