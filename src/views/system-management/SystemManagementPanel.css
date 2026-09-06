@@ -434,6 +434,14 @@
   color: #f48771;
 }
 
+/* 表单行内错误提示（行过滤SQL语法校验等） */
+.sys-mgmt__form-error {
+  margin-top: 6px;
+  color: #f48771;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .sys-mgmt__switch {
   display: inline-flex;
   border: 1px solid #4c4c4c;

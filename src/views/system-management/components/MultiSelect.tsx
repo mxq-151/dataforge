@@ -1,21 +1,23 @@
 import { useState, useRef, useEffect } from 'react';
 import { ChevronDown, X, Search } from 'lucide-react';
 
-interface MultiSelectOption {
-  value: number;
+export interface MultiSelectOption<TValue extends string | number = string | number> {
+  value: TValue;
   label: string;
   tag?: string;
   tagColor?: string;
 }
 
-interface MultiSelectProps {
-  options: MultiSelectOption[];
-  selectedValues: number[];
-  onChange: (values: number[]) => void;
+interface MultiSelectProps<TValue extends string | number> {
+  options: MultiSelectOption<TValue>[];
+  selectedValues: TValue[];
+  onChange: (values: TValue[]) => void;
   placeholder?: string;
 }
 
-const MultiSelect: React.FC<MultiSelectProps> = ({ options, selectedValues, onChange, placeholder = '请选择' }) => {
+function MultiSelect<TValue extends string | number = number>(
+  { options, selectedValues, onChange, placeholder = '请选择' }: MultiSelectProps<TValue>
+) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
@@ -36,7 +38,7 @@ const MultiSelect: React.FC<MultiSelectProps> = ({ options, selectedValues, onCh
     ? options.filter(o => o.label.toLowerCase().includes(search.toLowerCase()) || o.tag?.toLowerCase().includes(search.toLowerCase()))
     : options;
 
-  const handleToggle = (value: number) => {
+  const handleToggle = (value: TValue) => {
     if (selectedValues.includes(value)) {
       onChange(selectedValues.filter(v => v !== value));
     } else {
@@ -44,7 +46,7 @@ const MultiSelect: React.FC<MultiSelectProps> = ({ options, selectedValues, onCh
     }
   };
 
-  const handleRemove = (value: number, e: React.MouseEvent) => {
+  const handleRemove = (value: TValue, e: React.MouseEvent) => {
     e.stopPropagation();
     onChange(selectedValues.filter(v => v !== value));
   };
@@ -113,6 +115,6 @@ const MultiSelect: React.FC<MultiSelectProps> = ({ options, selectedValues, onCh
       )}
     </div>
   );
-};
+}
 
 export default MultiSelect;

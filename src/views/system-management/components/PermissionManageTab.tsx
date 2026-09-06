@@ -3,7 +3,7 @@ import { Plus, Edit3, Trash2, Search, RotateCcw, List, FolderOpen, Database, Fol
 import { systemPermissionApi, type MenuPermission, type MenuRoleBindVO, type MenuRoleBindDTO, type FilePermission, type TablePermissionVO, type TablePermissionDTO } from '../../../api/systemPermission';
 import { projectPermissionApi, PROJECT_PERM_TYPE_MAP, PROJECT_PERM_TYPE_TAG_MAP, type ProjectPermissionVO } from '../../../api/systemProjectPermission';
 import { systemRoleApi, type RoleInfo } from '../../../api/systemRole';
-import { fetchAllDataSources, fetchTablesByDataSourceId } from '../../../api/datasource';
+import { fetchAllDataSources, fetchTablesByDataSourceId, fetchTableColumns } from '../../../api/datasource';
 import type { DataSource, TableInfo } from '../../../api/datasource';
 import { fileExplorerApi } from '../../../api/fileExplorer';
 import type { StorageConfig } from '../../../api/fileExplorer';
@@ -15,6 +15,88 @@ const SCOPE_MAP: Record<number, string> = { 1: '整表', 2: '指定字段', 3: '
 const SCOPE_TAG_MAP: Record<number, string> = { 1: 'info', 2: 'warning', 3: 'danger', 4: '' };
 const PERM_TYPE_MAP: Record<number, string> = { 1: '可读', 2: '读写', 3: '完全控制' };
 const PERM_TYPE_TAG_MAP: Record<number, string> = { 1: 'info', 2: 'warning', 3: 'danger' };
+
+// 禁止出现在行过滤条件中的 SQL 语句关键字（防注入，仅允许表达式）
+const FILTER_BLOCKED_KEYWORDS =
+  /\b(select|insert|update|delete|drop|alter|create|truncate|grant|revoke|union|replace|merge)\b/i;
+
+/**
+ * 校验行过滤条件（WHERE 子句条件）的语法正确性。
+ * 仅做轻量级前端校验：括号/引号配对、单语句限制、必须包含比较运算、禁用语句关键字。
+ */
+function validateRowFilterSql(sql: string): { valid: boolean; error?: string } {
+  const cleaned = (sql || '')
+    .replace(/--.*$/gm, '')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .trim();
+
+  if (!cleaned) {
+    return { valid: false, error: '请填写行过滤条件' };
+  }
+
+  let paren = 0;
+  let bracket = 0;
+  let inSingle = false;
+  let inDouble = false;
+  for (let i = 0; i < cleaned.length; i++) {
+    const ch = cleaned[i];
+    if (inSingle) {
+      if (ch === "'") {
+        // 连续两个单引号表示转义，不结束字符串
+        if (cleaned[i + 1] === "'") i++;
+        else inSingle = false;
+      }
+      continue;
+    }
+    if (inDouble) {
+      if (ch === '"') {
+        if (cleaned[i + 1] === '"') i++;
+        else inDouble = false;
+      }
+      continue;
+    }
+    if (ch === "'") inSingle = true;
+    else if (ch === '"') inDouble = true;
+    else if (ch === '(') paren++;
+    else if (ch === ')') {
+      paren--;
+      if (paren < 0) return { valid: false, error: '圆括号不匹配，缺少左括号 "("' };
+    } else if (ch === '[') bracket++;
+    else if (ch === ']') {
+      bracket--;
+      if (bracket < 0) return { valid: false, error: '中括号不匹配，缺少左括号 "["' };
+    }
+  }
+
+  if (inSingle || inDouble) return { valid: false, error: '存在未闭合的引号，请检查字符串是否闭合' };
+  if (paren !== 0) return { valid: false, error: '圆括号不匹配，请检查括号数量与配对' };
+  if (bracket !== 0) return { valid: false, error: '中括号不匹配，请检查括号数量与配对' };
+
+  const statements = cleaned
+    .split(';')
+    .map(s => s.trim())
+    .filter(Boolean);
+  if (statements.length > 1) {
+    return { valid: false, error: '仅支持单个过滤条件，不允许包含分号分隔的多条语句' };
+  }
+
+  // 过滤条件必须包含比较运算（=、>/>=/</<=、LIKE、IN、BETWEEN、IS NULL 等）
+  // 符号运算符（= < > ! <>）用字符匹配即可，不能用词边界（= 后跟空格/引号时无词边界）；
+  // 关键字类运算符（like/in/between/is null）才需要词边界，避免与字符串内的普通单词误判。
+  const hasOperator =
+    /[<>!=]/.test(cleaned) ||
+    /\b(?:like|rlike|in|between)\b/i.test(cleaned) ||
+    /\bis\s+(?:not\s+)?null\b/i.test(cleaned);
+  if (!hasOperator) {
+    return { valid: false, error: '过滤条件缺少比较运算符（如 =、>、>=、<、<=、LIKE、IN、BETWEEN、IS NULL 等）' };
+  }
+
+  if (FILTER_BLOCKED_KEYWORDS.test(cleaned)) {
+    return { valid: false, error: '过滤条件不允许包含 SELECT、INSERT、UPDATE、DELETE 等 SQL 语句关键字' };
+  }
+
+  return { valid: true };
+}
 
 type PermSubTab = 'menu' | 'file' | 'table' | 'project';
 
@@ -63,12 +145,13 @@ const PermissionManageTab: React.FC = () => {
     canUpdate: number;
     canDelete: number;
     canExport: number;
-    rowFilterSql: string;
+    rowFilterSql: Record<string, string>;
     dataMaskingRule: string;
+    columnPermissions: Record<string, string[]>;
     description: string;
     roleIds: number[];
     selectedDatasourceId?: number;
-  }>({ permissionName: '', datasourceName: '', databaseName: '', tableNames: [], tableMetadataIds: [], canSelect: 1, canInsert: 0, canUpdate: 0, canDelete: 0, canExport: 0, permissionScope: 1, rowFilterSql: '', dataMaskingRule: '', description: '', roleIds: [] });
+  }>({ permissionName: '', datasourceName: '', databaseName: '', tableNames: [], tableMetadataIds: [], canSelect: 1, canInsert: 0, canUpdate: 0, canDelete: 0, canExport: 0, permissionScope: 1, rowFilterSql: {}, dataMaskingRule: '', columnPermissions: {}, description: '', roleIds: [] });
 
   const [projectPermData, setProjectPermData] = useState<ProjectPermissionVO[]>([]);
   const [projectPermLoading, setProjectPermLoading] = useState(false);
@@ -84,6 +167,9 @@ const PermissionManageTab: React.FC = () => {
   const [projectList, setProjectList] = useState<ProjectInfo[]>([]);
   const [menuTreeList, setMenuTreeList] = useState<MenuPermission[]>([]);
   const [tableList, setTableList] = useState<TableInfo[]>([]);
+  const [columnsByTable, setColumnsByTable] = useState<Record<string, string[]>>({});
+  const [columnsLoading, setColumnsLoading] = useState(false);
+  const [rowFilterErrors, setRowFilterErrors] = useState<Record<string, string>>({});
 
   const [submitLoading, setSubmitLoading] = useState(false);
   const [confirmModal, setConfirmModal] = useState<ConfirmModalState>({ visible: false, title: '', message: '', onConfirm: () => {} });
@@ -207,6 +293,46 @@ const PermissionManageTab: React.FC = () => {
     }
   }, []);
 
+  // 指定列权限范围时，根据已选库表逐表加载其列名集合供选择
+  const loadTableColumns = useCallback(async (tables: TableInfo[]) => {
+    if (tables.length === 0) {
+      setColumnsByTable({});
+      return;
+    }
+    setColumnsLoading(true);
+    const colMap: Record<string, string[]> = {};
+    try {
+      await Promise.all(tables.map(async t => {
+        if (!t.storageEngine || !t.tableName) {
+          colMap[t.tableName] = [];
+          return;
+        }
+        try {
+          const res = await fetchTableColumns(t.storageEngine, tableForm.databaseName, t.tableName);
+          const cols = (res && Array.isArray(res.data)) ? res.data : [];
+          colMap[t.tableName] = cols.map(c => c.columnName).filter((n): n is string => Boolean(n));
+        } catch (e) {
+          console.error('Failed to load table columns:', e);
+          colMap[t.tableName] = [];
+        }
+      }));
+    } finally {
+      setColumnsByTable(colMap);
+      setColumnsLoading(false);
+    }
+  }, [tableForm.databaseName]);
+
+  // 指定列权限范围时，库表选择变化后自动刷新各表列选项
+  useEffect(() => {
+    const isColumnScope = tableForm.permissionScope === 2 || tableForm.permissionScope === 4;
+    if (!isColumnScope) {
+      setColumnsByTable({});
+      return;
+    }
+    const selectedTables = tableList.filter(t => tableForm.tableMetadataIds?.includes(t.id!));
+    loadTableColumns(selectedTables);
+  }, [tableForm.permissionScope, tableForm.tableMetadataIds, tableForm.databaseName, tableList, loadTableColumns]);
+
   const databaseOptions = useMemo(() => {
     const dbs = new Set<string>();
     tableList.forEach(t => { if (t.databaseName) dbs.add(t.databaseName); });
@@ -326,8 +452,10 @@ const PermissionManageTab: React.FC = () => {
   };
 
   const handleAddTablePerm = () => {
-    setTableForm({ permissionName: '', datasourceName: '', databaseName: '', tableNames: [], tableMetadataIds: [], canSelect: 1, canInsert: 0, canUpdate: 0, canDelete: 0, canExport: 0, permissionScope: 1, rowFilterSql: '', dataMaskingRule: '', description: '', roleIds: [], selectedDatasourceId: undefined });
+    setTableForm({ permissionName: '', datasourceName: '', databaseName: '', tableNames: [], tableMetadataIds: [], canSelect: 1, canInsert: 0, canUpdate: 0, canDelete: 0, canExport: 0, permissionScope: 1, rowFilterSql: {}, dataMaskingRule: '', columnPermissions: {}, description: '', roleIds: [], selectedDatasourceId: undefined });
     setTableList([]);
+    setColumnsByTable({});
+    setRowFilterErrors({});
     reloadRoles();
     reloadDatasources();
     setTableDialogOpen(true);
@@ -348,13 +476,15 @@ const PermissionManageTab: React.FC = () => {
       canUpdate: row.canUpdate,
       canDelete: row.canDelete,
       canExport: row.canExport,
-      rowFilterSql: row.rowFilterSql,
+      rowFilterSql: row.rowFilterSql || {},
       dataMaskingRule: row.dataMaskingRule || '',
+      columnPermissions: row.columnPermissions || {},
       description: row.description,
       roleIds: row.roleIds || [],
       selectedDatasourceId: ds?.id,
     });
     setTableList([]);
+    setRowFilterErrors({});
     reloadRoles();
     reloadDatasources();
     if (ds?.id) {
@@ -378,6 +508,29 @@ const PermissionManageTab: React.FC = () => {
     if (!tableForm.datasourceName) { toast.warning('请选择数据源'); return; }
     if (!tableForm.databaseName) { toast.warning('请选择数据库'); return; }
     if (!tableForm.tableNames || tableForm.tableNames.length === 0) { toast.warning('请选择库表'); return; }
+    if ((tableForm.permissionScope === 2 || tableForm.permissionScope === 4)) {
+      const noColumnTables = tableForm.tableNames.filter(n => !(tableForm.columnPermissions[n]?.length));
+      if (noColumnTables.length > 0) {
+        toast.warning(`表「${noColumnTables[0]}」未选择列，已选择「指定字段」权限范围时每张表至少需选择一列`);
+        return;
+      }
+    }
+    if (tableForm.permissionScope === 3 || tableForm.permissionScope === 4) {
+      setRowFilterErrors({});
+      const errors: Record<string, string> = {};
+      for (const tableName of tableForm.tableNames) {
+        const sql = tableForm.rowFilterSql[tableName] || '';
+        if (!sql.trim()) { errors[tableName] = '请填写行过滤条件'; continue; }
+        const validation = validateRowFilterSql(sql);
+        if (!validation.valid) errors[tableName] = validation.error || '行过滤条件语法错误';
+      }
+      if (Object.keys(errors).length > 0) {
+        setRowFilterErrors(errors);
+        const firstTable = Object.keys(errors)[0];
+        toast.warning(`表「${firstTable}」：${errors[firstTable]}`);
+        return;
+      }
+    }
     setSubmitLoading(true);
     let res: any;
     try {
@@ -394,6 +547,7 @@ const PermissionManageTab: React.FC = () => {
         canExport: tableForm.canExport,
         rowFilterSql: tableForm.rowFilterSql,
         dataMaskingRule: tableForm.dataMaskingRule || undefined,
+        columnPermissions: tableForm.columnPermissions,
         description: tableForm.description,
         roleIds: tableForm.roleIds,
       };
@@ -618,7 +772,16 @@ const PermissionManageTab: React.FC = () => {
                       {row.canExport === 1 && <span className="sys-mgmt__tag sys-mgmt__tag--info" style={{ margin: '1px' }}>导出</span>}
                     </td>
                     <td>{row.roleNames?.map(n => <span key={n} className="sys-mgmt__tag sys-mgmt__tag--warning" style={{ margin: '1px' }}>{n}</span>) || <span style={{ color: '#666' }}>-</span>}</td>
-                    <td>{row.rowFilterSql ? <code className="sys-mgmt__code" style={{ color: '#d1a855' }}>{row.rowFilterSql}</code> : <span style={{ color: '#666' }}>-</span>}</td>
+                    <td>
+                      {row.rowFilterSql && Object.keys(row.rowFilterSql).length > 0
+                        ? Object.entries(row.rowFilterSql).map(([t, sql]) => (
+                            <div key={t} style={{ margin: '2px 0' }}>
+                              <span className="sys-mgmt__tag sys-mgmt__tag--info" style={{ marginRight: 4 }}>{t}</span>
+                              <code className="sys-mgmt__code" style={{ color: '#d1a855' }}>{sql}</code>
+                            </div>
+                          ))
+                        : <span style={{ color: '#666' }}>-</span>}
+                    </td>
                     <td className="sys-mgmt__td-actions">
                       <button className="sys-mgmt__btn-link" onClick={() => handleEditTablePerm(row)}><Edit3 size={12} /> 编辑</button>
                       <button className="sys-mgmt__btn-link sys-mgmt__btn-link--danger" onClick={() => handleDeleteTablePerm(row)}><Trash2 size={12} /> 删除</button>
@@ -775,8 +938,59 @@ const PermissionManageTab: React.FC = () => {
                   <label className="sys-mgmt__checkbox-item"><input type="checkbox" checked={tableForm.canExport === 1} onChange={e => setTableForm(f => ({ ...f, canExport: e.target.checked ? 1 : 0 }))} />导出(Export)</label>
                 </div>
               </div>
-              <div className="sys-mgmt__form-group"><label>权限范围</label><div className="sys-mgmt__radio-group">{Object.entries(SCOPE_MAP).map(([k, v]) => <label key={k} className="sys-mgmt__radio-item"><input type="radio" name="tablePermScope" checked={tableForm.permissionScope === Number(k)} onChange={() => setTableForm(f => ({ ...f, permissionScope: Number(k) }))} />{v}</label>)}</div></div>
-              {(tableForm.permissionScope === 3 || tableForm.permissionScope === 4) && <div className="sys-mgmt__form-group"><label>行过滤SQL</label><textarea className="sys-mgmt__textarea" maxLength={2000} value={tableForm.rowFilterSql || ''} onChange={e => setTableForm(f => ({ ...f, rowFilterSql: e.target.value }))} placeholder="WHERE条件，如：dept_id = 101" rows={2} /></div>}
+              <div className="sys-mgmt__form-group"><label>权限范围</label><div className="sys-mgmt__radio-group">{Object.entries(SCOPE_MAP).map(([k, v]) => <label key={k} className="sys-mgmt__radio-item"><input type="radio" name="tablePermScope" checked={tableForm.permissionScope === Number(k)} onChange={() => {
+                  const scope = Number(k);
+                  setTableForm(f => {
+                    const next = { ...f, permissionScope: scope };
+                    if (scope !== 2 && scope !== 4) next.columnPermissions = {};
+                    if (scope !== 3 && scope !== 4) next.rowFilterSql = {};
+                    return next;
+                  });
+                  if (scope !== 3 && scope !== 4) setRowFilterErrors({});
+                }} />{v}</label>)}</div></div>
+              {(tableForm.permissionScope === 2 || tableForm.permissionScope === 4) && (tableForm.tableNames.length === 0 ? (
+                <div className="sys-mgmt__form-group"><label>选择列 <span className="sys-mgmt__required">*</span></label><div style={{ color: '#888', fontSize: 12 }}>请先在上方选择库表</div></div>
+              ) : (
+                tableForm.tableNames.map(tableName => {
+                  const cols = columnsByTable[tableName] || [];
+                  const hasCols = cols.length > 0;
+                  return (
+                    <div className="sys-mgmt__form-group" key={tableName}><label>表「{tableName}」选择列 <span className="sys-mgmt__required">*</span></label>
+                      <MultiSelect
+                        options={cols.map(c => ({ value: c, label: c }))}
+                        selectedValues={tableForm.columnPermissions[tableName] || []}
+                        onChange={ids => setTableForm(f => ({ ...f, columnPermissions: { ...f.columnPermissions, [tableName]: ids as string[] } }))}
+                        placeholder={columnsLoading ? '列加载中...' : (hasCols ? '请选择列' : '暂无列数据')}
+                      />
+                    </div>
+                  );
+                })
+              ))}
+              {(tableForm.permissionScope === 3 || tableForm.permissionScope === 4) && (tableForm.tableNames.length === 0 ? (
+                <div className="sys-mgmt__form-group"><label>行过滤SQL <span className="sys-mgmt__required">*</span></label><div style={{ color: '#888', fontSize: 12 }}>请先在上方选择库表</div></div>
+              ) : (
+                tableForm.tableNames.map(tableName => {
+                  const sqlValue = tableForm.rowFilterSql[tableName] || '';
+                  const error = rowFilterErrors[tableName];
+                  return (
+                    <div className="sys-mgmt__form-group" key={tableName}><label>表「{tableName}」行过滤SQL <span className="sys-mgmt__required">*</span></label>
+                      <textarea className="sys-mgmt__textarea" maxLength={2000} value={sqlValue} onChange={e => {
+                        setTableForm(f => ({ ...f, rowFilterSql: { ...f.rowFilterSql, [tableName]: e.target.value } }));
+                        if (error) setRowFilterErrors(errs => { const n = { ...errs }; delete n[tableName]; return n; });
+                      }} onBlur={() => {
+                        const v = validateRowFilterSql(sqlValue);
+                        setRowFilterErrors(errs => {
+                          const n = { ...errs };
+                          if (v.valid) delete n[tableName];
+                          else n[tableName] = v.error || '行过滤条件语法错误';
+                          return n;
+                        });
+                      }} placeholder="WHERE条件，如：dept_id = 101" rows={2} />
+                      {error && <div className="sys-mgmt__form-error">{error}</div>}
+                    </div>
+                  );
+                })
+              ))}
               <div className="sys-mgmt__form-group"><label>关联角色</label>
                 <MultiSelect
                   options={roleList.map(r => ({ value: r.id, label: r.roleName, tag: r.roleCode }))}
