@@ -139,6 +139,9 @@
       "uninstallerIcon": "build/icon.ico"
     }
   },
+  "overrides": {
+    "dompurify": "3.4.14"
+  },
   "dependencies": {
     "adm-zip": "^0.6.0",
     "ws": "^8.21.3"
