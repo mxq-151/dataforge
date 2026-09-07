@@ -672,10 +672,6 @@
   cursor: pointer !important;
 }
 
-.react-flow__edge-path {
-  stroke: #555 !important;
-}
-
 .react-flow__controls button {
   background: #2d2d2d !important;
   border-color: #444 !important;

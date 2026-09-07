@@ -40,6 +40,30 @@ function getNodeType(type: NodeType): string {
   }
 }
 
+/** 连线配色：指向同一目标节点的连线（输入到同一下游）共用同一种颜色，不同目标之间颜色明显区分 */
+// 明暗、冷暖交错排列，确保相邻（连续分配）的目标节点颜色差异也足够明显
+const EDGE_COLORS = [
+  '#ff4d4f', // 亮红
+  '#00d2ff', // 亮青
+  '#ffd43b', // 亮黄
+  '#7c5cff', // 亮紫
+  '#34d399', // 亮绿
+  '#ff7ac3', // 亮粉
+  '#ff922b', // 亮橙
+  '#4dabf7', // 蓝
+  '#f9f871', // 荧光黄
+  '#2de0b4', // 青绿
+  '#ff6b6b', // 柔红
+  '#a3e635', // 荧光绿
+];
+
+function buildEdgeColor(groupId: string, paletteCursor: Map<string, number>): string {
+  if (!paletteCursor.has(groupId)) {
+    paletteCursor.set(groupId, paletteCursor.size % EDGE_COLORS.length);
+  }
+  return EDGE_COLORS[paletteCursor.get(groupId)!];
+}
+
 function computeLayout(rawGraph: Lineage['graph']): { nodes: Node[]; edges: Edge[] } {
   // 过滤需要隐藏的中间节点（如以 .adaptive_spark_plan、.deserialize_to_object 结尾），不渲染其关系图
   const graph = rawGraph.filter((n) => !shouldHideNode(n.id));
@@ -131,6 +155,8 @@ function computeLayout(rawGraph: Lineage['graph']): { nodes: Node[]; edges: Edge
 
   const edgeSet = new Set<string>();
   const rfEdges: Edge[] = [];
+  const edgeColorByTarget = new Map<string, string>();
+  const edgeColorCursor = new Map<string, number>();
 
   for (const n of graph) {
     for (const edge of n.outEdges) {
@@ -139,6 +165,13 @@ function computeLayout(rawGraph: Lineage['graph']): { nodes: Node[]; edges: Edge
       const edgeKey = `${sourceId}->${targetId}`;
       if (edgeSet.has(edgeKey)) continue;
       edgeSet.add(edgeKey);
+
+      // 指向同一目标节点（destination）的连线采用同一种颜色，不同目标之间颜色明显区分
+      let color = edgeColorByTarget.get(targetId);
+      if (!color) {
+        color = buildEdgeColor(targetId, edgeColorCursor);
+        edgeColorByTarget.set(targetId, color);
+      }
 
       rfEdges.push({
         id: edgeKey,
@@ -149,9 +182,9 @@ function computeLayout(rawGraph: Lineage['graph']): { nodes: Node[]; edges: Edge
           type: MarkerType.ArrowClosed,
           width: 16,
           height: 16,
-          color: '#555',
+          color,
         },
-        style: { stroke: '#555', strokeWidth: 1.5 },
+        style: { stroke: color, strokeWidth: 1.5 },
       });
     }
   }

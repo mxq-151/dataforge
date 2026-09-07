@@ -97,8 +97,8 @@ const DataLineagePanel: React.FC<DataLineagePanelProps> = ({ marquezApiUrl, jump
     setShowResults(true);
     try {
       const res = await api.search.query(searchQuery.trim(), undefined, undefined, 20, selectedNamespace || undefined);
-      // 过滤节点ID以 .deserialize_to_object 结尾的搜索结果
-      setSearchResults((res.results || []).filter(r => !r.nodeId.endsWith('.deserialize_to_object')));
+      // 过滤需要隐藏的中间节点（如以 .adaptive_spark_plan、.deserialize_to_object 结尾）
+      setSearchResults((res.results || []).filter(r => !shouldHideNode(r.nodeId)));
     } catch (e: any) {
       setSearchResults([]);
     } finally {
