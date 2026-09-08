@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildJarsArg, mapCodeFileToTask, type SavedConfig, reconcileWorkflowDependencies, findDependencyCycle, dependentNodeName, layoutWorkflowByDependency, GRID_START_X, GRID_START_Y, GRID_GAP_X, GRID_GAP_Y, type HeaderDependency } from './schedulerMapping';
+import { buildJarsArg, mapCodeFileToTask, type SavedConfig, reconcileWorkflowDependencies, findDependencyCycle, dependentNodeName, layoutWorkflowByDependency, GRID_START_X, GRID_START_Y, GRID_GAP_X, GRID_GAP_Y, computeVersionedWorkflowName, type HeaderDependency } from './schedulerMapping';
 import type { DSWorkflowTaskNode, DSWorkflowEdge } from '../types/dolphinscheduler';
 
 function mkNode(code: number, name: string, taskType = 'SPARK'): DSWorkflowTaskNode {
@@ -471,5 +471,73 @@ describe('layoutWorkflowByDependency — 前置节点在依赖节点左侧', () 
       expect(n.x).toBe(GRID_START_X);
     }
     expect(Math.abs(nodes[0].y - nodes[1].y)).toBe(GRID_GAP_Y);
+  });
+});
+
+describe('computeVersionedWorkflowName — 工作流名称版本后缀', () => {
+  it('无任何同前缀工作流时默认使用 _v1', () => {
+    expect(computeVersionedWorkflowName('dw_orders', []).name).toBe('dw_orders_v1');
+  });
+
+  it('同前缀工作流存在但均未开启定时调度时，版本号与当前（最高）版本一致', () => {
+    expect(computeVersionedWorkflowName('dw_orders', [{ name: 'dw_orders', hasScheduleOnline: false }]).name).toBe('dw_orders');
+    expect(computeVersionedWorkflowName('dw_orders', [{ name: 'dw_orders_v1', hasScheduleOnline: false }]).name).toBe('dw_orders_v1');
+    expect(computeVersionedWorkflowName('dw_orders', [
+      { name: 'dw_orders', hasScheduleOnline: false },
+      { name: 'dw_orders_v1', hasScheduleOnline: false },
+      { name: 'dw_orders_v3', hasScheduleOnline: false },
+    ]).name).toBe('dw_orders_v3');
+  });
+
+  it('基础名已开启定时调度时生成 _v1', () => {
+    expect(computeVersionedWorkflowName('dw_orders', [
+      { name: 'dw_orders', hasScheduleOnline: true },
+    ]).name).toBe('dw_orders_v1');
+  });
+
+  it('在已开启定时调度的最大版本号上 +1 生成新版本', () => {
+    expect(computeVersionedWorkflowName('dw_orders', [
+      { name: 'dw_orders', hasScheduleOnline: true },
+      { name: 'dw_orders_v1', hasScheduleOnline: false },
+      { name: 'dw_orders_v2', hasScheduleOnline: false },
+    ]).name).toBe('dw_orders_v1');
+    expect(computeVersionedWorkflowName('dw_orders', [
+      { name: 'dw_orders', hasScheduleOnline: false },
+      { name: 'dw_orders_v1', hasScheduleOnline: true },
+      { name: 'dw_orders_v2', hasScheduleOnline: false },
+    ]).name).toBe('dw_orders_v2');
+    expect(computeVersionedWorkflowName('dw_orders', [
+      { name: 'dw_orders', hasScheduleOnline: false },
+      { name: 'dw_orders_v1', hasScheduleOnline: false },
+      { name: 'dw_orders_v2', hasScheduleOnline: true },
+    ]).name).toBe('dw_orders_v3');
+  });
+
+  it('仅未开启定时调度的更高版本存在时，复用该版本，不追高不新增', () => {
+    expect(computeVersionedWorkflowName('dw_orders', [
+      { name: 'dw_orders', hasScheduleOnline: false },
+      { name: 'dw_orders_v1', hasScheduleOnline: false },
+      { name: 'dw_orders_v3', hasScheduleOnline: false },
+    ]).name).toBe('dw_orders_v3');
+  });
+
+  it('忽略非同前缀（同名不同前缀）工作流，无同前缀时默认 _v1', () => {
+    expect(computeVersionedWorkflowName('dw_orders', [
+      { name: 'odw_orders', hasScheduleOnline: true },
+      { name: 'dw_orders_extra', hasScheduleOnline: true },
+    ]).name).toBe('dw_orders_v1');
+  });
+
+  it('版本生成原因（reason）正确区分场景', () => {
+    expect(computeVersionedWorkflowName('dw_orders', []).reason).toBe('first');
+    expect(computeVersionedWorkflowName('dw_orders', [{ name: 'dw_orders', hasScheduleOnline: false }]).reason).toBe('reuse');
+    expect(computeVersionedWorkflowName('dw_orders', [{ name: 'dw_orders', hasScheduleOnline: true }]).reason).toBe('scheduled');
+  });
+
+  it('基础名净化后（含特殊字符目录）也能正确匹配', () => {
+    // 目录名中的括号等非法字符会被 sanitizeDsName 归一化为下划线，与 DS 中已建工作流名一致
+    expect(computeVersionedWorkflowName('dw/orders(2024)', [
+      { name: 'dw_orders_2024', hasScheduleOnline: true },
+    ]).name).toBe('dw_orders_2024_v1');
   });
 });

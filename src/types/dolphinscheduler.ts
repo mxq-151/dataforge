@@ -1006,6 +1006,9 @@ export interface DolphinSchedulerApi {
     queryBaseDir(type: string): Promise<DolphinSchedulerResponse<string>>;
     createDir(data: { type: string; name: string; currentDir: string; description?: string }): Promise<DolphinSchedulerResponse<null>>;
   };
+  schedule: {
+    list(projectCode: number, params: { pageNo: number; pageSize: number; workflowDefinitionCode?: number; searchVal?: string }): Promise<DolphinSchedulerResponse<PageResult<DSSchedule>>>;
+  };
 }
 
 export interface DSDataSource {
@@ -1069,4 +1072,20 @@ export interface DSResourceItem {
   fileName: string;
   description: string;
   size: number;
+}
+
+/** 工作流定时调度（Schedule）记录：用于判断某个工作流是否已开启定时调度 */
+export interface DSSchedule {
+  id: number;
+  workflowDefinitionCode: number;
+  workflowDefinitionName: string;
+  workflowDefinitionReleaseState: string | null;
+  projectCode: number;
+  crontab: string;
+  startTime: string | null;
+  endTime: string | null;
+  timezoneId: string | null;
+  releaseState: ReleaseState | string;
+  createTime: string | null;
+  updateTime: string | null;
 }

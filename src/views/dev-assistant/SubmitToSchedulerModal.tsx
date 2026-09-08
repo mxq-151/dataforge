@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { X, Send, Loader2, FolderKanban, GitBranch, CheckCircle, AlertTriangle, Shield, Database, Info } from 'lucide-react';
-import type { DolphinSchedulerApi, DSProject, DSWorkflowDefinition, DSTaskType, DSDataSource, DSWorkerGroup, DSEnvironment, DSWorkflowTaskNode } from '../../types/dolphinscheduler';
+import type { DolphinSchedulerApi, DSProject, DSWorkflowDefinition, DSTaskType, DSDataSource, DSWorkerGroup, DSEnvironment, DSWorkflowTaskNode, DSSchedule } from '../../types/dolphinscheduler';
 import { TASK_TYPE_LABELS, ReleaseState, Priority, parseReleaseState } from '../../types/dolphinscheduler';
 import type { CodeFileMapping, SavedConfig, ValidationError } from '../../utils/schedulerMapping';
-import { buildWorkflowFromCodeFile, validateSubmission, getAvailableTaskTypes, mapCodeFileToTask, sanitizeDsName, validateYarnJobName, buildDependentTaskNode, buildJarsArg, parseDependencyHeader, reconcileWorkflowDependencies, findDependencyCycle, dependentNodeName, layoutWorkflowByDependency, type ResolvedDependency, type HeaderDependency } from '../../utils/schedulerMapping';
+import { buildWorkflowFromCodeFile, validateSubmission, getAvailableTaskTypes, mapCodeFileToTask, sanitizeDsName, validateYarnJobName, buildDependentTaskNode, buildJarsArg, parseDependencyHeader, reconcileWorkflowDependencies, findDependencyCycle, dependentNodeName, layoutWorkflowByDependency, computeVersionedWorkflowName, type ResolvedDependency, type HeaderDependency, type WorkflowVersionReason } from '../../utils/schedulerMapping';
 import { type CompileResult } from '../../services/compileService';
 import { unifiedCompile } from '../../services/unifiedCompile';
 import { validateFileHeader, parseFileHeader } from '../../utils/index';
@@ -218,6 +218,14 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
   const [taskNameCheck, setTaskNameCheck] = useState<{ exists: boolean; workflowName: string } | null>(null);
   const [isCheckingName, setIsCheckingName] = useState(false);
   const workflowCheckTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** 由文件目录生成的基础工作流名称（未加版本后缀），供版本后缀计算使用 */
+  const baseWorkflowNameRef = useRef('');
+  /** 版本后缀是否已根据「同前缀工作流定时调度状态」决策完成（完成前不触发工作流存在性检查，避免竞态） */
+  const [nameVersionResolved, setNameVersionResolved] = useState(false);
+  /** 工作流名版本后缀的生成原因（用于界面提示区分场景） */
+  const [versionReason, setVersionReason] = useState<WorkflowVersionReason>('none');
+  /** 目标项目列表是否已加载完成（用于项目缺失时放行版本决策，避免按钮一直禁用） */
+  const [projectsLoaded, setProjectsLoaded] = useState(false);
 
   const TASK_TYPE_PARAMS_CONFIG: Record<string, {
     label: string;
@@ -591,6 +599,10 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
       setWorkflowNameCheck(null);
       setTaskNameCheck(null);
       setIsCheckingName(false);
+      baseWorkflowNameRef.current = '';
+      setNameVersionResolved(false);
+      setVersionReason('none');
+      setProjectsLoaded(false);
       if (workflowCheckTimerRef.current) {
         clearTimeout(workflowCheckTimerRef.current);
         workflowCheckTimerRef.current = null;
@@ -601,7 +613,14 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
     if (initialMapping) {
       setSelectedTaskType(initialMapping.taskType);
       // 工作流/任务名称中的斜杠、反斜杠统一替换为下划线，保证 DS 名称合法
-      setWorkflowName(initialMapping.workflowName.replace(/[/\\]/g, '_'));
+      const baseWorkflowName = initialMapping.workflowName.replace(/[/\\]/g, '_');
+      // 仅在基础名称发生变化时才重置工作流名，避免内容编辑（mapping 重算）把已加的版本后缀覆盖回基础名
+      if (baseWorkflowName !== baseWorkflowNameRef.current) {
+        baseWorkflowNameRef.current = baseWorkflowName;
+        setNameVersionResolved(false);
+        setVersionReason('none');
+        setWorkflowName(baseWorkflowName);
+      }
       setTaskName(initialMapping.taskName.replace(/[/\\]/g, '_') || fileName.replace(/\.[^.]+$/, ''));
       setWorkflowDesc(initialMapping.description);
     }
@@ -627,6 +646,8 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
         }
       } catch {
         setProjects([]);
+      } finally {
+        setProjectsLoaded(true);
       }
     };
 
@@ -778,6 +799,72 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
       setTaskNameCheck(null);
     }
   }, [dsApi, selectedProjectCode]);
+
+  /**
+   * 计算带版本后缀的工作流名称：拉取同前缀工作流（{prefix} 或 {prefix}_v{N}），
+   * 逐工作流查询其定时调度（Schedule），根据规则生成版本名：
+   * - 无同前缀工作流 → 默认 {prefix}_v1；
+   * - 存在同前缀工作流但均未定时调度 → 版本号与当前（最高）版本一致；
+   * - 存在已开启（ONLINE）定时调度的工作流 → 在已开启定时调度的最大版本号上 +1。
+   * 任何查询失败均回退为基础名称（保持原有行为），不阻断提交。
+   */
+  const resolveVersionedWorkflowName = useCallback(async (projectCodeNum: number, baseName: string): Promise<{ name: string; reason: WorkflowVersionReason }> => {
+    if (!dsApi || !baseName.trim()) return { name: baseName, reason: 'none' };
+    const prefix = sanitizeDsName(baseName);
+    if (!prefix) return { name: baseName, reason: 'none' };
+
+    let defs: DSWorkflowDefinition[] = [];
+    try {
+      const res = await dsApi.workflowDefinition.list(projectCodeNum, { pageNo: 1, pageSize: 100, searchVal: prefix });
+      if (res.code === 0 && res.data?.totalList) {
+        defs = res.data.totalList;
+      }
+    } catch {
+      return { name: baseName, reason: 'none' };
+    }
+
+    const candidates: { name: string; hasScheduleOnline: boolean }[] = [];
+    for (const def of defs) {
+      let hasScheduleOnline = false;
+      try {
+        const schedRes = await dsApi.schedule.list(projectCodeNum, { pageNo: 1, pageSize: 100, workflowDefinitionCode: def.code });
+        if (schedRes.code === 0 && schedRes.data?.totalList) {
+          hasScheduleOnline = schedRes.data.totalList.some(
+            (s: DSSchedule) => parseReleaseState(s.releaseState) === ReleaseState.ONLINE,
+          );
+        }
+      } catch { /* 单次查询失败按「未开启定时调度」处理 */ }
+      candidates.push({ name: def.name, hasScheduleOnline });
+    }
+
+    return computeVersionedWorkflowName(prefix, candidates);
+  }, [dsApi]);
+
+  // 工作流名版本后缀决策：仅在「新提交（未命中已存在工作流）且尚未决策」时执行一次；
+  // 决策完成后才允许工作流存在性检查运行，避免版本后缀与存在性检查之间产生竞态
+  useEffect(() => {
+    if (!visible || !dsApi || selectedWorkflowCode || nameVersionResolved) return;
+    // 目标项目不可用（项目未匹配/列表为空）或基础名为空时直接放行，
+    // 交由校验流程提示项目缺失/名称缺失，避免按钮一直禁用
+    if (!selectedProjectCode || !baseWorkflowNameRef.current.trim()) {
+      if (projectsLoaded) setNameVersionResolved(true);
+      return;
+    }
+    const prefix = baseWorkflowNameRef.current;
+
+    let cancelled = false;
+    (async () => {
+      const { name: resolved, reason } = await resolveVersionedWorkflowName(selectedProjectCode, prefix);
+      if (cancelled) return;
+      setNameVersionResolved(true);
+      setVersionReason(reason);
+      setWorkflowName(resolved);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [visible, selectedProjectCode, dsApi, selectedWorkflowCode, nameVersionResolved, resolveVersionedWorkflowName, projectsLoaded]);
 
   /**
    * 扫描指定项目集合中的全部工作流任务节点，建立 taskName(净化后) -> { 项目code, 工作流code, 任务code } 索引
@@ -941,7 +1028,9 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
       clearTimeout(workflowCheckTimerRef.current);
     }
 
-    if (!selectedWorkflowCode && workflowName.trim() && selectedProjectCode) {
+    // 版本后缀决策完成前不检查工作流存在性，避免基础名命中后把提交导向「更新旧工作流」，
+    // 从而覆盖掉即将生成的版本后缀工作流名
+    if (!selectedWorkflowCode && workflowName.trim() && selectedProjectCode && nameVersionResolved) {
       workflowCheckTimerRef.current = setTimeout(() => {
         checkWorkflowNameExists(workflowName, selectedProjectCode);
       }, 500);
@@ -954,7 +1043,7 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
         clearTimeout(workflowCheckTimerRef.current);
       }
     };
-  }, [workflowName, selectedProjectCode, selectedWorkflowCode, checkWorkflowNameExists]);
+  }, [workflowName, selectedProjectCode, selectedWorkflowCode, checkWorkflowNameExists, nameVersionResolved]);
 
   useEffect(() => {
     if (selectedWorkflowCode && currentMapping?.taskName) {
@@ -1447,6 +1536,8 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
       } else {
         // 工作流 description 不应填写任务描述（description 是任务属性，非工作流属性），保持为空
         const workflowData = buildWorkflowFromCodeFile(mappingWithDatasource, '');
+        // 工作流名称使用版本后缀决策后的最终名称（可能为 {prefix}_v{N}），而非 mapping 中的基础名
+        workflowData.name = sanitizeDsName(workflowName) || workflowData.name;
 
         // 根据代码头 @依赖 配置前置任务依赖：新建工作流内只有主任务，@依赖 均为跨工作流依赖，
         // 为主任务创建专属 DEPENDENT 前置节点（前置依赖_{任务名}），不再使用共享节点。
@@ -1509,7 +1600,7 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
     }
   }, [
     effectiveMapping, selectedProjectCode, selectedWorkflowCode,
-    projects, workflowDesc, autoTrigger, dsApi, onSuccess,
+    projects, workflowDesc, workflowName, autoTrigger, dsApi, onSuccess,
     compiledJarPath, needsDatasource, selectedDatasourceId, dsDataSources,
     selectedWorkerGroup, selectedEnvironmentCode, openlineageTransportUrl, projectCode,
     currentMapping, scanHeaderDependencyTasks, persistRememberNow,
@@ -1748,7 +1839,12 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
                 <div className="submit-scheduler__field">
                   <div className="submit-scheduler__field-row">
                     <label className="submit-scheduler__label">工作流名称</label>
-                    {isCheckingName ? (
+                    {!nameVersionResolved && workflowName.trim() && !selectedWorkflowCode ? (
+                      <div className="submit-scheduler__name-check-hint submit-scheduler__name-check-hint--loading">
+                        <Loader2 size={12} className="submit-scheduler__spin" />
+                        <span>正在检测同前缀工作流定时调度状态...</span>
+                      </div>
+                    ) : isCheckingName ? (
                       <div className="submit-scheduler__name-check-hint submit-scheduler__name-check-hint--loading">
                         <Loader2 size={12} className="submit-scheduler__spin" />
                         <span>正在检查工作流名称...</span>
@@ -1766,6 +1862,24 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
                     ) : null}
                   </div>
                   <input className="submit-scheduler__input" value={workflowName} readOnly disabled placeholder="由文件目录自动生成" />
+                  {nameVersionResolved && versionReason === 'scheduled' && (
+                    <div className="submit-scheduler__name-check-hint submit-scheduler__name-check-hint--info" style={{ marginTop: 8 }}>
+                      <Info size={12} />
+                      <span>检测到同前缀工作流已开启定时调度，本次提交自动生成新版本「{workflowName}」，避免覆盖已定时调度的版本</span>
+                    </div>
+                  )}
+                  {nameVersionResolved && versionReason === 'first' && (
+                    <div className="submit-scheduler__name-check-hint submit-scheduler__name-check-hint--info" style={{ marginTop: 8 }}>
+                      <Info size={12} />
+                      <span>未检测到同前缀工作流，本次提交自动创建版本「{workflowName}」</span>
+                    </div>
+                  )}
+                  {nameVersionResolved && versionReason === 'reuse' && workflowName !== baseWorkflowNameRef.current && (
+                    <div className="submit-scheduler__name-check-hint submit-scheduler__name-check-hint--info" style={{ marginTop: 8 }}>
+                      <Info size={12} />
+                      <span>检测到同前缀工作流未开启定时调度，沿用当前版本「{workflowName}」</span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="submit-scheduler__field">
@@ -1949,6 +2063,7 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
             </button>
             <button
               className="submit-scheduler__validate-btn"
+              disabled={!nameVersionResolved}
               onMouseDown={(e) => {
                 e.preventDefault();
                 handleValidate();
@@ -1959,7 +2074,7 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
             </button>
             <button
               className="submit-scheduler__submit-btn"
-              disabled={!validationPassed}
+              disabled={!validationPassed || !nameVersionResolved}
               onMouseDown={(e) => {
                 e.preventDefault();
                 handleSubmit();

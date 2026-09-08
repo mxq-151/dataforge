@@ -638,6 +638,15 @@ export function createRealDolphinSchedulerApi(apiUrl: string, token: string): Do
         }
       },
     },
+
+    schedule: {
+      list(projectCode, params) {
+        return dsRequest(`/projects/${projectCode}/schedules`, {
+          method: 'GET',
+          params: toQueryParams(params as Record<string, unknown>),
+        });
+      },
+    },
   };
 }
 
