@@ -42,6 +42,17 @@ export interface SysRoleVO {
   updateTime?: string;
 }
 
+/**
+ * 登录用户信息中的项目权限项（后端 /system/auth/info 返回，已按用户多角色取最大权限类型）。
+ * 权限类型与系统管理「项目权限」一致：1=读取、2=编辑、3=删除。
+ */
+export interface ProjectPermissionInfo {
+  /** 项目编码（开发项目编码，与调度项目名称一致） */
+  projectCode: string;
+  permissionType: number;
+  permissionTypeName?: string;
+}
+
 export interface CurrentUserInfo {
   id: number;
   username: string;
@@ -51,7 +62,8 @@ export interface CurrentUserInfo {
   avatar?: string;
   roles: SysRoleVO[];
   menuTags: string[];
-  projectCodes: string[];
+  /** 当前用户有权限的项目列表（含权限类型），不再是无权限信息的纯编码数组 */
+  projectCodes: ProjectPermissionInfo[];
   tenantId?: number;
   tenantName?: string;
 }

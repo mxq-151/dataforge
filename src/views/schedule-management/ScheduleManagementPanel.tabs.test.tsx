@@ -59,6 +59,40 @@ vi.mock('../../contexts/DolphinSchedulerContext', () => ({
   DolphinSchedulerProvider: ({ children }: any) => children,
 }));
 
+// 当前登录用户（默认超管，保证既有用例的删除/编辑按钮可用）
+const auth = vi.hoisted(() => {
+  let user: any = null;
+  return {
+    __setUser: (u: any) => { user = u; },
+    useAuth: () => ({
+      user,
+      authenticated: !!user,
+      loading: false,
+      login: vi.fn(),
+      logout: vi.fn(),
+      switchRole: vi.fn(),
+    }),
+  };
+});
+
+vi.mock('../../contexts/AuthContext', () => ({
+  useAuth: () => auth.useAuth(),
+}));
+
+const makeUser = (isSuperAdmin: boolean, projectCodes: { projectCode: string; permissionType: number }[] = []) => ({
+  id: isSuperAdmin ? 1 : 2,
+  username: isSuperAdmin ? 'admin' : 'test',
+  realName: isSuperAdmin ? '管理员' : '测试用户',
+  roles: isSuperAdmin
+    ? [{ id: 1, roleCode: 'SUPER_ADMIN', roleName: '超级管理员' }]
+    : [{ id: 2, roleCode: 'DATA_DEV_ENGINEER', roleName: '数据开发工程师' }],
+  roleIds: isSuperAdmin ? [1] : [2],
+  menuTags: [],
+  projectCodes,
+  isSuperAdmin,
+  currentRoleId: isSuperAdmin ? 1 : 2,
+});
+
 const makeProject = (code: number, name: string) => ({
   id: code,
   code,
@@ -95,6 +129,7 @@ const enterProject = (c: HTMLElement, name: string) => {
 
 beforeEach(() => {
   h.setProjects([P1, P2]);
+  auth.__setUser(makeUser(true));
   vi.clearAllMocks();
 });
 
@@ -216,6 +251,24 @@ describe('调度管理多标签页', () => {
     await waitFor(() => expect(h.api.project.delete).toHaveBeenCalledWith(1001));
     // 被删项目的标签页回到入口，另一个标签页保持在项目列表
     await waitFor(() => expect(tabLabels(container)).toEqual(['项目列表', '项目列表']));
+  });
+
+  it('非超管且仅拥有「可编辑」权限时，删除按钮禁用且不会调用删除接口', async () => {
+    // 调度项目名称「广告数仓」对应开发项目编码，登录信息里该用户权限为「可编辑」(2) <「可删除」(3)
+    auth.__setUser(makeUser(false, [{ projectCode: '广告数仓', permissionType: 2 }]));
+
+    const { container } = render(<ScheduleManagementPanel />);
+    await waitFor(() => expect(screen.getByText('广告数仓')).toBeTruthy());
+
+    const row = within(activePage(container)).getByText('广告数仓').closest('tr') as HTMLElement;
+    // 删除按钮为禁用态（标题为「无删除权限」）
+    const deleteBtn = within(row).getByTitle('无删除权限') as HTMLButtonElement;
+    expect(deleteBtn.disabled).toBe(true);
+    // 编辑按钮仍可用（可编辑权限满足）
+    expect((within(row).getByTitle('编辑') as HTMLButtonElement).disabled).toBe(false);
+
+    click(deleteBtn);
+    expect(h.api.project.delete).not.toHaveBeenCalled();
   });
 
   it('搜索框输入不立即请求，回车或点搜索按钮才生效', async () => {

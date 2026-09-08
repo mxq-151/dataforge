@@ -1,5 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { FolderKanban, Play, Edit3, Trash2, Plus, RefreshCw } from 'lucide-react';
+import { useAuth } from '../../../contexts/AuthContext';
+import {
+  PROJECT_PERM_EDIT,
+  PROJECT_PERM_DELETE,
+} from '../../../hooks/useProjectPermissions';
 import type { DSProject, DolphinSchedulerApi } from '../../../types/dolphinscheduler';
 import {
   PAGE_SIZE,
@@ -23,6 +28,11 @@ export interface ProjectListViewProps {
   api: DolphinSchedulerApi;
   /** 任一标签页对项目做了增删改后递增，让所有标签页的列表一起刷新，避免看到脏数据 */
   refreshToken: number;
+  /**
+   * 当前用户对各调度项目的最大权限类型，key 为项目名称（= 开发项目编码）。
+   * null 表示权限数据仍在加载；加载期间非超管一律按「无编辑/删除权限」处理。
+   */
+  permissionByCode: ReadonlyMap<string, number> | null;
   onEnterProject: (project: DSProject) => void;
   onProjectsChanged: () => void;
   onProjectRenamed: (project: DSProject) => void;
@@ -32,11 +42,13 @@ export interface ProjectListViewProps {
 const ProjectListView: React.FC<ProjectListViewProps> = ({
   api,
   refreshToken,
+  permissionByCode,
   onEnterProject,
   onProjectsChanged,
   onProjectRenamed,
   onProjectDeleted,
 }) => {
+  const { user } = useAuth();
   const [projects, setProjects] = useState<DSProject[]>([]);
   const [projectsTotal, setProjectsTotal] = useState(0);
   const [projectsPage, setProjectsPage] = useState(1);
@@ -77,6 +89,14 @@ const ProjectListView: React.FC<ProjectListViewProps> = ({
   useEffect(() => {
     fetchProjects();
   }, [fetchProjects, refreshToken]);
+
+  /** 是否可编辑项目：超管放行，否则需拥有「可编辑」及以上权限（按项目名称匹配权限映射） */
+  const canEditProject = (project: DSProject) =>
+    !!user?.isSuperAdmin || (permissionByCode?.get(project.name) ?? 0) >= PROJECT_PERM_EDIT;
+
+  /** 是否可删除项目：超管放行，否则需拥有「可删除」权限 */
+  const canDeleteProject = (project: DSProject) =>
+    !!user?.isSuperAdmin || (permissionByCode?.get(project.name) ?? 0) >= PROJECT_PERM_DELETE;
 
   /** 回车触发搜索：回到第一页并让搜索词生效 */
   const handleSearch = () => {
@@ -119,6 +139,10 @@ const ProjectListView: React.FC<ProjectListViewProps> = ({
   };
 
   const handleEditProject = (project: DSProject) => {
+    if (!canEditProject(project)) {
+      setError('当前用户没有编辑该项目的权限');
+      return;
+    }
     setInputModal({
       title: '编辑项目',
       fields: [
@@ -149,6 +173,10 @@ const ProjectListView: React.FC<ProjectListViewProps> = ({
   };
 
   const handleDeleteProject = (project: DSProject) => {
+    if (!canDeleteProject(project)) {
+      setError('当前用户没有删除该项目的权限');
+      return;
+    }
     setConfirmModal({
       message: `确定要删除项目「${project.name}」吗？此操作不可恢复。`,
       onConfirm: async () => {
@@ -230,10 +258,20 @@ const ProjectListView: React.FC<ProjectListViewProps> = ({
                       <button className="sm-btn sm-btn--ghost sm-btn--xs" onClick={() => onEnterProject(p)} title="进入项目">
                         <Play size={12} />
                       </button>
-                      <button className="sm-btn sm-btn--ghost sm-btn--xs" onClick={() => handleEditProject(p)} title="编辑">
+                      <button
+                        className="sm-btn sm-btn--ghost sm-btn--xs"
+                        onClick={() => handleEditProject(p)}
+                        title={canEditProject(p) ? '编辑' : '无编辑权限'}
+                        disabled={!canEditProject(p)}
+                      >
                         <Edit3 size={12} />
                       </button>
-                      <button className="sm-btn sm-btn--danger sm-btn--xs" onClick={() => handleDeleteProject(p)} title="删除">
+                      <button
+                        className="sm-btn sm-btn--danger sm-btn--xs"
+                        onClick={() => handleDeleteProject(p)}
+                        title={canDeleteProject(p) ? '删除' : '无删除权限'}
+                        disabled={!canDeleteProject(p)}
+                      >
                         <Trash2 size={12} />
                       </button>
                     </td>

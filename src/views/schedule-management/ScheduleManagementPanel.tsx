@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Plus, X, FolderKanban, GitBranch, AlertTriangle } from 'lucide-react';
 import { useDolphinSchedulerApi } from '../../contexts/DolphinSchedulerContext';
+import { useProjectPermissions } from '../../hooks/useProjectPermissions';
 import type {
   DolphinSchedulerApi,
   DSProject, DSEnvironment, DSAlertGroup,
@@ -38,7 +39,11 @@ interface TabContextMenuState {
   tabId: string;
 }
 
-const ScheduleManagementPanelInner: React.FC<{ api: DolphinSchedulerApi }> = ({ api }) => {
+const ScheduleManagementPanelInner: React.FC<{
+  api: DolphinSchedulerApi;
+  /** 当前用户对各调度项目（按项目名称=开发项目编码匹配）的最大权限类型映射，null 表示加载中 */
+  permissionByCode: ReadonlyMap<string, number> | null;
+}> = ({ api, permissionByCode }) => {
   const [tabs, setTabs] = useState<ScheduleTab[]>(createInitialTabs);
   const [activeTabId, setActiveTabId] = useState<string>(() => tabs[0].id);
 
@@ -269,6 +274,7 @@ const ScheduleManagementPanelInner: React.FC<{ api: DolphinSchedulerApi }> = ({ 
                   key={tab.id}
                   api={api}
                   refreshToken={projectListRefreshToken}
+                  permissionByCode={permissionByCode}
                   onEnterProject={p => handleEnterProject(tab.id, p)}
                   onProjectsChanged={handleProjectsChanged}
                   onProjectRenamed={handleProjectRenamed}
@@ -285,6 +291,7 @@ const ScheduleManagementPanelInner: React.FC<{ api: DolphinSchedulerApi }> = ({ 
 
 const ScheduleManagementPanel: React.FC = () => {
   const { api } = useDolphinSchedulerApi();
+  const { permissionByCode } = useProjectPermissions();
 
   if (!api) {
     return (
@@ -298,7 +305,7 @@ const ScheduleManagementPanel: React.FC = () => {
     );
   }
 
-  return <ScheduleManagementPanelInner api={api} />;
+  return <ScheduleManagementPanelInner api={api} permissionByCode={permissionByCode} />;
 };
 
 export default ScheduleManagementPanel;

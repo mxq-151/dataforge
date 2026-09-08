@@ -69,7 +69,9 @@ const ProjectList: React.FC<ProjectListProps> = ({ onSelectProject }) => {
   const visibleProjects = useMemo(() => {
     if (user?.isSuperAdmin) return projects;
     if (!user?.projectCodes || user.projectCodes.length === 0) return [];
-    return projects.filter(project => user.projectCodes!.includes(project.projectCode));
+    return projects.filter(project =>
+      user.projectCodes!.some(pc => pc.projectCode === project.projectCode)
+    );
   }, [projects, user?.isSuperAdmin, user?.projectCodes]);
 
   const handleSearch = useCallback(() => {

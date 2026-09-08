@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { Store } from '../bridge/store';
-import { systemUserApi, CurrentUserInfo, SysRoleVO } from '../api/systemUser';
+import { systemUserApi, CurrentUserInfo, SysRoleVO, ProjectPermissionInfo } from '../api/systemUser';
 import { getAuthToken, setAuthToken, setApiHost } from '../api/index';
 import { FIRST_LEVEL_MENU_CODES } from '../types';
 import {
@@ -81,8 +81,7 @@ function getMenuTagsWithDefault(info: CurrentUserInfo | null): string[] {
   return info?.menuTags ?? [];
 }
 
-function getProjectCodesWithDefault(info: CurrentUserInfo | null, allProjectCodes?: string[]): string[] {
-  if (isSuperAdmin(info)) return allProjectCodes ?? [];
+function getProjectCodesWithDefault(info: CurrentUserInfo | null): ProjectPermissionInfo[] {
   return info?.projectCodes ?? [];
 }
 
@@ -96,14 +95,15 @@ export interface AuthUser {
   roles: SysRoleVO[];
   roleIds: number[];
   menuTags: string[];
-  projectCodes: string[];
+  /** 当前用户有权限的项目（含权限类型），超管也可能为空（后端不返回，由各模块对超管放行） */
+  projectCodes: ProjectPermissionInfo[];
   tenantId?: number;
   tenantName?: string;
   isSuperAdmin: boolean;
   currentRoleId: number | null;
 }
 
-function toAuthUser(info: CurrentUserInfo, allProjectCodes?: string[]): AuthUser {
+function toAuthUser(info: CurrentUserInfo): AuthUser {
   const superAdmin = isSuperAdmin(info);
   const menuTags = getMenuTagsWithDefault(info);
   return {
@@ -116,7 +116,7 @@ function toAuthUser(info: CurrentUserInfo, allProjectCodes?: string[]): AuthUser
     roles: info.roles,
     roleIds: info.roles.map(r => r.id),
     menuTags,
-    projectCodes: getProjectCodesWithDefault(info, allProjectCodes),
+    projectCodes: getProjectCodesWithDefault(info),
     tenantId: info.tenantId,
     tenantName: info.tenantName,
     isSuperAdmin: superAdmin,
