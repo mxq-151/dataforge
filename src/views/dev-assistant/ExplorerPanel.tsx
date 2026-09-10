@@ -23,10 +23,12 @@ import {
   Copy,
   History,
   Undo2,
+  Sliders,
 } from 'lucide-react';
 import { Explorer } from 'react-file-navigator';
 import type { Tree, TreeNode, IconMap, ExplorerConfig } from 'react-file-navigator';
 import GitModal from './GitModal';
+import ConfigParamsModal from '../../components/editor/ConfigParamsModal';
 import { FileNode } from '../../types';
 import { useToast } from '../../components/Toast';
 import './ExplorerPanel.css';
@@ -78,6 +80,56 @@ const collectAllPaths = (nodes: FileNode[]): string[] => {
   return result;
 };
 
+/** 代码文件扩展名集合：批量配置参数只对这些文件生效 */
+const CODE_FILE_EXTENSIONS = new Set(['scala', 'sql', 'java', 'py']);
+
+const isCodeFilePath = (filePath: string): boolean =>
+  CODE_FILE_EXTENSIONS.has(filePath.split('.').pop()?.toLowerCase() || '');
+
+/** 在 FileNode 树中按路径查找节点 */
+const findFileNodeByPath = (nodes: FileNode[], path: string): FileNode | null => {
+  for (const node of nodes) {
+    if (node.path === path) return node;
+    if (node.children) {
+      const found = findFileNodeByPath(node.children, path);
+      if (found) return found;
+    }
+  }
+  return null;
+};
+
+/**
+ * 递归收集某个 FileNode 子树下的全部代码文件路径。
+ *
+ * 注意递归的是 fileTree（useFileSystem.buildFileTree 一次性构建的完整树），
+ * 而不是右键拿到的 TreeNode —— 后者虽然也带 children，但语义属于渲染层，
+ * 这里以数据源为准更稳妥，且折叠状态不影响结果。
+ */
+const collectCodeFilesUnder = (node: FileNode, out: string[]) => {
+  if (node.type === 'file') {
+    if (isCodeFilePath(node.path)) out.push(node.path);
+    return;
+  }
+  node.children?.forEach(child => collectCodeFilesUnder(child, out));
+};
+
+/**
+ * 把右键目标折算成「待统一配置参数的代码文件」列表：递归计入每个文件夹下的全部代码文件，
+ * 多选时合并去重。
+ *
+ * 只处理文件夹：本功能的语义是「为某个文件夹下的所有代码文件配置相同参数」，
+ * 单个代码文件不提供该菜单项（见调用处的 canConfigureParams 判定）。
+ */
+const resolveConfigTargetFiles = (targets: TreeNode[], fileTree: FileNode[]): string[] => {
+  const result: string[] = [];
+  for (const target of targets) {
+    if (target.type !== 'Folder') continue;
+    const folderNode = findFileNodeByPath(fileTree, target.filePath);
+    if (folderNode) collectCodeFilesUnder(folderNode, result);
+  }
+  return Array.from(new Set(result));
+};
+
 interface ExplorerPanelProps {
   fileTree: FileNode[];
   rootPath: string | null;
@@ -99,6 +151,23 @@ interface ExplorerPanelProps {
   onRevertFile?: (filePath: string) => void;
   /** 判断文件是否有未提交变更（用于是否置灰「撤销文件变更」） */
   onCheckFileChanged?: (filePath: string) => Promise<boolean>;
+  /**
+   * 右键「配置参数」所需：项目 ID（配置按 (projectId, filePath) 落库）与弹窗只读展示项。
+   * 未提供 projectId 时该菜单项置灰（无项目上下文无法落库）。
+   */
+  projectId?: number;
+  /** 项目编码：弹窗内血缘命名空间的只读展示值 */
+  projectCode?: string;
+  /** 全局 OpenLineage Transport URL（来自设置页）：弹窗内血缘只读展示值 */
+  openlineageTransportUrl?: string;
+  /** 读取文件内容：批量配置参数时按各文件代码头解析引擎 */
+  readFileContent?: (filePath: string) => Promise<string>;
+  /** 批量配置参数保存成功后的回调（逐文件触发），供父组件按路径刷新内存态配置 */
+  onSaveConfigParams?: (filePath: string, data: {
+    dependencies: { id: string; name: string; version: string; source?: string; jarPath?: string; groupId?: string; scope?: string; autoChoose?: number | null; basePath?: string }[];
+    programParams: { id: string; key: string; value: string }[];
+    taskParams: { id: string; key: string; value: string }[];
+  }) => void;
   onAISummarize?: (files: string[], diffs: string) => Promise<string>;
   onBeforeCommit?: () => { valid: boolean; message: string | null };
   /** Git 模态框撤销变更成功后的回调，入参为受影响文件的绝对路径 */
@@ -230,6 +299,11 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
   onShowHistory,
   onRevertFile,
   onCheckFileChanged,
+  projectId,
+  projectCode,
+  openlineageTransportUrl,
+  readFileContent,
+  onSaveConfigParams,
   onAISummarize,
   onBeforeCommit,
   onDiscarded,
@@ -281,6 +355,11 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
   const renameInputRef = React.useRef<HTMLInputElement>(null);
 
   const [gitModalVisible, setGitModalVisible] = useState(false);
+
+  // 配置参数弹窗（批量）：targets 为本次要统一配置的代码文件绝对路径。
+  // 弹窗只在 visible 时才挂载，关闭即清空目标，避免下次打开残留上一批文件
+  const [configParamsTargets, setConfigParamsTargets] = useState<string[]>([]);
+  const [configParamsVisible, setConfigParamsVisible] = useState(false);
 
   // 移动对话框状态（支持批量：多选时一次移动多个节点）
   const [moveTargets, setMoveTargets] = useState<TreeNode[]>([]);
@@ -767,6 +846,23 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
     return [node];
   }, [contextMenu, selectedPaths, tree]);
 
+  // 右键「配置参数」的目标代码文件：递归取每个所选文件夹下的全部代码文件并去重
+  const configTargetFiles = useMemo(
+    () => resolveConfigTargetFiles(contextTargets, fileTree),
+    [contextTargets, fileTree]
+  );
+
+  /**
+   * 「配置参数」菜单项的可见性：**只有右键目标全部是文件夹时**才出现。
+   *
+   * 该功能的作用域是文件夹（为其下所有代码文件下发同一份参数），
+   * 单个代码文件/空白处右键/文件夹与文件混选都不显示这一项。
+   */
+  const canConfigureParams = useMemo(
+    () => contextTargets.length > 0 && contextTargets.every(t => t.type === 'Folder'),
+    [contextTargets]
+  );
+
   // 右键菜单：新建文件/新建文件夹的目标父目录
   const getContextCreateParent = useCallback((): string | null => {
     if (!contextMenu || !rootPath) return null;
@@ -847,6 +943,20 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
     setContextMenu(null);
     onRevertFile(contextTargets[0].filePath);
   }, [contextTargets, onRevertFile]);
+
+  // 右键菜单：配置参数（仅文件夹）。
+  // 作用于所选文件夹下的全部代码文件，每个文件最终拿到相同参数。
+  const handleConfigureParamsFromContext = useCallback(() => {
+    if (configTargetFiles.length === 0) return;
+    setContextMenu(null);
+    setConfigParamsTargets(configTargetFiles);
+    setConfigParamsVisible(true);
+  }, [configTargetFiles]);
+
+  const handleCloseConfigParams = useCallback(() => {
+    setConfigParamsVisible(false);
+    setConfigParamsTargets([]);
+  }, []);
 
   // 重命名：提交
   const handleRenameSubmit = useCallback(async () => {
@@ -1253,6 +1363,23 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
         }}
       />
 
+      {/* 配置参数（批量）：文件夹右键时把同一份参数写入其下全部代码文件 */}
+      {configParamsVisible && configParamsTargets.length > 0 && (
+        <ConfigParamsModal
+          visible
+          onClose={handleCloseConfigParams}
+          rootPath={rootPath || undefined}
+          projectId={projectId}
+          projectCode={projectCode}
+          openlineageTransportUrl={openlineageTransportUrl}
+          targetPaths={configParamsTargets}
+          readFileContent={readFileContent}
+          onSave={(data, filePath) => {
+            if (filePath) onSaveConfigParams?.(filePath, data);
+          }}
+        />
+      )}
+
       {deleteConfirm.visible && deleteConfirm.nodes.length > 0 && (() => {
         const nodes = deleteConfirm.nodes;
         const single = nodes.length === 1 ? nodes[0] : null;
@@ -1362,6 +1489,30 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
             <Copy size={14} />
             <span>复制到 ...{contextTargets.length > 1 ? ` (${contextTargets.length})` : ''}</span>
           </button>
+          {/* 配置参数：只对文件夹显示（含分隔线一起隐藏，避免出现连续分隔线） */}
+          {canConfigureParams && (
+            <>
+              <div className="explorer-panel__context-menu-divider" />
+              <button
+                className="explorer-panel__context-menu-item"
+                onClick={handleConfigureParamsFromContext}
+                disabled={!projectId || configTargetFiles.length === 0}
+                title={
+                  !projectId
+                    ? '缺少项目上下文，无法配置参数'
+                    : configTargetFiles.length === 0
+                      ? '该节点下没有可配置参数的代码文件（仅支持 Scala / SQL / Java / Python）'
+                      : `为 ${configTargetFiles.length} 个代码文件配置相同参数`
+                }
+              >
+                <Sliders size={14} />
+                <span>
+                  配置参数
+                  {configTargetFiles.length > 1 ? ` (${configTargetFiles.length})` : ''}
+                </span>
+              </button>
+            </>
+          )}
           <div className="explorer-panel__context-menu-divider" />
           {contextTargets.length === 1 && contextTargets[0].type === 'File' && (
             <button

@@ -125,6 +125,121 @@
   min-height: 200px;
 }
 
+/* ===== 批量模式（文件夹右键「配置参数」） ===== */
+
+.config-params__batch-badge {
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+  padding: 4px 8px;
+  border-radius: 10px;
+  color: #4EC9B0;
+  background-color: rgba(78, 201, 176, 0.14);
+  border: 1px solid rgba(78, 201, 176, 0.35);
+  white-space: nowrap;
+}
+
+.config-params__batch-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+  border-radius: 6px;
+  background-color: rgba(78, 201, 176, 0.08);
+  border: 1px solid rgba(78, 201, 176, 0.3);
+  font-size: 12px;
+  line-height: 1.6;
+  color: #b8b8b8;
+}
+
+.config-params__batch-hint > svg {
+  color: #4EC9B0;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.config-params__batch-hint-text {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.config-params__batch-hint-text strong {
+  color: #4EC9B0;
+  font-weight: 600;
+}
+
+.config-params__batch-file-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.config-params__batch-select-all,
+.config-params__batch-file-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  cursor: pointer;
+  user-select: none;
+}
+
+.config-params__batch-select-all {
+  color: #cccccc;
+}
+
+.config-params__batch-select-all span {
+  font-weight: 500;
+}
+
+.config-params__batch-select-all input,
+.config-params__batch-file-item input {
+  flex-shrink: 0;
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  accent-color: #4EC9B0;
+  cursor: pointer;
+}
+
+.config-params__batch-file-list {
+  margin: 0;
+  padding: 6px 8px;
+  max-height: 160px;
+  overflow-y: auto;
+  list-style: none;
+  border-radius: 4px;
+  background-color: rgba(0, 0, 0, 0.25);
+}
+
+.config-params__batch-file-list li {
+  min-width: 0;
+}
+
+/* 展示的是「项目编码 + 项目目录相对路径」，路径过长时省略，悬停可看完整路径 */
+.config-params__batch-file-item span {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.7;
+  color: #9d9d9d;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.config-params__batch-file-item:hover span {
+  color: #cccccc;
+}
+
+.config-params__batch-file-item input:not(:checked) ~ span {
+  color: #6a6a6a;
+  text-decoration: line-through;
+}
+
 .config-params__body::-webkit-scrollbar {
   width: 6px;
 }

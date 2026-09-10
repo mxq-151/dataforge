@@ -156,6 +156,9 @@ const EditorArea = forwardRef<EditorAreaHandle, EditorAreaProps>(({
   activeTabIdRef.current = activeTabId;
   const [previewMode, setPreviewMode] = useState(false);
   const [configParamsVisible, setConfigParamsVisible] = useState(false);
+  // 「配置参数」每次打开的序号，作为弹窗的 key：本组件常驻挂载弹窗（用 visible 控制显隐），
+  // 用递增 key 强制每次打开都重新挂载，确保弹窗内容一定是当前文件的最新配置。
+  const [configParamsOpenSeq, setConfigParamsOpenSeq] = useState(0);
   const [resultTab, setResultTab] = useState<TabKey>('results');
   const [dataSourceWarning, setDataSourceWarning] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -410,10 +413,12 @@ const EditorArea = forwardRef<EditorAreaHandle, EditorAreaProps>(({
 
   const onConfigureParamsRef = useRef(() => {
     onConfigureParams?.();
+    setConfigParamsOpenSeq(n => n + 1);
     setConfigParamsVisible(true);
   });
   onConfigureParamsRef.current = () => {
     onConfigureParams?.();
+    setConfigParamsOpenSeq(n => n + 1);
     setConfigParamsVisible(true);
   };
 
@@ -1018,6 +1023,7 @@ const EditorArea = forwardRef<EditorAreaHandle, EditorAreaProps>(({
       />
 
       <ConfigParamsModal
+        key={`config-params-${configParamsOpenSeq}`}
         visible={configParamsVisible}
         onClose={() => setConfigParamsVisible(false)}
         fileContent={value}

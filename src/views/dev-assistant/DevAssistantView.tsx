@@ -1185,6 +1185,12 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
           onRevertFile={handleRevertFile}
           onCheckFileChanged={handleCheckFileChanged}
           onDiscarded={handleGitDiscarded}
+          // 右键「配置参数」：文件夹 → 其下全部代码文件统一配置，落库与血缘展示所需上下文
+          projectId={project.id}
+          projectCode={project.projectCode}
+          openlineageTransportUrl={config.openlineageTransportUrl}
+          readFileContent={readFileContent}
+          onSaveConfigParams={handleSaveConfigParams}
           // git 提交只负责版本管理，不验证 SQL 头部数据源是否可用；
           // 数据源可用性校验应放在「提交到调度系统」流程（SubmitToSchedulerModal），
           // 否则会因活动编辑器的 SQL 头部引用未接入的数据源而错误阻断 git commit。
