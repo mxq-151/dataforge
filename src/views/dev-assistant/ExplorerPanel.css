@@ -188,6 +188,16 @@ body.is-resizing-explorer .explorer-panel {
   padding: 8px 12px;
   border-top: 1px solid #3c3c3c;
   background-color: #252526;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.explorer-panel__selection-count {
+  font-size: 11px;
+  color: #4EC9B0;
+  flex-shrink: 0;
 }
 
 .explorer-panel__path {
@@ -197,6 +207,7 @@ body.is-resizing-explorer .explorer-panel {
   text-overflow: ellipsis;
   white-space: nowrap;
   display: block;
+  min-width: 0;
 }
 
 .explorer-panel__create-input-wrapper {
@@ -332,6 +343,17 @@ body.is-resizing-explorer .explorer-panel {
   margin: 0;
 }
 
+.explorer-panel__delete-dialog-list {
+  display: block;
+  margin-top: 6px;
+  max-height: 120px;
+  overflow-y: auto;
+  font-size: 12px;
+  color: #858585;
+  line-height: 1.6;
+  word-break: break-all;
+}
+
 .explorer-panel__delete-dialog-error {
   font-size: 12px;
   color: #f44747;
@@ -408,11 +430,19 @@ body.is-resizing-explorer .explorer-panel {
   transition: background-color 0.15s;
 }
 
-.file-navigator-wrapper > div > div:last-child > div > div:hover {
+/* 行背景（悬停 / 选中）统一由下面两条规则决定。
+   注意：react-file-navigator 会往行上写 inline 的 background-color（悬停与它内部的单选都会写），
+   因此必须用 !important 的 CSS 才能压过 inline 样式；同时
+   「选中」规则要放在「悬停」之后，二者特异性相同时后者生效。 */
+
+/* 悬停：浅灰底，与选中态明显区分 */
+.file-navigator-wrapper div[tabindex]:hover {
   background-color: #2a2d2e !important;
 }
 
-.file-navigator-wrapper > div > div:last-child > div > div[style*="background-color"] {
+/* 选中（含多选）：蓝色高亮；悬停在被选中行上时保持蓝色，不再随光标变化 */
+.file-navigator-wrapper div[tabindex].explorer-row--selected,
+.file-navigator-wrapper div[tabindex].explorer-row--selected:hover {
   background-color: #094771 !important;
 }
 

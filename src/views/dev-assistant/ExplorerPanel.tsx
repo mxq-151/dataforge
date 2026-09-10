@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import {
   FolderOpen,
   RefreshCw,
@@ -33,8 +33,50 @@ import './ExplorerPanel.css';
 
 interface DeleteConfirmState {
   visible: boolean;
-  node: FileNode | null;
+  nodes: FileNode[];
 }
+
+/** 按「当前可见顺序」摊平文件树：文件夹仅在展开时才包含其子项。
+ *  该顺序与 react-file-navigator 渲染出的 div[tabindex] 行顺序严格一致，
+ *  因此可以用 DOM 行下标反查对应的树节点（比按文件名匹配更可靠，重名也不会出错）。 */
+const flattenVisibleNodes = (nodes: TreeNode[]): TreeNode[] => {
+  const result: TreeNode[] = [];
+  const walk = (list: TreeNode[]) => {
+    for (const node of list) {
+      result.push(node);
+      if (node.type === 'Folder' && node.children && node.children.length > 0 && node.expanded) {
+        walk(node.children);
+      }
+    }
+  };
+  walk(nodes);
+  return result;
+};
+
+/** 在完整文件树中按路径查找节点（不要求处于展开状态） */
+const findNodeByPath = (nodes: TreeNode[], path: string): TreeNode | null => {
+  for (const node of nodes) {
+    if (node.filePath === path) return node;
+    if (node.type === 'Folder' && node.children) {
+      const found = findNodeByPath(node.children, path);
+      if (found) return found;
+    }
+  }
+  return null;
+};
+
+/** 收集 FileNode 树中所有节点路径（用于刷新后清理已失效的选中项） */
+const collectAllPaths = (nodes: FileNode[]): string[] => {
+  const result: string[] = [];
+  const walk = (list: FileNode[]) => {
+    for (const node of list) {
+      result.push(node.path);
+      if (node.children) walk(node.children);
+    }
+  };
+  walk(nodes);
+  return result;
+};
 
 interface ExplorerPanelProps {
   fileTree: FileNode[];
@@ -204,6 +246,8 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
   const [createTarget, setCreateTarget] = useState<string | null>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
   const folderInputRef = React.useRef<HTMLInputElement>(null);
+  // 面板根节点（始终挂载），用于托管文件树点击监听
+  const panelRef = useRef<HTMLElement>(null);
 
   // 通知父组件折叠状态变化
   useEffect(() => {
@@ -238,16 +282,16 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
 
   const [gitModalVisible, setGitModalVisible] = useState(false);
 
-  // 移动对话框状态
-  const [moveTarget, setMoveTarget] = useState<{ node: TreeNode } | null>(null);
+  // 移动对话框状态（支持批量：多选时一次移动多个节点）
+  const [moveTargets, setMoveTargets] = useState<TreeNode[]>([]);
   const [selectedMoveDir, setSelectedMoveDir] = useState<string | null>(null);
   const [moveExpanded, setMoveExpanded] = useState<Set<string>>(new Set());
   const [isMoving, setIsMoving] = useState(false);
   const [moveError, setMoveError] = useState<string | null>(null);
   const moveTreeRef = useRef<HTMLDivElement>(null);
 
-  // 复制对话框状态（复用移动的目录树选择 UI）
-  const [copyTarget, setCopyTarget] = useState<{ node: TreeNode } | null>(null);
+  // 复制对话框状态（复用移动的目录树选择 UI，支持批量）
+  const [copyTargets, setCopyTargets] = useState<TreeNode[]>([]);
   const [selectedCopyDir, setSelectedCopyDir] = useState<string | null>(null);
   const [copyExpanded, setCopyExpanded] = useState<Set<string>>(new Set());
   const [isCopying, setIsCopying] = useState(false);
@@ -255,24 +299,103 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
 
   const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirmState>({
     visible: false,
-    node: null,
+    nodes: [],
   });
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const [tree, setTree] = useState<Tree>([]);
   const treeRef = useRef<Tree>([]);
-  const currentSelectedNodeRef = useRef<TreeNode | null>(null);
   // 始终持有最新的 onFileSelect（避免点击监听器因回调引用变化而反复重挂）
   const onFileSelectRef = useRef(onFileSelect);
   onFileSelectRef.current = onFileSelect;
+
+  // ===== 多选状态 =====
+  // selectedPaths：当前选中的节点路径（文件与文件夹均可），顺序即选中顺序
+  const [selectedPaths, setSelectedPaths] = useState<string[]>([]);
+  const selectedPathsRef = useRef<string[]>([]);
+  // Shift 范围选择的锚点（最后一次「非 Shift」点击的节点路径）
+  const lastAnchorRef = useRef<string | null>(null);
+  // 最近一次真正打开的文件路径（用于与库的选中回调去重）
+  const lastOpenedPathRef = useRef<string | null>(null);
+
+  const commitSelection = useCallback((paths: string[]) => {
+    const unique = Array.from(new Set(paths));
+    selectedPathsRef.current = unique;
+    setSelectedPaths(unique);
+  }, []);
+
+  const clearSelection = useCallback(() => {
+    selectedPathsRef.current = [];
+    lastAnchorRef.current = null;
+    setSelectedPaths([]);
+  }, []);
+
+  /** 从事件目标向上定位到文件树行 div[tabindex]，并按行下标反查树节点 */
+  const resolveNodeFromEventTarget = useCallback((target: EventTarget | null): TreeNode | null => {
+    let el = target as HTMLElement | null;
+    for (let i = 0; i < 8 && el; i++) {
+      if (el.hasAttribute('tabindex')) break;
+      el = el.parentElement;
+    }
+    if (!el || !el.hasAttribute('tabindex')) return null;
+
+    const wrapper = el.closest('.file-navigator-wrapper');
+    if (!wrapper) return null;
+
+    const rows = Array.from(wrapper.querySelectorAll<HTMLElement>('div[tabindex]'));
+    const index = rows.indexOf(el);
+    if (index < 0) return null;
+
+    const visible = flattenVisibleNodes(treeRef.current);
+    return visible[index] ?? null;
+  }, []);
+
+  /** 把多选高亮同步到真实 DOM：只维护 `.explorer-row--selected` 类，视觉全部由 CSS 决定。
+   *  之所以不写 inline 背景：库会把「悬停行」和「它内部的单选行」都写成 inline
+   *  background-color，一旦我们也用 inline 表达选中态，两种状态就会互相覆盖，
+   *  表现为「选中色随光标移动而变化」。 */
+  const syncSelectionStyles = useCallback((paths: string[]) => {
+    const wrapper = document.querySelector('.file-navigator-wrapper');
+    if (!wrapper) return;
+
+    const rows = Array.from(wrapper.querySelectorAll<HTMLElement>('div[tabindex]'));
+    const visible = flattenVisibleNodes(treeRef.current);
+    const selected = new Set(paths);
+
+    rows.forEach((row, index) => {
+      const node = visible[index];
+      row.classList.toggle('explorer-row--selected', !!node && selected.has(node.filePath));
+      // 必须清掉库写入的 inline background-color：库把「悬停行」和「它内部的单选行」都写成
+      // inline style，而 inline 是没法用普通 CSS 类覆盖的 —— 那正是「选中色随光标移动而变化」
+      // 的来源（悬停到哪一行，哪一行就变成和选中一样的蓝底）。视觉一律交给 CSS 类。
+      row.style.removeProperty('background-color');
+    });
+  }, []);
+
+  // 选中集合 / 树结构变化后，重新把高亮刷到 DOM 上
+  useEffect(() => {
+    syncSelectionStyles(selectedPaths);
+  }, [selectedPaths, tree, syncSelectionStyles]);
+
+  // 切换项目根目录时清空多选
+  useEffect(() => {
+    clearSelection();
+  }, [rootPath, clearSelection]);
 
   useEffect(() => {
     const currentExpandedPaths = extractExpandedPaths(treeRef.current);
     const newTree = convertFileNodesToTree(fileTree, currentExpandedPaths);
     treeRef.current = newTree;
     setTree(newTree);
-  }, [fileTree]);
+
+    // 树刷新后清理已不存在的选中项（如被外部删除/重命名）
+    const alive = new Set(collectAllPaths(fileTree));
+    const pruned = selectedPathsRef.current.filter(p => alive.has(p));
+    if (pruned.length !== selectedPathsRef.current.length) {
+      commitSelection(pruned);
+    }
+  }, [fileTree, commitSelection]);
 
   useEffect(() => {
     const newTree = convertFileNodesToTree(fileTree, expandedFolders);
@@ -304,7 +427,11 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
 
     // 监听 DOM 变化（展开/折叠文件夹时节点会重新渲染）
     const observer = new MutationObserver(() => {
-      setTimeout(addTitles, 50);
+      setTimeout(() => {
+        addTitles();
+        // 行被重新创建后高亮会丢失，这里补刷一次
+        syncSelectionStyles(selectedPathsRef.current);
+      }, 50);
     });
     observer.observe(wrapper, { childList: true, subtree: true });
 
@@ -312,57 +439,82 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
       clearTimeout(timer);
       observer.disconnect();
     };
-  }, [tree]);
+  }, [tree, syncSelectionStyles]);
 
-  // 修复：react-file-navigator 的 onFileSelectionChange 仅在「选中节点改变」时触发，
-  // 当文件已处于选中状态后再次点击同一节点，selection 引用不变 → 回调不再执行 → 无法在编辑器中重新打开。
-  // 这里监听文件树内的点击，命中的若是文件节点则直接回调 onFileSelect 重新打开。
+  // 修复 + 多选：
+  // 1) react-file-navigator 的 onFileSelectionChange 仅在「选中节点改变」时触发，
+  //    当文件已处于选中状态后再次点击同一节点，selection 引用不变 → 回调不再执行 → 无法在编辑器中重新打开。
+  // 2) 库本身只支持单选，这里接管点击以实现多选：
+  //    · 普通点击：单选该文件/文件夹（文件同时在编辑器中打开）
+  //    · Ctrl/Cmd + 点击：切换该节点的选中状态（不打开、不展开）
+  //    · Shift + 点击：以锚点为起点做范围选择
+  //    带修饰键时阻止事件继续冒泡，避免库内部再把选中态收敛成单选 / 误展开文件夹。
   useEffect(() => {
-    const wrapper = document.querySelector('.file-navigator-wrapper');
-    if (!wrapper) return;
-
-    const findNodeByName = (nodes: TreeNode[], name: string): TreeNode | null => {
-      for (const n of nodes) {
-        if (n.name === name) return n;
-        if ('children' in n && n.children) {
-          const found = findNodeByName(n.children, name);
-          if (found) return found;
-        }
-      }
-      return null;
-    };
+    // 监听挂在常驻的面板根节点上：文件树容器在「未打开目录 / 折叠」时并不挂载，
+    // 挂在它上面会导致一次卸载后监听器再也不回来。
+    const panel = panelRef.current;
+    if (!panel) return;
 
     const handleClick = (e: Event) => {
       const target = e.target as HTMLElement;
-      // 向上遍历到交互层 div（带 tabIndex），结构与右键菜单一致
-      let el: HTMLElement | null = target;
-      for (let i = 0; i < 8 && el; i++) {
-        if (el.hasAttribute('tabindex')) break;
-        el = el.parentElement;
-      }
-      if (!el || !el.hasAttribute('tabindex')) return;
+      if (!target.closest('.file-navigator-wrapper')) return;
 
-      // 找到最后一个纯文本 span（文件名）
-      const allSpans = el.querySelectorAll('span');
-      let nodeName: string | null = null;
-      for (let j = allSpans.length - 1; j >= 0; j--) {
-        const text = allSpans[j].textContent?.trim();
-        if (text && text.length > 0 && text.length < 100 && !allSpans[j].querySelector('*')) {
-          nodeName = text;
-          break;
+      const mouseEvent = e as MouseEvent;
+      const node = resolveNodeFromEventTarget(e.target);
+
+      if (!node) {
+        // 点击空白处：清空多选
+        if (selectedPathsRef.current.length > 0) clearSelection();
+        return;
+      }
+
+      const withToggle = mouseEvent.metaKey || mouseEvent.ctrlKey;
+      const withRange = mouseEvent.shiftKey;
+
+      if (withToggle || withRange) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+
+      if (withRange) {
+        const visible = flattenVisibleNodes(treeRef.current);
+        const toIndex = visible.findIndex(n => n.filePath === node.filePath);
+        const anchor = lastAnchorRef.current;
+        const fromIndex = anchor ? visible.findIndex(n => n.filePath === anchor) : -1;
+        if (fromIndex >= 0 && toIndex >= 0) {
+          const [start, end] = fromIndex <= toIndex ? [fromIndex, toIndex] : [toIndex, fromIndex];
+          commitSelection(visible.slice(start, end + 1).map(n => n.filePath));
+        } else {
+          commitSelection([node.filePath]);
+          lastAnchorRef.current = node.filePath;
         }
+        // 锚点保持不变，便于连续 Shift 点击调整范围
+        return;
       }
-      if (!nodeName) return;
 
-      const node = findNodeByName(treeRef.current, nodeName);
-      if (node && node.type === 'File') {
+      if (withToggle) {
+        const current = new Set(selectedPathsRef.current);
+        if (current.has(node.filePath)) {
+          current.delete(node.filePath);
+        } else {
+          current.add(node.filePath);
+        }
+        commitSelection(Array.from(current));
+        lastAnchorRef.current = node.filePath;
+        return;
+      }
+
+      commitSelection([node.filePath]);
+      lastAnchorRef.current = node.filePath;
+      if (node.type === 'File') {
+        lastOpenedPathRef.current = node.filePath;
         onFileSelectRef.current(node.filePath);
       }
     };
 
-    wrapper.addEventListener('click', handleClick);
-    return () => wrapper.removeEventListener('click', handleClick);
-  }, []);
+    panel.addEventListener('click', handleClick);
+    return () => panel.removeEventListener('click', handleClick);
+  }, [resolveNodeFromEventTarget, commitSelection, clearSelection]);
 
   const handleSetTree = useCallback((newTreeOrUpdater: Tree | ((prev: Tree) => Tree)) => {
     setTree(prev => {
@@ -389,9 +541,12 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
     });
   }, [onFolderToggle]);
 
+  // 库的选中回调会在「选中节点变化」时触发，与下面 DOM 点击回调存在重叠：
+  // 普通点击一条链路会被调用两次（重复读取文件内容、重复激活 Tab）。
+  // 这里加一道去重：只有 DOM 点击链路没处理过的路径才真正打开。
   const handleFileSelectionChange = useCallback((node: TreeNode | null) => {
-    currentSelectedNodeRef.current = node;
-    if (node && node.type === 'File') {
+    if (node && node.type === 'File' && node.filePath !== lastOpenedPathRef.current) {
+      lastOpenedPathRef.current = node.filePath;
       onFileSelect(node.filePath);
     }
   }, [onFileSelect]);
@@ -436,11 +591,13 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
 
     if (createdNode) {
       onFileSelect(createdNode.path);
+      commitSelection([createdNode.path]);
+      lastAnchorRef.current = createdNode.path;
     }
 
     setIsCreatingFile(false);
     setNewFileName('');
-  }, [newFileName, rootPath, createTarget, onCreateFile, onFileSelect]);
+  }, [newFileName, rootPath, createTarget, onCreateFile, onFileSelect, commitSelection]);
 
   const handleCreateFolderSubmit = useCallback(async () => {
     if (!newFolderName.trim() || !rootPath) return;
@@ -471,11 +628,11 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
     }
   }, [handleCreateFileSubmit, handleCreateFolderSubmit, isCreatingFile, isCreatingFolder]);
 
-  const handleDeleteNodeRequest = useCallback(() => {
-    const node = currentSelectedNodeRef.current;
-    if (!node) return;
+  // 请求删除（支持批量：传入多个树节点）
+  const requestDeleteNodes = useCallback((nodes: TreeNode[]) => {
+    if (nodes.length === 0) return;
 
-    const fileNode: FileNode = node.type === 'Folder'
+    const fileNodes: FileNode[] = nodes.map(node => node.type === 'Folder'
       ? {
           id: node.id,
           name: node.name,
@@ -488,33 +645,40 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
           name: node.name,
           type: 'file',
           path: node.filePath,
-        };
+        });
 
     setDeleteError(null);
-    setDeleteConfirm({ visible: true, node: fileNode });
+    setDeleteConfirm({ visible: true, nodes: fileNodes });
   }, []);
 
   const handleDeleteConfirm = useCallback(async () => {
-    if (!deleteConfirm.node || !onDeleteNode) return;
+    const nodes = deleteConfirm.nodes;
+    if (nodes.length === 0 || !onDeleteNode) return;
 
     setIsDeleting(true);
     setDeleteError(null);
-    try {
-      const success = await onDeleteNode(deleteConfirm.node.path, deleteConfirm.node.type);
-      if (success) {
-        setDeleteConfirm({ visible: false, node: null });
-      } else {
-        setDeleteError('删除失败，请检查文件是否正在使用或权限不足');
+
+    const failed: string[] = [];
+    for (const node of nodes) {
+      try {
+        const success = await onDeleteNode(node.path, node.type);
+        if (!success) failed.push(node.name);
+      } catch {
+        failed.push(node.name);
       }
-    } catch {
-      setDeleteError('删除时发生错误');
-    } finally {
-      setIsDeleting(false);
     }
-  }, [deleteConfirm.node, onDeleteNode]);
+
+    setIsDeleting(false);
+    if (failed.length === 0) {
+      setDeleteConfirm({ visible: false, nodes: [] });
+      clearSelection();
+    } else {
+      setDeleteError(`以下项目删除失败：${failed.join('、')}`);
+    }
+  }, [deleteConfirm.nodes, onDeleteNode, clearSelection]);
 
   const handleDeleteCancel = useCallback(() => {
-    setDeleteConfirm({ visible: false, node: null });
+    setDeleteConfirm({ visible: false, nodes: [] });
     setDeleteError(null);
   }, []);
 
@@ -566,67 +730,42 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
   //   div[draggable] > div[draggable, 节点行] > div[tabIndex=1, 交互层] > div[内容层] > span(图标) + span(文件名)
   const handleTreeContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
-    const target = e.target as HTMLElement;
 
-    // 空白区域（未命中任何节点）也弹出菜单：仅启用"新建文件/新建文件夹"，重命名/删除置灰
     // 使用 clientX/clientY（视口坐标），与菜单 position: fixed 保持一致
     const openMenu = (node: TreeNode | null) => {
       contextMenuAdjustedRef.current = null;
       setContextMenu({ x: e.clientX, y: e.clientY, node });
     };
 
-    // 向上遍历找到有 tabIndex 的交互层 div
-    let el: HTMLElement | null = target;
-    for (let i = 0; i < 8 && el; i++) {
-      if (el.hasAttribute('tabindex')) {
-        break;
-      }
-      el = el.parentElement;
-    }
+    // react-file-navigator 渲染的行结构：div[draggable] > div[tabIndex=1, 交互层] > div[内容层] > span + span
+    const node = resolveNodeFromEventTarget(e.target);
 
-    if (!el || !el.hasAttribute('tabindex')) {
+    // 空白区域（未命中任何节点）也弹出菜单：仅启用"新建文件/新建文件夹"，重命名/删除置灰
+    if (!node) {
       openMenu(null);
       return;
     }
 
-    // 在交互层中找最后一个纯文本 span（即文件名）
-    // 结构: div(内容层) > span(图标) + span(文件名)
-    const allSpans = el.querySelectorAll('span');
-    let nodeName: string | null = null;
-    for (let j = allSpans.length - 1; j >= 0; j--) {
-      const text = allSpans[j].textContent?.trim();
-      // 纯文本 span：有内容、长度合理、不包含子元素
-      if (text && text.length > 0 && text.length < 100 && !allSpans[j].querySelector('*')) {
-        nodeName = text;
-        break;
-      }
+    // 右键命中的节点若不在多选集合中，先把选中集合收敛为该节点（与 VS Code 行为一致），
+    // 这样菜单操作即可作用于整个多选集合。
+    if (!selectedPathsRef.current.includes(node.filePath)) {
+      commitSelection([node.filePath]);
+      lastAnchorRef.current = node.filePath;
     }
+    openMenu(node);
+  }, [resolveNodeFromEventTarget, commitSelection]);
 
-    if (!nodeName) {
-      openMenu(null);
-      return;
+  // 右键菜单的作用目标：命中节点属于多选集合时作用于集合全部节点，否则仅作用于该节点
+  const contextTargets = useMemo<TreeNode[]>(() => {
+    const node = contextMenu?.node;
+    if (!node) return [];
+    if (selectedPaths.length > 1 && selectedPaths.includes(node.filePath)) {
+      return selectedPaths
+        .map(p => findNodeByPath(tree, p))
+        .filter((n): n is TreeNode => !!n);
     }
-
-    // 在 tree 中按名称查找对应的 TreeNode
-    const findNodeByName = (nodes: TreeNode[], name: string): TreeNode | null => {
-      for (const n of nodes) {
-        if (n.name === name) return n;
-        if ('children' in n && n.children) {
-          const found = findNodeByName(n.children, name);
-          if (found) return found;
-        }
-      }
-      return null;
-    };
-
-    const node = findNodeByName(treeRef.current, nodeName);
-    if (node) {
-      contextMenuAdjustedRef.current = null;
-      setContextMenu({ x: e.clientX, y: e.clientY, node });
-    } else {
-      openMenu(null);
-    }
-  }, []);
+    return [node];
+  }, [contextMenu, selectedPaths, tree]);
 
   // 右键菜单：新建文件/新建文件夹的目标父目录
   const getContextCreateParent = useCallback((): string | null => {
@@ -672,10 +811,10 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
     }, 100);
   }, [getContextCreateParent, onCreateFolder]);
 
-  // 右键菜单：选择"重命名"
+  // 右键菜单：选择"重命名"（仅单选时可用）
   const handleRenameFromContext = useCallback(() => {
-    if (!contextMenu || !contextMenu.node || !onRenameNode) return;
-    const node = contextMenu.node;
+    if (contextTargets.length !== 1 || !onRenameNode) return;
+    const node = contextTargets[0];
     setRenameValue(node.name);
     setRenamingNode({ filePath: node.filePath, name: node.name, type: node.type });
     setIsRenaming(true);
@@ -686,31 +825,28 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
         renameInputRef.current.select();
       }
     }, 100);
-  }, [contextMenu, onRenameNode]);
+  }, [contextTargets, onRenameNode]);
 
-  // 右键菜单：选择"删除"
+  // 右键菜单：选择"删除"（支持批量）
   const handleDeleteFromContext = useCallback(() => {
-    if (!contextMenu || !contextMenu.node) return;
-    currentSelectedNodeRef.current = contextMenu.node;
+    if (contextTargets.length === 0) return;
     setContextMenu(null);
-    handleDeleteNodeRequest();
-  }, [contextMenu, handleDeleteNodeRequest]);
+    requestDeleteNodes(contextTargets);
+  }, [contextTargets, requestDeleteNodes]);
 
-  // 右键菜单：查看文件历史版本
+  // 右键菜单：查看文件历史版本（仅单选文件）
   const handleShowHistoryFromContext = useCallback(() => {
-    if (!contextMenu || !contextMenu.node || !onShowHistory) return;
-    const node = contextMenu.node;
+    if (contextTargets.length !== 1 || !onShowHistory) return;
     setContextMenu(null);
-    onShowHistory(node.filePath);
-  }, [contextMenu, onShowHistory]);
+    onShowHistory(contextTargets[0].filePath);
+  }, [contextTargets, onShowHistory]);
 
-  // 右键菜单：撤销文件变更
+  // 右键菜单：撤销文件变更（仅单选文件）
   const handleRevertFromContext = useCallback(() => {
-    if (!contextMenu || !contextMenu.node || !onRevertFile) return;
-    const node = contextMenu.node;
+    if (contextTargets.length !== 1 || !onRevertFile) return;
     setContextMenu(null);
-    onRevertFile(node.filePath);
-  }, [contextMenu, onRevertFile]);
+    onRevertFile(contextTargets[0].filePath);
+  }, [contextTargets, onRevertFile]);
 
   // 重命名：提交
   const handleRenameSubmit = useCallback(async () => {
@@ -740,19 +876,19 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
     setRenamingNode(null);
   }, []);
 
-  // 右键菜单：选择"移动到 ..."
+  // 右键菜单：选择"移动到 ..."（支持批量）
   const handleMoveFromContext = useCallback(() => {
-    if (!contextMenu || !contextMenu.node || !onMoveNode) return;
+    if (contextTargets.length === 0 || !onMoveNode) return;
     // 默认选中源节点的父目录或项目根目录
-    const defaultTarget = getParentDir(contextMenu.node.filePath);
-    setMoveTarget({ node: contextMenu.node });
+    const defaultTarget = getParentDir(contextTargets[0].filePath);
+    setMoveTargets(contextTargets);
     setSelectedMoveDir(rootPath && defaultTarget && rootPath !== defaultTarget && defaultTarget.startsWith(rootPath)
       ? defaultTarget
       : rootPath);
     setMoveExpanded(new Set());
     setMoveError(null);
     setContextMenu(null);
-  }, [contextMenu, onMoveNode, rootPath]);
+  }, [contextTargets, onMoveNode, rootPath]);
 
   // 移动目录树：展开/折叠
   const toggleMoveDir = useCallback((path: string) => {
@@ -770,10 +906,9 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
     setMoveError(null);
   }, []);
 
-  // 移动：提交
+  // 移动：提交（批量：逐个移动，全部成功才关闭弹窗）
   const handleMoveSubmit = useCallback(async () => {
-    if (!moveTarget || !onMoveNode) return;
-    const node = moveTarget.node;
+    if (moveTargets.length === 0 || !onMoveNode) return;
 
     if (!selectedMoveDir) {
       setMoveError('请选择目标文件夹');
@@ -782,31 +917,39 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
 
     setIsMoving(true);
     setMoveError(null);
-    try {
-      const success = await onMoveNode(
-        node.filePath,
-        selectedMoveDir,
-        node.type === 'Folder' ? 'folder' : 'file'
-      );
-      if (success) {
-        toast.info(`已移动「${node.name}」`);
-        setMoveTarget(null);
-        setSelectedMoveDir(null);
-        setMoveExpanded(new Set());
-      } else {
-        setMoveError('移动失败：目标文件夹无效、不存在或与源位置冲突');
+
+    const failed: string[] = [];
+    for (const node of moveTargets) {
+      try {
+        const success = await onMoveNode(
+          node.filePath,
+          selectedMoveDir,
+          node.type === 'Folder' ? 'folder' : 'file'
+        );
+        if (!success) failed.push(node.name);
+      } catch {
+        failed.push(node.name);
       }
-    } catch {
-      setMoveError('移动时发生错误');
-    } finally {
-      setIsMoving(false);
     }
-  }, [moveTarget, selectedMoveDir, onMoveNode, toast]);
+
+    setIsMoving(false);
+    if (failed.length === 0) {
+      toast.info(moveTargets.length > 1
+        ? `已移动 ${moveTargets.length} 个项目`
+        : `已移动「${moveTargets[0].name}」`);
+      setMoveTargets([]);
+      setSelectedMoveDir(null);
+      setMoveExpanded(new Set());
+      clearSelection();
+    } else {
+      setMoveError(`以下项目移动失败：${failed.join('、')}`);
+    }
+  }, [moveTargets, selectedMoveDir, onMoveNode, toast, clearSelection]);
 
   // 移动：取消
   const handleMoveCancel = useCallback(() => {
     if (isMoving) return;
-    setMoveTarget(null);
+    setMoveTargets([]);
     setSelectedMoveDir(null);
     setMoveExpanded(new Set());
     setMoveError(null);
@@ -814,17 +957,17 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
 
   // 右键菜单：选择"复制到 ..."
   const handleCopyFromContext = useCallback(() => {
-    if (!contextMenu || !contextMenu.node || !onCopyNode) return;
-    const node = contextMenu.node;
+    if (contextTargets.length === 0 || !onCopyNode) return;
+    const node = contextTargets[0];
     const defaultTarget = getParentDir(node.filePath);
-    setCopyTarget({ node });
+    setCopyTargets(contextTargets);
     setSelectedCopyDir(rootPath && defaultTarget && rootPath !== defaultTarget && defaultTarget.startsWith(rootPath)
       ? defaultTarget
       : rootPath);
     setCopyExpanded(new Set());
     setCopyError(null);
     setContextMenu(null);
-  }, [contextMenu, onCopyNode, rootPath]);
+  }, [contextTargets, onCopyNode, rootPath]);
 
   // 复制目录树：展开/折叠
   const toggleCopyDir = useCallback((path: string) => {
@@ -844,8 +987,7 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
 
   // 复制：提交
   const handleCopySubmit = useCallback(async () => {
-    if (!copyTarget || !onCopyNode) return;
-    const node = copyTarget.node;
+    if (copyTargets.length === 0 || !onCopyNode) return;
 
     if (!selectedCopyDir) {
       setCopyError('请选择目标文件夹');
@@ -854,35 +996,61 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
 
     setIsCopying(true);
     setCopyError(null);
-    try {
-      const success = await onCopyNode(
-        node.filePath,
-        selectedCopyDir,
-        node.type === 'Folder' ? 'folder' : 'file'
-      );
-      if (success) {
-        toast.info(`已复制「${node.name}」`);
-        setCopyTarget(null);
-        setSelectedCopyDir(null);
-        setCopyExpanded(new Set());
-      } else {
-        setCopyError('复制失败：目标文件夹无效、不存在或与源位置冲突');
+
+    const failed: string[] = [];
+    for (const target of copyTargets) {
+      try {
+        const success = await onCopyNode(
+          target.filePath,
+          selectedCopyDir,
+          target.type === 'Folder' ? 'folder' : 'file'
+        );
+        if (!success) failed.push(target.name);
+      } catch {
+        failed.push(target.name);
       }
-    } catch {
-      setCopyError('复制时发生错误');
-    } finally {
-      setIsCopying(false);
     }
-  }, [copyTarget, selectedCopyDir, onCopyNode, toast]);
+
+    setIsCopying(false);
+    if (failed.length === 0) {
+      toast.info(copyTargets.length > 1
+        ? `已复制 ${copyTargets.length} 个项目`
+        : `已复制「${copyTargets[0].name}」`);
+      setCopyTargets([]);
+      setSelectedCopyDir(null);
+      setCopyExpanded(new Set());
+      clearSelection();
+    } else {
+      setCopyError(`以下项目复制失败：${failed.join('、')}`);
+    }
+  }, [copyTargets, selectedCopyDir, onCopyNode, toast, clearSelection]);
 
   // 复制：取消
   const handleCopyCancel = useCallback(() => {
     if (isCopying) return;
-    setCopyTarget(null);
+    setCopyTargets([]);
     setSelectedCopyDir(null);
     setCopyExpanded(new Set());
     setCopyError(null);
   }, [isCopying]);
+
+  // 文件树键盘快捷键：Ctrl/Cmd + A 全选当前可见节点，Esc 清空多选
+  const handleTreeKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (isRenaming || isCreatingFile || isCreatingFolder) return;
+
+    if ((e.metaKey || e.ctrlKey) && (e.key === 'a' || e.key === 'A')) {
+      e.preventDefault();
+      e.stopPropagation();
+      const visible = flattenVisibleNodes(treeRef.current);
+      commitSelection(visible.map(n => n.filePath));
+      lastAnchorRef.current = visible.length > 0 ? visible[visible.length - 1].filePath : null;
+      return;
+    }
+
+    if (e.key === 'Escape' && selectedPathsRef.current.length > 0) {
+      clearSelection();
+    }
+  }, [isRenaming, isCreatingFile, isCreatingFolder, commitSelection, clearSelection]);
 
   const handleOpenGitModal = useCallback(() => {
     if (!rootPath) return;
@@ -895,6 +1063,7 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
 
   return (
     <aside
+      ref={panelRef as React.RefObject<HTMLElement>}
       className={`explorer-panel ${isCollapsed ? 'explorer-panel--collapsed' : ''}`}
       style={isCollapsed ? undefined : style}
     >
@@ -999,7 +1168,11 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
 
           <div className="explorer-panel__content">
             {rootPath ? (
-              <div className="file-navigator-wrapper" onContextMenu={handleTreeContextMenu}>
+              <div
+                className="file-navigator-wrapper"
+                onContextMenu={handleTreeContextMenu}
+                onKeyDown={handleTreeKeyDown}
+              >
                 <Explorer
                   tree={tree}
                   setTree={handleSetTree}
@@ -1060,6 +1233,9 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
               <span className="explorer-panel__path" title={rootPath}>
                 {rootPath.split(/[/\\]/).pop() || rootPath}
               </span>
+              {selectedPaths.length > 1 && (
+                <span className="explorer-panel__selection-count">已选中 {selectedPaths.length} 项</span>
+              )}
             </footer>
           )}
         </>
@@ -1077,7 +1253,11 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
         }}
       />
 
-      {deleteConfirm.visible && deleteConfirm.node && (
+      {deleteConfirm.visible && deleteConfirm.nodes.length > 0 && (() => {
+        const nodes = deleteConfirm.nodes;
+        const single = nodes.length === 1 ? nodes[0] : null;
+        const hasFolder = nodes.some(n => n.type === 'folder');
+        return (
         <div className="explorer-panel__delete-overlay" onClick={handleDeleteCancel}>
           <div className="explorer-panel__delete-dialog" onClick={e => e.stopPropagation()}>
             <div className="explorer-panel__delete-dialog-header">
@@ -1085,17 +1265,26 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
               <span>确认删除</span>
             </div>
             <div className="explorer-panel__delete-dialog-body">
-              <p>
-                确定要删除{deleteConfirm.node.type === 'folder' ? '文件夹' : '文件'}
-                <strong> {deleteConfirm.node.name} </strong>
-                吗？
-              </p>
-              {deleteConfirm.node.type === 'folder' && (
+              {single ? (
+                <p>
+                  确定要删除{single.type === 'folder' ? '文件夹' : '文件'}
+                  <strong> {single.name} </strong>
+                  吗？
+                </p>
+              ) : (
+                <p>
+                  确定要删除选中的 <strong>{nodes.length}</strong> 个项目吗？
+                  <span className="explorer-panel__delete-dialog-list">
+                    {nodes.map(n => n.name).join('、')}
+                  </span>
+                </p>
+              )}
+              {hasFolder && (
                 <p className="explorer-panel__delete-dialog-warning">
                   文件夹内的所有内容将被一并删除，此操作不可撤销。
                 </p>
               )}
-              {deleteConfirm.node.type === 'file' && (
+              {!hasFolder && (
                 <p className="explorer-panel__delete-dialog-warning">
                   此操作不可撤销。
                 </p>
@@ -1117,12 +1306,13 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
                 onClick={handleDeleteConfirm}
                 disabled={isDeleting}
               >
-                {isDeleting ? '删除中...' : '删除'}
+                {isDeleting ? '删除中...' : `删除${nodes.length > 1 ? ` ${nodes.length} 项` : ''}`}
               </button>
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* 右键菜单 */}
       {contextMenu && (
@@ -1151,7 +1341,7 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
           <button
             className="explorer-panel__context-menu-item"
             onClick={handleRenameFromContext}
-            disabled={!onRenameNode || !contextMenu.node}
+            disabled={!onRenameNode || contextTargets.length !== 1}
           >
             <Pencil size={14} />
             <span>重命名</span>
@@ -1159,21 +1349,21 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
           <button
             className="explorer-panel__context-menu-item"
             onClick={handleMoveFromContext}
-            disabled={!onMoveNode || !contextMenu.node}
+            disabled={!onMoveNode || contextTargets.length === 0}
           >
             <Move size={14} />
-            <span>移动到 ...</span>
+            <span>移动到 ...{contextTargets.length > 1 ? ` (${contextTargets.length})` : ''}</span>
           </button>
           <button
             className="explorer-panel__context-menu-item"
             onClick={handleCopyFromContext}
-            disabled={!onCopyNode || !contextMenu.node}
+            disabled={!onCopyNode || contextTargets.length === 0}
           >
             <Copy size={14} />
-            <span>复制到 ...</span>
+            <span>复制到 ...{contextTargets.length > 1 ? ` (${contextTargets.length})` : ''}</span>
           </button>
           <div className="explorer-panel__context-menu-divider" />
-          {contextMenu?.node?.type === 'File' && (
+          {contextTargets.length === 1 && contextTargets[0].type === 'File' && (
             <button
               className="explorer-panel__context-menu-item"
               onClick={handleShowHistoryFromContext}
@@ -1183,7 +1373,7 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
               <span>历史版本</span>
             </button>
           )}
-          {contextMenu?.node?.type === 'File' && (
+          {contextTargets.length === 1 && contextTargets[0].type === 'File' && (
             <button
               className="explorer-panel__context-menu-item"
               onClick={handleRevertFromContext}
@@ -1197,10 +1387,10 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
           <button
             className="explorer-panel__context-menu-item explorer-panel__context-menu-item--danger"
             onClick={handleDeleteFromContext}
-            disabled={!contextMenu.node}
+            disabled={contextTargets.length === 0}
           >
             <Trash2 size={14} />
-            <span>删除</span>
+            <span>删除{contextTargets.length > 1 ? ` ${contextTargets.length} 项` : ''}</span>
           </button>
         </div>
       )}
@@ -1239,7 +1429,7 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
       )}
 
       {/* 移动对话框 */}
-      {moveTarget && (
+      {moveTargets.length > 0 && (
         <div className="explorer-panel__move-overlay" onClick={handleMoveCancel}>
           <div className="explorer-panel__move-dialog" onClick={e => e.stopPropagation()}>
             <div className="explorer-panel__move-dialog-header">
@@ -1248,8 +1438,10 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
             </div>
             <div className="explorer-panel__move-dialog-body">
               <div className="explorer-panel__move-dialog-node">
-                移动{moveTarget.node.type === 'Folder' ? '文件夹' : '文件'}
-                <strong> {moveTarget.node.name} </strong>
+                {moveTargets.length > 1
+                  ? <>移动 <strong>{moveTargets.length}</strong> 个选中的项目</>
+                  : <>移动{moveTargets[0].type === 'Folder' ? '文件夹' : '文件'}
+                     <strong> {moveTargets[0].name} </strong></>}
               </div>
               <p className="explorer-panel__move-dialog-tip">
                 请在下方选择目标文件夹：
@@ -1258,7 +1450,7 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
                 {renderMoveDirTree(
                   fileTree,
                   selectedMoveDir,
-                  moveTarget.node.filePath,
+                  moveTargets.map(n => n.filePath),
                   moveExpanded,
                   handleMoveSelectDir,
                   toggleMoveDir
@@ -1297,7 +1489,7 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
       )}
 
       {/* 复制对话框（复用与移动相同的目录树选择 UI） */}
-      {copyTarget && (
+      {copyTargets.length > 0 && (
         <div className="explorer-panel__move-overlay" onClick={handleCopyCancel}>
           <div className="explorer-panel__move-dialog" onClick={e => e.stopPropagation()}>
             <div className="explorer-panel__move-dialog-header">
@@ -1306,8 +1498,10 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
             </div>
             <div className="explorer-panel__move-dialog-body">
               <div className="explorer-panel__move-dialog-node">
-                复制{copyTarget.node.type === 'Folder' ? '文件夹' : '文件'}
-                <strong> {copyTarget.node.name} </strong>
+                {copyTargets.length > 1
+                  ? <>复制 <strong>{copyTargets.length}</strong> 个选中的项目</>
+                  : <>复制{copyTargets[0].type === 'Folder' ? '文件夹' : '文件'}
+                     <strong> {copyTargets[0].name} </strong></>}
               </div>
               <p className="explorer-panel__move-dialog-tip">
                 请在下方选择目标文件夹（重名时自动追加"副本"后缀）：
@@ -1316,7 +1510,7 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
                 {renderMoveDirTree(
                   fileTree,
                   selectedCopyDir,
-                  copyTarget.node.filePath,
+                  copyTargets.map(n => n.filePath),
                   copyExpanded,
                   handleCopySelectDir,
                   toggleCopyDir
@@ -1358,11 +1552,11 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
 };
 
 // 移动目标目录选择树：递归渲染目录节点（只展示文件夹），可展开/折叠、点击选中。
-// srcPath 为被移动的节点路径，用于将该节点自身及其子目录禁用、避免移动到自身内部。
+// srcPaths 为被移动/复制的节点路径（批量时多个），用于将这些节点自身及其子目录禁用、避免移动到自身内部。
 const renderMoveDirTree = (
   nodes: FileNode[],
   selectedDir: string | null,
-  srcPath: string,
+  srcPaths: string[],
   expanded: Set<string>,
   onSelect: (path: string) => void,
   onToggle: (path: string) => void,
@@ -1371,9 +1565,14 @@ const renderMoveDirTree = (
   const folders = nodes.filter(n => n.type === 'folder');
   if (folders.length === 0) return null;
 
+  // 目标目录不能是被操作节点本身或其子目录
+  const isSelfOrDescendant = (path: string) => srcPaths.some(srcPath =>
+    path === srcPath ||
+    path.startsWith(srcPath.endsWith('/') || srcPath.endsWith('\\') ? srcPath : srcPath + getSeparator(path))
+  );
+
   return folders.map(node => {
-    // 目标目录不能是被移动节点本身或其子目录
-    const disabled = srcPath === node.path || node.path.startsWith(srcPath.endsWith('/') || srcPath.endsWith('\\') ? srcPath : srcPath + getSeparator(node.path));
+    const disabled = isSelfOrDescendant(node.path);
     const isExpanded = expanded.has(node.path);
     const hasChildren = node.children && node.children.some(c => c.type === 'folder') ? true : false;
     const selected = selectedDir === node.path;
@@ -1400,7 +1599,7 @@ const renderMoveDirTree = (
         </div>
         {isExpanded && node.children && (
           <div className="explorer-panel__move-tree-children">
-            {renderMoveDirTree(node.children, selectedDir, srcPath, expanded, onSelect, onToggle, depth + 1)}
+            {renderMoveDirTree(node.children, selectedDir, srcPaths, expanded, onSelect, onToggle, depth + 1)}
           </div>
         )}
       </div>
