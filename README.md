@@ -89,7 +89,7 @@ dataforge/
 - **JDK 17+**（配置到设置页 `JAVA_HOME`）
 - **Maven**（`MAVEN_HOME`），Java/Scala 编译与 LSP 工程生成依赖
 - **Scala**（可选，Scala 工程使用，`SCALA_HOME`）
-- **opencode 二进制**：`resources/binaries/opencode`（或平台 triple 命名，如 `opencode-aarch64-apple-darwin`）；开发模式会依次从 `resources/binaries/` → PATH 查找
+- **opencode 二进制**：`resources/binaries/opencode`（或平台 triple 命名，如 `opencode-darwin-arm64` / `opencode-darwin-x64` / `opencode-windows-x64.exe` / `opencode-linux-x64`）；开发模式会依次从 `resources/binaries/` → PATH 查找
 - **LSP 服务器资源**（体积较大，未纳入 Git）：
   - `resources/jdtls/` —— JDT.LS（Java），需要包含 `plugins/org.eclipse.equinox.launcher_*`
   - `resources/metals/` —— `metals.jar` 或 `coursier.jar`（Scala/Metals）

@@ -259,8 +259,8 @@ export function resolveOpencodeBin(): string | null {
       }
     }
   }
-  // 三元组命名二进制（打包资源，如 opencode-windows-x64.exe / opencode-linux-arm64 /
-  // opencode-aarch64-apple-darwin）：打包版位于 Resources/binaries，开发模式位于项目
+  // 三元组命名二进制（打包资源，如 opencode-darwin-arm64 / opencode-windows-x64.exe /
+  // opencode-linux-arm64）：打包版位于 Resources/binaries，开发模式位于项目
   // resources/binaries（process.resourcesPath 此时指向 Electron 框架自身，不含本项目资源）。
   const binDir = app.isPackaged
     ? path.join(process.resourcesPath, 'binaries')
@@ -276,7 +276,7 @@ export function resolveOpencodeBin(): string | null {
 /** 在目录中查找 opencode 二进制：优先标准名，其次当前平台 triple 命名的构建产物。 */
 function resolveBinFromDir(dir: string, name: string): string | null {
   const triples: Record<string, string> = {
-    'darwin-arm64': `${name}-aarch64-apple-darwin`,
+    'darwin-arm64': `opencode-darwin-arm64`,
     'darwin-x64': `opencode-darwin-x64`,
     'win32-x64': `opencode-windows-x64.exe`,
     'win32-arm64': `opencode-windows-arm64.exe`,

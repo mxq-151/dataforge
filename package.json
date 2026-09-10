@@ -86,7 +86,7 @@
           "from": "resources/binaries",
           "to": "binaries",
           "filter": [
-            "opencode-aarch64-apple-darwin",
+            "opencode-darwin-arm64",
             "opencode-darwin-x64"
           ]
         }
@@ -157,7 +157,7 @@
     "@codingame/monaco-vscode-editor-api": "^25.1.2",
     "@codingame/monaco-vscode-extension-api": "^25.1.2",
     "@monaco-editor/react": "^4.7.0",
-    "@opencode-ai/sdk": "^1.18.22",
+    "@opencode-ai/sdk": "^1.18.30",
     "@tanstack/react-virtual": "^3.14.10",
     "@testing-library/react": "^16.3.3",
     "@types/crypto-js": "^4.2.2",
