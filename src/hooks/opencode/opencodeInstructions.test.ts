@@ -108,12 +108,22 @@ describe('指标主线 — S1 定义 → S2 继承并编码 → S3 实现并标�
     expect(BUSINESS_REQUESTER_INSTRUCTIONS).toContain('禁止改名、合并或拆分');
   });
 
-  it('S1 给出 S1→S2 的固定列映射，且 6 个需求列全部覆盖', () => {
+  it('S1 给出 S1→S2 的固定列映射，且 7 个需求列全部覆盖', () => {
     expect(BUSINESS_REQUESTER_INSTRUCTIONS).toContain('| 需求列 | S2 设计列 | 下游变化 |');
-    // 需求表 6 列逐列给出下游落点，避免设计阶段丢列
-    for (const col of ['指标名称', '主题域', '业务定义', '计算口径', '过滤条件', '应用场景']) {
+    // 需求表 7 列逐列给出下游落点，避免设计阶段丢列
+    for (const col of ['指标名称', '主题域', '业务定义', '计算口径', '过滤条件', '下钻维度', '应用场景']) {
       expect(BUSINESS_REQUESTER_INSTRUCTIONS, `映射表未覆盖需求列: ${col}`).toContain(`| ${col} |`);
     }
+  });
+
+  it('下钻维度在 S1 定义、S2 落地、S3 实现，三方口径贯通', () => {
+    // S1：用业务语言声明可下钻的维度与层级
+    expect(BUSINESS_REQUESTER_INSTRUCTIONS, 'S1 未定义下钻维度').toContain('下钻维度');
+    // S2：把业务维度绑定到实际维度字段
+    expect(DATA_ARCHITECT_INSTRUCTIONS, 'S2 未落地下钻维度').toContain('下钻维度');
+    expect(DATA_ARCHITECT_INSTRUCTIONS).toContain('维度名(库.表:字段)');
+    // S3：按设计声明的维度输出分组字段
+    expect(DATA_DEV_ENGINEER_INSTRUCTIONS, 'S3 未实现下钻维度').toContain('下钻维度');
   });
 
   it('S2 逐字继承 S1 的指标名称与主题域，并分配指标编码', () => {
@@ -135,19 +145,21 @@ describe('指标主线 — S1 定义 → S2 继承并编码 → S3 实现并标�
 });
 
 describe('机器解析表头 — 在提示词中的位置', () => {
-  it('S2 中首个以 "| 指标编码" 开头的行就是 8 列指标表头', () => {
+  it('S2 中首个以 "| 指标编码" 开头的行就是 9 列指标表头', () => {
     // 若把映射表/示例表插到指标表头之前，extractMetrics 会取错表头
     const { cols, line } = firstTableRow(DATA_ARCHITECT_INSTRUCTIONS, '| 指标编码');
-    expect(cols, `首个匹配行不是 8 列表头: ${line}`).toBe(8);
+    expect(cols, `首个匹配行不是 9 列表头: ${line}`).toBe(9);
+    expect(line).toContain('下钻维度');
     expect(line).toContain('字段来源');
     expect(line).toContain('数据源');
   });
 
-  it('S1 中首个以 "| 指标名称" 开头的行就是 6 列指标表头', () => {
-    // S1 的"S1→S2 映射表"含 "| 指标名称 | 指标名称 | ..." 数据行，必须排在 6 列表头之后
+  it('S1 中首个以 "| 指标名称" 开头的行就是 7 列指标表头', () => {
+    // S1 的"S1→S2 映射表"含 "| 指标名称 | 指标名称 | ..." 数据行，必须排在 7 列表头之后
     const { cols, line } = firstTableRow(BUSINESS_REQUESTER_INSTRUCTIONS, '| 指标名称');
-    expect(cols, `首个匹配行不是 6 列表头: ${line}`).toBe(6);
+    expect(cols, `首个匹配行不是 7 列表头: ${line}`).toBe(7);
     expect(line).toContain('业务定义');
+    expect(line).toContain('下钻维度');
     expect(line).toContain('应用场景');
   });
 });

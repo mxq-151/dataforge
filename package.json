@@ -76,8 +76,9 @@
         "dmg",
         "zip"
       ],
-      "hardenedRuntime": false,
-      "identity": null,
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
       "extraResources": [
         {
           "from": "resources/binaries",

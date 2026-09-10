@@ -7,8 +7,8 @@ import type { IndicatorDTO, IndicatorFieldDTO } from '../types/indicator';
  *
  * 支持两种提示词规范的表格格式（见 src/hooks/opencode/opencodeInstructions.ts）：
  *
- * 1. 数仓设计文档（数据架构师，8 列）：
- *    | 指标编码 | 指标名称 | 主题域 | 指标含义 | 计算表达式 | 过滤条件 | 字段来源 | 数据源 |
+ * 1. 数仓设计文档（数据架构师，9 列）：
+ *    | 指标编码 | 指标名称 | 主题域 | 指标含义 | 计算表达式 | 过滤条件 | 下钻维度 | 字段来源 | 数据源 |
  *    注：提示词表头为"指标含义"；历史文档曾写作"指定含义"，两种写法均按业务含义列解析。
  * - 指标编码 → code（全局唯一 ID，如 {xxx}_0001）
  *    - 指标名称 → name
@@ -16,16 +16,18 @@ import type { IndicatorDTO, IndicatorFieldDTO } from '../types/indicator';
  *    - 指标含义（历史写法：指定含义）→ businessDefinition
  *    - 计算表达式 → calcExpr
  *    - 过滤条件 → defaultFilter
+ *    - 下钻维度 → 以 "下钻维度: xxx" 形式拼入 businessDefinition（旧文档无此列时缺省）
  *    - 字段来源 → fields（格式 A.B:C,D;E.F:G,H，解析为 IndicatorFieldDTO[]）
  *    - 数据源   → 写入每个 IndicatorFieldDTO.datasourceName（兼容无此列的旧文档，缺省为空串）
  *
- * 2. 业务需求文档（业务需求方，6 列）：
- *    | 指标名称 | 主题域 | 业务定义 | 计算口径 | 过滤条件 | 应用场景 |
+ * 2. 业务需求文档（业务需求方，7 列）：
+ *    | 指标名称 | 主题域 | 业务定义 | 计算口径 | 过滤条件 | 下钻维度 | 应用场景 |
  *    - 指标名称 → name（业务语言，无需截断）
  *    - 主题域   → topic（缺省"未分类"）
  *    - 业务定义 → businessDefinition
  *    - 计算口径 → calcExpr
  *    - 过滤条件 → defaultFilter
+ *    - 下钻维度 → 以 "下钻维度: xxx" 形式拼入 businessDefinition
  *    - 应用场景 → 以 "应用场景: xxx" 形式拼入 businessDefinition
  *
  * 兼容旧版 4 列业务需求文档：| 业务定义 | 计算口径 | 过滤条件 | 应用场景 |
@@ -359,6 +361,16 @@ export function extractMetricsFromMarkdown(
     );
     if (datasourceIdx >= 0) used.add(datasourceIdx);
 
+    // 下钻维度 → 以 "下钻维度: xxx" 形式拼入 businessDefinition（9 列/7 列格式新增列）
+    // 放在最后匹配：模糊键含"维度"，避免抢先命中其他列
+    const drillIdx = findColumn(
+      table.headers,
+      ['下钻维度'],
+      ['下钻维度', '下钻', '钻取维度', '分析维度', '维度'],
+      used,
+    );
+    if (drillIdx >= 0) used.add(drillIdx);
+
     // 判定是否为指标表格：
     // - 8 列格式：含"指标名/指标名称"列
     // - 旧版 4 列格式：无"指标名"列但含"业务定义"列（业务定义兼作 name）
@@ -372,10 +384,13 @@ export function extractMetricsFromMarkdown(
       const name = isFormatA ? nameRaw.trim() : truncateName(nameRaw);
       if (!name) continue;
 
-      // 业务定义拼接：业务定义 + 应用场景 + 其他未识别列兜底
+      // 业务定义拼接：业务定义 + 下钻维度 + 应用场景 + 其他未识别列兜底
       // 计算表达式/口径单独提取到 calcExpr，不再拼入 businessDefinition
       const parts: string[] = [];
       if (defIdx >= 0 && row[defIdx]) parts.push(row[defIdx].trim());
+      if (drillIdx >= 0 && row[drillIdx]) {
+        parts.push(`${table.headers[drillIdx]}: ${row[drillIdx].trim()}`);
+      }
       if (sceneIdx >= 0 && row[sceneIdx]) {
         parts.push(`${table.headers[sceneIdx]}: ${row[sceneIdx].trim()}`);
       }

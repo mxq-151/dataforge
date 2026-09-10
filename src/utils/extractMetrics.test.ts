@@ -2,8 +2,9 @@
  * extractMetrics.test.ts — 指标提取逻辑测试
  *
  * 测试覆盖两种提示词规范的表格格式（见 src/hooks/opencode/opencodeInstructions.ts）：
- * - 8 列数仓设计文档格式（数据架构师，含数据源列）
- * - 6 列业务需求文档格式（业务需求方），兼容旧版 4 列文档
+ * - 9 列数仓设计文档格式（数据架构师，含下钻维度、字段来源、数据源列）
+ * - 7 列业务需求文档格式（业务需求方，含下钻维度列），兼容旧版 4 列文档
+ * 无"下钻维度"列的历史文档（8 列设计 / 6 列需求 / 4 列需求）仍须可解析，见向后兼容用例。
  * 以及章节提取、列识别（含"指定含义"/"指标编码"修复）、模糊匹配、兜底拼接等。
  */
 
@@ -39,6 +40,50 @@ const DESIGN_DOC_8COL = `# 用户域数仓设计
 ## 分层库表设计
 略
 `;
+
+// ── 9 列数仓设计文档（含下钻维度列，当前提示词格式）──────────────
+
+const DESIGN_DOC_9COL = `# 交易域数仓设计
+
+## 数据指标
+
+| 指标编码 | 指标名称 | 主题域 | 指标含义 | 计算表达式 | 过滤条件 | 下钻维度 | 字段来源 | 数据源 |
+|--------|------|----------|----------|----------|----------|----------|----------|----------|
+| TRD_0001 | 支付金额 | 交易域 | 当日成功支付的订单金额合计 | sum(pay_amount) | status='success' | 时间(dim_date:date_id);地区(dim_area:province→city) | dws_trade.pay:pay_amount,date_id | test_dbs |
+| TRD_0002 | 退款金额 | 交易域 | 当日成功退款的金额合计 | sum(refund_amount) | | 时间(dim_date:date_id) | dws_trade.refund:refund_amount | test_dbs |
+`;
+
+describe('extractMetricsFromMarkdown — 9 列数仓设计文档（下钻维度）', () => {
+  it('下钻维度以 "下钻维度: xxx" 拼入 businessDefinition，且不影响其他列解析', () => {
+    const result = extractMetricsFromMarkdown(DESIGN_DOC_9COL, 'TRD');
+    expect(result).toHaveLength(2);
+
+    const [ind1, ind2] = result;
+    expect(ind1.code).toBe('TRD_0001');
+    expect(ind1.name).toBe('支付金额');
+    expect(ind1.businessDefinition).toBe(
+      '当日成功支付的订单金额合计\n下钻维度: 时间(dim_date:date_id);地区(dim_area:province→city)',
+    );
+    // 下钻维度列位于字段来源之前，不得抢占字段来源与数据源的解析
+    expect(ind1.calcExpr).toBe('sum(pay_amount)');
+    expect(ind1.defaultFilter).toBe("status='success'");
+    expect(ind1.fields).toHaveLength(2);
+    expect(ind1.fields!.every(f => f.datasourceName === 'test_dbs')).toBe(true);
+
+    // 第二个指标维度较少，同样正常解析
+    expect(ind2.businessDefinition).toContain('下钻维度: 时间(dim_date:date_id)');
+    expect(ind2.fields).toHaveLength(1);
+  });
+
+  it('下钻维度列为空时不产生空前缀', () => {
+    const doc = DESIGN_DOC_9COL.replace(
+      '| 时间(dim_date:date_id) |',
+      '|  |',
+    );
+    const result = extractMetricsFromMarkdown(doc, 'TRD');
+    expect(result[1].businessDefinition).not.toContain('下钻维度');
+  });
+});
 
 // ── 旧版 4 列业务需求文档（业务需求方，无指标名称列）──────────────
 
@@ -127,6 +172,13 @@ describe('extractMetricsFromMarkdown — 8 列数仓设计文档', () => {
     expect(result[0].fields!.every(f => f.datasourceName === 'test_dbs')).toBe(true);
   });
 
+  it('旧文档无"下钻维度"列时不影响解析（向后兼容）', () => {
+    const result = extractMetricsFromMarkdown(DESIGN_DOC_8COL, 'USR');
+    expect(result).toHaveLength(2);
+    // 无该列时 businessDefinition 只含业务含义，不追加"下钻维度"前缀
+    expect(result[0].businessDefinition).not.toContain('下钻维度');
+  });
+
   it('旧文档无"数据源"列时 datasourceName 为空串（向后兼容）', () => {
     const doc = `# 文档
 
@@ -157,16 +209,23 @@ function promptMetricHeader(): { header: string; colCount: number } {
 }
 
 describe('extractMetricsFromMarkdown — 数仓设计提示词表头与解析器一致', () => {
-  it('提示词给出的是 8 列表头', () => {
+  it('提示词给出的是 9 列表头', () => {
     const { colCount } = promptMetricHeader();
-    expect(colCount).toBe(8);
+    expect(colCount).toBe(9);
+  });
+
+  it('提示词表头含下钻维度列，且位于字段来源之前', () => {
+    const { header } = promptMetricHeader();
+    expect(header).toContain('下钻维度');
+    expect(header.indexOf('下钻维度')).toBeLessThan(header.indexOf('字段来源'));
   });
 
   it('按提示词表头生成的文档可被完整解析（含指标含义列）', () => {
-    const { header } = promptMetricHeader();
-    const sep = `|${'---|'.repeat(8)}`;
+    const { header, colCount } = promptMetricHeader();
+    const sep = `|${'---|'.repeat(colCount)}`;
     const row = `| USR_0009 | 次日留存率 | 用户域 | 次日仍活跃的用户占比 `
-      + `| USR_0002 / USR_0001 * 100 | | ods_user.login:user_id;dws_user.keep:keep_flag | test_dbs |`;
+      + `| USR_0002 / USR_0001 * 100 | | 时间(dim_date:date_id);渠道(dws_user.keep:channel) `
+      + `| ods_user.login:user_id;dws_user.keep:keep_flag | test_dbs |`;
     const doc = ['# 用户域数仓设计', '', '## 数据指标', '', header, sep, row, ''].join('\n');
 
     const result = extractMetricsFromMarkdown(doc, 'USR');
@@ -176,8 +235,10 @@ describe('extractMetricsFromMarkdown — 数仓设计提示词表头与解析器
     expect(ind.code).toBe('USR_0009');
     expect(ind.name).toBe('次日留存率');
     expect(ind.topic).toBe('用户域');
-    // 指标含义列命中 businessDefinition，而非退化成"指标含义: xxx"兜底
-    expect(ind.businessDefinition).toBe('次日仍活跃的用户占比');
+    // 指标含义列命中 businessDefinition 主体，下钻维度以 "下钻维度: xxx" 追加
+    expect(ind.businessDefinition).toBe(
+      '次日仍活跃的用户占比\n下钻维度: 时间(dim_date:date_id);渠道(dws_user.keep:channel)',
+    );
     expect(ind.calcExpr).toBe('USR_0002 / USR_0001 * 100');
     expect(ind.defaultFilter).toBeUndefined();
     // 字段来源解析：跨两张表共 2 个字段，均带上数据源名称
@@ -205,16 +266,22 @@ function businessPromptMetricHeader(): { header: string; colCount: number } {
 }
 
 describe('extractMetricsFromMarkdown — 业务需求提示词表头与解析器一致', () => {
-  it('提示词给出的是 6 列表头', () => {
+  it('提示词给出的是 7 列表头', () => {
     const { colCount } = businessPromptMetricHeader();
-    expect(colCount).toBe(6);
+    expect(colCount).toBe(7);
+  });
+
+  it('提示词表头含下钻维度列', () => {
+    const { header } = businessPromptMetricHeader();
+    expect(header).toContain('下钻维度');
   });
 
   it('按提示词表头生成的文档可被完整解析', () => {
-    const { header } = businessPromptMetricHeader();
-    const sep = `|${'---|'.repeat(6)}`;
+    const { header, colCount } = businessPromptMetricHeader();
+    const sep = `|${'---|'.repeat(colCount)}`;
     const row = '| 日活用户数 | 用户域 | 当日产生有效行为的去重用户数 '
-      + '| 登录且产生有效行为的用户按用户 ID 去重计数 | 仅统计正式渠道的用户 | 日常运营日报 |';
+      + '| 登录且产生有效行为的用户按用户 ID 去重计数 | 仅统计正式渠道的用户 '
+      + '| 时间（日→周→月）、渠道（一级渠道→二级渠道） | 日常运营日报 |';
     const doc = ['# 用户增长业务需求', '', '## 数据指标', '', header, sep, row, ''].join('\n');
 
     const result = extractMetricsFromMarkdown(doc, 'BIZ');
@@ -224,8 +291,12 @@ describe('extractMetricsFromMarkdown — 业务需求提示词表头与解析器
     // 有"指标名称"列时直接取其值作为指标名，不再用业务定义截断兜底
     expect(ind.name).toBe('日活用户数');
     expect(ind.topic).toBe('用户域');
-    // 业务定义 + 应用场景拼入 businessDefinition
-    expect(ind.businessDefinition).toBe('当日产生有效行为的去重用户数\n应用场景: 日常运营日报');
+    // 业务定义 + 下钻维度 + 应用场景 依次拼入 businessDefinition
+    expect(ind.businessDefinition).toBe(
+      '当日产生有效行为的去重用户数\n'
+      + '下钻维度: 时间（日→周→月）、渠道（一级渠道→二级渠道）\n'
+      + '应用场景: 日常运营日报',
+    );
     // 计算口径 → calcExpr（业务语言，非 SQL）
     expect(ind.calcExpr).toBe('登录且产生有效行为的用户按用户 ID 去重计数');
     expect(ind.defaultFilter).toBe('仅统计正式渠道的用户');
@@ -377,6 +448,7 @@ describe('extractMetricsFromMarkdown — 边界与异常', () => {
 
 // ── 新提示词文档健壮性（模型输出偏差的容错解析，修复回归）──────────
 
+// 旧版 8 列表头（无下钻维度列）：用于验证模型输出偏差容错与向后兼容
 const HEADER_8COL = '| 指标编码 | 指标名称 | 主题域 | 指标含义 | 计算表达式 | 过滤条件 | 字段来源 | 数据源 |';
 const SEPARATOR_8COL = '|--------|------|----------|----------|----------|----------|----------|----------|';
 
