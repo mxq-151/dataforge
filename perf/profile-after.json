@@ -1,0 +1,1514 @@
+{
+  "meta": {
+    "generatedAt": "2026-09-10T10:17:41.367Z",
+    "url": "http://127.0.0.1:5173/bench.html",
+    "preset": "long",
+    "typing": false,
+    "iterations": 3,
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/152.0.0.0 Safari/537.36",
+    "note": "selfMs = V8 采样器归因到该函数的自身 CPU 时间（100µs 采样间隔）"
+  },
+  "rounds": [
+    {
+      "iteration": 1,
+      "wallMs": 10392.1,
+      "blockedMs": 193,
+      "aiCommitCount": 600,
+      "aiCommitTotalMs": 410,
+      "editorCommitCount": 3,
+      "totalSelfMs": 11176.1,
+      "top": [
+        {
+          "key": "(idle)@(native):0",
+          "name": "(idle)",
+          "file": "(native)",
+          "line": 0,
+          "selfUs": 9371638,
+          "samples": 1,
+          "totalUs": 0,
+          "selfMs": 9371.6,
+          "totalMs": 0,
+          "selfPct": 83.85,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "(program)@(native):0",
+          "name": "(program)",
+          "file": "(native)",
+          "line": 0,
+          "selfUs": 1115440,
+          "samples": 1,
+          "totalUs": 0,
+          "selfMs": 1115.4,
+          "totalMs": 0,
+          "selfPct": 9.98,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "exports.jsxDEV@/node_modules/.vite/deps/react_jsx-dev-runtime.js:191",
+          "name": "exports.jsxDEV",
+          "file": "/node_modules/.vite/deps/react_jsx-dev-runtime.js",
+          "line": 191,
+          "selfUs": 71567,
+          "samples": 25,
+          "totalUs": 18078,
+          "selfMs": 71.6,
+          "totalMs": 18.1,
+          "selfPct": 0.64,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "(garbage collector)@(native):0",
+          "name": "(garbage collector)",
+          "file": "(native)",
+          "line": 0,
+          "selfUs": 55639,
+          "samples": 1,
+          "totalUs": 0,
+          "selfMs": 55.6,
+          "totalMs": 0,
+          "selfPct": 0.5,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "exports.jsx@/node_modules/.vite/deps/react_jsx-runtime.js:191",
+          "name": "exports.jsx",
+          "file": "/node_modules/.vite/deps/react_jsx-runtime.js",
+          "line": 191,
+          "selfUs": 39252,
+          "samples": 7,
+          "totalUs": 8014,
+          "selfMs": 39.3,
+          "totalMs": 8,
+          "selfPct": 0.35,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "run@(native):0",
+          "name": "run",
+          "file": "(native)",
+          "line": 0,
+          "selfUs": 20476,
+          "samples": 22,
+          "totalUs": 499385,
+          "selfMs": 20.5,
+          "totalMs": 499.4,
+          "selfPct": 0.18,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "findStableSplit@src/components/ai/parts/PacedMarkdown.tsx:79",
+          "name": "findStableSplit",
+          "file": "src/components/ai/parts/PacedMarkdown.tsx",
+          "line": 79,
+          "selfUs": 11668,
+          "samples": 1,
+          "totalUs": 1185,
+          "selfMs": 11.7,
+          "totalMs": 1.2,
+          "selfPct": 0.1,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "go@/node_modules/.vite/deps/react-markdown.js:9659",
+          "name": "go",
+          "file": "/node_modules/.vite/deps/react-markdown.js",
+          "line": 9659,
+          "selfUs": 11557,
+          "samples": 11,
+          "totalUs": 114021,
+          "selfMs": 11.6,
+          "totalMs": 114,
+          "selfPct": 0.1,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "subtokenize@/node_modules/.vite/deps/react-markdown.js:4850",
+          "name": "subtokenize",
+          "file": "/node_modules/.vite/deps/react-markdown.js",
+          "line": 4850,
+          "selfUs": 10619,
+          "samples": 6,
+          "totalUs": 32191,
+          "selfMs": 10.6,
+          "totalMs": 32.2,
+          "selfPct": 0.1,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "compile@/node_modules/.vite/deps/react-markdown.js:10383",
+          "name": "compile",
+          "file": "/node_modules/.vite/deps/react-markdown.js",
+          "line": 10383,
+          "selfUs": 9732,
+          "samples": 2,
+          "totalUs": 14666,
+          "selfMs": 9.7,
+          "totalMs": 14.7,
+          "selfPct": 0.09,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "now@(native):0",
+          "name": "now",
+          "file": "(native)",
+          "line": 0,
+          "selfUs": 8725,
+          "samples": 16,
+          "totalUs": 0,
+          "selfMs": 8.7,
+          "totalMs": 0,
+          "selfPct": 0.08,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "splitStableBlocks@src/components/ai/parts/PacedMarkdown.tsx:134",
+          "name": "splitStableBlocks",
+          "file": "src/components/ai/parts/PacedMarkdown.tsx",
+          "line": 134,
+          "selfUs": 7758,
+          "samples": 1,
+          "totalUs": 7909,
+          "selfMs": 7.8,
+          "totalMs": 7.9,
+          "selfPct": 0.07,
+          "selfPctOfWall": 0
+        }
+      ],
+      "files": [
+        {
+          "file": "(native)",
+          "selfUs": 10612220,
+          "selfMs": 10612.2,
+          "selfPct": 94.95
+        },
+        {
+          "file": "/node_modules/.vite/deps/react-dom_client.js",
+          "selfUs": 151869,
+          "selfMs": 151.9,
+          "selfPct": 1.36
+        },
+        {
+          "file": "/node_modules/.vite/deps/react-markdown.js",
+          "selfUs": 146693,
+          "selfMs": 146.7,
+          "selfPct": 1.31
+        },
+        {
+          "file": "/node_modules/.vite/deps/react_jsx-dev-runtime.js",
+          "selfUs": 88301,
+          "selfMs": 88.3,
+          "selfPct": 0.79
+        },
+        {
+          "file": "/node_modules/.vite/deps/react_jsx-runtime.js",
+          "selfUs": 53368,
+          "selfMs": 53.4,
+          "selfPct": 0.48
+        },
+        {
+          "file": "/node_modules/.vite/deps/lib-9qH3G_6W.js",
+          "selfUs": 36700,
+          "selfMs": 36.7,
+          "selfPct": 0.33
+        },
+        {
+          "file": "src/components/ai/parts/PacedMarkdown.tsx",
+          "selfUs": 29488,
+          "selfMs": 29.5,
+          "selfPct": 0.26
+        },
+        {
+          "file": "/node_modules/.vite/deps/@tanstack_react-virtual.js",
+          "selfUs": 16146,
+          "selfMs": 16.1,
+          "selfPct": 0.14
+        },
+        {
+          "file": "src/views/ai-bench/benchMetrics.ts",
+          "selfUs": 8950,
+          "selfMs": 9,
+          "selfPct": 0.08
+        },
+        {
+          "file": "/node_modules/.vite/deps/remark-gfm.js",
+          "selfUs": 7308,
+          "selfMs": 7.3,
+          "selfPct": 0.07
+        },
+        {
+          "file": "/node_modules/.vite/deps/react.js",
+          "selfUs": 3732,
+          "selfMs": 3.7,
+          "selfPct": 0.03
+        },
+        {
+          "file": "src/views/ai-bench/AIBenchPage.tsx",
+          "selfUs": 2060,
+          "selfMs": 2.1,
+          "selfPct": 0.02
+        },
+        {
+          "file": "src/components/ai/timeline/MessageTimeline.tsx",
+          "selfUs": 2047,
+          "selfMs": 2,
+          "selfPct": 0.02
+        },
+        {
+          "file": "src/components/ai/parts/TextPartDisplay.tsx",
+          "selfUs": 1946,
+          "selfMs": 1.9,
+          "selfPct": 0.02
+        }
+      ],
+      "appFrames": [
+        {
+          "key": "PacedMarkdown@src/components/ai/parts/PacedMarkdown.tsx:295",
+          "name": "PacedMarkdown",
+          "file": "src/components/ai/parts/PacedMarkdown.tsx",
+          "line": 295,
+          "inclusiveUs": 49198,
+          "instances": 3,
+          "inclusiveMs": 49.2,
+          "inclusivePct": 0.44
+        },
+        {
+          "key": "MessageTimeline@src/components/ai/timeline/MessageTimeline.tsx:61",
+          "name": "MessageTimeline",
+          "file": "src/components/ai/timeline/MessageTimeline.tsx",
+          "line": 61,
+          "inclusiveUs": 34439,
+          "instances": 2,
+          "inclusiveMs": 34.4,
+          "inclusivePct": 0.31
+        },
+        {
+          "key": "TextPartDisplay@src/components/ai/parts/TextPartDisplay.tsx:40",
+          "name": "TextPartDisplay",
+          "file": "src/components/ai/parts/TextPartDisplay.tsx",
+          "line": 40,
+          "inclusiveUs": 27503,
+          "instances": 4,
+          "inclusiveMs": 27.5,
+          "inclusivePct": 0.25
+        },
+        {
+          "key": "(anonymous)@src/components/ai/parts/PacedMarkdown.tsx:318",
+          "name": "(anonymous)",
+          "file": "src/components/ai/parts/PacedMarkdown.tsx",
+          "line": 318,
+          "inclusiveUs": 22361,
+          "instances": 2,
+          "inclusiveMs": 22.4,
+          "inclusivePct": 0.2
+        },
+        {
+          "key": "code@src/components/ai/parts/markdownComponents.tsx:38",
+          "name": "code",
+          "file": "src/components/ai/parts/markdownComponents.tsx",
+          "line": 38,
+          "inclusiveUs": 16693,
+          "instances": 2,
+          "inclusiveMs": 16.7,
+          "inclusivePct": 0.15
+        },
+        {
+          "key": "splitStableBlocks@src/components/ai/parts/PacedMarkdown.tsx:134",
+          "name": "splitStableBlocks",
+          "file": "src/components/ai/parts/PacedMarkdown.tsx",
+          "line": 134,
+          "inclusiveUs": 15667,
+          "instances": 2,
+          "inclusiveMs": 15.7,
+          "inclusivePct": 0.14
+        },
+        {
+          "key": "(anonymous)@src/components/ai/timeline/MessageTimeline.tsx:400",
+          "name": "(anonymous)",
+          "file": "src/components/ai/timeline/MessageTimeline.tsx",
+          "line": 400,
+          "inclusiveUs": 14363,
+          "instances": 2,
+          "inclusiveMs": 14.4,
+          "inclusivePct": 0.13
+        },
+        {
+          "key": "(anonymous)@src/components/ai/parts/PacedMarkdown.tsx:299",
+          "name": "(anonymous)",
+          "file": "src/components/ai/parts/PacedMarkdown.tsx",
+          "line": 299,
+          "inclusiveUs": 13637,
+          "instances": 2,
+          "inclusiveMs": 13.6,
+          "inclusivePct": 0.12
+        },
+        {
+          "key": "findStableSplit@src/components/ai/parts/PacedMarkdown.tsx:79",
+          "name": "findStableSplit",
+          "file": "src/components/ai/parts/PacedMarkdown.tsx",
+          "line": 79,
+          "inclusiveUs": 12853,
+          "instances": 1,
+          "inclusiveMs": 12.9,
+          "inclusivePct": 0.12
+        },
+        {
+          "key": "(anonymous)@src/views/ai-bench/AIBenchPage.tsx:174",
+          "name": "(anonymous)",
+          "file": "src/views/ai-bench/AIBenchPage.tsx",
+          "line": 174,
+          "inclusiveUs": 6405,
+          "instances": 2,
+          "inclusiveMs": 6.4,
+          "inclusivePct": 0.06
+        },
+        {
+          "key": "CodeIcon@src/components/ai/parts/markdownComponents.tsx:4",
+          "name": "CodeIcon",
+          "file": "src/components/ai/parts/markdownComponents.tsx",
+          "line": 4,
+          "inclusiveUs": 6390,
+          "instances": 3,
+          "inclusiveMs": 6.4,
+          "inclusivePct": 0.06
+        },
+        {
+          "key": "mergeRiskyBlocks@src/components/ai/parts/PacedMarkdown.tsx:185",
+          "name": "mergeRiskyBlocks",
+          "file": "src/components/ai/parts/PacedMarkdown.tsx",
+          "line": 185,
+          "inclusiveUs": 5694,
+          "instances": 2,
+          "inclusiveMs": 5.7,
+          "inclusivePct": 0.05
+        }
+      ]
+    },
+    {
+      "iteration": 2,
+      "wallMs": 10392.2,
+      "blockedMs": 167.2,
+      "aiCommitCount": 599,
+      "aiCommitTotalMs": 358.5,
+      "editorCommitCount": 3,
+      "totalSelfMs": 10644.1,
+      "top": [
+        {
+          "key": "(idle)@(native):0",
+          "name": "(idle)",
+          "file": "(native)",
+          "line": 0,
+          "selfUs": 9431001,
+          "samples": 1,
+          "totalUs": 0,
+          "selfMs": 9431,
+          "totalMs": 0,
+          "selfPct": 88.6,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "(program)@(native):0",
+          "name": "(program)",
+          "file": "(native)",
+          "line": 0,
+          "selfUs": 585027,
+          "samples": 1,
+          "totalUs": 0,
+          "selfMs": 585,
+          "totalMs": 0,
+          "selfPct": 5.5,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "(garbage collector)@(native):0",
+          "name": "(garbage collector)",
+          "file": "(native)",
+          "line": 0,
+          "selfUs": 65545,
+          "samples": 1,
+          "totalUs": 0,
+          "selfMs": 65.5,
+          "totalMs": 0,
+          "selfPct": 0.62,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "exports.jsxDEV@/node_modules/.vite/deps/react_jsx-dev-runtime.js:191",
+          "name": "exports.jsxDEV",
+          "file": "/node_modules/.vite/deps/react_jsx-dev-runtime.js",
+          "line": 191,
+          "selfUs": 65534,
+          "samples": 20,
+          "totalUs": 17159,
+          "selfMs": 65.5,
+          "totalMs": 17.2,
+          "selfPct": 0.62,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "exports.jsx@/node_modules/.vite/deps/react_jsx-runtime.js:191",
+          "name": "exports.jsx",
+          "file": "/node_modules/.vite/deps/react_jsx-runtime.js",
+          "line": 191,
+          "selfUs": 31724,
+          "samples": 8,
+          "totalUs": 6605,
+          "selfMs": 31.7,
+          "totalMs": 6.6,
+          "selfPct": 0.3,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "run@(native):0",
+          "name": "run",
+          "file": "(native)",
+          "line": 0,
+          "selfUs": 19247,
+          "samples": 21,
+          "totalUs": 448687,
+          "selfMs": 19.2,
+          "totalMs": 448.7,
+          "selfPct": 0.18,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "go@/node_modules/.vite/deps/react-markdown.js:9659",
+          "name": "go",
+          "file": "/node_modules/.vite/deps/react-markdown.js",
+          "line": 9659,
+          "selfUs": 13020,
+          "samples": 15,
+          "totalUs": 104022,
+          "selfMs": 13,
+          "totalMs": 104,
+          "selfPct": 0.12,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "findStableSplit@src/components/ai/parts/PacedMarkdown.tsx:79",
+          "name": "findStableSplit",
+          "file": "src/components/ai/parts/PacedMarkdown.tsx",
+          "line": 79,
+          "selfUs": 12105,
+          "samples": 1,
+          "totalUs": 0,
+          "selfMs": 12.1,
+          "totalMs": 0,
+          "selfPct": 0.11,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "splitStableBlocks@src/components/ai/parts/PacedMarkdown.tsx:134",
+          "name": "splitStableBlocks",
+          "file": "src/components/ai/parts/PacedMarkdown.tsx",
+          "line": 134,
+          "selfUs": 9506,
+          "samples": 1,
+          "totalUs": 5494,
+          "selfMs": 9.5,
+          "totalMs": 5.5,
+          "selfPct": 0.09,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "now@(native):0",
+          "name": "now",
+          "file": "(native)",
+          "line": 0,
+          "selfUs": 9238,
+          "samples": 18,
+          "totalUs": 0,
+          "selfMs": 9.2,
+          "totalMs": 0,
+          "selfPct": 0.09,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "compile@/node_modules/.vite/deps/react-markdown.js:10383",
+          "name": "compile",
+          "file": "/node_modules/.vite/deps/react-markdown.js",
+          "line": 10383,
+          "selfUs": 9087,
+          "samples": 2,
+          "totalUs": 16160,
+          "selfMs": 9.1,
+          "totalMs": 16.2,
+          "selfPct": 0.09,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "addValueToProperties@/node_modules/.vite/deps/react-dom_client.js:2336",
+          "name": "addValueToProperties",
+          "file": "/node_modules/.vite/deps/react-dom_client.js",
+          "line": 2336,
+          "selfUs": 8194,
+          "samples": 2,
+          "totalUs": 0,
+          "selfMs": 8.2,
+          "totalMs": 0,
+          "selfPct": 0.08,
+          "selfPctOfWall": 0
+        }
+      ],
+      "files": [
+        {
+          "file": "(native)",
+          "selfUs": 10143588,
+          "selfMs": 10143.6,
+          "selfPct": 95.3
+        },
+        {
+          "file": "/node_modules/.vite/deps/react-markdown.js",
+          "selfUs": 133639,
+          "selfMs": 133.6,
+          "selfPct": 1.26
+        },
+        {
+          "file": "/node_modules/.vite/deps/react-dom_client.js",
+          "selfUs": 133502,
+          "selfMs": 133.5,
+          "selfPct": 1.25
+        },
+        {
+          "file": "/node_modules/.vite/deps/react_jsx-dev-runtime.js",
+          "selfUs": 81595,
+          "selfMs": 81.6,
+          "selfPct": 0.77
+        },
+        {
+          "file": "/node_modules/.vite/deps/react_jsx-runtime.js",
+          "selfUs": 44078,
+          "selfMs": 44.1,
+          "selfPct": 0.41
+        },
+        {
+          "file": "/node_modules/.vite/deps/lib-9qH3G_6W.js",
+          "selfUs": 33161,
+          "selfMs": 33.2,
+          "selfPct": 0.31
+        },
+        {
+          "file": "src/components/ai/parts/PacedMarkdown.tsx",
+          "selfUs": 31667,
+          "selfMs": 31.7,
+          "selfPct": 0.3
+        },
+        {
+          "file": "/node_modules/.vite/deps/@tanstack_react-virtual.js",
+          "selfUs": 11441,
+          "selfMs": 11.4,
+          "selfPct": 0.11
+        },
+        {
+          "file": "/node_modules/.vite/deps/remark-gfm.js",
+          "selfUs": 8375,
+          "selfMs": 8.4,
+          "selfPct": 0.08
+        },
+        {
+          "file": "src/views/ai-bench/benchMetrics.ts",
+          "selfUs": 6293,
+          "selfMs": 6.3,
+          "selfPct": 0.06
+        },
+        {
+          "file": "/node_modules/.vite/deps/react.js",
+          "selfUs": 3348,
+          "selfMs": 3.3,
+          "selfPct": 0.03
+        },
+        {
+          "file": "src/components/ai/timeline/MessageTimeline.tsx",
+          "selfUs": 2271,
+          "selfMs": 2.3,
+          "selfPct": 0.02
+        },
+        {
+          "file": "src/hooks/opencode/useOpencodeEvents.ts",
+          "selfUs": 1691,
+          "selfMs": 1.7,
+          "selfPct": 0.02
+        },
+        {
+          "file": "src/components/ai/parts/markdownComponents.tsx",
+          "selfUs": 1673,
+          "selfMs": 1.7,
+          "selfPct": 0.02
+        }
+      ],
+      "appFrames": [
+        {
+          "key": "PacedMarkdown@src/components/ai/parts/PacedMarkdown.tsx:295",
+          "name": "PacedMarkdown",
+          "file": "src/components/ai/parts/PacedMarkdown.tsx",
+          "line": 295,
+          "inclusiveUs": 47774,
+          "instances": 3,
+          "inclusiveMs": 47.8,
+          "inclusivePct": 0.45
+        },
+        {
+          "key": "MessageTimeline@src/components/ai/timeline/MessageTimeline.tsx:61",
+          "name": "MessageTimeline",
+          "file": "src/components/ai/timeline/MessageTimeline.tsx",
+          "line": 61,
+          "inclusiveUs": 31879,
+          "instances": 2,
+          "inclusiveMs": 31.9,
+          "inclusivePct": 0.3
+        },
+        {
+          "key": "TextPartDisplay@src/components/ai/parts/TextPartDisplay.tsx:40",
+          "name": "TextPartDisplay",
+          "file": "src/components/ai/parts/TextPartDisplay.tsx",
+          "line": 40,
+          "inclusiveUs": 26790,
+          "instances": 3,
+          "inclusiveMs": 26.8,
+          "inclusivePct": 0.25
+        },
+        {
+          "key": "(anonymous)@src/components/ai/parts/PacedMarkdown.tsx:318",
+          "name": "(anonymous)",
+          "file": "src/components/ai/parts/PacedMarkdown.tsx",
+          "line": 318,
+          "inclusiveUs": 20172,
+          "instances": 2,
+          "inclusiveMs": 20.2,
+          "inclusivePct": 0.19
+        },
+        {
+          "key": "splitStableBlocks@src/components/ai/parts/PacedMarkdown.tsx:134",
+          "name": "splitStableBlocks",
+          "file": "src/components/ai/parts/PacedMarkdown.tsx",
+          "line": 134,
+          "inclusiveUs": 15000,
+          "instances": 1,
+          "inclusiveMs": 15,
+          "inclusivePct": 0.14
+        },
+        {
+          "key": "code@src/components/ai/parts/markdownComponents.tsx:38",
+          "name": "code",
+          "file": "src/components/ai/parts/markdownComponents.tsx",
+          "line": 38,
+          "inclusiveUs": 13955,
+          "instances": 3,
+          "inclusiveMs": 14,
+          "inclusivePct": 0.13
+        },
+        {
+          "key": "(anonymous)@src/components/ai/parts/PacedMarkdown.tsx:299",
+          "name": "(anonymous)",
+          "file": "src/components/ai/parts/PacedMarkdown.tsx",
+          "line": 299,
+          "inclusiveUs": 12993,
+          "instances": 1,
+          "inclusiveMs": 13,
+          "inclusivePct": 0.12
+        },
+        {
+          "key": "findStableSplit@src/components/ai/parts/PacedMarkdown.tsx:79",
+          "name": "findStableSplit",
+          "file": "src/components/ai/parts/PacedMarkdown.tsx",
+          "line": 79,
+          "inclusiveUs": 12105,
+          "instances": 1,
+          "inclusiveMs": 12.1,
+          "inclusivePct": 0.11
+        },
+        {
+          "key": "(anonymous)@src/components/ai/timeline/MessageTimeline.tsx:400",
+          "name": "(anonymous)",
+          "file": "src/components/ai/timeline/MessageTimeline.tsx",
+          "line": 400,
+          "inclusiveUs": 11589,
+          "instances": 1,
+          "inclusiveMs": 11.6,
+          "inclusivePct": 0.11
+        },
+        {
+          "key": "mergeRiskyBlocks@src/components/ai/parts/PacedMarkdown.tsx:185",
+          "name": "mergeRiskyBlocks",
+          "file": "src/components/ai/parts/PacedMarkdown.tsx",
+          "line": 185,
+          "inclusiveUs": 5249,
+          "instances": 1,
+          "inclusiveMs": 5.2,
+          "inclusivePct": 0.05
+        },
+        {
+          "key": "tick@src/views/ai-bench/benchMetrics.ts:78",
+          "name": "tick",
+          "file": "src/views/ai-bench/benchMetrics.ts",
+          "line": 78,
+          "inclusiveUs": 4619,
+          "instances": 1,
+          "inclusiveMs": 4.6,
+          "inclusivePct": 0.04
+        },
+        {
+          "key": "CodeIcon@src/components/ai/parts/markdownComponents.tsx:4",
+          "name": "CodeIcon",
+          "file": "src/components/ai/parts/markdownComponents.tsx",
+          "line": 4,
+          "inclusiveUs": 3741,
+          "instances": 2,
+          "inclusiveMs": 3.7,
+          "inclusivePct": 0.04
+        }
+      ]
+    },
+    {
+      "iteration": 3,
+      "wallMs": 10304.2,
+      "blockedMs": 147.3,
+      "aiCommitCount": 599,
+      "aiCommitTotalMs": 330.7,
+      "editorCommitCount": 3,
+      "totalSelfMs": 10540.3,
+      "top": [
+        {
+          "key": "(idle)@(native):0",
+          "name": "(idle)",
+          "file": "(native)",
+          "line": 0,
+          "selfUs": 9427947,
+          "samples": 1,
+          "totalUs": 0,
+          "selfMs": 9427.9,
+          "totalMs": 0,
+          "selfPct": 89.45,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "(program)@(native):0",
+          "name": "(program)",
+          "file": "(native)",
+          "line": 0,
+          "selfUs": 565496,
+          "samples": 1,
+          "totalUs": 0,
+          "selfMs": 565.5,
+          "totalMs": 0,
+          "selfPct": 5.37,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "exports.jsxDEV@/node_modules/.vite/deps/react_jsx-dev-runtime.js:191",
+          "name": "exports.jsxDEV",
+          "file": "/node_modules/.vite/deps/react_jsx-dev-runtime.js",
+          "line": 191,
+          "selfUs": 66922,
+          "samples": 18,
+          "totalUs": 15727,
+          "selfMs": 66.9,
+          "totalMs": 15.7,
+          "selfPct": 0.63,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "exports.jsx@/node_modules/.vite/deps/react_jsx-runtime.js:191",
+          "name": "exports.jsx",
+          "file": "/node_modules/.vite/deps/react_jsx-runtime.js",
+          "line": 191,
+          "selfUs": 32690,
+          "samples": 7,
+          "totalUs": 4920,
+          "selfMs": 32.7,
+          "totalMs": 4.9,
+          "selfPct": 0.31,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "(garbage collector)@(native):0",
+          "name": "(garbage collector)",
+          "file": "(native)",
+          "line": 0,
+          "selfUs": 30377,
+          "samples": 1,
+          "totalUs": 0,
+          "selfMs": 30.4,
+          "totalMs": 0,
+          "selfPct": 0.29,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "run@(native):0",
+          "name": "run",
+          "file": "(native)",
+          "line": 0,
+          "selfUs": 17391,
+          "samples": 20,
+          "totalUs": 409336,
+          "selfMs": 17.4,
+          "totalMs": 409.3,
+          "selfPct": 0.16,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "findStableSplit@src/components/ai/parts/PacedMarkdown.tsx:79",
+          "name": "findStableSplit",
+          "file": "src/components/ai/parts/PacedMarkdown.tsx",
+          "line": 79,
+          "selfUs": 12426,
+          "samples": 1,
+          "totalUs": 0,
+          "selfMs": 12.4,
+          "totalMs": 0,
+          "selfPct": 0.12,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "go@/node_modules/.vite/deps/react-markdown.js:9659",
+          "name": "go",
+          "file": "/node_modules/.vite/deps/react-markdown.js",
+          "line": 9659,
+          "selfUs": 9615,
+          "samples": 14,
+          "totalUs": 74253,
+          "selfMs": 9.6,
+          "totalMs": 74.3,
+          "selfPct": 0.09,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "splitStableBlocks@src/components/ai/parts/PacedMarkdown.tsx:134",
+          "name": "splitStableBlocks",
+          "file": "src/components/ai/parts/PacedMarkdown.tsx",
+          "line": 134,
+          "selfUs": 8596,
+          "samples": 1,
+          "totalUs": 6981,
+          "selfMs": 8.6,
+          "totalMs": 7,
+          "selfPct": 0.08,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "fromMarkdown@/node_modules/.vite/deps/react-markdown.js:10253",
+          "name": "fromMarkdown",
+          "file": "/node_modules/.vite/deps/react-markdown.js",
+          "line": 10253,
+          "selfUs": 8353,
+          "samples": 3,
+          "totalUs": 108146,
+          "selfMs": 8.4,
+          "totalMs": 108.1,
+          "selfPct": 0.08,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "ReactElement@/node_modules/.vite/deps/react_jsx-dev-runtime.js:104",
+          "name": "ReactElement",
+          "file": "/node_modules/.vite/deps/react_jsx-dev-runtime.js",
+          "line": 104,
+          "selfUs": 8219,
+          "samples": 13,
+          "totalUs": 0,
+          "selfMs": 8.2,
+          "totalMs": 0,
+          "selfPct": 0.08,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "addValueToProperties@/node_modules/.vite/deps/react-dom_client.js:2336",
+          "name": "addValueToProperties",
+          "file": "/node_modules/.vite/deps/react-dom_client.js",
+          "line": 2336,
+          "selfUs": 8178,
+          "samples": 1,
+          "totalUs": 0,
+          "selfMs": 8.2,
+          "totalMs": 0,
+          "selfPct": 0.08,
+          "selfPctOfWall": 0
+        }
+      ],
+      "files": [
+        {
+          "file": "(native)",
+          "selfUs": 10077615,
+          "selfMs": 10077.6,
+          "selfPct": 95.61
+        },
+        {
+          "file": "/node_modules/.vite/deps/react-dom_client.js",
+          "selfUs": 128631,
+          "selfMs": 128.6,
+          "selfPct": 1.22
+        },
+        {
+          "file": "/node_modules/.vite/deps/react-markdown.js",
+          "selfUs": 110393,
+          "selfMs": 110.4,
+          "selfPct": 1.05
+        },
+        {
+          "file": "/node_modules/.vite/deps/react_jsx-dev-runtime.js",
+          "selfUs": 81361,
+          "selfMs": 81.4,
+          "selfPct": 0.77
+        },
+        {
+          "file": "/node_modules/.vite/deps/react_jsx-runtime.js",
+          "selfUs": 42446,
+          "selfMs": 42.4,
+          "selfPct": 0.4
+        },
+        {
+          "file": "src/components/ai/parts/PacedMarkdown.tsx",
+          "selfUs": 31212,
+          "selfMs": 31.2,
+          "selfPct": 0.3
+        },
+        {
+          "file": "/node_modules/.vite/deps/lib-9qH3G_6W.js",
+          "selfUs": 29349,
+          "selfMs": 29.3,
+          "selfPct": 0.28
+        },
+        {
+          "file": "/node_modules/.vite/deps/@tanstack_react-virtual.js",
+          "selfUs": 10821,
+          "selfMs": 10.8,
+          "selfPct": 0.1
+        },
+        {
+          "file": "src/views/ai-bench/benchMetrics.ts",
+          "selfUs": 6049,
+          "selfMs": 6,
+          "selfPct": 0.06
+        },
+        {
+          "file": "/node_modules/.vite/deps/remark-gfm.js",
+          "selfUs": 5401,
+          "selfMs": 5.4,
+          "selfPct": 0.05
+        },
+        {
+          "file": "src/components/ai/timeline/MessageTimeline.tsx",
+          "selfUs": 3596,
+          "selfMs": 3.6,
+          "selfPct": 0.03
+        },
+        {
+          "file": "/node_modules/.vite/deps/react.js",
+          "selfUs": 2719,
+          "selfMs": 2.7,
+          "selfPct": 0.03
+        },
+        {
+          "file": "src/components/ai/parts/markdownComponents.tsx",
+          "selfUs": 2063,
+          "selfMs": 2.1,
+          "selfPct": 0.02
+        },
+        {
+          "file": "src/components/ai/parts/TextPartDisplay.tsx",
+          "selfUs": 831,
+          "selfMs": 0.8,
+          "selfPct": 0.01
+        }
+      ],
+      "appFrames": [
+        {
+          "key": "PacedMarkdown@src/components/ai/parts/PacedMarkdown.tsx:295",
+          "name": "PacedMarkdown",
+          "file": "src/components/ai/parts/PacedMarkdown.tsx",
+          "line": 295,
+          "inclusiveUs": 44513,
+          "instances": 4,
+          "inclusiveMs": 44.5,
+          "inclusivePct": 0.42
+        },
+        {
+          "key": "MessageTimeline@src/components/ai/timeline/MessageTimeline.tsx:61",
+          "name": "MessageTimeline",
+          "file": "src/components/ai/timeline/MessageTimeline.tsx",
+          "line": 61,
+          "inclusiveUs": 30482,
+          "instances": 1,
+          "inclusiveMs": 30.5,
+          "inclusivePct": 0.29
+        },
+        {
+          "key": "TextPartDisplay@src/components/ai/parts/TextPartDisplay.tsx:40",
+          "name": "TextPartDisplay",
+          "file": "src/components/ai/parts/TextPartDisplay.tsx",
+          "line": 40,
+          "inclusiveUs": 27472,
+          "instances": 3,
+          "inclusiveMs": 27.5,
+          "inclusivePct": 0.26
+        },
+        {
+          "key": "(anonymous)@src/components/ai/parts/PacedMarkdown.tsx:318",
+          "name": "(anonymous)",
+          "file": "src/components/ai/parts/PacedMarkdown.tsx",
+          "line": 318,
+          "inclusiveUs": 20729,
+          "instances": 1,
+          "inclusiveMs": 20.7,
+          "inclusivePct": 0.2
+        },
+        {
+          "key": "splitStableBlocks@src/components/ai/parts/PacedMarkdown.tsx:134",
+          "name": "splitStableBlocks",
+          "file": "src/components/ai/parts/PacedMarkdown.tsx",
+          "line": 134,
+          "inclusiveUs": 15577,
+          "instances": 1,
+          "inclusiveMs": 15.6,
+          "inclusivePct": 0.15
+        },
+        {
+          "key": "(anonymous)@src/components/ai/timeline/MessageTimeline.tsx:400",
+          "name": "(anonymous)",
+          "file": "src/components/ai/timeline/MessageTimeline.tsx",
+          "line": 400,
+          "inclusiveUs": 13804,
+          "instances": 1,
+          "inclusiveMs": 13.8,
+          "inclusivePct": 0.13
+        },
+        {
+          "key": "(anonymous)@src/components/ai/parts/PacedMarkdown.tsx:299",
+          "name": "(anonymous)",
+          "file": "src/components/ai/parts/PacedMarkdown.tsx",
+          "line": 299,
+          "inclusiveUs": 12954,
+          "instances": 2,
+          "inclusiveMs": 13,
+          "inclusivePct": 0.12
+        },
+        {
+          "key": "code@src/components/ai/parts/markdownComponents.tsx:38",
+          "name": "code",
+          "file": "src/components/ai/parts/markdownComponents.tsx",
+          "line": 38,
+          "inclusiveUs": 12696,
+          "instances": 2,
+          "inclusiveMs": 12.7,
+          "inclusivePct": 0.12
+        },
+        {
+          "key": "findStableSplit@src/components/ai/parts/PacedMarkdown.tsx:79",
+          "name": "findStableSplit",
+          "file": "src/components/ai/parts/PacedMarkdown.tsx",
+          "line": 79,
+          "inclusiveUs": 12426,
+          "instances": 1,
+          "inclusiveMs": 12.4,
+          "inclusivePct": 0.12
+        },
+        {
+          "key": "mergeRiskyBlocks@src/components/ai/parts/PacedMarkdown.tsx:185",
+          "name": "mergeRiskyBlocks",
+          "file": "src/components/ai/parts/PacedMarkdown.tsx",
+          "line": 185,
+          "inclusiveUs": 6605,
+          "instances": 1,
+          "inclusiveMs": 6.6,
+          "inclusivePct": 0.06
+        },
+        {
+          "key": "CodeIcon@src/components/ai/parts/markdownComponents.tsx:4",
+          "name": "CodeIcon",
+          "file": "src/components/ai/parts/markdownComponents.tsx",
+          "line": 4,
+          "inclusiveUs": 6600,
+          "instances": 2,
+          "inclusiveMs": 6.6,
+          "inclusivePct": 0.06
+        },
+        {
+          "key": "tick@src/views/ai-bench/benchMetrics.ts:78",
+          "name": "tick",
+          "file": "src/views/ai-bench/benchMetrics.ts",
+          "line": 78,
+          "inclusiveUs": 3953,
+          "instances": 1,
+          "inclusiveMs": 4,
+          "inclusivePct": 0.04
+        }
+      ]
+    }
+  ],
+  "representative": {
+    "iteration": 2,
+    "wallMs": 10392.2,
+    "blockedMs": 167.2,
+    "aiCommitCount": 599,
+    "aiCommitTotalMs": 358.5,
+    "editorCommitCount": 3,
+    "totalSelfMs": 10644.1,
+    "top": [
+      {
+        "key": "(idle)@(native):0",
+        "name": "(idle)",
+        "file": "(native)",
+        "line": 0,
+        "selfUs": 9431001,
+        "samples": 1,
+        "totalUs": 0,
+        "selfMs": 9431,
+        "totalMs": 0,
+        "selfPct": 88.6,
+        "selfPctOfWall": 0
+      },
+      {
+        "key": "(program)@(native):0",
+        "name": "(program)",
+        "file": "(native)",
+        "line": 0,
+        "selfUs": 585027,
+        "samples": 1,
+        "totalUs": 0,
+        "selfMs": 585,
+        "totalMs": 0,
+        "selfPct": 5.5,
+        "selfPctOfWall": 0
+      },
+      {
+        "key": "(garbage collector)@(native):0",
+        "name": "(garbage collector)",
+        "file": "(native)",
+        "line": 0,
+        "selfUs": 65545,
+        "samples": 1,
+        "totalUs": 0,
+        "selfMs": 65.5,
+        "totalMs": 0,
+        "selfPct": 0.62,
+        "selfPctOfWall": 0
+      },
+      {
+        "key": "exports.jsxDEV@/node_modules/.vite/deps/react_jsx-dev-runtime.js:191",
+        "name": "exports.jsxDEV",
+        "file": "/node_modules/.vite/deps/react_jsx-dev-runtime.js",
+        "line": 191,
+        "selfUs": 65534,
+        "samples": 20,
+        "totalUs": 17159,
+        "selfMs": 65.5,
+        "totalMs": 17.2,
+        "selfPct": 0.62,
+        "selfPctOfWall": 0
+      },
+      {
+        "key": "exports.jsx@/node_modules/.vite/deps/react_jsx-runtime.js:191",
+        "name": "exports.jsx",
+        "file": "/node_modules/.vite/deps/react_jsx-runtime.js",
+        "line": 191,
+        "selfUs": 31724,
+        "samples": 8,
+        "totalUs": 6605,
+        "selfMs": 31.7,
+        "totalMs": 6.6,
+        "selfPct": 0.3,
+        "selfPctOfWall": 0
+      },
+      {
+        "key": "run@(native):0",
+        "name": "run",
+        "file": "(native)",
+        "line": 0,
+        "selfUs": 19247,
+        "samples": 21,
+        "totalUs": 448687,
+        "selfMs": 19.2,
+        "totalMs": 448.7,
+        "selfPct": 0.18,
+        "selfPctOfWall": 0
+      },
+      {
+        "key": "go@/node_modules/.vite/deps/react-markdown.js:9659",
+        "name": "go",
+        "file": "/node_modules/.vite/deps/react-markdown.js",
+        "line": 9659,
+        "selfUs": 13020,
+        "samples": 15,
+        "totalUs": 104022,
+        "selfMs": 13,
+        "totalMs": 104,
+        "selfPct": 0.12,
+        "selfPctOfWall": 0
+      },
+      {
+        "key": "findStableSplit@src/components/ai/parts/PacedMarkdown.tsx:79",
+        "name": "findStableSplit",
+        "file": "src/components/ai/parts/PacedMarkdown.tsx",
+        "line": 79,
+        "selfUs": 12105,
+        "samples": 1,
+        "totalUs": 0,
+        "selfMs": 12.1,
+        "totalMs": 0,
+        "selfPct": 0.11,
+        "selfPctOfWall": 0
+      },
+      {
+        "key": "splitStableBlocks@src/components/ai/parts/PacedMarkdown.tsx:134",
+        "name": "splitStableBlocks",
+        "file": "src/components/ai/parts/PacedMarkdown.tsx",
+        "line": 134,
+        "selfUs": 9506,
+        "samples": 1,
+        "totalUs": 5494,
+        "selfMs": 9.5,
+        "totalMs": 5.5,
+        "selfPct": 0.09,
+        "selfPctOfWall": 0
+      },
+      {
+        "key": "now@(native):0",
+        "name": "now",
+        "file": "(native)",
+        "line": 0,
+        "selfUs": 9238,
+        "samples": 18,
+        "totalUs": 0,
+        "selfMs": 9.2,
+        "totalMs": 0,
+        "selfPct": 0.09,
+        "selfPctOfWall": 0
+      },
+      {
+        "key": "compile@/node_modules/.vite/deps/react-markdown.js:10383",
+        "name": "compile",
+        "file": "/node_modules/.vite/deps/react-markdown.js",
+        "line": 10383,
+        "selfUs": 9087,
+        "samples": 2,
+        "totalUs": 16160,
+        "selfMs": 9.1,
+        "totalMs": 16.2,
+        "selfPct": 0.09,
+        "selfPctOfWall": 0
+      },
+      {
+        "key": "addValueToProperties@/node_modules/.vite/deps/react-dom_client.js:2336",
+        "name": "addValueToProperties",
+        "file": "/node_modules/.vite/deps/react-dom_client.js",
+        "line": 2336,
+        "selfUs": 8194,
+        "samples": 2,
+        "totalUs": 0,
+        "selfMs": 8.2,
+        "totalMs": 0,
+        "selfPct": 0.08,
+        "selfPctOfWall": 0
+      }
+    ],
+    "files": [
+      {
+        "file": "(native)",
+        "selfUs": 10143588,
+        "selfMs": 10143.6,
+        "selfPct": 95.3
+      },
+      {
+        "file": "/node_modules/.vite/deps/react-markdown.js",
+        "selfUs": 133639,
+        "selfMs": 133.6,
+        "selfPct": 1.26
+      },
+      {
+        "file": "/node_modules/.vite/deps/react-dom_client.js",
+        "selfUs": 133502,
+        "selfMs": 133.5,
+        "selfPct": 1.25
+      },
+      {
+        "file": "/node_modules/.vite/deps/react_jsx-dev-runtime.js",
+        "selfUs": 81595,
+        "selfMs": 81.6,
+        "selfPct": 0.77
+      },
+      {
+        "file": "/node_modules/.vite/deps/react_jsx-runtime.js",
+        "selfUs": 44078,
+        "selfMs": 44.1,
+        "selfPct": 0.41
+      },
+      {
+        "file": "/node_modules/.vite/deps/lib-9qH3G_6W.js",
+        "selfUs": 33161,
+        "selfMs": 33.2,
+        "selfPct": 0.31
+      },
+      {
+        "file": "src/components/ai/parts/PacedMarkdown.tsx",
+        "selfUs": 31667,
+        "selfMs": 31.7,
+        "selfPct": 0.3
+      },
+      {
+        "file": "/node_modules/.vite/deps/@tanstack_react-virtual.js",
+        "selfUs": 11441,
+        "selfMs": 11.4,
+        "selfPct": 0.11
+      },
+      {
+        "file": "/node_modules/.vite/deps/remark-gfm.js",
+        "selfUs": 8375,
+        "selfMs": 8.4,
+        "selfPct": 0.08
+      },
+      {
+        "file": "src/views/ai-bench/benchMetrics.ts",
+        "selfUs": 6293,
+        "selfMs": 6.3,
+        "selfPct": 0.06
+      },
+      {
+        "file": "/node_modules/.vite/deps/react.js",
+        "selfUs": 3348,
+        "selfMs": 3.3,
+        "selfPct": 0.03
+      },
+      {
+        "file": "src/components/ai/timeline/MessageTimeline.tsx",
+        "selfUs": 2271,
+        "selfMs": 2.3,
+        "selfPct": 0.02
+      },
+      {
+        "file": "src/hooks/opencode/useOpencodeEvents.ts",
+        "selfUs": 1691,
+        "selfMs": 1.7,
+        "selfPct": 0.02
+      },
+      {
+        "file": "src/components/ai/parts/markdownComponents.tsx",
+        "selfUs": 1673,
+        "selfMs": 1.7,
+        "selfPct": 0.02
+      }
+    ],
+    "appFrames": [
+      {
+        "key": "PacedMarkdown@src/components/ai/parts/PacedMarkdown.tsx:295",
+        "name": "PacedMarkdown",
+        "file": "src/components/ai/parts/PacedMarkdown.tsx",
+        "line": 295,
+        "inclusiveUs": 47774,
+        "instances": 3,
+        "inclusiveMs": 47.8,
+        "inclusivePct": 0.45
+      },
+      {
+        "key": "MessageTimeline@src/components/ai/timeline/MessageTimeline.tsx:61",
+        "name": "MessageTimeline",
+        "file": "src/components/ai/timeline/MessageTimeline.tsx",
+        "line": 61,
+        "inclusiveUs": 31879,
+        "instances": 2,
+        "inclusiveMs": 31.9,
+        "inclusivePct": 0.3
+      },
+      {
+        "key": "TextPartDisplay@src/components/ai/parts/TextPartDisplay.tsx:40",
+        "name": "TextPartDisplay",
+        "file": "src/components/ai/parts/TextPartDisplay.tsx",
+        "line": 40,
+        "inclusiveUs": 26790,
+        "instances": 3,
+        "inclusiveMs": 26.8,
+        "inclusivePct": 0.25
+      },
+      {
+        "key": "(anonymous)@src/components/ai/parts/PacedMarkdown.tsx:318",
+        "name": "(anonymous)",
+        "file": "src/components/ai/parts/PacedMarkdown.tsx",
+        "line": 318,
+        "inclusiveUs": 20172,
+        "instances": 2,
+        "inclusiveMs": 20.2,
+        "inclusivePct": 0.19
+      },
+      {
+        "key": "splitStableBlocks@src/components/ai/parts/PacedMarkdown.tsx:134",
+        "name": "splitStableBlocks",
+        "file": "src/components/ai/parts/PacedMarkdown.tsx",
+        "line": 134,
+        "inclusiveUs": 15000,
+        "instances": 1,
+        "inclusiveMs": 15,
+        "inclusivePct": 0.14
+      },
+      {
+        "key": "code@src/components/ai/parts/markdownComponents.tsx:38",
+        "name": "code",
+        "file": "src/components/ai/parts/markdownComponents.tsx",
+        "line": 38,
+        "inclusiveUs": 13955,
+        "instances": 3,
+        "inclusiveMs": 14,
+        "inclusivePct": 0.13
+      },
+      {
+        "key": "(anonymous)@src/components/ai/parts/PacedMarkdown.tsx:299",
+        "name": "(anonymous)",
+        "file": "src/components/ai/parts/PacedMarkdown.tsx",
+        "line": 299,
+        "inclusiveUs": 12993,
+        "instances": 1,
+        "inclusiveMs": 13,
+        "inclusivePct": 0.12
+      },
+      {
+        "key": "findStableSplit@src/components/ai/parts/PacedMarkdown.tsx:79",
+        "name": "findStableSplit",
+        "file": "src/components/ai/parts/PacedMarkdown.tsx",
+        "line": 79,
+        "inclusiveUs": 12105,
+        "instances": 1,
+        "inclusiveMs": 12.1,
+        "inclusivePct": 0.11
+      },
+      {
+        "key": "(anonymous)@src/components/ai/timeline/MessageTimeline.tsx:400",
+        "name": "(anonymous)",
+        "file": "src/components/ai/timeline/MessageTimeline.tsx",
+        "line": 400,
+        "inclusiveUs": 11589,
+        "instances": 1,
+        "inclusiveMs": 11.6,
+        "inclusivePct": 0.11
+      },
+      {
+        "key": "mergeRiskyBlocks@src/components/ai/parts/PacedMarkdown.tsx:185",
+        "name": "mergeRiskyBlocks",
+        "file": "src/components/ai/parts/PacedMarkdown.tsx",
+        "line": 185,
+        "inclusiveUs": 5249,
+        "instances": 1,
+        "inclusiveMs": 5.2,
+        "inclusivePct": 0.05
+      },
+      {
+        "key": "tick@src/views/ai-bench/benchMetrics.ts:78",
+        "name": "tick",
+        "file": "src/views/ai-bench/benchMetrics.ts",
+        "line": 78,
+        "inclusiveUs": 4619,
+        "instances": 1,
+        "inclusiveMs": 4.6,
+        "inclusivePct": 0.04
+      },
+      {
+        "key": "CodeIcon@src/components/ai/parts/markdownComponents.tsx:4",
+        "name": "CodeIcon",
+        "file": "src/components/ai/parts/markdownComponents.tsx",
+        "line": 4,
+        "inclusiveUs": 3741,
+        "instances": 2,
+        "inclusiveMs": 3.7,
+        "inclusivePct": 0.04
+      }
+    ]
+  },
+  "consoleErrors": []
+}

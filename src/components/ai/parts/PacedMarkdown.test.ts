@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { findStableSplit, MAX_ACTIVE_CHARS } from './PacedMarkdown';
+import { findStableSplit, splitStableBlocks, MAX_ACTIVE_CHARS } from './PacedMarkdown';
 
 function split(text: string): { stable: string; active: string } {
   const s = findStableSplit(text);
@@ -82,5 +82,61 @@ describe('findStableSplit', () => {
     const { active } = split('para1\n\n' + body);
     expect(active.length).toBeLessThan(MAX_ACTIVE_CHARS);
     expect(active).not.toContain('\n'); // 活动尾部退化为最后一行
+  });
+});
+
+describe('splitStableBlocks — 稳定前缀分块', () => {
+  // 分块的意义：前缀前进时只需解析新增的块，历史块复用元素，把
+  // 「前缀每前进一段就整段重解析」的 O(n²) 降为 O(n)。
+  // 这里重点验证「分块不破坏 Markdown 语义」的保守规则。
+
+  it('按空行把段落切成多块', () => {
+    expect(splitStableBlocks('p1\n\np2\n\np3\n\n')).toEqual(['p1\n\n', 'p2\n\n', 'p3\n\n']);
+  });
+
+  it('块的拼接结果与原文本完全一致（不丢字符）', () => {
+    const text = '# 标题\n\n段落一\n\n- a\n- b\n\n```java\ncode\n```\n\n|a|b|\n|---|---|\n\n尾部\n\n';
+    expect(splitStableBlocks(text).join('')).toBe(text);
+  });
+
+  it('围栏代码块内的空行不切分（代码块保持单块）', () => {
+    const text = '```java\na\n\nb\n```\n\nafter\n\n';
+    expect(splitStableBlocks(text)).toEqual(['```java\na\n\nb\n```\n\n', 'after\n\n']);
+  });
+
+  it('列表整体保留在同一块内（不拆成多个 <ul>）', () => {
+    expect(splitStableBlocks('- a\n- b\n- c\n\nnext\n\n')).toEqual(['- a\n- b\n- c\n\n', 'next\n\n']);
+  });
+
+  it('缩进 1~3 空格的续行块与前一块合并（避免拆散列表续行）', () => {
+    expect(splitStableBlocks('para\n\n  continued\n\n')).toEqual(['para\n\n  continued\n\n']);
+  });
+
+  it('引用式链接定义所在块与其后续块合并（避免引用解析失败）', () => {
+    const text = '[ref]: https://example.com\n\n正文\n\n';
+    expect(splitStableBlocks(text)).toEqual([text]);
+  });
+
+  it('GFM 脚注定义同样触发合并', () => {
+    const text = '[^1]: 脚注内容\n\n正文\n\n';
+    expect(splitStableBlocks(text)).toEqual([text]);
+  });
+
+  it('缩进 4 空格是独立代码块，不与前一块合并', () => {
+    expect(splitStableBlocks('para\n\n    code\n\n')).toEqual(['para\n\n', '    code\n\n']);
+  });
+
+  it('空文本返回空数组', () => {
+    expect(splitStableBlocks('')).toEqual([]);
+  });
+
+  it('后缀增长时既有前缀的块划分保持不变', () => {
+    // 这是分块缓存生效的前提：文本追加后，前面的块必须逐字不变，
+    // 才能命中缓存、避免重解析。
+    const head = 'p1\n\np2\n\n';
+    const before = splitStableBlocks(head);
+    const after = splitStableBlocks(head + 'p3\n\n');
+    expect(after.slice(0, before.length)).toEqual(before);
+    expect(after).toHaveLength(before.length + 1);
   });
 });

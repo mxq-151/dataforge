@@ -1,0 +1,1415 @@
+{
+  "meta": {
+    "generatedAt": "2026-09-10T09:41:32.792Z",
+    "url": "http://127.0.0.1:5173/bench.html",
+    "preset": "conversation",
+    "typing": true,
+    "iterations": 2,
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/152.0.0.0 Safari/537.36",
+    "note": "selfMs = V8 采样器归因到该函数的自身 CPU 时间（100µs 采样间隔）"
+  },
+  "rounds": [
+    {
+      "iteration": 1,
+      "wallMs": 7808.1,
+      "blockedMs": 1187.2,
+      "aiCommitCount": 405,
+      "aiCommitTotalMs": 1864.3,
+      "editorCommitCount": 135,
+      "totalSelfMs": 9854.3,
+      "top": [
+        {
+          "key": "(idle)@(native):0",
+          "name": "(idle)",
+          "file": "(native)",
+          "line": 0,
+          "selfUs": 5435480,
+          "samples": 1,
+          "totalUs": 0,
+          "selfMs": 5435.5,
+          "totalMs": 0,
+          "selfPct": 55.16,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "(program)@(native):0",
+          "name": "(program)",
+          "file": "(native)",
+          "line": 0,
+          "selfUs": 1032728,
+          "samples": 1,
+          "totalUs": 0,
+          "selfMs": 1032.7,
+          "totalMs": 0,
+          "selfPct": 10.48,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "exports.jsxDEV@/node_modules/.vite/deps/react_jsx-dev-runtime.js:191",
+          "name": "exports.jsxDEV",
+          "file": "/node_modules/.vite/deps/react_jsx-dev-runtime.js",
+          "line": 191,
+          "selfUs": 591143,
+          "samples": 68,
+          "totalUs": 98441,
+          "selfMs": 591.1,
+          "totalMs": 98.4,
+          "selfPct": 6,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "getBoundingClientRect@(native):0",
+          "name": "getBoundingClientRect",
+          "file": "(native)",
+          "line": 0,
+          "selfUs": 171545,
+          "samples": 2,
+          "totalUs": 0,
+          "selfMs": 171.5,
+          "totalMs": 0,
+          "selfPct": 1.74,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "exports.jsx@/node_modules/.vite/deps/react_jsx-runtime.js:191",
+          "name": "exports.jsx",
+          "file": "/node_modules/.vite/deps/react_jsx-runtime.js",
+          "line": 191,
+          "selfUs": 144459,
+          "samples": 12,
+          "totalUs": 37379,
+          "selfMs": 144.5,
+          "totalMs": 37.4,
+          "selfPct": 1.47,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "(garbage collector)@(native):0",
+          "name": "(garbage collector)",
+          "file": "(native)",
+          "line": 0,
+          "selfUs": 76198,
+          "samples": 1,
+          "totalUs": 0,
+          "selfMs": 76.2,
+          "totalMs": 0,
+          "selfPct": 0.77,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "go@/node_modules/.vite/deps/react-markdown.js:9659",
+          "name": "go",
+          "file": "/node_modules/.vite/deps/react-markdown.js",
+          "line": 9659,
+          "selfUs": 72310,
+          "samples": 15,
+          "totalUs": 556454,
+          "selfMs": 72.3,
+          "totalMs": 556.5,
+          "selfPct": 0.73,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "run@(native):0",
+          "name": "run",
+          "file": "(native)",
+          "line": 0,
+          "selfUs": 68716,
+          "samples": 51,
+          "totalUs": 2294427,
+          "selfMs": 68.7,
+          "totalMs": 2294.4,
+          "selfPct": 0.7,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "ReactElement@/node_modules/.vite/deps/react_jsx-dev-runtime.js:104",
+          "name": "ReactElement",
+          "file": "/node_modules/.vite/deps/react_jsx-dev-runtime.js",
+          "line": 104,
+          "selfUs": 56561,
+          "samples": 36,
+          "totalUs": 0,
+          "selfMs": 56.6,
+          "totalMs": 0,
+          "selfPct": 0.57,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "consume@/node_modules/.vite/deps/react-markdown.js:9668",
+          "name": "consume",
+          "file": "/node_modules/.vite/deps/react-markdown.js",
+          "line": 9668,
+          "selfUs": 55835,
+          "samples": 48,
+          "totalUs": 16784,
+          "selfMs": 55.8,
+          "totalMs": 16.8,
+          "selfPct": 0.57,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "subtokenize@/node_modules/.vite/deps/react-markdown.js:4850",
+          "name": "subtokenize",
+          "file": "/node_modules/.vite/deps/react-markdown.js",
+          "line": 4850,
+          "selfUs": 54754,
+          "samples": 9,
+          "totalUs": 171226,
+          "selfMs": 54.8,
+          "totalMs": 171.2,
+          "selfPct": 0.56,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "compile@/node_modules/.vite/deps/react-markdown.js:10383",
+          "name": "compile",
+          "file": "/node_modules/.vite/deps/react-markdown.js",
+          "line": 10383,
+          "selfUs": 43014,
+          "samples": 6,
+          "totalUs": 67398,
+          "selfMs": 43,
+          "totalMs": 67.4,
+          "selfPct": 0.44,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "splice@/node_modules/.vite/deps/lib-9qH3G_6W.js:633",
+          "name": "splice",
+          "file": "/node_modules/.vite/deps/lib-9qH3G_6W.js",
+          "line": 633,
+          "selfUs": 32351,
+          "samples": 23,
+          "totalUs": 0,
+          "selfMs": 32.4,
+          "totalMs": 0,
+          "selfPct": 0.33,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "updateProperties@/node_modules/.vite/deps/react-dom_client.js:9926",
+          "name": "updateProperties",
+          "file": "/node_modules/.vite/deps/react-dom_client.js",
+          "line": 9926,
+          "selfUs": 31551,
+          "samples": 27,
+          "totalUs": 79420,
+          "selfMs": 31.6,
+          "totalMs": 79.4,
+          "selfPct": 0.32,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "now@(native):0",
+          "name": "now",
+          "file": "(native)",
+          "line": 0,
+          "selfUs": 29890,
+          "samples": 17,
+          "totalUs": 0,
+          "selfMs": 29.9,
+          "totalMs": 0,
+          "selfPct": 0.3,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "exports.jsxs@/node_modules/.vite/deps/react_jsx-runtime.js:195",
+          "name": "exports.jsxs",
+          "file": "/node_modules/.vite/deps/react_jsx-runtime.js",
+          "line": 195,
+          "selfUs": 29304,
+          "samples": 9,
+          "totalUs": 7266,
+          "selfMs": 29.3,
+          "totalMs": 7.3,
+          "selfPct": 0.3,
+          "selfPctOfWall": 0
+        }
+      ],
+      "files": [
+        {
+          "file": "(native)",
+          "selfUs": 6959800,
+          "selfMs": 6959.8,
+          "selfPct": 70.63
+        },
+        {
+          "file": "/node_modules/.vite/deps/react_jsx-dev-runtime.js",
+          "selfUs": 677239,
+          "selfMs": 677.2,
+          "selfPct": 6.87
+        },
+        {
+          "file": "/node_modules/.vite/deps/react-markdown.js",
+          "selfUs": 652959,
+          "selfMs": 653,
+          "selfPct": 6.63
+        },
+        {
+          "file": "/node_modules/.vite/deps/react-dom_client.js",
+          "selfUs": 454521,
+          "selfMs": 454.5,
+          "selfPct": 4.61
+        },
+        {
+          "file": "/node_modules/.vite/deps/react_jsx-runtime.js",
+          "selfUs": 213867,
+          "selfMs": 213.9,
+          "selfPct": 2.17
+        },
+        {
+          "file": "/node_modules/.vite/deps/lib-9qH3G_6W.js",
+          "selfUs": 160785,
+          "selfMs": 160.8,
+          "selfPct": 1.63
+        },
+        {
+          "file": "/node_modules/.vite/deps/react.js",
+          "selfUs": 39288,
+          "selfMs": 39.3,
+          "selfPct": 0.4
+        },
+        {
+          "file": "/node_modules/.vite/deps/@tanstack_react-virtual.js",
+          "selfUs": 31538,
+          "selfMs": 31.5,
+          "selfPct": 0.32
+        },
+        {
+          "file": "src/vs/editor/common/model/textModel.js",
+          "selfUs": 29110,
+          "selfMs": 29.1,
+          "selfPct": 0.3
+        },
+        {
+          "file": "/node_modules/.vite/deps/remark-gfm.js",
+          "selfUs": 25927,
+          "selfMs": 25.9,
+          "selfPct": 0.26
+        },
+        {
+          "file": "src/vs/workbench/services/extensions/common/rpcProtocol.js",
+          "selfUs": 24563,
+          "selfMs": 24.6,
+          "selfPct": 0.25
+        },
+        {
+          "file": "src/components/ai/timeline/projection.ts",
+          "selfUs": 23622,
+          "selfMs": 23.6,
+          "selfPct": 0.24
+        },
+        {
+          "file": "src/vs/editor/browser/view.js",
+          "selfUs": 22968,
+          "selfMs": 23,
+          "selfPct": 0.23
+        },
+        {
+          "file": "src/vs/platform/webWorker/browser/webWorkerServiceImpl.js",
+          "selfUs": 18808,
+          "selfMs": 18.8,
+          "selfPct": 0.19
+        }
+      ],
+      "appFrames": [
+        {
+          "key": "(anonymous)@src/vs/base/browser/dom.js:259",
+          "name": "(anonymous)",
+          "file": "src/vs/base/browser/dom.js",
+          "line": 259,
+          "inclusiveUs": 421804,
+          "instances": 1,
+          "inclusiveMs": 421.8,
+          "inclusivePct": 4.28
+        },
+        {
+          "key": "animationFrameRunner@src/vs/base/browser/dom.js:235",
+          "name": "animationFrameRunner",
+          "file": "src/vs/base/browser/dom.js",
+          "line": 235,
+          "inclusiveUs": 421115,
+          "instances": 2,
+          "inclusiveMs": 421.1,
+          "inclusivePct": 4.27
+        },
+        {
+          "key": "execute@src/vs/base/browser/dom.js:215",
+          "name": "execute",
+          "file": "src/vs/base/browser/dom.js",
+          "line": 215,
+          "inclusiveUs": 420179,
+          "instances": 1,
+          "inclusiveMs": 420.2,
+          "inclusivePct": 4.26
+        },
+        {
+          "key": "runner@src/vs/editor/browser/view.js:632",
+          "name": "runner",
+          "file": "src/vs/editor/browser/view.js",
+          "line": 632,
+          "inclusiveUs": 419738,
+          "instances": 1,
+          "inclusiveMs": 419.7,
+          "inclusivePct": 4.26
+        },
+        {
+          "key": "_onRenderScheduled@src/vs/editor/browser/view.js:639",
+          "name": "_onRenderScheduled",
+          "file": "src/vs/editor/browser/view.js",
+          "line": 639,
+          "inclusiveUs": 418580,
+          "instances": 2,
+          "inclusiveMs": 418.6,
+          "inclusivePct": 4.25
+        },
+        {
+          "key": "safeInvokeNoArg@src/vs/editor/browser/view.js:596",
+          "name": "safeInvokeNoArg",
+          "file": "src/vs/editor/browser/view.js",
+          "line": 596,
+          "inclusiveUs": 417547,
+          "instances": 2,
+          "inclusiveMs": 417.5,
+          "inclusivePct": 4.24
+        },
+        {
+          "key": "fire@src/vs/base/common/event.js:686",
+          "name": "fire",
+          "file": "src/vs/base/common/event.js",
+          "line": 686,
+          "inclusiveUs": 413237,
+          "instances": 72,
+          "inclusiveMs": 413.2,
+          "inclusivePct": 4.19
+        },
+        {
+          "key": "MessageTimeline@src/components/ai/timeline/MessageTimeline.tsx:43",
+          "name": "MessageTimeline",
+          "file": "src/components/ai/timeline/MessageTimeline.tsx",
+          "line": 43,
+          "inclusiveUs": 291169,
+          "instances": 4,
+          "inclusiveMs": 291.2,
+          "inclusivePct": 2.95
+        },
+        {
+          "key": "_deliver@src/vs/base/common/event.js:663",
+          "name": "_deliver",
+          "file": "src/vs/base/common/event.js",
+          "line": 663,
+          "inclusiveUs": 285821,
+          "instances": 60,
+          "inclusiveMs": 285.8,
+          "inclusivePct": 2.9
+        },
+        {
+          "key": "(anonymous)@src/views/ai-bench/AIBenchPage.tsx:132",
+          "name": "(anonymous)",
+          "file": "src/views/ai-bench/AIBenchPage.tsx",
+          "line": 132,
+          "inclusiveUs": 223393,
+          "instances": 1,
+          "inclusiveMs": 223.4,
+          "inclusivePct": 2.27
+        },
+        {
+          "key": "(anonymous)@src/vs/editor/browser/view.js:666",
+          "name": "(anonymous)",
+          "file": "src/vs/editor/browser/view.js",
+          "line": 666,
+          "inclusiveUs": 222174,
+          "instances": 1,
+          "inclusiveMs": 222.2,
+          "inclusivePct": 2.25
+        },
+        {
+          "key": "render@src/vs/editor/browser/view.js:377",
+          "name": "render",
+          "file": "src/vs/editor/browser/view.js",
+          "line": 377,
+          "inclusiveUs": 221928,
+          "instances": 1,
+          "inclusiveMs": 221.9,
+          "inclusivePct": 2.25
+        },
+        {
+          "key": "trigger@src/vs/editor/browser/widget/codeEditor/codeEditorWidget.js:799",
+          "name": "trigger",
+          "file": "src/vs/editor/browser/widget/codeEditor/codeEditorWidget.js",
+          "line": 799,
+          "inclusiveUs": 220960,
+          "instances": 1,
+          "inclusiveMs": 221,
+          "inclusivePct": 2.24
+        },
+        {
+          "key": "render@src/vs/editor/browser/view.js:456",
+          "name": "render",
+          "file": "src/vs/editor/browser/view.js",
+          "line": 456,
+          "inclusiveUs": 219063,
+          "instances": 1,
+          "inclusiveMs": 219.1,
+          "inclusivePct": 2.22
+        },
+        {
+          "key": "(anonymous)@src/components/ai/timeline/MessageTimeline.tsx:380",
+          "name": "(anonymous)",
+          "file": "src/components/ai/timeline/MessageTimeline.tsx",
+          "line": 380,
+          "inclusiveUs": 216401,
+          "instances": 4,
+          "inclusiveMs": 216.4,
+          "inclusivePct": 2.2
+        },
+        {
+          "key": "_type@src/vs/editor/browser/widget/codeEditor/codeEditorWidget.js:871",
+          "name": "_type",
+          "file": "src/vs/editor/browser/widget/codeEditor/codeEditorWidget.js",
+          "line": 871,
+          "inclusiveUs": 199762,
+          "instances": 1,
+          "inclusiveMs": 199.8,
+          "inclusivePct": 2.03
+        }
+      ]
+    },
+    {
+      "iteration": 2,
+      "wallMs": 7640.2,
+      "blockedMs": 1049.8,
+      "aiCommitCount": 404,
+      "aiCommitTotalMs": 1561,
+      "editorCommitCount": 135,
+      "totalSelfMs": 9153.9,
+      "top": [
+        {
+          "key": "(idle)@(native):0",
+          "name": "(idle)",
+          "file": "(native)",
+          "line": 0,
+          "selfUs": 5922761,
+          "samples": 1,
+          "totalUs": 0,
+          "selfMs": 5922.8,
+          "totalMs": 0,
+          "selfPct": 64.7,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "(program)@(native):0",
+          "name": "(program)",
+          "file": "(native)",
+          "line": 0,
+          "selfUs": 508727,
+          "samples": 1,
+          "totalUs": 0,
+          "selfMs": 508.7,
+          "totalMs": 0,
+          "selfPct": 5.56,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "exports.jsxDEV@/node_modules/.vite/deps/react_jsx-dev-runtime.js:191",
+          "name": "exports.jsxDEV",
+          "file": "/node_modules/.vite/deps/react_jsx-dev-runtime.js",
+          "line": 191,
+          "selfUs": 427647,
+          "samples": 47,
+          "totalUs": 87137,
+          "selfMs": 427.6,
+          "totalMs": 87.1,
+          "selfPct": 4.67,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "go@/node_modules/.vite/deps/react-markdown.js:9659",
+          "name": "go",
+          "file": "/node_modules/.vite/deps/react-markdown.js",
+          "line": 9659,
+          "selfUs": 200570,
+          "samples": 12,
+          "totalUs": 362724,
+          "selfMs": 200.6,
+          "totalMs": 362.7,
+          "selfPct": 2.19,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "getBoundingClientRect@(native):0",
+          "name": "getBoundingClientRect",
+          "file": "(native)",
+          "line": 0,
+          "selfUs": 168449,
+          "samples": 1,
+          "totalUs": 0,
+          "selfMs": 168.4,
+          "totalMs": 0,
+          "selfPct": 1.84,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "exports.jsx@/node_modules/.vite/deps/react_jsx-runtime.js:191",
+          "name": "exports.jsx",
+          "file": "/node_modules/.vite/deps/react_jsx-runtime.js",
+          "line": 191,
+          "selfUs": 102375,
+          "samples": 8,
+          "totalUs": 25734,
+          "selfMs": 102.4,
+          "totalMs": 25.7,
+          "selfPct": 1.12,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "run@(native):0",
+          "name": "run",
+          "file": "(native)",
+          "line": 0,
+          "selfUs": 67273,
+          "samples": 38,
+          "totalUs": 1837149,
+          "selfMs": 67.3,
+          "totalMs": 1837.1,
+          "selfPct": 0.73,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "ReactElement@/node_modules/.vite/deps/react_jsx-dev-runtime.js:104",
+          "name": "ReactElement",
+          "file": "/node_modules/.vite/deps/react_jsx-dev-runtime.js",
+          "line": 104,
+          "selfUs": 55236,
+          "samples": 27,
+          "totalUs": 0,
+          "selfMs": 55.2,
+          "totalMs": 0,
+          "selfPct": 0.6,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "subtokenize@/node_modules/.vite/deps/react-markdown.js:4850",
+          "name": "subtokenize",
+          "file": "/node_modules/.vite/deps/react-markdown.js",
+          "line": 4850,
+          "selfUs": 46583,
+          "samples": 5,
+          "totalUs": 149686,
+          "selfMs": 46.6,
+          "totalMs": 149.7,
+          "selfPct": 0.51,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "compile@/node_modules/.vite/deps/react-markdown.js:10383",
+          "name": "compile",
+          "file": "/node_modules/.vite/deps/react-markdown.js",
+          "line": 10383,
+          "selfUs": 39516,
+          "samples": 1,
+          "totalUs": 38900,
+          "selfMs": 39.5,
+          "totalMs": 38.9,
+          "selfPct": 0.43,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "(garbage collector)@(native):0",
+          "name": "(garbage collector)",
+          "file": "(native)",
+          "line": 0,
+          "selfUs": 39189,
+          "samples": 1,
+          "totalUs": 0,
+          "selfMs": 39.2,
+          "totalMs": 0,
+          "selfPct": 0.43,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "visitParents@/node_modules/.vite/deps/lib-9qH3G_6W.js:1550",
+          "name": "visitParents",
+          "file": "/node_modules/.vite/deps/lib-9qH3G_6W.js",
+          "line": 1550,
+          "selfUs": 34960,
+          "samples": 6,
+          "totalUs": 30734,
+          "selfMs": 35,
+          "totalMs": 30.7,
+          "selfPct": 0.38,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "parse@/node_modules/.vite/deps/react-markdown.js:15068",
+          "name": "parse",
+          "file": "/node_modules/.vite/deps/react-markdown.js",
+          "line": 15068,
+          "selfUs": 32342,
+          "samples": 2,
+          "totalUs": 614312,
+          "selfMs": 32.3,
+          "totalMs": 614.3,
+          "selfPct": 0.35,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "subcontent@/node_modules/.vite/deps/react-markdown.js:4925",
+          "name": "subcontent",
+          "file": "/node_modules/.vite/deps/react-markdown.js",
+          "line": 4925,
+          "selfUs": 30432,
+          "samples": 9,
+          "totalUs": 107291,
+          "selfMs": 30.4,
+          "totalMs": 107.3,
+          "selfPct": 0.33,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "splice@/node_modules/.vite/deps/lib-9qH3G_6W.js:633",
+          "name": "splice",
+          "file": "/node_modules/.vite/deps/lib-9qH3G_6W.js",
+          "line": 633,
+          "selfUs": 27808,
+          "samples": 26,
+          "totalUs": 0,
+          "selfMs": 27.8,
+          "totalMs": 0,
+          "selfPct": 0.3,
+          "selfPctOfWall": 0
+        },
+        {
+          "key": "updateProperties@/node_modules/.vite/deps/react-dom_client.js:9926",
+          "name": "updateProperties",
+          "file": "/node_modules/.vite/deps/react-dom_client.js",
+          "line": 9926,
+          "selfUs": 27250,
+          "samples": 24,
+          "totalUs": 76604,
+          "selfMs": 27.3,
+          "totalMs": 76.6,
+          "selfPct": 0.3,
+          "selfPctOfWall": 0
+        }
+      ],
+      "files": [
+        {
+          "file": "(native)",
+          "selfUs": 6857023,
+          "selfMs": 6857,
+          "selfPct": 74.91
+        },
+        {
+          "file": "/node_modules/.vite/deps/react-markdown.js",
+          "selfUs": 588817,
+          "selfMs": 588.8,
+          "selfPct": 6.43
+        },
+        {
+          "file": "/node_modules/.vite/deps/react_jsx-dev-runtime.js",
+          "selfUs": 503559,
+          "selfMs": 503.6,
+          "selfPct": 5.5
+        },
+        {
+          "file": "/node_modules/.vite/deps/react-dom_client.js",
+          "selfUs": 366278,
+          "selfMs": 366.3,
+          "selfPct": 4
+        },
+        {
+          "file": "/node_modules/.vite/deps/react_jsx-runtime.js",
+          "selfUs": 146663,
+          "selfMs": 146.7,
+          "selfPct": 1.6
+        },
+        {
+          "file": "/node_modules/.vite/deps/lib-9qH3G_6W.js",
+          "selfUs": 115781,
+          "selfMs": 115.8,
+          "selfPct": 1.26
+        },
+        {
+          "file": "/node_modules/.vite/deps/react.js",
+          "selfUs": 31945,
+          "selfMs": 31.9,
+          "selfPct": 0.35
+        },
+        {
+          "file": "src/vs/workbench/services/extensions/common/rpcProtocol.js",
+          "selfUs": 25509,
+          "selfMs": 25.5,
+          "selfPct": 0.28
+        },
+        {
+          "file": "/node_modules/.vite/deps/@tanstack_react-virtual.js",
+          "selfUs": 24604,
+          "selfMs": 24.6,
+          "selfPct": 0.27
+        },
+        {
+          "file": "src/components/ai/timeline/projection.ts",
+          "selfUs": 21755,
+          "selfMs": 21.8,
+          "selfPct": 0.24
+        },
+        {
+          "file": "src/vs/editor/browser/view/viewLayer.js",
+          "selfUs": 17800,
+          "selfMs": 17.8,
+          "selfPct": 0.19
+        },
+        {
+          "file": "src/vs/editor/common/model/textModel.js",
+          "selfUs": 17575,
+          "selfMs": 17.6,
+          "selfPct": 0.19
+        },
+        {
+          "file": "/node_modules/.vite/deps/remark-gfm.js",
+          "selfUs": 14424,
+          "selfMs": 14.4,
+          "selfPct": 0.16
+        },
+        {
+          "file": "src/vs/platform/webWorker/browser/webWorkerServiceImpl.js",
+          "selfUs": 13804,
+          "selfMs": 13.8,
+          "selfPct": 0.15
+        }
+      ],
+      "appFrames": [
+        {
+          "key": "(anonymous)@src/vs/base/browser/dom.js:259",
+          "name": "(anonymous)",
+          "file": "src/vs/base/browser/dom.js",
+          "line": 259,
+          "inclusiveUs": 364918,
+          "instances": 1,
+          "inclusiveMs": 364.9,
+          "inclusivePct": 3.99
+        },
+        {
+          "key": "animationFrameRunner@src/vs/base/browser/dom.js:235",
+          "name": "animationFrameRunner",
+          "file": "src/vs/base/browser/dom.js",
+          "line": 235,
+          "inclusiveUs": 364298,
+          "instances": 1,
+          "inclusiveMs": 364.3,
+          "inclusivePct": 3.98
+        },
+        {
+          "key": "execute@src/vs/base/browser/dom.js:215",
+          "name": "execute",
+          "file": "src/vs/base/browser/dom.js",
+          "line": 215,
+          "inclusiveUs": 363318,
+          "instances": 1,
+          "inclusiveMs": 363.3,
+          "inclusivePct": 3.97
+        },
+        {
+          "key": "runner@src/vs/editor/browser/view.js:632",
+          "name": "runner",
+          "file": "src/vs/editor/browser/view.js",
+          "line": 632,
+          "inclusiveUs": 363318,
+          "instances": 1,
+          "inclusiveMs": 363.3,
+          "inclusivePct": 3.97
+        },
+        {
+          "key": "fire@src/vs/base/common/event.js:686",
+          "name": "fire",
+          "file": "src/vs/base/common/event.js",
+          "line": 686,
+          "inclusiveUs": 362179,
+          "instances": 52,
+          "inclusiveMs": 362.2,
+          "inclusivePct": 3.96
+        },
+        {
+          "key": "_onRenderScheduled@src/vs/editor/browser/view.js:639",
+          "name": "_onRenderScheduled",
+          "file": "src/vs/editor/browser/view.js",
+          "line": 639,
+          "inclusiveUs": 361674,
+          "instances": 1,
+          "inclusiveMs": 361.7,
+          "inclusivePct": 3.95
+        },
+        {
+          "key": "safeInvokeNoArg@src/vs/editor/browser/view.js:596",
+          "name": "safeInvokeNoArg",
+          "file": "src/vs/editor/browser/view.js",
+          "line": 596,
+          "inclusiveUs": 360432,
+          "instances": 1,
+          "inclusiveMs": 360.4,
+          "inclusivePct": 3.94
+        },
+        {
+          "key": "_deliver@src/vs/base/common/event.js:663",
+          "name": "_deliver",
+          "file": "src/vs/base/common/event.js",
+          "line": 663,
+          "inclusiveUs": 359450,
+          "instances": 49,
+          "inclusiveMs": 359.5,
+          "inclusivePct": 3.93
+        },
+        {
+          "key": "MessageTimeline@src/components/ai/timeline/MessageTimeline.tsx:43",
+          "name": "MessageTimeline",
+          "file": "src/components/ai/timeline/MessageTimeline.tsx",
+          "line": 43,
+          "inclusiveUs": 243813,
+          "instances": 2,
+          "inclusiveMs": 243.8,
+          "inclusivePct": 2.66
+        },
+        {
+          "key": "(anonymous)@src/vs/editor/browser/view.js:666",
+          "name": "(anonymous)",
+          "file": "src/vs/editor/browser/view.js",
+          "line": 666,
+          "inclusiveUs": 208319,
+          "instances": 1,
+          "inclusiveMs": 208.3,
+          "inclusivePct": 2.28
+        },
+        {
+          "key": "render@src/vs/editor/browser/view.js:377",
+          "name": "render",
+          "file": "src/vs/editor/browser/view.js",
+          "line": 377,
+          "inclusiveUs": 208319,
+          "instances": 1,
+          "inclusiveMs": 208.3,
+          "inclusivePct": 2.28
+        },
+        {
+          "key": "render@src/vs/editor/browser/view.js:456",
+          "name": "render",
+          "file": "src/vs/editor/browser/view.js",
+          "line": 456,
+          "inclusiveUs": 206218,
+          "instances": 1,
+          "inclusiveMs": 206.2,
+          "inclusivePct": 2.25
+        },
+        {
+          "key": "(anonymous)@src/views/ai-bench/AIBenchPage.tsx:132",
+          "name": "(anonymous)",
+          "file": "src/views/ai-bench/AIBenchPage.tsx",
+          "line": 132,
+          "inclusiveUs": 197469,
+          "instances": 1,
+          "inclusiveMs": 197.5,
+          "inclusivePct": 2.16
+        },
+        {
+          "key": "trigger@src/vs/editor/browser/widget/codeEditor/codeEditorWidget.js:799",
+          "name": "trigger",
+          "file": "src/vs/editor/browser/widget/codeEditor/codeEditorWidget.js",
+          "line": 799,
+          "inclusiveUs": 195194,
+          "instances": 1,
+          "inclusiveMs": 195.2,
+          "inclusivePct": 2.13
+        },
+        {
+          "key": "_type@src/vs/editor/browser/widget/codeEditor/codeEditorWidget.js:871",
+          "name": "_type",
+          "file": "src/vs/editor/browser/widget/codeEditor/codeEditorWidget.js",
+          "line": 871,
+          "inclusiveUs": 177930,
+          "instances": 1,
+          "inclusiveMs": 177.9,
+          "inclusivePct": 1.94
+        },
+        {
+          "key": "type@src/vs/editor/common/viewModel/viewModelImpl.js:1021",
+          "name": "type",
+          "file": "src/vs/editor/common/viewModel/viewModelImpl.js",
+          "line": 1021,
+          "inclusiveUs": 177930,
+          "instances": 1,
+          "inclusiveMs": 177.9,
+          "inclusivePct": 1.94
+        }
+      ]
+    }
+  ],
+  "representative": {
+    "iteration": 1,
+    "wallMs": 7808.1,
+    "blockedMs": 1187.2,
+    "aiCommitCount": 405,
+    "aiCommitTotalMs": 1864.3,
+    "editorCommitCount": 135,
+    "totalSelfMs": 9854.3,
+    "top": [
+      {
+        "key": "(idle)@(native):0",
+        "name": "(idle)",
+        "file": "(native)",
+        "line": 0,
+        "selfUs": 5435480,
+        "samples": 1,
+        "totalUs": 0,
+        "selfMs": 5435.5,
+        "totalMs": 0,
+        "selfPct": 55.16,
+        "selfPctOfWall": 0
+      },
+      {
+        "key": "(program)@(native):0",
+        "name": "(program)",
+        "file": "(native)",
+        "line": 0,
+        "selfUs": 1032728,
+        "samples": 1,
+        "totalUs": 0,
+        "selfMs": 1032.7,
+        "totalMs": 0,
+        "selfPct": 10.48,
+        "selfPctOfWall": 0
+      },
+      {
+        "key": "exports.jsxDEV@/node_modules/.vite/deps/react_jsx-dev-runtime.js:191",
+        "name": "exports.jsxDEV",
+        "file": "/node_modules/.vite/deps/react_jsx-dev-runtime.js",
+        "line": 191,
+        "selfUs": 591143,
+        "samples": 68,
+        "totalUs": 98441,
+        "selfMs": 591.1,
+        "totalMs": 98.4,
+        "selfPct": 6,
+        "selfPctOfWall": 0
+      },
+      {
+        "key": "getBoundingClientRect@(native):0",
+        "name": "getBoundingClientRect",
+        "file": "(native)",
+        "line": 0,
+        "selfUs": 171545,
+        "samples": 2,
+        "totalUs": 0,
+        "selfMs": 171.5,
+        "totalMs": 0,
+        "selfPct": 1.74,
+        "selfPctOfWall": 0
+      },
+      {
+        "key": "exports.jsx@/node_modules/.vite/deps/react_jsx-runtime.js:191",
+        "name": "exports.jsx",
+        "file": "/node_modules/.vite/deps/react_jsx-runtime.js",
+        "line": 191,
+        "selfUs": 144459,
+        "samples": 12,
+        "totalUs": 37379,
+        "selfMs": 144.5,
+        "totalMs": 37.4,
+        "selfPct": 1.47,
+        "selfPctOfWall": 0
+      },
+      {
+        "key": "(garbage collector)@(native):0",
+        "name": "(garbage collector)",
+        "file": "(native)",
+        "line": 0,
+        "selfUs": 76198,
+        "samples": 1,
+        "totalUs": 0,
+        "selfMs": 76.2,
+        "totalMs": 0,
+        "selfPct": 0.77,
+        "selfPctOfWall": 0
+      },
+      {
+        "key": "go@/node_modules/.vite/deps/react-markdown.js:9659",
+        "name": "go",
+        "file": "/node_modules/.vite/deps/react-markdown.js",
+        "line": 9659,
+        "selfUs": 72310,
+        "samples": 15,
+        "totalUs": 556454,
+        "selfMs": 72.3,
+        "totalMs": 556.5,
+        "selfPct": 0.73,
+        "selfPctOfWall": 0
+      },
+      {
+        "key": "run@(native):0",
+        "name": "run",
+        "file": "(native)",
+        "line": 0,
+        "selfUs": 68716,
+        "samples": 51,
+        "totalUs": 2294427,
+        "selfMs": 68.7,
+        "totalMs": 2294.4,
+        "selfPct": 0.7,
+        "selfPctOfWall": 0
+      },
+      {
+        "key": "ReactElement@/node_modules/.vite/deps/react_jsx-dev-runtime.js:104",
+        "name": "ReactElement",
+        "file": "/node_modules/.vite/deps/react_jsx-dev-runtime.js",
+        "line": 104,
+        "selfUs": 56561,
+        "samples": 36,
+        "totalUs": 0,
+        "selfMs": 56.6,
+        "totalMs": 0,
+        "selfPct": 0.57,
+        "selfPctOfWall": 0
+      },
+      {
+        "key": "consume@/node_modules/.vite/deps/react-markdown.js:9668",
+        "name": "consume",
+        "file": "/node_modules/.vite/deps/react-markdown.js",
+        "line": 9668,
+        "selfUs": 55835,
+        "samples": 48,
+        "totalUs": 16784,
+        "selfMs": 55.8,
+        "totalMs": 16.8,
+        "selfPct": 0.57,
+        "selfPctOfWall": 0
+      },
+      {
+        "key": "subtokenize@/node_modules/.vite/deps/react-markdown.js:4850",
+        "name": "subtokenize",
+        "file": "/node_modules/.vite/deps/react-markdown.js",
+        "line": 4850,
+        "selfUs": 54754,
+        "samples": 9,
+        "totalUs": 171226,
+        "selfMs": 54.8,
+        "totalMs": 171.2,
+        "selfPct": 0.56,
+        "selfPctOfWall": 0
+      },
+      {
+        "key": "compile@/node_modules/.vite/deps/react-markdown.js:10383",
+        "name": "compile",
+        "file": "/node_modules/.vite/deps/react-markdown.js",
+        "line": 10383,
+        "selfUs": 43014,
+        "samples": 6,
+        "totalUs": 67398,
+        "selfMs": 43,
+        "totalMs": 67.4,
+        "selfPct": 0.44,
+        "selfPctOfWall": 0
+      },
+      {
+        "key": "splice@/node_modules/.vite/deps/lib-9qH3G_6W.js:633",
+        "name": "splice",
+        "file": "/node_modules/.vite/deps/lib-9qH3G_6W.js",
+        "line": 633,
+        "selfUs": 32351,
+        "samples": 23,
+        "totalUs": 0,
+        "selfMs": 32.4,
+        "totalMs": 0,
+        "selfPct": 0.33,
+        "selfPctOfWall": 0
+      },
+      {
+        "key": "updateProperties@/node_modules/.vite/deps/react-dom_client.js:9926",
+        "name": "updateProperties",
+        "file": "/node_modules/.vite/deps/react-dom_client.js",
+        "line": 9926,
+        "selfUs": 31551,
+        "samples": 27,
+        "totalUs": 79420,
+        "selfMs": 31.6,
+        "totalMs": 79.4,
+        "selfPct": 0.32,
+        "selfPctOfWall": 0
+      },
+      {
+        "key": "now@(native):0",
+        "name": "now",
+        "file": "(native)",
+        "line": 0,
+        "selfUs": 29890,
+        "samples": 17,
+        "totalUs": 0,
+        "selfMs": 29.9,
+        "totalMs": 0,
+        "selfPct": 0.3,
+        "selfPctOfWall": 0
+      },
+      {
+        "key": "exports.jsxs@/node_modules/.vite/deps/react_jsx-runtime.js:195",
+        "name": "exports.jsxs",
+        "file": "/node_modules/.vite/deps/react_jsx-runtime.js",
+        "line": 195,
+        "selfUs": 29304,
+        "samples": 9,
+        "totalUs": 7266,
+        "selfMs": 29.3,
+        "totalMs": 7.3,
+        "selfPct": 0.3,
+        "selfPctOfWall": 0
+      }
+    ],
+    "files": [
+      {
+        "file": "(native)",
+        "selfUs": 6959800,
+        "selfMs": 6959.8,
+        "selfPct": 70.63
+      },
+      {
+        "file": "/node_modules/.vite/deps/react_jsx-dev-runtime.js",
+        "selfUs": 677239,
+        "selfMs": 677.2,
+        "selfPct": 6.87
+      },
+      {
+        "file": "/node_modules/.vite/deps/react-markdown.js",
+        "selfUs": 652959,
+        "selfMs": 653,
+        "selfPct": 6.63
+      },
+      {
+        "file": "/node_modules/.vite/deps/react-dom_client.js",
+        "selfUs": 454521,
+        "selfMs": 454.5,
+        "selfPct": 4.61
+      },
+      {
+        "file": "/node_modules/.vite/deps/react_jsx-runtime.js",
+        "selfUs": 213867,
+        "selfMs": 213.9,
+        "selfPct": 2.17
+      },
+      {
+        "file": "/node_modules/.vite/deps/lib-9qH3G_6W.js",
+        "selfUs": 160785,
+        "selfMs": 160.8,
+        "selfPct": 1.63
+      },
+      {
+        "file": "/node_modules/.vite/deps/react.js",
+        "selfUs": 39288,
+        "selfMs": 39.3,
+        "selfPct": 0.4
+      },
+      {
+        "file": "/node_modules/.vite/deps/@tanstack_react-virtual.js",
+        "selfUs": 31538,
+        "selfMs": 31.5,
+        "selfPct": 0.32
+      },
+      {
+        "file": "src/vs/editor/common/model/textModel.js",
+        "selfUs": 29110,
+        "selfMs": 29.1,
+        "selfPct": 0.3
+      },
+      {
+        "file": "/node_modules/.vite/deps/remark-gfm.js",
+        "selfUs": 25927,
+        "selfMs": 25.9,
+        "selfPct": 0.26
+      },
+      {
+        "file": "src/vs/workbench/services/extensions/common/rpcProtocol.js",
+        "selfUs": 24563,
+        "selfMs": 24.6,
+        "selfPct": 0.25
+      },
+      {
+        "file": "src/components/ai/timeline/projection.ts",
+        "selfUs": 23622,
+        "selfMs": 23.6,
+        "selfPct": 0.24
+      },
+      {
+        "file": "src/vs/editor/browser/view.js",
+        "selfUs": 22968,
+        "selfMs": 23,
+        "selfPct": 0.23
+      },
+      {
+        "file": "src/vs/platform/webWorker/browser/webWorkerServiceImpl.js",
+        "selfUs": 18808,
+        "selfMs": 18.8,
+        "selfPct": 0.19
+      }
+    ],
+    "appFrames": [
+      {
+        "key": "(anonymous)@src/vs/base/browser/dom.js:259",
+        "name": "(anonymous)",
+        "file": "src/vs/base/browser/dom.js",
+        "line": 259,
+        "inclusiveUs": 421804,
+        "instances": 1,
+        "inclusiveMs": 421.8,
+        "inclusivePct": 4.28
+      },
+      {
+        "key": "animationFrameRunner@src/vs/base/browser/dom.js:235",
+        "name": "animationFrameRunner",
+        "file": "src/vs/base/browser/dom.js",
+        "line": 235,
+        "inclusiveUs": 421115,
+        "instances": 2,
+        "inclusiveMs": 421.1,
+        "inclusivePct": 4.27
+      },
+      {
+        "key": "execute@src/vs/base/browser/dom.js:215",
+        "name": "execute",
+        "file": "src/vs/base/browser/dom.js",
+        "line": 215,
+        "inclusiveUs": 420179,
+        "instances": 1,
+        "inclusiveMs": 420.2,
+        "inclusivePct": 4.26
+      },
+      {
+        "key": "runner@src/vs/editor/browser/view.js:632",
+        "name": "runner",
+        "file": "src/vs/editor/browser/view.js",
+        "line": 632,
+        "inclusiveUs": 419738,
+        "instances": 1,
+        "inclusiveMs": 419.7,
+        "inclusivePct": 4.26
+      },
+      {
+        "key": "_onRenderScheduled@src/vs/editor/browser/view.js:639",
+        "name": "_onRenderScheduled",
+        "file": "src/vs/editor/browser/view.js",
+        "line": 639,
+        "inclusiveUs": 418580,
+        "instances": 2,
+        "inclusiveMs": 418.6,
+        "inclusivePct": 4.25
+      },
+      {
+        "key": "safeInvokeNoArg@src/vs/editor/browser/view.js:596",
+        "name": "safeInvokeNoArg",
+        "file": "src/vs/editor/browser/view.js",
+        "line": 596,
+        "inclusiveUs": 417547,
+        "instances": 2,
+        "inclusiveMs": 417.5,
+        "inclusivePct": 4.24
+      },
+      {
+        "key": "fire@src/vs/base/common/event.js:686",
+        "name": "fire",
+        "file": "src/vs/base/common/event.js",
+        "line": 686,
+        "inclusiveUs": 413237,
+        "instances": 72,
+        "inclusiveMs": 413.2,
+        "inclusivePct": 4.19
+      },
+      {
+        "key": "MessageTimeline@src/components/ai/timeline/MessageTimeline.tsx:43",
+        "name": "MessageTimeline",
+        "file": "src/components/ai/timeline/MessageTimeline.tsx",
+        "line": 43,
+        "inclusiveUs": 291169,
+        "instances": 4,
+        "inclusiveMs": 291.2,
+        "inclusivePct": 2.95
+      },
+      {
+        "key": "_deliver@src/vs/base/common/event.js:663",
+        "name": "_deliver",
+        "file": "src/vs/base/common/event.js",
+        "line": 663,
+        "inclusiveUs": 285821,
+        "instances": 60,
+        "inclusiveMs": 285.8,
+        "inclusivePct": 2.9
+      },
+      {
+        "key": "(anonymous)@src/views/ai-bench/AIBenchPage.tsx:132",
+        "name": "(anonymous)",
+        "file": "src/views/ai-bench/AIBenchPage.tsx",
+        "line": 132,
+        "inclusiveUs": 223393,
+        "instances": 1,
+        "inclusiveMs": 223.4,
+        "inclusivePct": 2.27
+      },
+      {
+        "key": "(anonymous)@src/vs/editor/browser/view.js:666",
+        "name": "(anonymous)",
+        "file": "src/vs/editor/browser/view.js",
+        "line": 666,
+        "inclusiveUs": 222174,
+        "instances": 1,
+        "inclusiveMs": 222.2,
+        "inclusivePct": 2.25
+      },
+      {
+        "key": "render@src/vs/editor/browser/view.js:377",
+        "name": "render",
+        "file": "src/vs/editor/browser/view.js",
+        "line": 377,
+        "inclusiveUs": 221928,
+        "instances": 1,
+        "inclusiveMs": 221.9,
+        "inclusivePct": 2.25
+      },
+      {
+        "key": "trigger@src/vs/editor/browser/widget/codeEditor/codeEditorWidget.js:799",
+        "name": "trigger",
+        "file": "src/vs/editor/browser/widget/codeEditor/codeEditorWidget.js",
+        "line": 799,
+        "inclusiveUs": 220960,
+        "instances": 1,
+        "inclusiveMs": 221,
+        "inclusivePct": 2.24
+      },
+      {
+        "key": "render@src/vs/editor/browser/view.js:456",
+        "name": "render",
+        "file": "src/vs/editor/browser/view.js",
+        "line": 456,
+        "inclusiveUs": 219063,
+        "instances": 1,
+        "inclusiveMs": 219.1,
+        "inclusivePct": 2.22
+      },
+      {
+        "key": "(anonymous)@src/components/ai/timeline/MessageTimeline.tsx:380",
+        "name": "(anonymous)",
+        "file": "src/components/ai/timeline/MessageTimeline.tsx",
+        "line": 380,
+        "inclusiveUs": 216401,
+        "instances": 4,
+        "inclusiveMs": 216.4,
+        "inclusivePct": 2.2
+      },
+      {
+        "key": "_type@src/vs/editor/browser/widget/codeEditor/codeEditorWidget.js:871",
+        "name": "_type",
+        "file": "src/vs/editor/browser/widget/codeEditor/codeEditorWidget.js",
+        "line": 871,
+        "inclusiveUs": 199762,
+        "instances": 1,
+        "inclusiveMs": 199.8,
+        "inclusivePct": 2.03
+      }
+    ]
+  },
+  "consoleErrors": []
+}

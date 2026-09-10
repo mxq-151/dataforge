@@ -22,10 +22,16 @@ import {
   BenchCollector,
   readMemoryMB,
   nextFrames,
+  sleep,
   type BenchConfig,
   type BenchResult,
 } from './benchMetrics';
-import { createSyntheticEventClient, generateReplyText, type SyntheticClient } from './syntheticClient';
+import {
+  createSyntheticEventClient,
+  generateReplyText,
+  buildPreloadTurns,
+  type SyntheticClient,
+} from './syntheticClient';
 import './AIBenchPage.css';
 
 const SESSION_ID = 'bench-session';
@@ -48,6 +54,16 @@ const DEFAULT_CONFIGS: Record<string, BenchConfig> = {
   medium: { totalChars: 8000, chunkChars: 40, intervalMs: 16, typing: true, label: 'medium-8k' },
   // 长回复（约 24K 字符，明显卡顿的场景）
   long: { totalChars: 24000, chunkChars: 40, intervalMs: 16, typing: true, label: 'long-24k' },
+  // 长对话：预置 40 轮历史（约 320 个 part）后再流式输出 16K 字符。
+  // 用于度量「对话已经很长」时，每帧的时间线投影 + 查找表开销。
+  conversation: {
+    totalChars: 16000,
+    chunkChars: 40,
+    intervalMs: 16,
+    typing: false,
+    preloadTurns: 40,
+    label: 'conv-40t-16k',
+  },
 };
 
 const statusInfo: StatusBarInfo = {
@@ -82,7 +98,7 @@ const AIBenchPage: React.FC = () => {
   }, []);
   const sentUserInputsRef = useRef<Set<string>>(new Set([USER_TEXT]));
   const events = useOpencodeEvents(addLog, { sentUserInputsRef });
-  const { messages, busy, retry, readPartText, subscribe, resetState } = events;
+  const { messages, busy, retry, readPartText, subscribePartText, subscribe, resetState } = events;
 
   const collectorRef = useRef<BenchCollector | null>(null);
   const syntheticRef = useRef<SyntheticClient | null>(null);
@@ -178,6 +194,74 @@ const AIBenchPage: React.FC = () => {
       resetState();
       sentUserInputsRef.current = new Set([USER_TEXT]);
       await nextFrames(4);
+
+      // ── 预置历史轮次（不计入采集窗口）──
+      // 「对话已经很长」的场景：先灌入 N 轮 user/assistant 往返，
+      // 等 React 把历史渲染稳定后再开始采集，这样测到的是
+      // 「长历史 + 新回复流式」的每帧成本，而不是历史本身的构建成本。
+      if (config.preloadTurns && config.preloadTurns > 0) {
+        const turns = buildPreloadTurns(config.preloadTurns);
+        const now = Date.now();
+        for (const turn of turns) {
+          push({
+            type: 'message.updated',
+            properties: {
+              info: {
+                id: turn.userMessageID,
+                sessionID: SESSION_ID,
+                role: 'user',
+                time: { created: now },
+              },
+            },
+          });
+          push({
+            type: 'message.part.updated',
+            properties: {
+              part: {
+                id: turn.userPartID,
+                messageID: turn.userMessageID,
+                sessionID: SESSION_ID,
+                type: 'text',
+                text: turn.userText,
+              },
+            },
+          });
+          push({
+            type: 'message.updated',
+            properties: {
+              info: {
+                id: turn.assistantMessageID,
+                sessionID: SESSION_ID,
+                parentID: turn.userMessageID,
+                role: 'assistant',
+                modelID: 'bench-model',
+                agent: 'bench',
+                time: { created: now, completed: now + 1 },
+              },
+            },
+          });
+          for (const p of turn.parts) {
+            push({
+              type: 'message.part.updated',
+              properties: {
+                part: {
+                  id: p.id,
+                  messageID: turn.assistantMessageID,
+                  sessionID: SESSION_ID,
+                  type: p.type,
+                  ...(p.text !== undefined ? { text: p.text } : {}),
+                  ...(p.tool !== undefined ? { tool: p.tool, state: { status: 'completed', input: {}, output: '' } } : {}),
+                },
+              },
+            });
+          }
+        }
+        // 预置消息注册为「已确认真实用户输入」，避免被内部消息过滤器移除
+        sentUserInputsRef.current = new Set([USER_TEXT, ...turns.map((t) => t.userText)]);
+        // 等历史完成渲染与投影，再进入采集窗口
+        await sleep(1200);
+        await nextFrames(4);
+      }
 
       const fullText = generateReplyText(config.totalChars);
       const collector = new BenchCollector();
@@ -376,6 +460,7 @@ const AIBenchPage: React.FC = () => {
             status={busy ? (retry ? 'retry' : 'busy') : 'idle'}
             retry={retry}
             readPartText={readPartText}
+            subscribePartText={subscribePartText}
             currentSessionID={SESSION_ID}
             sessions={[]}
             todos={EMPTY_TODOS}

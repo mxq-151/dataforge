@@ -105,6 +105,72 @@ const CODE_SNIPPET = [
   '}',
 ].join('\n');
 
+// ── 预置历史轮次 ───────────────────────────────────────────────
+//
+// 模拟「对话已经很长」的会话：预置 n 轮 user/assistant 往返，
+// 每轮 assistant 含 text / reasoning / tool 各若干 part。
+// 这些消息只用于构建历史，不参与流式，因此其渲染成本由
+// 虚拟化承担，而**投影 + 查找表**的成本与历史规模成正比，
+// 正是长对话下每帧 CPU 的主要来源。
+
+export interface PreloadTurn {
+  userMessageID: string;
+  userPartID: string;
+  assistantMessageID: string;
+  partIDs: string[];
+  userText: string;
+  parts: Array<{ id: string; type: 'text' | 'reasoning' | 'tool'; text?: string; tool?: string }>;
+}
+
+const PRELOAD_TEXT = [
+  '我先确认一下当前目录下的文件结构，再决定从哪里改。',
+  '已经把相关的调用链梳理清楚了，接下来按最小改动原则实施。',
+  '这一步的改动验证通过了，继续处理下一个问题点。',
+  '发现一处边界条件没有覆盖，这里补上对应的判断。',
+];
+
+export function buildPreloadTurns(count: number): PreloadTurn[] {
+  const turns: PreloadTurn[] = [];
+  for (let i = 0; i < count; i++) {
+    const uid = `bench-user-${i}`;
+    const aid = `bench-assistant-${i}`;
+    const partIDs: string[] = [];
+    const parts: PreloadTurn['parts'] = [];
+
+    const reasoningID = `bench-reason-${i}`;
+    partIDs.push(reasoningID);
+    parts.push({
+      id: reasoningID,
+      type: 'reasoning',
+      text: `分析第 ${i + 1} 个问题点：需要确认输入参数的类型与取值范围，` +
+        `并检查下游调用是否依赖默认行为。`,
+    });
+
+    const toolID = `bench-tool-${i}`;
+    partIDs.push(toolID);
+    parts.push({ id: toolID, type: 'tool', tool: 'read' });
+
+    const textID = `bench-text-${i}`;
+    partIDs.push(textID);
+    parts.push({
+      id: textID,
+      type: 'text',
+      text: `${PRELOAD_TEXT[i % PRELOAD_TEXT.length]}\n\n` +
+        `- 影响范围：模块 ${i % 7}\n- 回归风险：低\n- 验证方式：单元测试 + 手工冒烟\n`,
+    });
+
+    turns.push({
+      userMessageID: uid,
+      userPartID: `bench-user-part-${i}`,
+      assistantMessageID: aid,
+      partIDs,
+      userText: `请处理第 ${i + 1} 个优化点`,
+      parts,
+    });
+  }
+  return turns;
+}
+
 /** 生成一段接近真实分布的长回复文本 */
 export function generateReplyText(totalChars: number): string {
   const chunks: string[] = [];

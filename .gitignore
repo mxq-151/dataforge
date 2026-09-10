@@ -59,3 +59,8 @@ Thumbs.db
 # AI 性能基准：浏览器临时 profile 与报告快照
 .edge-bench-profile/
 .edge-debug-profile/
+
+# V8 CPU profile 采集用的浏览器临时 profile（Chrome）
+.chrome-profile-bench/
+# 原始 CPU profile（3~4MB/份，可按需重生成，不入库）
+perf/*.raw.json

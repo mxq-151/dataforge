@@ -27,6 +27,12 @@ export interface BenchConfig {
   intervalMs: number;
   /** 是否在流式期间模拟编辑器输入 */
   typing?: boolean;
+  /**
+   * 流式开始前预置的历史轮数（模拟「对话已经很长」）。
+   * 每轮含 1 条用户消息 + 1 条 assistant 消息（多个 part），
+   * 用于度量时间线投影 / 查找表在长历史下的每帧开销。
+   */
+  preloadTurns?: number;
   /** 标签（用于报告） */
   label?: string;
 }

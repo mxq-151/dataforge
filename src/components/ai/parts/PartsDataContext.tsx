@@ -24,6 +24,11 @@ export interface PartsDataValue {
   sessions?: Session[];
   /** 读取 part 流式文本（优先 accumDelta 累积值，fallback 到 part.text） */
   readPartText?: (partID: string, part: Part) => string;
+  /**
+   * 订阅指定 part 的流式文本变化，返回取消订阅函数。
+   * 流式 part 用它把逐字增长的重渲染限制在自身，避免整棵时间线跟着刷新。
+   */
+  subscribePartText?: (partID: string, listener: () => void) => () => void;
 }
 
 const PartsDataContext = createContext<PartsDataValue>({});
@@ -40,11 +45,12 @@ export const PartsDataProvider: React.FC<PartsDataProviderProps> = ({
   currentSessionID,
   sessions,
   readPartText,
+  subscribePartText,
   children,
 }) => {
   const value = React.useMemo<PartsDataValue>(
-    () => ({ navigateToSession, sessionHref, currentSessionID, sessions, readPartText }),
-    [navigateToSession, sessionHref, currentSessionID, sessions, readPartText],
+    () => ({ navigateToSession, sessionHref, currentSessionID, sessions, readPartText, subscribePartText }),
+    [navigateToSession, sessionHref, currentSessionID, sessions, readPartText, subscribePartText],
   );
   return <PartsDataContext.Provider value={value}>{children}</PartsDataContext.Provider>;
 };

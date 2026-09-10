@@ -11,7 +11,7 @@
  * - 类型标识：标题栏左侧 "思考" 徽章
  */
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useSyncExternalStore } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import PacedMarkdown from './PacedMarkdown';
@@ -22,6 +22,9 @@ import type { MessagePartProps } from './ToolPartDisplay';
 
 // 模块级常量：避免每次渲染创建新数组导致 ReactMarkdown 重新处理
 const REMARK_PLUGINS = [remarkGfm];
+
+// 无订阅能力时的占位退订函数（保持引用稳定）
+const NOOP_UNSUBSCRIBE = () => { /* noop */ };
 
 /** 从 reasoning 文本中提取首个标题作为预览 */
 function reasoningHeading(text: string): string | undefined {
@@ -63,7 +66,7 @@ function cleanHeading(value: string): string {
 
 const ReasoningPartDisplay: React.FC<MessagePartProps> = ({ part, message }) => {
   const reasoningPart = part as ReasoningPart;
-  const { readPartText } = usePartsData();
+  const { readPartText, subscribePartText } = usePartsData();
   const [expanded, setExpanded] = useState(false);
 
   const streaming = useMemo(() => {
@@ -71,10 +74,18 @@ const ReasoningPartDisplay: React.FC<MessagePartProps> = ({ part, message }) => 
     return typeof (message as AssistantMessage).time.completed !== 'number';
   }, [message]);
 
-  const text = useMemo(() => {
-    if (readPartText) return readPartText(reasoningPart.id, reasoningPart);
-    return (reasoningPart as any).text ?? '';
-  }, [readPartText, reasoningPart]);
+  // text 来源：与 TextPartDisplay 一致，走 part 级订阅，
+  // 让 reasoning 的逐字增长只重渲染本组件（标题预览也能实时跟随）。
+  const streamID = reasoningPart.id;
+  const subscribe = useCallback(
+    (onChange: () => void) => subscribePartText?.(streamID, onChange) ?? NOOP_UNSUBSCRIBE,
+    [subscribePartText, streamID],
+  );
+  const getText = useCallback(
+    () => readPartText?.(streamID, reasoningPart) ?? (reasoningPart as any).text ?? '',
+    [readPartText, streamID, reasoningPart],
+  );
+  const text = useSyncExternalStore(subscribe, getText, getText);
 
   const heading = useMemo(() => {
     if (!text) return undefined;

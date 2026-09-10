@@ -11,16 +11,18 @@
  *
  * 性能优化（分块增量渲染）：
  * 原实现每次打字机步进都用 ReactMarkdown 重新解析**整段**文本，长回复下是
- * O(n²) 的重复解析（8k 字符回复会被重新解析数百次）。本实现将文本拆成：
- * - 稳定前缀（stableText）：已越过安全边界的部分，用 useMemo 缓存，
- *   只在「跨越段落边界」时才重新解析，其余步进直接复用上一次的 React 元素。
- * - 活动尾部（activeText）：最后一段仍在增长的部分，每步重解析，但只几百字符。
+ * O(n²) 的重复解析（8k 字符回复会被重新解析数百次）。本实现分两层消除该开销：
  *
- * 这样单步的解析开销从「与总长度成正比」降为「与尾部段落长度成正比」，
- * 消除长回复下 Markdown 重复解析导致的卡顿。
+ * 1. 稳定前缀 / 活动尾部拆分：把文本拆成「稳定前缀（超出尾部窗口的部分）」与
+ *    「活动尾部（最后仍在增长的部分）」，步进时只有活动尾部需要重解析。
+ * 2. 稳定前缀**按顶层块缓存**：前缀继续前进时，逐块与缓存比对，
+ *    只解析新增的块，历史块复用已生成的 React 元素（见 splitStableBlocks）。
+ *    若不做这一层，前缀每前进一个段落就要把整段前缀重解析一次，仍是 O(n²)。
  *
- * 分块边界：优先在不处于围栏代码块（``` / ~~~）内的**空行（段落）**末尾拆分，
- * 使段落/列表/表格整体固化、避免破坏代码块语法高亮；活动尾部过长时退化为换行边界。
+ * 分块边界：以空行（段落）为界，且不在围栏代码块（``` / ~~~）内拆分；
+ * 活动尾部超过 1500 字符时退化为换行边界以限制重解析成本；
+ * 首行缩进 1~3 空格的块、以及含引用式链接定义的块会保守地并回前一块，
+ * 避免破坏列表续行与引用解析。
  * 流式结束后由 TextPartDisplay 用完整 GFM 重新渲染，最终形态与优化前完全一致。
  *
  * SolidJS → React 适配：
@@ -44,6 +46,9 @@ import { markdownComponents } from './markdownComponents';
 const TEXT_RENDER_PACE_MS = 32;
 const TEXT_RENDER_IMMEDIATE = 512;
 const TEXT_RENDER_SNAP = /[\s.,!?;:)\]。，！？；：、）】」』]/;
+
+/** 稳定前缀为空时的占位（模块级常量，保持引用稳定，避免无谓的子树重建） */
+const EMPTY_NODES: React.ReactNode[] = [];
 
 // ── step(size)：按剩余长度分级步长 ──────────────────────────────
 
@@ -121,6 +126,95 @@ export function findStableSplit(text: string): number {
     return lastParaSplit;
   }
   return lastLineSplit;
+}
+
+// ── splitStableBlocks(text)：把稳定前缀切成可独立解析的顶层块 ────
+//
+// 为什么需要它：稳定前缀此前是**整段**交给一个 ReactMarkdown 解析的，
+// 前缀每前进一个段落就要把「整段前缀」重新解析一次 —— 长回复下这依然是
+// O(n²)（24K 字符回复约触发 80 次全量重解析，累计解析字符数是文本量的十余倍）。
+//
+// 改成按块缓存后，前缀前进时只需解析**新增的那一块**，历史块复用上次
+// 生成的 React 元素，整体降为 O(n)。
+//
+// 切分规则：以空行为界（围栏代码块内的空行不切分）。
+// 保守合并规则（避免破坏跨块语义）：
+//  1. 首行缩进 1~3 空格的块与前一块合并 —— 它可能是列表/引用的续行；
+//  2. 前一块包含引用式链接定义（`[label]: url`，含 GFM 脚注）时合并 ——
+//     引用定义可能被后续块使用，拆开会解析失败。
+
+export function splitStableBlocks(text: string): string[] {
+  if (!text) return [];
+  const blocks: string[] = [];
+  let fence: { char: string; min: number } | null = null;
+  let blockStart = 0;
+  let lineStart = 0;
+  let blankRun = false;
+  const len = text.length;
+
+  const pushBlock = (end: number) => {
+    const raw = text.slice(blockStart, end);
+    blockStart = end;
+    if (raw.trim().length > 0) blocks.push(raw);
+  };
+
+  for (let i = 0; i <= len; i++) {
+    if (i !== len && text[i] !== '\n') continue;
+    const line = text.slice(lineStart, i);
+    const trimmed = line.replace(/^[ \t]+/, '');
+
+    if (fence === null) {
+      const opener = /^(`{3,}|~{3,})/.exec(trimmed);
+      if (opener) {
+        // 围栏代码块开启：它自身是新块的开始
+        if (blankRun) {
+          pushBlock(lineStart);
+          blankRun = false;
+        }
+        fence = { char: opener[1][0], min: opener[1].length };
+      } else if (i < len) {
+        if (trimmed.trim().length === 0) {
+          blankRun = true;
+        } else {
+          if (blankRun) {
+            pushBlock(lineStart);
+            blankRun = false;
+          }
+        }
+      }
+    } else {
+      const closer = /^(`{3,}|~{3,})/.exec(trimmed);
+      if (closer && closer[1][0] === fence.char && closer[1].length >= fence.min) {
+        fence = null;
+      }
+    }
+
+    lineStart = i + 1;
+  }
+
+  pushBlock(len);
+  return mergeRiskyBlocks(blocks);
+}
+
+/** 保守合并：把可能依赖上下文（列表续行 / 引用定义）的块并回前一块 */
+function mergeRiskyBlocks(blocks: string[]): string[] {
+  const out: string[] = [];
+  for (const block of blocks) {
+    if (out.length === 0) {
+      out.push(block);
+      continue;
+    }
+    const firstLine = (block.replace(/^\s*\n+/, '').split('\n')[0] ?? '');
+    const indentedContinuation = /^[ \t]{1,3}\S/.test(firstLine);
+    const prev = out[out.length - 1];
+    const prevHasReferenceDefinition = /^[ \t]*\[[^\]]+\]:/m.test(prev);
+    if (indentedContinuation || prevHasReferenceDefinition) {
+      out[out.length - 1] = prev + block;
+    } else {
+      out.push(block);
+    }
+  }
+  return out;
 }
 
 // ── usePacedValue：React 适配的 createPacedValue ───────────────
@@ -243,18 +337,41 @@ const PacedMarkdown: React.FC<PacedMarkdownProps> = ({ text, cacheKey, streaming
     };
   }, [pacedText]);
 
-  // 稳定前缀的 ReactMarkdown 元素：仅在稳定前缀内容变化（跨越换行边界）时重新解析。
-  // 复用同一元素引用时 React 会直接跳过该子树的协调，避免每步全量重解析。
-  const stableElement = useMemo(
-    () => (stableText ? <ReactMarkdown components={markdownComponents}>{stableText}</ReactMarkdown> : null),
-    [stableText],
-  );
+  // ── 稳定前缀的分块元素缓存 ──
+  // blockCacheRef 保存「上一次已解析的块文本」与「对应的 React 元素」。
+  // 前缀前进时，与缓存逐块比较，只对**新增的块**调用 ReactMarkdown；
+  // 历史块直接复用上次的元素引用，React 会整体跳过这些子树的解析与协调。
+  const blockCacheRef = useRef<{ texts: string[]; nodes: React.ReactNode[] }>({ texts: [], nodes: [] });
+
+  const stableNodes = useMemo(() => {
+    const blocks = splitStableBlocks(stableText);
+    if (blocks.length === 0) {
+      blockCacheRef.current = { texts: [], nodes: [] };
+      return EMPTY_NODES;
+    }
+    const cache = blockCacheRef.current;
+    // 公共前缀长度：这些块的内容与上次完全一致，元素可直接复用
+    let reusable = 0;
+    const maxReusable = Math.min(cache.texts.length, blocks.length);
+    while (reusable < maxReusable && cache.texts[reusable] === blocks[reusable]) reusable++;
+
+    const nodes = cache.nodes.slice(0, reusable);
+    for (let i = reusable; i < blocks.length; i++) {
+      nodes.push(
+        <ReactMarkdown key={i} components={markdownComponents}>
+          {blocks[i]}
+        </ReactMarkdown>,
+      );
+    }
+    blockCacheRef.current = { texts: blocks, nodes };
+    return nodes;
+  }, [stableText]);
 
   if (!pacedText) return null;
 
   return (
     <div className={`ai-panel__markdown ${className}`.trim()} key={cacheKey}>
-      {stableElement}
+      {stableNodes}
       {activeText ? <ReactMarkdown components={markdownComponents}>{activeText}</ReactMarkdown> : null}
     </div>
   );

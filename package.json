@@ -27,7 +27,9 @@
     "bench:ai": "node scripts/ai-bench.mjs --out perf/bench.json",
     "bench:ai:before": "node scripts/ai-bench.mjs --out perf/before.json",
     "bench:ai:after": "node scripts/ai-bench.mjs --out perf/after.json",
-    "bench:ai:report": "node scripts/ai-bench-compare.mjs --before perf/before.json --after perf/after.json"
+    "bench:ai:report": "node scripts/ai-bench-compare.mjs --before perf/before.json --after perf/after.json",
+    "bench:ai:profile": "node scripts/ai-bench-profile.mjs --preset long --iterations 3 --typing false --out perf/profile.json",
+    "bench:ai:profile:conv": "node scripts/ai-bench-profile.mjs --preset conversation --iterations 2 --out perf/profile-conv.json"
   },
   "build": {
     "appId": "com.dataforge.electron",

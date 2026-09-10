@@ -53,11 +53,27 @@ function capitalizeAgent(name: string | undefined): string | undefined {
   return name[0].toUpperCase() + name.slice(1);
 }
 
+/** 短时间格式化器：Intl.DateTimeFormat 构造开销较高（每次构造约数十微秒），
+ *  模块级复用一份实例，避免每次重渲染都重新构造。 */
+let shortTimeFormatter: Intl.DateTimeFormat | undefined;
+
+function getShortTimeFormatter(): Intl.DateTimeFormat | undefined {
+  if (shortTimeFormatter) return shortTimeFormatter;
+  try {
+    shortTimeFormatter = new Intl.DateTimeFormat(undefined, { timeStyle: 'short' });
+    return shortTimeFormatter;
+  } catch {
+    return undefined;
+  }
+}
+
 /** 格式化时间戳为短时间 */
 function formatTimestamp(ts: number | undefined): string | undefined {
   if (typeof ts !== 'number') return undefined;
+  const formatter = getShortTimeFormatter();
+  if (!formatter) return undefined;
   try {
-    return new Intl.DateTimeFormat(undefined, { timeStyle: 'short' }).format(new Date(ts));
+    return formatter.format(new Date(ts));
   } catch {
     return undefined;
   }

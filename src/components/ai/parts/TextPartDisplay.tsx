@@ -10,7 +10,7 @@
  * - meta：agent · model · duration · interrupted（用 " · " 连接）
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useCallback, useSyncExternalStore } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import PacedMarkdown from './PacedMarkdown';
@@ -21,6 +21,9 @@ import type { MessagePartProps } from './ToolPartDisplay';
 
 // 模块级常量：避免每次渲染创建新数组导致 ReactMarkdown 重新处理
 const REMARK_PLUGINS = [remarkGfm];
+
+// 无订阅能力时的占位退订函数（保持引用稳定，避免 useSyncExternalStore 反复重订阅）
+const NOOP_UNSUBSCRIBE = () => { /* noop */ };
 
 // ── duration 格式化 ───────────────────────────────────────────
 
@@ -42,7 +45,7 @@ function capitalizeAgent(name: string | undefined): string | undefined {
 
 const TextPartDisplay: React.FC<MessagePartProps> = ({ part, message, turnDurationMs }) => {
   const textPart = part as TextPart;
-  const { readPartText } = usePartsData();
+  const { readPartText, subscribePartText } = usePartsData();
 
   // streaming：assistant 且未完成
   const streaming = useMemo(() => {
@@ -51,11 +54,20 @@ const TextPartDisplay: React.FC<MessagePartProps> = ({ part, message, turnDurati
     return typeof assistantMsg.time.completed !== 'number';
   }, [message]);
 
-  // text 来源：优先 accumDelta，fallback part.text
-  const text = useMemo(() => {
-    if (readPartText) return readPartText(textPart.id, textPart);
-    return (textPart as any).text ?? '';
-  }, [readPartText, textPart]);
+  // ── text 来源：part 级订阅 ──
+  // 逐字增长的流式文本不再经由 messages 状态广播（那会让整棵时间线每次重算），
+  // 而是直接订阅本 part 的文本变化：只有这一个组件随打字机节奏重渲染。
+  // 流式结束后 accumDelta 被清理，readPartText 自动回退到完整的 part.text。
+  const streamID = textPart.id;
+  const subscribe = useCallback(
+    (onChange: () => void) => subscribePartText?.(streamID, onChange) ?? NOOP_UNSUBSCRIBE,
+    [subscribePartText, streamID],
+  );
+  const getText = useCallback(
+    () => readPartText?.(streamID, textPart) ?? (textPart as any).text ?? '',
+    [readPartText, streamID, textPart],
+  );
+  const text = useSyncExternalStore(subscribe, getText, getText);
 
   // meta 信息：agent · model · duration · interrupted
   const meta = useMemo(() => {

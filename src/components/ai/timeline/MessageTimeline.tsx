@@ -74,6 +74,8 @@ export interface MessageTimelineProps {
   showReasoning?: boolean;
   /** 读取 part 流式文本（优先 accumDelta 累积值） */
   readPartText?: (partID: string, part: Part) => string;
+  /** 订阅 part 流式文本变化（把逐字重渲染限制在该 part 内） */
+  subscribePartText?: (partID: string, listener: () => void) => () => void;
   /** 跳转到子 session（task 工具点击行为） */
   navigateToSession?: (sessionID: string) => void;
   /** 生成 session 链接（用于 triggerHref 新窗口） */
@@ -96,6 +98,43 @@ export interface MessageTimelineProps {
   fileReview?: TimelineFileReviewProps;
 }
 
+// ── VirtualRow：单行包装（memo 化，避免整屏行被无谓重渲染） ────
+//
+// 虚拟化只保证「DOM 节点数量」有界，但每次 commit 仍会把视口内的每一行
+// 重新构造一遍元素树。长对话下视口内可能同时有二三十行，流式期间每秒
+// 三十余次 commit → 每秒数百次无谓的元素创建与协调。
+//
+// 把行包装抽成 React.memo 组件后：row 引用由 reuseTimelineRows 保持稳定，
+// index/start/renderRow/measureRef 在流式期间均不变（renderRow 的依赖
+// entryByID / assistantCopyPartID / toolOpen 只在结构性变化时更新，
+// measureElement 是 virtualizer 的实例方法，引用恒定），
+// 于是只有真正变化的行（新增行、高度变化导致 start 位移的行）才会重渲染。
+
+interface VirtualRowProps {
+  row: TimelineRow;
+  index: number;
+  start: number;
+  renderRow: (row: TimelineRow) => React.ReactNode;
+  measureRef: (el: HTMLDivElement | null) => void;
+}
+
+const VirtualRow = React.memo<VirtualRowProps>(({ row, index, start, renderRow, measureRef }) => (
+  <div
+    data-index={index}
+    ref={measureRef}
+    style={{
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      width: '100%',
+      transform: `translateY(${start}px)`,
+    }}
+  >
+    {renderRow(row)}
+  </div>
+));
+VirtualRow.displayName = 'VirtualRow';
+
 // ── MessageTimeline 组件 ─────────────────────────────────────
 
 const MessageTimeline: React.FC<MessageTimelineProps> = ({
@@ -104,6 +143,7 @@ const MessageTimeline: React.FC<MessageTimelineProps> = ({
   retry,
   showReasoning = true,
   readPartText,
+  subscribePartText,
   navigateToSession,
   sessionHref,
   currentSessionID,
@@ -336,8 +376,8 @@ const MessageTimeline: React.FC<MessageTimelineProps> = ({
 
   // PartsDataProvider 值（透传导航和流式文本读取）
   const partsDataValue = useMemo(
-    () => ({ navigateToSession, sessionHref, currentSessionID, sessions, readPartText }),
-    [navigateToSession, sessionHref, currentSessionID, sessions, readPartText],
+    () => ({ navigateToSession, sessionHref, currentSessionID, sessions, readPartText, subscribePartText }),
+    [navigateToSession, sessionHref, currentSessionID, sessions, readPartText, subscribePartText],
   );
 
   // 空状态
@@ -374,20 +414,14 @@ const MessageTimeline: React.FC<MessageTimelineProps> = ({
             const row = rows[virtualItem.index];
             if (!row) return null;
             return (
-              <div
+              <VirtualRow
                 key={virtualItem.key}
-                data-index={virtualItem.index}
-                ref={virtualizer.measureElement}
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: '100%',
-                  transform: `translateY(${virtualItem.start}px)`,
-                }}
-              >
-                {renderRow(row)}
-              </div>
+                row={row}
+                index={virtualItem.index}
+                start={virtualItem.start}
+                renderRow={renderRow}
+                measureRef={virtualizer.measureElement}
+              />
             );
           })}
         </div>

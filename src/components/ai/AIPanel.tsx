@@ -53,7 +53,7 @@ const AIPanel: React.FC<AIPanelProps> = ({ chatBackend, llmModels, onRollback, o
     newSession, loadSession, deleteSession, renameTask,
     setActiveLLMModel,
     taskType, setTaskType,
-    client, readPartText, listSessions,
+    client, readPartText, subscribePartText, listSessions,
     currentDirectory,
   } = chatBackend;
 
@@ -359,6 +359,7 @@ const AIPanel: React.FC<AIPanelProps> = ({ chatBackend, llmModels, onRollback, o
           status={busy ? (retry ? 'retry' : 'busy') : 'idle'}
           retry={retry}
           readPartText={readPartText}
+          subscribePartText={subscribePartText}
           navigateToSession={navigateToSession}
           sessionHref={sessionHref}
           currentSessionID={currentSessionId ?? undefined}

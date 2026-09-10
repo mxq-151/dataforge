@@ -169,6 +169,11 @@ export interface OpencodeClientBackend {
    * 流式过程中返回 delta 累积值，流式结束后返回 part.text 全量值。
    */
   readPartText: (partID: string, part: import('../../types/opencode-backend').Part) => string;
+  /**
+   * 订阅指定 part 的流式文本变化。
+   * 用于把逐字增长的重渲染范围收缩到该 part 自身（见 useOpencodeEvents）。
+   */
+  subscribePartText: (partID: string, listener: () => void) => () => void;
 }
 
 /**
@@ -374,6 +379,7 @@ function useOpencodeClientImpl(
     setMessagesDirect,
     setContextLimit,
     readPartText,
+    subscribePartText,
   } = useOpencodeEvents(addLog, {
     sentUserInputsRef,
   });
@@ -1424,6 +1430,7 @@ function useOpencodeClientImpl(
     setTaskType,
     client,
     readPartText,
+    subscribePartText,
   }), [
     messages, busy, busyLabel, retry, ready, connected, error, modals, logs,
     currentSessionId, lastFileChangeSeq, lastFileChangePaths, todos, fileChanges, contextUsage, tasks,
@@ -1439,6 +1446,7 @@ function useOpencodeClientImpl(
     setActiveLLMModel, activeLLMModel,
     taskType,
     client, readPartText,
+    subscribePartText,
   ]);
 }
 

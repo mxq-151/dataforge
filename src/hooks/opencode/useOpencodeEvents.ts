@@ -128,6 +128,21 @@ export interface UseOpencodeEventsReturn {
    * 流式过程中返回 delta 累积值，流式结束后返回 part.text 全量值。
    */
   readPartText: (partID: string, part: Part) => string;
+  /**
+   * 订阅指定 part 的流式文本变化（性能优化核心）。
+   *
+   * 背景：逐字增长的流式文本原先通过「改写 messages → 触发整棵时间线重渲染」
+   * 来上屏。长回复下这会让时间线投影、查找表、视口内所有行每秒重算三十余次，
+   * 是 CPU 占用的主要来源。
+   *
+   * 现在改为：逐字增长只在 partTextAccumDelta（ref）里累积，并通知订阅了
+   * 该 partID 的组件（通常只有正在流式的那一个 TextPartDisplay /
+   * ReasoningPartDisplay），把重渲染范围从「整棵时间线」收缩到「这一个 part」。
+   * 通知按 ~32ms 合并，避免 delta 高频抖动。
+   *
+   * @returns 取消订阅函数
+   */
+  subscribePartText: (partID: string, listener: () => void) => () => void;
 }
 
 export interface UseOpencodeEventsOptions {
@@ -221,19 +236,80 @@ export function useOpencodeEvents(
   // message.part.delta 事件频率可达 50-100+/秒，原先每个 delta 都调用 setMessages
   // 触发完整 React 渲染级联（AIPanel → MessageTimeline → 所有可见行）。
   //
-  // 优化策略：
+  // 优化策略（两级）：
   // 1. accumDelta ref 始终立即更新（readPartText 读取它，保证文本不延迟）
   // 2. 新消息/新 part 首次到达时立即创建（保证 UI 即时显示）
-  // 3. 已有消息的后续 delta 仅标记 dirty，通过 DELTA_FLUSH_MS 定时器合并刷新
-  //    将 50-100 次/秒的 setMessages 降至 ~30 次/秒
+  // 3. **首次上屏**：某个 part 从「无文本」变为「有文本」时，把当前文本写进
+  //    messages —— 这一步是必要的，因为时间线投影需要知道该 part 已经可渲染。
+  // 4. **后续增长**：只更新 accumDelta + 通知该 part 自己的订阅者
+  //    （subscribePartText），不再触碰 messages。
+  //    这是关键：逐字增长不再让整棵时间线（含投影、查找表、视口内所有行）
+  //    每秒重算三十余次，只让「正在流式的那个 part」重渲染。
   const knownMessageIdsRef = useRef<Set<string>>(new Set());
   const knownPartIdsRef = useRef<Set<string>>(new Set());
   const dirtyDeltaMessagesRef = useRef<Set<string>>(new Set());
   const deltaFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const DELTA_FLUSH_MS = 33; // ~30fps，合并窗口内所有 delta
 
-  /** 合并刷新：将 accumDelta 中的最新文本同步到 messages state（仅 dirty 消息） */
-  const flushDeltas = useCallback(() => {
+  // ── 流式文本订阅（见 UseOpencodeEventsReturn.subscribePartText）──
+  const partTextListenersRef = useRef<Map<string, Set<() => void>>>(new Map());
+  const partTextDirtyRef = useRef<Set<string>>(new Set());
+  const partTextNotifyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const PART_TEXT_NOTIFY_MS = 32;
+
+  /** 合并通知：把窗口内累积的 part 一次性通知其订阅者 */
+  const notifyPartText = useCallback(() => {
+    partTextNotifyTimerRef.current = null;
+    const dirty = partTextDirtyRef.current;
+    if (dirty.size === 0) return;
+    partTextDirtyRef.current = new Set();
+    for (const partID of dirty) {
+      const listeners = partTextListenersRef.current.get(partID);
+      if (!listeners) continue;
+      for (const listener of listeners) {
+        try {
+          listener();
+        } catch {
+          // 单个订阅者抛错不影响其它订阅者与主流程
+        }
+      }
+    }
+  }, []);
+
+  /** 标记某 part 文本已变化，安排一次合并通知 */
+  const schedulePartTextNotify = useCallback(
+    (partID: string) => {
+      partTextDirtyRef.current.add(partID);
+      if (partTextNotifyTimerRef.current !== null) return;
+      partTextNotifyTimerRef.current = setTimeout(notifyPartText, PART_TEXT_NOTIFY_MS);
+    },
+    [notifyPartText],
+  );
+
+  /** 订阅某 part 的流式文本变化 */
+  const subscribePartText = useCallback((partID: string, listener: () => void): (() => void) => {
+    let listeners = partTextListenersRef.current.get(partID);
+    if (!listeners) {
+      listeners = new Set();
+      partTextListenersRef.current.set(partID, listeners);
+    }
+    listeners.add(listener);
+    return () => {
+      const set = partTextListenersRef.current.get(partID);
+      if (!set) return;
+      set.delete(listener);
+      if (set.size === 0) partTextListenersRef.current.delete(partID);
+    };
+  }, []);
+
+  /**
+   * 合并刷新：将 accumDelta 中的最新文本同步到 messages state。
+   *
+   * @param force true 时无条件把最新文本写入 messages（用于流式结束/重连兜底，
+   *              保证即使服务端没有补发全量 part.updated，messages 里也是完整文本）；
+   *              false 时只做「首次上屏」（part 从无文本变为有文本）。
+   */
+  const flushDeltas = useCallback((force = false) => {
     deltaFlushTimerRef.current = null;
     const dirty = dirtyDeltaMessagesRef.current;
     if (dirty.size === 0) return;
@@ -242,12 +318,16 @@ export function useOpencodeEvents(
       let changed = false;
       const next = prev.map(m => {
         if (!dirty.has(m.info.id)) return m;
+        // 用户消息的文本必须始终完整同步：回滚回显、用户气泡渲染都直接读 messages。
+        // 助手消息逐字增长的文本由 subscribePartText 负责上屏，这里只做首次上屏。
+        const incremental = m.info.role === 'assistant' && !force;
         let msgChanged = false;
         const newParts = m.parts.map(p => {
           const accum = partTextAccumDelta.current.get(p.id);
           if (accum === undefined) return p;
           const currentText = (p as any).text || '';
           if (currentText === accum) return p;
+          if (incremental && currentText.length > 0) return p;
           msgChanged = true;
           return { ...p, text: accum };
         });
@@ -301,6 +381,14 @@ export function useOpencodeEvents(
     userMessageRoles.current.clear();
     // 清理流式 delta 累积缓冲
     partTextAccumDelta.current.clear();
+    // 清理流式文本订阅的待通知队列（订阅者本身由组件生命周期管理，此处不动）
+    if (partTextNotifyTimerRef.current !== null) {
+      clearTimeout(partTextNotifyTimerRef.current);
+      partTextNotifyTimerRef.current = null;
+    }
+    partTextDirtyRef.current.clear();
+    // 注意：不清理 partTextListenersRef —— 订阅由组件生命周期（useEffect cleanup）
+    // 负责注销。此处若强行清空，会话切换后仍挂载的组件会永久失去通知。
     // 清理 delta 合并刷新状态
     if (deltaFlushTimerRef.current !== null) {
       clearTimeout(deltaFlushTimerRef.current);
@@ -588,7 +676,7 @@ export function useOpencodeEvents(
           //    重连后如果 session 实际已 idle 但未推送 session.status 事件，
           //    15s 后自动清除 busy 并提示用户"连接已恢复，但思考状态未同步"
           if (dirtyDeltaMessagesRef.current.size > 0) {
-            flushDeltas();
+            flushDeltas(true);
           }
           if (busyRef.current) {
             addLog({
@@ -612,7 +700,7 @@ export function useOpencodeEvents(
                 setRetry(null);
                 // 兜底 flush，确保最终文本完整显示
                 if (dirtyDeltaMessagesRef.current.size > 0) {
-                  flushDeltas();
+                  flushDeltas(true);
                 }
               }
             }, RECOVERY_FALLBACK_MS);
@@ -895,7 +983,7 @@ export function useOpencodeEvents(
           if (deltaFlushTimerRef.current !== null) {
             clearTimeout(deltaFlushTimerRef.current);
             deltaFlushTimerRef.current = null;
-            flushDeltas();
+            flushDeltas(true);
           }
         }
         break;
@@ -910,7 +998,7 @@ export function useOpencodeEvents(
         if (deltaFlushTimerRef.current !== null) {
           clearTimeout(deltaFlushTimerRef.current);
           deltaFlushTimerRef.current = null;
-          flushDeltas();
+          flushDeltas(true);
         }
         break;
 
@@ -1041,10 +1129,13 @@ export function useOpencodeEvents(
         if (internalMessageIds.current.has(deltaMessageId)) break;
 
         // 累积到 partTextAccumDelta Map（供 TextPartDisplay 读取流式文本，对齐桌面版 part_text_accum_delta）
-        // ref 立即更新，readPartText 读取它保证文本不延迟
+        // ref 立即更新，readPartText 读取它保证文本不延迟；
+        // 同时通知该 part 的订阅者（合并到 ~32ms 一次），把重渲染范围
+        // 限制在正在流式的那个 part 上。
         if (deltaField === 'text' || deltaField === 'reasoning') {
           const prev = partTextAccumDelta.current.get(deltaPartId) || '';
           partTextAccumDelta.current.set(deltaPartId, prev + deltaText);
+          schedulePartTextNotify(deltaPartId);
         }
 
         // ── 同步 messages state（合并刷新优化） ──
@@ -1129,9 +1220,11 @@ export function useOpencodeEvents(
         if (internalMessageIds.current.has(messageId)) break;
         if (confirmedUserMessageIds.current.has(messageId)) break;
 
-        // text/reasoning part 全量替换时清理 accumDelta（part.text 已是完整文本）
+        // text/reasoning part 全量替换时清理 accumDelta（part.text 已是完整文本），
+        // 并通知订阅者改用新的全量文本
         if (part.type === 'text' || part.type === 'reasoning') {
           partTextAccumDelta.current.delete(part.id);
+          schedulePartTextNotify(part.id);
         }
         // 标记消息和 part 为已知（delta 合并刷新用）
         knownMessageIdsRef.current.add(messageId);
@@ -1406,6 +1499,13 @@ export function useOpencodeEvents(
         clearTimeout(deltaFlushTimerRef.current);
         deltaFlushTimerRef.current = null;
       }
+      // 清理流式文本订阅的待通知定时器
+      if (partTextNotifyTimerRef.current !== null) {
+        clearTimeout(partTextNotifyTimerRef.current);
+        partTextNotifyTimerRef.current = null;
+      }
+      partTextDirtyRef.current.clear();
+      partTextListenersRef.current.clear();
       // 清理重连恢复定时器
       sse.clearRecoveryTimers();
     };
@@ -1431,5 +1531,6 @@ export function useOpencodeEvents(
     setContextLimit,
     partTextAccumDelta,
     readPartText,
+    subscribePartText,
   };
 }
