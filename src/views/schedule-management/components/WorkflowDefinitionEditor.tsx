@@ -1,8 +1,8 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import type { Graph, Node } from '@antv/x6';
 import {
   ArrowLeft, Save, Trash2, ZoomIn, ZoomOut, Maximize2, Maximize,
-  Move, Plus, X, Zap, Search, Download, LayoutGrid,
+  Move, Plus, X, Zap, Search, Download, LayoutGrid, AlertTriangle, ShieldCheck,
 } from 'lucide-react';
 import type {
   DSWorkflowTaskNode, DSWorkflowEdge, DSWorkflowGlobalParam,
@@ -20,11 +20,16 @@ import DagSidebar from '../dag/DagSidebar';
 import DagContextMenu from '../dag/DagContextMenu';
 import DagAutoLayoutModal from '../dag/DagAutoLayoutModal';
 import {
-  buildNode, buildEdge, buildGraph, extractNodes, extractEdges,
-  truncateText, getTaskTypeIcon,
+  buildNode, buildGraph, extractNodes, extractEdges,
+  replaceGraphEdges, truncateText, getTaskTypeIcon,
 } from '../dag/useCustomCellBuilder';
 import { formatGraph, DEFAULT_LAYOUT_CONFIG } from '../dag/useGraphAutoLayout';
 import type { LayoutConfig } from '../dag/useGraphAutoLayout';
+import {
+  validateWorkflowNodes,
+  type WorkflowNodeValidationResult,
+} from '../../../utils/workflowNodeValidation';
+import { useToast } from '../../../components/Toast';
 import './WorkflowDefinitionEditor.css';
 
 interface WorkflowDefinitionEditorProps {
@@ -36,6 +41,12 @@ interface WorkflowDefinitionEditorProps {
   existingExecutionType?: ExecutionType;
   existingTimeout?: number;
   readonly?: boolean;
+  /**
+   * 是否显示左侧「任务节点」类型面板（可拖拽/双击添加任务）。
+   * 默认显示；以模态框形式嵌入、节点由外部预生成（如按文件夹下代码文件生成）时置 false，
+   * 此时画布节点由 existingNodes 提供，用户仍在画布上编辑。
+   */
+  showTaskTypeSidebar?: boolean;
   workflowDefinitions?: { code: number; name: string }[];
   workerGroups?: DSWorkerGroup[];
   environments?: DSEnvironment[];
@@ -65,6 +76,7 @@ const WorkflowDefinitionEditor: React.FC<WorkflowDefinitionEditorProps> = ({
   existingExecutionType,
   existingTimeout,
   readonly = false,
+  showTaskTypeSidebar = true,
   workflowDefinitions,
   workerGroups,
   environments,
@@ -94,6 +106,10 @@ const WorkflowDefinitionEditor: React.FC<WorkflowDefinitionEditorProps> = ({
 
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showTriggerModal, setShowTriggerModal] = useState(false);
+  // 保存前的任务节点参数校验报告（非空 = 校验未通过，保存被拦下）
+  const [validationReport, setValidationReport] = useState<WorkflowNodeValidationResult | null>(null);
+
+  const toast = useToast();
 
   const [saveForm, setSaveForm] = useState<DSWorkflowSaveForm>({
     name: initialName || '',
@@ -131,6 +147,43 @@ const WorkflowDefinitionEditor: React.FC<WorkflowDefinitionEditorProps> = ({
   });
 
   const editorRef = useRef<HTMLDivElement>(null);
+
+  /** 当前画布上的节点快照（graph 为准，回退到 state） */
+  const currentNodes = useCallback((): DSWorkflowTaskNode[] => {
+    const graph = graphRef.current;
+    return graph ? extractNodes(graph.getNodes()) : nodes;
+  }, [nodes]);
+
+  // 工具栏提示用的实时校验结果：nodes 随画布增删/移动/编辑同步，故这里能及时反映待完善节点数
+  const liveValidation = useMemo(() => validateWorkflowNodes(nodes), [nodes]);
+
+  /**
+   * 工具栏「校验」按钮：主动校验全部任务节点参数。
+   * 与保存闸门同一份规则——通过给轻提示，不通过打开校验报告。
+   */
+  const handleValidate = useCallback(() => {
+    const list = currentNodes();
+    const result = validateWorkflowNodes(list);
+    if (result.ok) {
+      setValidationReport(null);
+      toast.info(`校验通过：${list.length} 个任务节点参数完整`);
+      return;
+    }
+    setValidationReport(result);
+  }, [currentNodes, toast]);
+
+  /**
+   * 打开保存弹窗前的闸门：先校验全部任务节点参数，有任一不通过就只弹出校验报告、不放行保存。
+   */
+  const handleOpenSaveModal = useCallback(() => {
+    const result = validateWorkflowNodes(currentNodes());
+    if (!result.ok) {
+      setValidationReport(result);
+      return;
+    }
+    setValidationReport(null);
+    setShowSaveModal(true);
+  }, [currentNodes]);
 
   // ---------- graph 就绪后接线 ----------
   const handleGraphReady = useCallback((graph: Graph) => {
@@ -245,12 +298,14 @@ const WorkflowDefinitionEditor: React.FC<WorkflowDefinitionEditorProps> = ({
         cell.attr('image/href', getTaskTypeIcon(task.taskType));
       }
       if (newEdges) {
-        // 重建全部边（modal 返回的是全量边列表）
-        graph.clearCells({ edges: true, nodes: false });
-        newEdges.forEach((edge) => {
-          graph.addEdge(buildEdge(String(edge.sourceCode), String(edge.targetCode)));
-        });
+        // 重建全部边（modal 返回的是全量边列表）。
+        // 必须只删边——用 clearCells 会把节点一并清空（详见 replaceGraphEdges 注释）。
+        replaceGraphEdges(graph, newEdges);
       }
+      // 任务参数是直接写进 cell 的（不触发 node:added 等图事件），这里手动同步一次 state：
+      // 否则编辑器里的节点搜索、上游任务下拉、以及保存前的参数校验都会读到改动前的旧参数。
+      setNodes(extractNodes(graph.getNodes()));
+      if (newEdges) setEdges(extractEdges(graph.getEdges()));
     }
     setShowTaskModal(false);
     setEditingTask(null);
@@ -428,7 +483,25 @@ const WorkflowDefinitionEditor: React.FC<WorkflowDefinitionEditorProps> = ({
             </div>
           )}
           {!readonly && (
-            <button className="sm-btn sm-btn--primary sm-btn--xs" onClick={() => setShowSaveModal(true)}>
+            <button
+              className={`wf-toolbar__validate${liveValidation.ok ? '' : ' wf-toolbar__validate--warn'}`}
+              data-testid="wf-toolbar-validate"
+              onClick={handleValidate}
+              title={
+                liveValidation.ok
+                  ? '校验全部任务节点的参数完整性'
+                  : `存在 ${liveValidation.failedNodes.length} 个待完善的任务节点，点击查看`
+              }
+            >
+              {liveValidation.ok ? <ShieldCheck size={13} /> : <AlertTriangle size={13} />}
+              校验
+              {!liveValidation.ok && (
+                <span className="wf-toolbar__validate-badge">{liveValidation.failedNodes.length}</span>
+              )}
+            </button>
+          )}
+          {!readonly && (
+            <button className="sm-btn sm-btn--primary sm-btn--xs" onClick={handleOpenSaveModal}>
               <Save size={14} /> 保存
             </button>
           )}
@@ -441,7 +514,7 @@ const WorkflowDefinitionEditor: React.FC<WorkflowDefinitionEditorProps> = ({
       </div>
 
       <div className="wf-editor__body">
-        {!readonly && <DagSidebar onAddTask={handleAddNode} />}
+        {!readonly && showTaskTypeSidebar && <DagSidebar onAddTask={handleAddNode} />}
 
         <div
           className="wf-editor__canvas-container"
@@ -496,19 +569,39 @@ const WorkflowDefinitionEditor: React.FC<WorkflowDefinitionEditorProps> = ({
           onChange={setSaveForm}
           onConfirm={() => {
             const graph = graphRef.current;
+            const saveNodes = graph ? extractNodes(graph.getNodes()) : nodes;
+            // 二次校验（防御）：确认保存时节点已不可能再变化，但若画布与 state 短暂不一致，
+            // 这里仍以真实节点为准拦下保存，避免把不完整的参数提交到调度系统。
+            const result = validateWorkflowNodes(saveNodes);
+            if (!result.ok) {
+              setShowSaveModal(false);
+              setValidationReport(result);
+              return;
+            }
             onSave({
               name: saveForm.name || '',
               description: saveForm.description || '',
               executionType: saveForm.executionType,
               timeout: saveForm.timeoutFlag ? saveForm.timeout : 0,
               globalParams: saveForm.globalParams,
-              nodes: graph ? extractNodes(graph.getNodes()) : nodes,
+              nodes: saveNodes,
               edges: graph ? extractEdges(graph.getEdges()) : edges,
               release: saveForm.release,
             });
             setShowSaveModal(false);
           }}
           onClose={() => setShowSaveModal(false)}
+        />
+      )}
+
+      {validationReport && (
+        <WorkflowValidationModal
+          result={validationReport}
+          onLocate={(code) => {
+            setValidationReport(null);
+            handleSearchNavigate(String(code));
+          }}
+          onClose={() => setValidationReport(null)}
         />
       )}
 
@@ -694,6 +787,62 @@ function SaveWorkflowModal({ form, onChange, onConfirm, onClose }: SaveWorkflowM
         <div className="sm-modal__footer">
           <button className="sm-btn sm-btn--secondary" onClick={onClose}>取消</button>
           <button className="sm-btn sm-btn--primary" onClick={onConfirm} disabled={!form.name?.trim()}>确认保存</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export interface WorkflowValidationModalProps {
+  result: WorkflowNodeValidationResult;
+  /** 点击「定位」：在画布上选中并滚动到该任务节点 */
+  onLocate: (taskCode: number) => void;
+  onClose: () => void;
+}
+
+/**
+ * 保存前的任务参数校验报告。
+ *
+ * 只做展示与定位，不提供「忽略并保存」——校验不通过时保存必须被阻断。
+ * 单独导出（而非内联）便于在 jsdom 下直接渲染测试：x6 画布在 jsdom 不可渲染，
+ * 测试无法通过编辑器整体渲染来覆盖这个弹窗。
+ */
+export function WorkflowValidationModal({ result, onLocate, onClose }: WorkflowValidationModalProps) {
+  return (
+    <div className="sm-modal-overlay" onClick={onClose}>
+      <div className="sm-modal wf-validate" onClick={e => e.stopPropagation()}>
+        <div className="sm-modal__header">
+          <AlertTriangle size={18} />
+          <span>任务参数校验未通过</span>
+        </div>
+        <div className="sm-modal__body sm-modal__body--scroll">
+          <div className="wf-validate__intro">
+            共 {result.failedNodes.length} 个任务、{result.issues.length} 项参数需要修正，修正后才能保存工作流。
+          </div>
+          <div className="wf-validate__list">
+            {result.failedNodes.map(node => (
+              <div key={node.taskCode} className="wf-validate__item">
+                <div className="wf-validate__item-head">
+                  <span className="wf-validate__name" title={node.taskName}>{node.taskName}</span>
+                  <span className="wf-validate__type">{node.taskTypeLabel}</span>
+                  <button
+                    className="sm-btn sm-btn--ghost sm-btn--xs wf-validate__locate"
+                    onClick={() => onLocate(node.taskCode)}
+                  >
+                    <Search size={12} /> 定位
+                  </button>
+                </div>
+                <ul className="wf-validate__msgs">
+                  {node.messages.map((msg, i) => (
+                    <li key={i}>{msg}</li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="sm-modal__footer">
+          <button className="sm-btn sm-btn--primary" onClick={onClose}>知道了</button>
         </div>
       </div>
     </div>

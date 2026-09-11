@@ -535,3 +535,119 @@
   border-width: 1px !important;
   background-color: transparent !important;
 }
+
+/* ---------- 保存前任务参数校验 ---------- */
+
+/* 工具栏「校验」按钮：常驻入口（默认中性色，有未通过项时转为警示色并带数量徽标） */
+.wf-toolbar__validate {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 10px;
+  background-color: transparent;
+  border: 1px solid #4a4a4a;
+  border-radius: 3px;
+  color: #cfcfcf;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.wf-toolbar__validate:hover {
+  background-color: #2d2d30;
+  border-color: #5a5a5a;
+}
+
+.wf-toolbar__validate--warn {
+  background-color: rgba(255, 152, 0, 0.15);
+  border-color: rgba(255, 152, 0, 0.5);
+  color: #ffb74d;
+}
+
+.wf-toolbar__validate--warn:hover {
+  background-color: rgba(255, 152, 0, 0.25);
+}
+
+.wf-toolbar__validate-badge {
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  background-color: #ff9800;
+  border-radius: 8px;
+  color: #1e1e1e;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 15px;
+  text-align: center;
+}
+
+/* 校验报告弹窗 */
+.wf-validate {
+  width: 560px;
+  max-width: 92vw;
+}
+
+.wf-validate__intro {
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  background-color: rgba(255, 152, 0, 0.12);
+  border: 1px solid rgba(255, 152, 0, 0.35);
+  border-radius: 4px;
+  color: #ffb74d;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.wf-validate__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wf-validate__item {
+  padding: 8px 10px;
+  background-color: #2d2d30;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+}
+
+.wf-validate__item-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wf-validate__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #e0e0e0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.wf-validate__type {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  background-color: #3c3c3c;
+  border-radius: 3px;
+  color: #9e9e9e;
+  font-size: 11px;
+}
+
+.wf-validate__locate {
+  flex-shrink: 0;
+  gap: 4px;
+}
+
+.wf-validate__msgs {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  color: #ff8a80;
+  font-size: 12px;
+  line-height: 1.7;
+}

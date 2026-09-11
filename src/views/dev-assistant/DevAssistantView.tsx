@@ -1191,6 +1191,20 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
           openlineageTransportUrl={config.openlineageTransportUrl}
           readFileContent={readFileContent}
           onSaveConfigParams={handleSaveConfigParams}
+          // 右键「提交调度」：按文件夹下的代码文件生成任务节点，提交到调度系统
+          dsApi={dsApi.api}
+          isRealApi={dsApi.isRealApi}
+          // 保存前编译 Java/Scala 代码文件生成主 Jar 包（与单文件提交调度共用同一编译环境配置）
+          compileConfig={{
+            javaHome: config.javaHome,
+            scalaHome: config.scalaHome,
+            mavenHome: config.mavenHome,
+            scalaVersion: config.scalaVersion,
+            pomTemplate: config.pomTemplate,
+            workspace: config.cwd,
+            mavenGroupId: config.mavenGroupId,
+            mavenArtifactId: config.mavenArtifactId,
+          }}
           // git 提交只负责版本管理，不验证 SQL 头部数据源是否可用；
           // 数据源可用性校验应放在「提交到调度系统」流程（SubmitToSchedulerModal），
           // 否则会因活动编辑器的 SQL 头部引用未接入的数据源而错误阻断 git commit。

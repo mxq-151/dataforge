@@ -6,22 +6,25 @@ import { mergeDependencyNames, type DependencyItemLite } from '../utils/dependen
 import { getBaseName, toRelativePath } from '../utils/pathUtils';
 import { getApiHost } from '../api/index';
 
+/** 编译环境配置（来自设置页），提交调度单文件 / 文件夹两条路径共用。 */
+export interface CompileConfig {
+  javaHome: string;
+  scalaHome: string;
+  mavenHome: string;
+  scalaVersion?: string;
+  pomTemplate?: string;
+  workspace?: string;
+  mavenGroupId?: string;
+  mavenArtifactId?: string;
+}
+
 export interface UnifiedCompileOptions {
   projectId: number;
   projectCode?: string;
   filePath: string;
   codeContent: string;
   rootPath?: string;
-  envConfig: {
-    javaHome: string;
-    scalaHome: string;
-    mavenHome: string;
-    scalaVersion?: string;
-    pomTemplate?: string;
-    workspace?: string;
-    mavenGroupId?: string;
-    mavenArtifactId?: string;
-  };
+  envConfig: CompileConfig;
   savedConfig?: SavedConfig | null;
   /** 项目级依赖（作为默认依赖集合），与逐文件依赖合并后参与编译 */
   projectDependencies?: DependencyItemLite[];

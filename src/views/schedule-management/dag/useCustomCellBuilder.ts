@@ -2,7 +2,7 @@
  * x6 自定义节点/边的构建器（从 dolphinscheduler-ui 的 use-custom-cell-builder.ts 移植，适配 dataforge）。
  * 负责 DSWorkflowTaskNode / DSWorkflowEdge ↔ x6 cell 元数据互转。
  */
-import type { Node, Edge } from '@antv/x6';
+import type { Graph, Node, Edge } from '@antv/x6';
 import { X6_NODE_NAME, X6_EDGE_NAME } from './dag-config';
 import { Priority } from '../../../types/dolphinscheduler';
 import type { DSWorkflowTaskNode, DSWorkflowEdge, DSTaskType } from '../../../types/dolphinscheduler';
@@ -146,4 +146,20 @@ export function extractEdges(edges: Edge[]): DSWorkflowEdge[] {
     sourceCode: Number(edge.getSourceCellId()),
     targetCode: Number(edge.getTargetCellId())
   }));
+}
+
+/**
+ * 用新的边列表替换画布上的全部边，**保留节点**。
+ *
+ * ⚠️ 不要用 `graph.clearCells({ edges: true, nodes: false })` 做这件事。
+ * x6 的 `Model.clear(options)` 只识别内部的 `clear` 标记，会把 `getCells()` 返回的
+ * **全部 cell（边 + 节点）无差别移除** —— 传入的 `nodes: false` 完全不起作用。
+ * 曾导致「在画布上编辑一个任务节点并保存后，工作流所有节点被清空」。
+ */
+export function replaceGraphEdges(graph: Graph, edges: DSWorkflowEdge[]): void {
+  // 只删边：显式取当前边集合（拷贝一份，避免边删除过程中遍历被改动的数组）
+  graph.removeCells(graph.getEdges().slice());
+  edges.forEach((edge) => {
+    graph.addEdge(buildEdge(String(edge.sourceCode), String(edge.targetCode)));
+  });
 }

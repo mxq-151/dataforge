@@ -24,11 +24,15 @@ import {
   History,
   Undo2,
   Sliders,
+  Send,
 } from 'lucide-react';
 import { Explorer } from 'react-file-navigator';
 import type { Tree, TreeNode, IconMap, ExplorerConfig } from 'react-file-navigator';
 import GitModal from './GitModal';
 import ConfigParamsModal from '../../components/editor/ConfigParamsModal';
+import FolderSubmitScheduleModal from './FolderSubmitScheduleModal';
+import type { DolphinSchedulerApi } from '../../types/dolphinscheduler';
+import type { CompileConfig } from '../../services/unifiedCompile';
 import { FileNode } from '../../types';
 import { useToast } from '../../components/Toast';
 import './ExplorerPanel.css';
@@ -168,6 +172,15 @@ interface ExplorerPanelProps {
     programParams: { id: string; key: string; value: string }[];
     taskParams: { id: string; key: string; value: string }[];
   }) => void;
+  /**
+   * 右键「提交调度」所需：DolphinScheduler 客户端。
+   * 未提供时该菜单项置灰（无调度上下文无法提交）。
+   */
+  dsApi?: DolphinSchedulerApi | null;
+  /** 是否为真实调度环境（弹窗内的只读提示） */
+  isRealApi?: boolean;
+  /** 编译环境配置：右键文件夹「提交调度」时，Java/Scala 代码文件编译生成主 Jar 包 */
+  compileConfig?: CompileConfig | null;
   onAISummarize?: (files: string[], diffs: string) => Promise<string>;
   onBeforeCommit?: () => { valid: boolean; message: string | null };
   /** Git 模态框撤销变更成功后的回调，入参为受影响文件的绝对路径 */
@@ -304,6 +317,9 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
   openlineageTransportUrl,
   readFileContent,
   onSaveConfigParams,
+  dsApi,
+  isRealApi,
+  compileConfig,
   onAISummarize,
   onBeforeCommit,
   onDiscarded,
@@ -360,6 +376,11 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
   // 弹窗只在 visible 时才挂载，关闭即清空目标，避免下次打开残留上一批文件
   const [configParamsTargets, setConfigParamsTargets] = useState<string[]>([]);
   const [configParamsVisible, setConfigParamsVisible] = useState(false);
+
+  // 提交调度弹窗：folderPath 为右键的文件夹，codeFilePaths 为其下全部代码文件。
+  // 与配置参数同源（同一个 configTargetFiles 折算结果），关闭即清空，避免残留。
+  const [submitScheduleFolder, setSubmitScheduleFolder] = useState<string | null>(null);
+  const [submitScheduleFiles, setSubmitScheduleFiles] = useState<string[]>([]);
 
   // 移动对话框状态（支持批量：多选时一次移动多个节点）
   const [moveTargets, setMoveTargets] = useState<TreeNode[]>([]);
@@ -958,6 +979,22 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
     setConfigParamsTargets([]);
   }, []);
 
+  // 右键菜单：提交调度（仅文件夹）。
+  // 弹窗内的任务节点由该文件夹下的代码文件自动生成，无需左侧任务节点类型面板。
+  const handleSubmitScheduleFromContext = useCallback(() => {
+    if (configTargetFiles.length === 0) return;
+    const folder = contextMenu?.node?.filePath;
+    if (!folder) return;
+    setContextMenu(null);
+    setSubmitScheduleFolder(folder);
+    setSubmitScheduleFiles(configTargetFiles);
+  }, [configTargetFiles, contextMenu]);
+
+  const handleCloseSubmitSchedule = useCallback(() => {
+    setSubmitScheduleFolder(null);
+    setSubmitScheduleFiles([]);
+  }, []);
+
   // 重命名：提交
   const handleRenameSubmit = useCallback(async () => {
     if (!renameValue.trim() || !renamingNode || !onRenameNode) return;
@@ -1380,6 +1417,23 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
         />
       )}
 
+      {/* 提交调度：文件夹右键时，按该文件夹下的代码文件自动生成任务节点后提交到调度系统 */}
+      {submitScheduleFolder && submitScheduleFiles.length > 0 && (
+        <FolderSubmitScheduleModal
+          visible
+          folderPath={submitScheduleFolder}
+          codeFilePaths={submitScheduleFiles}
+          rootPath={rootPath || undefined}
+          projectCode={projectCode}
+          readFileContent={readFileContent}
+          dsApi={dsApi ?? null}
+          isRealApi={isRealApi}
+          compileConfig={compileConfig ?? null}
+          devProjectId={projectId}
+          onClose={handleCloseSubmitSchedule}
+        />
+      )}
+
       {deleteConfirm.visible && deleteConfirm.nodes.length > 0 && (() => {
         const nodes = deleteConfirm.nodes;
         const single = nodes.length === 1 ? nodes[0] : null;
@@ -1489,7 +1543,7 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
             <Copy size={14} />
             <span>复制到 ...{contextTargets.length > 1 ? ` (${contextTargets.length})` : ''}</span>
           </button>
-          {/* 配置参数：只对文件夹显示（含分隔线一起隐藏，避免出现连续分隔线） */}
+          {/* 配置参数 / 提交调度：都只对文件夹显示（含分隔线一起隐藏，避免出现连续分隔线） */}
           {canConfigureParams && (
             <>
               <div className="explorer-panel__context-menu-divider" />
@@ -1508,6 +1562,24 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
                 <Sliders size={14} />
                 <span>
                   配置参数
+                  {configTargetFiles.length > 1 ? ` (${configTargetFiles.length})` : ''}
+                </span>
+              </button>
+              <button
+                className="explorer-panel__context-menu-item"
+                onClick={handleSubmitScheduleFromContext}
+                disabled={!dsApi || configTargetFiles.length === 0}
+                title={
+                  !dsApi
+                    ? '调度系统不可用，无法提交调度'
+                    : configTargetFiles.length === 0
+                      ? '该节点下没有可提交调度的代码文件（仅支持 Scala / SQL / Java / Python）'
+                      : `按该文件夹下的 ${configTargetFiles.length} 个代码文件生成任务节点并提交到调度系统`
+                }
+              >
+                <Send size={14} />
+                <span>
+                  提交调度
                   {configTargetFiles.length > 1 ? ` (${configTargetFiles.length})` : ''}
                 </span>
               </button>

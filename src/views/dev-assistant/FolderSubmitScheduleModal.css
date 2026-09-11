@@ -1,0 +1,200 @@
+/**
+ * 文件夹「提交调度」模态框样式。
+ *
+ * 弹窗整体是「大尺寸模态框 + 内嵌工作流定义编辑器」：
+ * 编辑器（.wf-editor）自身是 width/height 100% 的弹性容器，
+ * 因此这里只需给出确定的高度上下文，画布即可自适应撑满。
+ */
+.folder-submit-schedule__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.55);
+}
+
+.folder-submit-schedule__panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 92vw;
+  height: 88vh;
+  min-width: 640px;
+  min-height: 420px;
+  background-color: #1e1e1e;
+  color: #cccccc;
+  border: 1px solid #3c3c3c;
+  border-radius: 6px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+/* ---------- 头部 ---------- */
+.folder-submit-schedule__header {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 40px 10px 14px;
+  background-color: #252526;
+  border-bottom: 1px solid #3c3c3c;
+  flex-shrink: 0;
+}
+
+.folder-submit-schedule__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #e0e0e0;
+}
+
+.folder-submit-schedule__badge {
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 400;
+  color: #d7ba7d;
+  border: 1px solid #b8952f;
+  border-radius: 3px;
+}
+
+.folder-submit-schedule__subtitle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 11px;
+  color: #858585;
+}
+
+.folder-submit-schedule__path {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.folder-submit-schedule__count {
+  flex-shrink: 0;
+  padding: 0 6px;
+  border-radius: 8px;
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.folder-submit-schedule__close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: #a0a0a0;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.folder-submit-schedule__close:hover {
+  color: #e0e0e0;
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* ---------- 提示条 ---------- */
+.folder-submit-schedule__notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 11px;
+  line-height: 1.6;
+  flex-shrink: 0;
+}
+
+.folder-submit-schedule__notice--error {
+  color: #f48771;
+  background-color: rgba(244, 135, 113, 0.12);
+  border-bottom: 1px solid rgba(244, 135, 113, 0.3);
+}
+
+.folder-submit-schedule__notice--info {
+  color: #9d9d9d;
+  background-color: rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid #3c3c3c;
+}
+
+/* ---------- 加载 / 错误态 ---------- */
+.folder-submit-schedule__state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 12px;
+  color: #9d9d9d;
+  padding: 24px;
+  text-align: center;
+}
+
+.folder-submit-schedule__state--error {
+  color: #f48771;
+}
+
+.folder-submit-schedule__retry {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: #cccccc;
+  background-color: #3a3d41;
+  border: 1px solid #4a4d51;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.folder-submit-schedule__retry:hover {
+  background-color: #45494d;
+}
+
+/* ---------- 编辑器容器 ---------- */
+.folder-submit-schedule__editor {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.folder-submit-schedule__spin {
+  animation: folder-submit-schedule-spin 1s linear infinite;
+}
+
+@keyframes folder-submit-schedule-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* ---------- 保存遮罩 ---------- */
+.folder-submit-schedule__saving {
+  position: absolute;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  font-size: 12px;
+  color: #e0e0e0;
+  background-color: rgba(37, 37, 38, 0.95);
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+}

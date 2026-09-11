@@ -522,11 +522,17 @@ export function layoutWorkflowByDependency(
   }
 
   const layerMemo = new Map<number, number>();
+  // 环保护：依赖成环时 layerOf 会沿前驱无限递归（栈溢出）。遇到正在计算中的节点直接
+  // 返回 0 截断这一支；无环输入（唯一受支持的输入）下行为与之前完全一致。
+  const inProgress = new Set<number>();
   const layerOf = (code: number): number => {
     const cached = layerMemo.get(code);
     if (cached !== undefined) return cached;
+    if (inProgress.has(code)) return 0;
+    inProgress.add(code);
     let l = 0;
     for (const p of pred.get(code) || []) l = Math.max(l, layerOf(p) + 1);
+    inProgress.delete(code);
     layerMemo.set(code, l);
     return l;
   };
@@ -1011,12 +1017,188 @@ export function buildWorkflowFromCodeFile(
   };
 }
 
+/** 「文件夹 → 工作流」的输入：一个代码文件及其正文（正文由调用方读取，便于并发与失败重试） */
+export interface FolderCodeFileInput {
+  /** 文件绝对路径（用于推导项目内相对目录与任务名） */
+  filePath: string;
+  /** 文件正文 */
+  content: string;
+}
+
+/** 本文件夹内无法解析的前置依赖：跨项目，或目标任务不在本文件夹内，DAG 中不连边，仅作提示 */
+export interface UnresolvedFolderDependency {
+  /** 声明该依赖的任务名（不含扩展名） */
+  from: string;
+  /** @依赖 中声明的调度项目（可能为空，表示同项目） */
+  projectCode: string;
+  /** 前置任务名称（不含扩展名） */
+  taskName: string;
+}
+
+export interface BuildWorkflowFromFolderResult {
+  /** 工作流名称：文件夹的项目内相对路径，分隔符转下划线后净化；为空（文件夹即项目根）时回退 'workflow' */
+  name: string;
+  nodes: DSWorkflowTaskNode[];
+  edges: DSWorkflowEdge[];
+  /** 每个代码文件任务声明的代码头 @依赖：sanitizeDsName(任务名) -> 依赖声明列表。
+   * 保存前依赖重建（reconcileWorkflowDependencies）以它为事实来源，把同文件夹依赖直接连边、
+   * 把跨文件夹/跨项目依赖解析为专属 DEPENDENT「前置依赖」节点。key 与任务节点名的 sanitize 口径一致。 */
+  headerDeps: Map<string, HeaderDependency[]>;
+  /** 未在本文件夹内找到的前置依赖（外部依赖），供界面提示 */
+  unresolved: UnresolvedFolderDependency[];
+  /** 依赖成环时返回环上的任务名，正常为 null */
+  cycle: string[] | null;
+}
+
+/**
+ * 按「文件夹下的代码文件」构建一份工作流草稿（节点 + 依赖边）。
+ *
+ * 用途：文件浏览器右键文件夹「提交调度」时，不需要左侧任务节点类型面板 ——
+ * 每个代码文件生成一个任务节点，节点间的依赖边取自各文件代码头声明的 @依赖，
+ * 仅当被依赖的任务名**也在本文件夹内**时才连线；跨项目或不在本批次的依赖记入
+ * `unresolved` 由界面提示（不静默丢失，也不擅自连到别的节点上）。
+ *
+ * 最后按依赖分层布局（`layoutWorkflowByDependency`），保证前置节点恒在后置节点左侧。
+ */
+export function buildWorkflowFromFolder(
+  files: FolderCodeFileInput[],
+  options?: { rootPath?: string; folderPath?: string; projectCode?: string },
+): BuildWorkflowFromFolderResult {
+  const rootPath = options?.rootPath;
+  const projectCode = (options?.projectCode || '').trim();
+
+  // 节点 code 以同一基准 + 下标派生：同一次构建内唯一，且结果可复现
+  const codeBase = Date.now();
+  const nodes: DSWorkflowTaskNode[] = [];
+  const codeByName = new Map<string, number>();
+  const built: { mapping: CodeFileMapping; code: number }[] = [];
+
+  files.forEach((file, index) => {
+    const fileName = file.filePath.split(/[/\\]/).pop() || file.filePath;
+    const mapping = mapCodeFileToTask(fileName, file.content, file.filePath, rootPath);
+    const code = codeBase + index;
+
+    nodes.push({
+      code,
+      name: sanitizeDsName(mapping.taskName),
+      taskType: mapping.taskType,
+      description: mapping.description,
+      taskParams: JSON.stringify(mapping.taskParams),
+      flag: 'YES',
+      taskPriority: Priority.MEDIUM,
+      workerGroup: 'default',
+      environmentCode: -1,
+      failRetryTimes: 0,
+      failRetryInterval: 1,
+      timeoutFlag: 'CLOSE',
+      timeout: 0,
+      delayTime: 0,
+      // 先给布局起点，最终坐标由 layoutWorkflowByDependency 统一计算
+      x: GRID_START_X,
+      y: GRID_START_Y,
+    });
+    // 不同子目录下的同名文件：以先出现者为准，避免依赖边指向不确定的节点
+    if (!codeByName.has(mapping.taskName)) codeByName.set(mapping.taskName, code);
+    built.push({ mapping, code });
+  });
+
+  const edges: DSWorkflowEdge[] = [];
+  const unresolved: UnresolvedFolderDependency[] = [];
+  const seenEdge = new Set<string>();
+
+  for (const { mapping, code } of built) {
+    for (const dep of mapping.headerDependencies) {
+      const depProject = (dep.projectCode || '').trim();
+      // 跨项目的依赖不属于本工作流；projectCode 为空或与当前项目编码一致时视为同项目
+      const sameProject = !depProject || !projectCode || depProject === projectCode;
+      const sourceCode = sameProject ? codeByName.get(dep.taskName) : undefined;
+      if (sourceCode === undefined) {
+        unresolved.push({ from: mapping.taskName, projectCode: depProject, taskName: dep.taskName });
+        continue;
+      }
+      // 自依赖（文件在自己的 @依赖 里写了自己）：不连边，也不作为待解析的外部依赖
+      // ——否则会被解析成指向自身的「前置依赖」节点，形成环且无意义
+      if (sourceCode === code) continue;
+      const key = `edge_${sourceCode}_${code}`;
+      if (seenEdge.has(key)) continue;
+      seenEdge.add(key);
+      edges.push({ id: key, sourceCode, targetCode: code });
+    }
+  }
+
+  const relFolder = options?.folderPath ? toRelativePath(options.folderPath, rootPath) : '';
+  const name = sanitizeDsName(relFolder.replace(/[/\\]/g, '_')) || 'workflow';
+
+  // 每个代码文件任务的代码头 @依赖：key 用 sanitizeDsName(任务名)，与任务节点名的 sanitize 口径一致，
+  // 供保存前 reconcileWorkflowDependencies 重建依赖（同文件夹连边 / 跨文件夹、跨项目生成前置依赖节点）
+  const headerDeps = new Map<string, HeaderDependency[]>();
+  for (const { mapping } of built) {
+    const key = sanitizeDsName(mapping.taskName);
+    if (key && !headerDeps.has(key)) headerDeps.set(key, mapping.headerDependencies);
+  }
+
+  const cycle = findDependencyCycle(nodes, edges);
+  if (cycle) {
+    // 有环时分层布局无意义（层号无解），退化为网格排布，交由用户在画布上删掉多余的边
+    layoutByGrid(nodes);
+  } else {
+    layoutWorkflowByDependency(nodes, edges);
+  }
+
+  return {
+    name,
+    nodes,
+    edges,
+    headerDeps,
+    unresolved,
+    cycle,
+  };
+}
+
+/** 成环时的兜底布局：每行 3 列依次排布（间距沿用 DAG 布局常量，保证节点不紧挨） */
+function layoutByGrid(nodes: DSWorkflowTaskNode[]): void {
+  const COLS = 3;
+  nodes.forEach((node, index) => {
+    node.x = GRID_START_X + (index % COLS) * GRID_GAP_X;
+    node.y = GRID_START_Y + Math.floor(index / COLS) * GRID_GAP_Y;
+  });
+}
+
 export function sanitizeDsName(name: string): string {
   return name
     .replace(/[^a-zA-Z0-9_\u4e00-\u9fa5\-]/g, '_')
     .replace(/_+/g, '_')
     .replace(/^_|_$/g, '')
     .substring(0, 200);
+}
+
+/**
+ * 判断某文件是否属于「编译生成主 Jar 包」的任务类型。
+ * 与单文件提交调度（SubmitToSchedulerModal.isCompilableTask）的判定保持一致：
+ * 仅 Java / Scala 文件，且映射为需要主 Jar 包的引擎任务类型（SPARK / FLINK /
+ * FLINK_STREAM / MR / JAVA）。SQL / PYTHON / SHELL 等脚本型任务不参与编译。
+ */
+export function isCompilableFile(fileName: string, taskType: DSTaskType): boolean {
+  const ext = fileName.split('.').pop()?.toLowerCase() || '';
+  return ['java', 'scala'].includes(ext) &&
+    ['SPARK', 'FLINK', 'FLINK_STREAM', 'MR', 'JAVA'].includes(taskType);
+}
+
+/**
+ * 由代码文件绝对路径列表构建「任务名(净化后) -> 文件绝对路径」映射。
+ * 任务名取文件名（不含扩展名）经 sanitizeDsName 后的结果，与 buildWorkflowFromFolder
+ * 生成任务节点名的口径一致；同名文件以先出现者为准（同样对齐 buildWorkflowFromFolder
+ * 的 codeByName 语义）。用于「文件夹提交调度」编译阶段按节点名反查源文件。
+ */
+export function buildTaskNameToFilePathMap(filePaths: string[]): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const p of filePaths) {
+    const fileName = p.split(/[/\\]/).pop() || p;
+    const taskName = sanitizeDsName(fileName.replace(/\.[^.]+$/, ''));
+    if (!taskName) continue;
+    if (!map.has(taskName)) map.set(taskName, p);
+  }
+  return map;
 }
 
 /** 工作流名称版本后缀的生成原因，用于界面提示 */
