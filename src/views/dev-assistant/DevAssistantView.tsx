@@ -1194,6 +1194,8 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
           // 右键「提交调度」：按文件夹下的代码文件生成任务节点，提交到调度系统
           dsApi={dsApi.api}
           isRealApi={dsApi.isRealApi}
+          // 与单文件提交调度同源的项目根目录：工作流名称/展示路径按它推导相对路径
+          projectRoot={projectCwd}
           // 保存前编译 Java/Scala 代码文件生成主 Jar 包（与单文件提交调度共用同一编译环境配置）
           compileConfig={{
             javaHome: config.javaHome,

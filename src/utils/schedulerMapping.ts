@@ -1,7 +1,7 @@
 import type { DSTaskType, DSWorkflowTaskNode, DSWorkflowEdge, DSWorkflowGlobalParam, DSLocalParam, DSDependentTaskParams } from '../types/dolphinscheduler';
 import { getDefaultTaskParams, ExecutionType, Priority, TASK_CATEGORIES, TASK_TYPE_LABELS } from '../types/dolphinscheduler';
 import { parseFileHeader } from './index';
-import { toRelativePath } from './pathUtils';
+import { toRelativePath, normalizePath } from './pathUtils';
 
 function extractCodePackage(code: string): string {
   const match = code.match(/^\s*package\s+([\w.]+)\s*;?\s*$/m);
@@ -1126,8 +1126,7 @@ export function buildWorkflowFromFolder(
     }
   }
 
-  const relFolder = options?.folderPath ? toRelativePath(options.folderPath, rootPath) : '';
-  const name = sanitizeDsName(relFolder.replace(/[/\\]/g, '_')) || 'workflow';
+  const name = deriveFolderWorkflowName(options?.folderPath, rootPath);
 
   // 每个代码文件任务的代码头 @依赖：key 用 sanitizeDsName(任务名)，与任务节点名的 sanitize 口径一致，
   // 供保存前 reconcileWorkflowDependencies 重建依赖（同文件夹连边 / 跨文件夹、跨项目生成前置依赖节点）
@@ -1153,6 +1152,29 @@ export function buildWorkflowFromFolder(
     unresolved,
     cycle,
   };
+}
+
+/**
+ * 由「右键的文件夹」推导工作流名称，规范与单文件提交调度严格一致
+ * （见 `mapCodeFileToTask`：取**项目内相对目录**，分隔符统一转下划线）。
+ * - 与单文件一样**不做 sanitizeDsName**：清洗只发生在真正提交给调度系统时
+ *   （`SubmitToSchedulerModal` / `FolderSubmitScheduleModal.handleSave`），
+ *   这样界面上显示的名称与单文件一致（否则含特殊字符的目录名两边显示会不同）。
+ * - 项目根目录（相对路径为空）、或文件夹不在项目目录之下（`toRelativePath` 会回退成
+ *   绝对路径）时，退化为该文件夹自身的名字，避免把整条绝对路径变成工作流名
+ *   （这是「名称不对且带斜杠」的根因：推导基准与单文件不同时会拿到绝对路径）。
+ * - 都取不到时回退 'workflow'。
+ */
+export function deriveFolderWorkflowName(folderPath?: string, rootPath?: string): string {
+  const folderName = folderPath
+    ? (normalizePath(folderPath).replace(/\/+$/, '').split('/').filter(Boolean).pop() || '')
+    : '';
+  if (!folderPath) return folderName || 'workflow';
+
+  const rel = toRelativePath(folderPath, rootPath);
+  const isAbsolute = /^([a-zA-Z]:)?[/\\]/.test(rel);
+  const base = (!rel || isAbsolute) ? folderName : rel;
+  return base.replace(/[/\\]/g, '_') || 'workflow';
 }
 
 /** 成环时的兜底布局：每行 3 列依次排布（间距沿用 DAG 布局常量，保证节点不紧挨） */

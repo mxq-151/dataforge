@@ -2,19 +2,19 @@
 
 ## 性能基准（AI 对话模块）
 
-- 设施：`bench.html` + `src/views/ai-bench/`（免登录 `?page=ai-bench`），合成事件喂真实
-  `useOpencodeEvents` → 真实 `MessageTimeline` / `PacedMarkdown`。预设 medium(8K) / long(24K) /
-  conversation(40 轮 + 16K)。工具 `scripts/ai-bench*.mjs`，报告在 `perf/`。
+- 设施：`bench.html` + `src/views/ai-bench/`（`?page=ai-bench` 免登录），合成事件喂真实
+  `useOpencodeEvents` → 真实 `MessageTimeline` / `PacedMarkdown`；预设 medium(8K)/long(24K)/
+  conversation(40轮+16K)；工具 `scripts/ai-bench*.mjs`；报告在 `perf/`；raw json 每份 3~4MB 用后删。
 - 本机跑基准前提：①显式 `--browser "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"`
   （脚本默认 Windows Edge 路径）；②**先 `unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy`**
-  （本机 `HTTP_PROXY=127.0.0.1:51112`，会让探活返回 502 误判「服务器没起来」）；
-  ③`npx vite` 会卡住，用 `node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5173 --strictPort`；
-  ④端口 `ai-bench.mjs`=9333、`ai-bench-profile.mjs`=9334。
+  （本机代理会让 curl 探活返回 502，误判「服务器没起来」）；③`npx vite` 会卡住，改用
+  `node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5173 --strictPort`；
+  ④端口：`ai-bench.mjs`=9333、`ai-bench-profile.mjs`=9334。
 - 测量陷阱：编辑器输入探针（`startTyping`）自身耗 ~580ms Monaco CPU，测对话模块必须 `--typing false`；
-  火焰里 `(idle)` 占 55%~72%，**非空闲 CPU = 总采样 − idle** 才有效；开发构建绝对值远高于生产，只比比值；
-  `longtask` 在 headless 下不稳定属噪声；`perf/*.raw.json` 每份 3~4MB 分析后删除。
-- 优化基线（第二轮后）：medium-8k 阻塞 172.8ms/提交 127.6ms；long-24k 非空闲 CPU 1213.1ms、阻塞 526.3ms、
-  提交 394ms；conv-40t-16k 非空闲 CPU 2214.4ms、阻塞 354.8ms、提交 362.4ms。
+  `(idle)` 占 55%~72%，**非空闲 CPU = 总采样 − idle** 才有效；开发构建绝对值远高于生产，只比比值；
+  `longtask` 在 headless 下不稳定属噪声。
+- 第二轮后基线：medium-8k 阻塞 172.8 / 提交 127.6ms；long-24k 非空闲 1213.1 / 阻塞 526.3 / 提交 394ms；
+  conv-40t-16k 非空闲 2214.4 / 阻塞 354.8 / 提交 362.4ms。
   回归防线：`renderedChars` 必须逐字节一致（6558 / 19617 / 13087）。
 
 ## 架构约定
@@ -32,8 +32,11 @@
   非空即启用；**不回填既有配置**，保存时逐文件 `saveConfig` upsert；`onSave(data, filePath?)` 第二参
   仅批量模式传。
 - 引擎必须**逐文件**解析（同文件夹可能混 .sql/.py）；`ExplorerPanel` 的「待配置代码文件」遍历
-  `fileTree`（完整树，含折叠子目录）而非渲染行；扩展名 scala/sql/java/py；**只处理文件夹**
-  （右键目标全部是 Folder 才显示，分隔线一并条件渲染）。
+  `fileTree`（完整树，含折叠子目录）而非渲染行；扩展名 scala/sql/java/py。
+- **菜单可见性门禁**（「配置参数」「提交调度」共用 `canConfigureParams`，分隔线一并条件渲染）：
+  右键目标必须**全部是文件夹**，且都位于 `code/{ads|dws|dwd|ods|dqc|dim}/…` 之下（含更深子目录）。
+  判定为纯函数 `utils/programLayout.ts` 的 `isUnderCodeLayerPath`（大小写不敏感、兼容 `\`）；
+  `sql/`、`algo/`、`code/utils`、`code` 自身一律不显示。
 - 竞态防护：单文件配置拉取用自增序号 `loadSeqRef` 丢弃过期响应；`EditorArea` 里弹窗常驻挂载，
   用递增 `configParamsOpenSeq` 作 `key` 强制重挂载。
 - 目标列表展示为「项目编码 + 项目内相对路径」（`toDisplayFilePath`），**落库路径不带项目编码**
@@ -43,13 +46,19 @@
 
 ## 提交调度（文件夹 → 工作流）
 
-- 入口：文件浏览器右键「提交调度」（仅文件夹，与「配置参数」共用 `canConfigureParams` 判定）。
+- 入口：文件浏览器右键「提交调度」（仅 code 分层目录下的文件夹，与「配置参数」共用
+  `canConfigureParams` 判定，见上节「菜单可见性门禁」）。
   模态框 `FolderSubmitScheduleModal.tsx`，内嵌 `WorkflowDefinitionEditor`：
   `showTaskTypeSidebar={false}`、**不传 `onTrigger`**（只保存不运行）。
 - 节点/边由 `buildWorkflowFromFolder(files, {rootPath, folderPath, projectCode})` 生成：每个代码文件
   一个任务节点，同文件夹依赖直接连边；跨项目/不在本批次的记入 `unresolved`。返回还含
   `headerDeps`（`sanitizeDsName(任务名)` → @依赖 列表，供依赖重建）。
   **自依赖（`sourceCode === code`）既不停边也不进 `unresolved`**——否则会被解析成指向自身的前置依赖节点成环。
+- **工作流名称须与单文件提交调度同规范**（`deriveFolderWorkflowName`）：项目内相对目录 → 分隔符转 `_`，
+  **不做 sanitize**（清洗留给真正提交时，否则含特殊字符的目录名两边显示不同）。推导基准必须同源：
+  单文件用 `projectCwd`，文件浏览器侧经 `projectRoot` prop 透传 `projectCwd`，
+  **不能用 `useFileSystem` 的 rootPath**（它可被 openFolder 改变；基准不同会让 `toRelativePath`
+  回退成绝对路径，名称变成一长串、界面路径带斜杠）。拿不到相对路径时退化为文件夹名。
 - 保存：按「调度项目名称 === 开发项目编码」匹配 DS 项目 → 同名走 `update`（带 releaseState）否则
   `createWithTasks`；创建分支勾选上线时**按名称回查再 `release`**（创建接口不接受 releaseState）。
 
@@ -98,13 +107,24 @@
 
 ## 测试基线（回归判断口径）
 
-- **`src/services/textmate/textmateFix.test.ts` 的失败应当忽略**（用户 09-11 明确指示）：
-  本机必然超时，与业务改动无关。完整套件基线 `506 passed / 1 failed`，唯一失败即该文件。
-- 常用回归组合（跳过 textmate）：
-  `npx vitest run src/views/dev-assistant/` → **4 文件 / 41 用例**；
-  `npx vitest run src/views/schedule-management/ src/components/editor/ src/utils/` → **14 文件 / 213 用例**。
-  纯函数测试用 `--environment node` 快很多（jsdom 初始化 ~88s 且吃内存，是回归慢/被 OOM 的主因）。
-- 本机内存紧张时（free ~300MB）并行 worker 会被 SIGTERM 137 杀掉；改用 `--no-file-parallelism`。
+- **跑 vitest 必须清空注入的 NODE_OPTIONS**：`env -u NODE_OPTIONS npx vitest run`。
+  agent shell 注入 `NODE_OPTIONS=--require=…/cli/vendor/shim/node-language-shim.cjs`，它加载
+  `node-brokered-fs-shim.cjs` 并 patch `fs.readFileSync`/`fs.openSync`，**每次模块文件读取都是一次
+  同步 broker IPC**（~120ms/文件）。jsdom 有 788 个 .js ⇒ `import 'jsdom'` 单次 96s（正常 0.5s）。
+  实测：单文件 176s → 1.58s；全量 34 文件/613 用例 从 >10min 未完成 → **8.84s 全通过**。
+  指纹：CPU 占用 ~1%（纯等待，非计算）。精准关闭：
+  `CODEBUDDY_BROKERED_FS_HOOK_ENABLED=0 CODEBUDDY_SAFE_DELETE_SANDBOX=0`（单 `CODEBUDDY_SAFE_DELETE_ENABLED=0` 无效）。
+  **用户自己的 Terminal 无此注入，慢只发生在 agent 代跑的 shell 里。** 详见 skill `node-run-slowdown-diagnosis`。
+- **`textmateFix.test.ts` 没有「必然失败」**（09-11 结论作废）：根因是 shim 拖慢导致 20s testTimeout 不够；
+  清空 NODE_OPTIONS 后**全量 34 文件 / 613 用例全通过**。旧基线 `506 passed / 1 failed` 亦已过时。
+- 常用回归组合：
+  `npx vitest run src/views/dev-assistant/` → **4 文件 / 49 用例**（configParams 18 / multiSelect 9 /
+  submitSchedule 9 / FolderSubmitScheduleModal 13）；
+  `npx vitest run --environment node src/utils/` → **180 用例通过**（另 `pathUtils.test.ts` 必须 jsdom，
+  node 下 12 例因缺 `window` 失败，属环境不匹配）；
+  `npx vitest run src/views/schedule-management/ src/components/editor/` → 14 文件 / 213 用例。
+- `--environment node` 仍更快（省掉 jsdom），但**这不是慢的主因**，shim 才是。
+- 本机内存/负载紧张时（load > 8）整目录跑会被 SIGTERM 137 杀掉；改用 `--maxWorkers=1` 并**逐文件跑**。
 
 ## 本仓编辑约定（踩坑）
 

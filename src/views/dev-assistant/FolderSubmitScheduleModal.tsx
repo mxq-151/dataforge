@@ -714,9 +714,10 @@ const FolderSubmitScheduleModal: React.FC<FolderSubmitScheduleModalProps> = ({
             <span>提交调度</span>
             {!isRealApi && <span className="folder-submit-schedule__badge">模拟环境</span>}
           </div>
+          {/* 副标题显示与单文件提交调度同一规范的工作流名称；完整路径收进 title 提示 */}
           <div className="folder-submit-schedule__subtitle" title={folderPath}>
             <FolderKanban size={13} />
-            <span className="folder-submit-schedule__path">{displayPath}</span>
+            <span className="folder-submit-schedule__path">{draft?.name ?? displayPath}</span>
             {fileCount > 0 && (
               <span className="folder-submit-schedule__count">{fileCount} 个代码文件</span>
             )}

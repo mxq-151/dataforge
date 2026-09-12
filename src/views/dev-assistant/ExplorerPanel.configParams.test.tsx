@@ -11,10 +11,12 @@ import { saveProjectConfig } from '../../api/devProject';
  * 需求：右键菜单新增「配置参数」；选中文件夹时，为该文件夹下的**所有代码文件**
  * 配置**相同**的参数。
  *
- * 这里同时钉住两个容易回归的点：
- * 1. 目标文件取自完整的 fileTree（useFileSystem 一次性构建），
+ * 这里同时钉住三个容易回归的点：
+ * 1. 菜单项只在**位于 code 目录下数仓分层目录**（code/ads|dws|dwd|ods|dqc|dim，含更深子目录）
+ *    的文件夹上出现；
+ * 2. 目标文件取自完整的 fileTree（useFileSystem 一次性构建），
  *    而不是当前渲染出来的行 —— 因此**未展开**的子目录里的代码文件也必须被算进去；
- * 2. 保存时逐文件 upsert，每个文件带各自代码头解析出的引擎，
+ * 3. 保存时逐文件 upsert，每个文件带各自代码头解析出的引擎，
  *    但依赖 / 程序参数 / 任务参数完全一致。
  */
 
@@ -32,18 +34,25 @@ vi.mock('../../api/dependency', () => ({
 }));
 
 const ROOT = '/proj';
-const SRC = `${ROOT}/src`;
-const SUB = `${SRC}/sub`;
-const NOTES = `${ROOT}/notes`;
+/** code 下的数仓分层目录：右键目标（命中可见性规则） */
+const LAYER = `${ROOT}/TEST/code/ods`;
+/** 分层目录下更深的子目录：同样命中 */
+const SUB = `${LAYER}/sub`;
+/** code 下但不是数仓分层名：不显示菜单 */
+const CODE_UTILS = `${ROOT}/TEST/code/utils`;
+/** 分层名相同但父目录不是 code：不显示菜单 */
+const SQL_LAYER = `${ROOT}/TEST/sql/ods`;
+/** code/分层 目录，但其下没有代码文件：显示但置灰 */
+const EMPTY_LAYER = `${ROOT}/TEST/code/dim`;
 
-/** src 下有 4 个代码文件（其中 2 个在未展开的 sub/ 中）+ 1 个非代码文件；notes 下没有代码文件 */
+/** ods 下有 4 个代码文件（其中 2 个在未展开的 sub/ 中）+ 1 个非代码文件 */
 const fileTree: any[] = [
   {
-    id: '1', name: 'src', type: 'folder', path: SRC,
+    id: '1', name: 'ods', type: 'folder', path: LAYER,
     children: [
-      { id: '2', name: 'a.scala', type: 'file', path: `${SRC}/a.scala` },
-      { id: '3', name: 'b.sql', type: 'file', path: `${SRC}/b.sql` },
-      { id: '4', name: 'readme.md', type: 'file', path: `${SRC}/readme.md` },
+      { id: '2', name: 'a.scala', type: 'file', path: `${LAYER}/a.scala` },
+      { id: '3', name: 'b.sql', type: 'file', path: `${LAYER}/b.sql` },
+      { id: '4', name: 'readme.md', type: 'file', path: `${LAYER}/readme.md` },
       {
         id: '5', name: 'sub', type: 'folder', path: SUB,
         children: [
@@ -54,16 +63,19 @@ const fileTree: any[] = [
     ],
   },
   {
-    id: '8', name: 'notes', type: 'folder', path: NOTES,
-    children: [{ id: '9', name: 'x.md', type: 'file', path: `${NOTES}/x.md` }],
+    id: '8', name: 'dim', type: 'folder', path: EMPTY_LAYER,
+    children: [{ id: '9', name: 'x.md', type: 'file', path: `${EMPTY_LAYER}/x.md` }],
   },
-  { id: '10', name: 'root.sql', type: 'file', path: `${ROOT}/root.sql` },
-  { id: '11', name: 'root.md', type: 'file', path: `${ROOT}/root.md` },
+  { id: '10', name: 'utils', type: 'folder', path: CODE_UTILS, children: [] },
+  { id: '11', name: 'ods', type: 'folder', path: SQL_LAYER, children: [] },
+  { id: '12', name: 'root.sql', type: 'file', path: `${ROOT}/root.sql` },
+  { id: '13', name: 'root.md', type: 'file', path: `${ROOT}/root.md` },
 ];
 
-/** 行顺序（仅展开 src；sub / notes 均折叠）：src / a.scala / b.sql / readme.md / sub / notes / root.sql / root.md */
+/** 行顺序（仅展开 ods；sub / dim / utils / sql-ods 均折叠） */
 const ROW = {
-  src: 0, aScala: 1, bSql: 2, readmeMd: 3, sub: 4, notes: 5, rootSql: 6, rootMd: 7,
+  ods: 0, aScala: 1, bSql: 2, readmeMd: 3, sub: 4,
+  dim: 5, codeUtils: 6, sqlOds: 7, rootSql: 8, rootMd: 9,
 } as const;
 
 /** 按文件名返回带 @引擎 的代码头，用于验证「逐文件解析引擎」 */
@@ -81,7 +93,7 @@ const renderPanel = (overrides: Record<string, any> = {}) => {
     rootPath: ROOT,
     isLoading: false,
     selectedFile: null,
-    expandedFolders: new Set<string>([SRC]),
+    expandedFolders: new Set<string>([LAYER]),
     onFileSelect: vi.fn(),
     onFolderToggle: vi.fn(),
     onOpenFolder: vi.fn(),
@@ -147,15 +159,18 @@ const batchFileCheckbox = (relativePath: string) =>
 const batchFileLabels = () =>
   Array.from(document.querySelectorAll('.config-params__batch-file-item span')).map(s => s.textContent);
 
+/** 展示路径：项目编码 + 项目目录相对路径 */
+const LABEL = (rel: string) => `demo_project/${rel}`;
+
 describe('ExplorerPanel 右键配置参数', () => {
   beforeEach(() => {
     vi.mocked(saveProjectConfig).mockClear();
     vi.mocked(saveProjectConfig).mockResolvedValue({ code: 200, message: '' } as any);
   });
 
-  it('文件夹：菜单项可用，并标注其下代码文件数量（含未展开子目录）', async () => {
+  it('code/分层目录：菜单项可用，并标注其下代码文件数量（含未展开子目录）', async () => {
     const { openContextMenu, menuItem } = renderPanel();
-    openContextMenu(ROW.src);
+    openContextMenu(ROW.ods);
 
     const item = await waitFor(() => {
       const el = menuItem('配置参数');
@@ -168,9 +183,40 @@ describe('ExplorerPanel 右键配置参数', () => {
     expect(item.hasAttribute('disabled')).toBe(false);
   });
 
-  it('文件夹下没有代码文件时：菜单项置灰并说明原因', async () => {
+  it('code/分层 的更深深层子目录：同样显示菜单项', async () => {
     const { openContextMenu, menuItem } = renderPanel();
-    openContextMenu(ROW.notes);
+    openContextMenu(ROW.sub);
+
+    const item = await waitFor(() => {
+      const el = menuItem('配置参数');
+      expect(el).toBeTruthy();
+      return el!;
+    });
+
+    // sub 下 c.java / d.py
+    expect(item.textContent).toContain('(2)');
+  });
+
+  it('code 下但非数仓分层目录（code/utils）：不显示「配置参数」菜单项', async () => {
+    const { openContextMenu, menuItem } = renderPanel();
+    openContextMenu(ROW.codeUtils);
+
+    // 菜单已弹出（以「重命名」为锚点，确认菜单确实渲染了）
+    await waitFor(() => expect(menuItem('重命名')).toBeTruthy());
+    expect(menuItem('配置参数')).toBeUndefined();
+  });
+
+  it('非 code 目录下的同名分层目录（sql/ods）：不显示「配置参数」菜单项', async () => {
+    const { openContextMenu, menuItem } = renderPanel();
+    openContextMenu(ROW.sqlOds);
+
+    await waitFor(() => expect(menuItem('重命名')).toBeTruthy());
+    expect(menuItem('配置参数')).toBeUndefined();
+  });
+
+  it('code/分层目录下没有代码文件时：菜单项置灰并说明原因', async () => {
+    const { openContextMenu, menuItem } = renderPanel();
+    openContextMenu(ROW.dim);
 
     const item = await waitFor(() => {
       const el = menuItem('配置参数');
@@ -215,10 +261,10 @@ describe('ExplorerPanel 右键配置参数', () => {
 
   it('文件夹与文件混选：不显示「配置参数」菜单项', async () => {
     const { rows, menuItem } = renderPanel();
-    // Ctrl 多选：src 文件夹 + readme.md
-    fireEvent.click(rows()[ROW.src], { ctrlKey: true });
+    // Ctrl 多选：ods 文件夹 + readme.md
+    fireEvent.click(rows()[ROW.ods], { ctrlKey: true });
     fireEvent.click(rows()[ROW.readmeMd], { ctrlKey: true });
-    fireEvent.contextMenu(rows()[ROW.src]);
+    fireEvent.contextMenu(rows()[ROW.ods]);
 
     await waitFor(() => {
       expect(menuItem('重命名')).toBeTruthy();
@@ -227,9 +273,24 @@ describe('ExplorerPanel 右键配置参数', () => {
     expect(menuItem('配置参数')).toBeUndefined();
   });
 
+  it('多选两个 code/分层目录：菜单项可用且合并统计代码文件', async () => {
+    const { rows, menuItem } = renderPanel();
+    // dim 下没有代码文件，合并后仍为 ods 的 4 个
+    fireEvent.click(rows()[ROW.ods], { ctrlKey: true });
+    fireEvent.click(rows()[ROW.dim], { ctrlKey: true });
+    fireEvent.contextMenu(rows()[ROW.ods]);
+
+    const item = await waitFor(() => {
+      const el = menuItem('配置参数');
+      expect(el).toBeTruthy();
+      return el!;
+    });
+    expect(item.textContent).toContain('(4)');
+  });
+
   it('未提供 projectId 时：菜单项置灰（无法落库）', async () => {
     const { openContextMenu, menuItem } = renderPanel({ projectId: undefined });
-    openContextMenu(ROW.src);
+    openContextMenu(ROW.ods);
 
     const item = await waitFor(() => {
       const el = menuItem('配置参数');
@@ -244,7 +305,7 @@ describe('ExplorerPanel 右键配置参数', () => {
     const readFileContent = headerFor({ 'a.scala': 'spark', 'b.sql': 'spark', 'c.java': 'java', 'd.py': 'python' });
     const { openContextMenu, menuItem, props } = renderPanel({ readFileContent, projectId: 7 });
 
-    openContextMenu(ROW.src);
+    openContextMenu(ROW.ods);
     const item = await waitFor(() => {
       const el = menuItem('配置参数');
       expect(el).toBeTruthy();
@@ -288,10 +349,10 @@ describe('ExplorerPanel 右键配置参数', () => {
     const calls = vi.mocked(saveProjectConfig).mock.calls;
     // 路径为「项目根目录相对路径」，引擎取自各文件自己的代码头（未展开子目录的文件同样被写入）
     expect(calls.map(c => [c[1].filePath, c[1].engine])).toEqual([
-      ['src/a.scala', 'spark'],
-      ['src/b.sql', 'spark'],
-      ['src/sub/c.java', 'java'],
-      ['src/sub/d.py', 'python'],
+      ['TEST/code/ods/a.scala', 'spark'],
+      ['TEST/code/ods/b.sql', 'spark'],
+      ['TEST/code/ods/sub/c.java', 'java'],
+      ['TEST/code/ods/sub/d.py', 'python'],
     ]);
     // 所有目标拿到的 projectId 与参数完全一致
     calls.forEach(c => {
@@ -302,7 +363,7 @@ describe('ExplorerPanel 右键配置参数', () => {
     // 逐文件回调父组件，便于按路径刷新内存态配置
     expect(props.onSaveConfigParams).toHaveBeenCalledTimes(4);
     expect(props.onSaveConfigParams).toHaveBeenCalledWith(
-      `${SRC}/a.scala`,
+      `${LAYER}/a.scala`,
       expect.objectContaining({ programParams: [{ id: expect.any(String), key: 'env', value: 'prod' }] })
     );
   });
@@ -311,7 +372,7 @@ describe('ExplorerPanel 右键配置参数', () => {
     const readFileContent = headerFor({ 'a.scala': 'spark', 'b.sql': 'spark', 'c.java': 'spark', 'd.py': 'spark' });
     const { openContextMenu, menuItem } = renderPanel({ readFileContent });
 
-    openContextMenu(ROW.src);
+    openContextMenu(ROW.ods);
     const item = await waitFor(() => {
       const el = menuItem('配置参数');
       expect(el).toBeTruthy();
@@ -342,14 +403,14 @@ describe('ExplorerPanel 右键配置参数', () => {
   it('目标文件列表：展示「项目编码 + 项目目录相对路径」，且默认全部勾选', async () => {
     const readFileContent = headerFor({});
     const { openContextMenu, menuItem } = renderPanel({ readFileContent });
-    await openConfigParamsModal(openContextMenu, menuItem, ROW.src);
+    await openConfigParamsModal(openContextMenu, menuItem, ROW.ods);
 
     // 首级为项目编码，其后为项目目录相对路径；不含项目目录的绝对前缀
     expect(batchFileLabels()).toEqual([
-      'demo_project/src/a.scala',
-      'demo_project/src/b.sql',
-      'demo_project/src/sub/c.java',
-      'demo_project/src/sub/d.py',
+      LABEL('TEST/code/ods/a.scala'),
+      LABEL('TEST/code/ods/b.sql'),
+      LABEL('TEST/code/ods/sub/c.java'),
+      LABEL('TEST/code/ods/sub/d.py'),
     ]);
     expect(batchFileLabels().some(p => p?.startsWith(ROOT))).toBe(false);
 
@@ -367,15 +428,15 @@ describe('ExplorerPanel 右键配置参数', () => {
       'a.scala': 'spark', 'b.sql': 'spark', 'c.java': 'java', 'd.py': 'python',
     });
     const { openContextMenu, menuItem, props } = renderPanel({ readFileContent, projectId: 7 });
-    await openConfigParamsModal(openContextMenu, menuItem, ROW.src);
+    await openConfigParamsModal(openContextMenu, menuItem, ROW.ods);
 
     await waitFor(() => {
       expect(readFileContent).toHaveBeenCalledTimes(4);
     });
 
     // 取消 b.sql 与 sub/d.py（按展示路径定位）
-    fireEvent.click(batchFileCheckbox('demo_project/src/b.sql')!);
-    fireEvent.click(batchFileCheckbox('demo_project/src/sub/d.py')!);
+    fireEvent.click(batchFileCheckbox(LABEL('TEST/code/ods/b.sql'))!);
+    fireEvent.click(batchFileCheckbox(LABEL('TEST/code/ods/sub/d.py'))!);
 
     await waitFor(() => {
       expect(document.querySelector('.config-params__batch-badge')?.textContent).toBe('已选 2 / 4');
@@ -390,8 +451,8 @@ describe('ExplorerPanel 右键配置参数', () => {
     // 未勾选的两个文件完全没被写入；剩余两个仍带各自的引擎。
     // 注意落库路径仍是「项目目录相对路径」，不带项目编码（DB 行已带 projectId）
     expect(calls.map(c => [c[1].filePath, c[1].engine])).toEqual([
-      ['src/a.scala', 'spark'],
-      ['src/sub/c.java', 'java'],
+      ['TEST/code/ods/a.scala', 'spark'],
+      ['TEST/code/ods/sub/c.java', 'java'],
     ]);
     expect(props.onSaveConfigParams).toHaveBeenCalledTimes(2);
   });
@@ -399,7 +460,7 @@ describe('ExplorerPanel 右键配置参数', () => {
   it('全部取消勾选：保存按钮禁用，不会写入任何文件', async () => {
     const readFileContent = headerFor({ 'a.scala': 'spark' });
     const { openContextMenu, menuItem } = renderPanel({ readFileContent });
-    await openConfigParamsModal(openContextMenu, menuItem, ROW.src);
+    await openConfigParamsModal(openContextMenu, menuItem, ROW.ods);
 
     await waitFor(() => {
       expect(readFileContent).toHaveBeenCalledTimes(4);
@@ -423,15 +484,20 @@ describe('ExplorerPanel 右键配置参数', () => {
   it('未提供项目编码时：列表回退为项目目录相对路径', async () => {
     const readFileContent = headerFor({});
     const { openContextMenu, menuItem } = renderPanel({ readFileContent, projectCode: undefined });
-    await openConfigParamsModal(openContextMenu, menuItem, ROW.src);
+    await openConfigParamsModal(openContextMenu, menuItem, ROW.ods);
 
-    expect(batchFileLabels()).toEqual(['src/a.scala', 'src/b.sql', 'src/sub/c.java', 'src/sub/d.py']);
+    expect(batchFileLabels()).toEqual([
+      'TEST/code/ods/a.scala',
+      'TEST/code/ods/b.sql',
+      'TEST/code/ods/sub/c.java',
+      'TEST/code/ods/sub/d.py',
+    ]);
   });
 
   it('再次点击全选：恢复为全部勾选', async () => {
     const readFileContent = headerFor({});
     const { openContextMenu, menuItem } = renderPanel({ readFileContent });
-    await openConfigParamsModal(openContextMenu, menuItem, ROW.src);
+    await openConfigParamsModal(openContextMenu, menuItem, ROW.ods);
 
     const selectAll = () =>
       document.querySelector('.config-params__batch-select-all input') as HTMLInputElement;

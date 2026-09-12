@@ -34,6 +34,7 @@ import FolderSubmitScheduleModal from './FolderSubmitScheduleModal';
 import type { DolphinSchedulerApi } from '../../types/dolphinscheduler';
 import type { CompileConfig } from '../../services/unifiedCompile';
 import { FileNode } from '../../types';
+import { isUnderCodeLayerPath } from '../../utils/programLayout';
 import { useToast } from '../../components/Toast';
 import './ExplorerPanel.css';
 
@@ -179,6 +180,13 @@ interface ExplorerPanelProps {
   dsApi?: DolphinSchedulerApi | null;
   /** 是否为真实调度环境（弹窗内的只读提示） */
   isRealApi?: boolean;
+  /**
+   * 开发项目根目录（与单文件「提交调度」同源，一般传 projectCwd）。
+   * 右键文件夹「提交调度」用它推导工作流名称与展示路径 —— 必须与单文件提交调度用同一个基准，
+   * 否则相对路径口径不同会算出不一样的工作流名（甚至回退成整条绝对路径）。
+   * 未提供时回退 `rootPath`（文件浏览器的当前根）。
+   */
+  projectRoot?: string | null;
   /** 编译环境配置：右键文件夹「提交调度」时，Java/Scala 代码文件编译生成主 Jar 包 */
   compileConfig?: CompileConfig | null;
   onAISummarize?: (files: string[], diffs: string) => Promise<string>;
@@ -319,6 +327,7 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
   onSaveConfigParams,
   dsApi,
   isRealApi,
+  projectRoot,
   compileConfig,
   onAISummarize,
   onBeforeCommit,
@@ -874,13 +883,19 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
   );
 
   /**
-   * 「配置参数」菜单项的可见性：**只有右键目标全部是文件夹时**才出现。
+   * 「配置参数」「提交调度」两个菜单项的可见性（两项共用同一判定）。
    *
-   * 该功能的作用域是文件夹（为其下所有代码文件下发同一份参数），
-   * 单个代码文件/空白处右键/文件夹与文件混选都不显示这一项。
+   * 需要同时满足：
+   * 1. **右键目标全部是文件夹** —— 两个功能的作用域都是「文件夹下的全部代码文件」，
+   *    单个代码文件/空白处右键/文件夹与文件混选都不显示；
+   * 2. **目标位于 code 目录下的数仓分层目录（ads/dws/dwd/ods/dqc/dim）中，含更深子目录** ——
+   *    只有这类目录才是 java/scala 程序的归宿，sql/、algo/、code/utils 等目录下不提供，
+   *    避免在无关目录上误触发（判定见 utils/programLayout.ts）。
    */
   const canConfigureParams = useMemo(
-    () => contextTargets.length > 0 && contextTargets.every(t => t.type === 'Folder'),
+    () =>
+      contextTargets.length > 0 &&
+      contextTargets.every(t => t.type === 'Folder' && isUnderCodeLayerPath(t.filePath)),
     [contextTargets]
   );
 
@@ -1423,7 +1438,9 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
           visible
           folderPath={submitScheduleFolder}
           codeFilePaths={submitScheduleFiles}
-          rootPath={rootPath || undefined}
+          // 工作流名称/展示路径的推导基准必须与单文件「提交调度」一致（projectCwd），
+          // 否则相对路径口径不同会算出不一样的工作流名
+          rootPath={projectRoot || rootPath || undefined}
           projectCode={projectCode}
           readFileContent={readFileContent}
           dsApi={dsApi ?? null}
@@ -1543,7 +1560,8 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
             <Copy size={14} />
             <span>复制到 ...{contextTargets.length > 1 ? ` (${contextTargets.length})` : ''}</span>
           </button>
-          {/* 配置参数 / 提交调度：都只对文件夹显示（含分隔线一起隐藏，避免出现连续分隔线） */}
+          {/* 配置参数 / 提交调度：只对 code 分层目录下的文件夹显示
+              （含分隔线一起隐藏，避免出现连续分隔线；判定见 canConfigureParams） */}
           {canConfigureParams && (
             <>
               <div className="explorer-panel__context-menu-divider" />

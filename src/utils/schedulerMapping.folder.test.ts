@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildWorkflowFromFolder, type FolderCodeFileInput } from './schedulerMapping';
+import { buildWorkflowFromFolder, deriveFolderWorkflowName, mapCodeFileToTask, type FolderCodeFileInput } from './schedulerMapping';
 
 /**
  * 「文件夹 → 工作流」构建的单元测试。
@@ -51,8 +51,7 @@ describe('buildWorkflowFromFolder', () => {
     expect(r.cycle).toBeNull();
   });
 
-  it('同批次内的 @依赖 生成依赖边，且前置节点排在更小的 x（分层布局）', () => {
-    const r = build([scalaFile('a.scala'), scalaFile('c.scala', 'demo.a')]);
+  it('同批次内的 @依赖 生成依赖边，且前置节点排在更小的 x（分层布局）', () => {    const r = build([scalaFile('a.scala'), scalaFile('c.scala', 'demo.a')]);
 
     expect(r.edges).toHaveLength(1);
     const a = nodeByName(r.nodes, 'a');
@@ -135,13 +134,14 @@ describe('buildWorkflowFromFolder', () => {
     expect(f.x !== g.x || f.y !== g.y).toBe(true);
   });
 
-  it('文件夹即项目根（相对路径为空）时工作流名回退为 workflow', () => {
+  it('文件夹即基准目录（相对路径为空）时用该文件夹自身的名字', () => {
     const r = buildWorkflowFromFolder([scalaFile('a.scala')], {
       rootPath: ROOT,
       folderPath: ROOT,
     });
 
-    expect(r.name).toBe('workflow');
+    // 相对路径为空时不能退化成无意义的 'workflow'，应取文件夹名（ROOT 末段）
+    expect(r.name).toBe('src');
   });
 
   it('节点 code 互不相同（避免画布上节点互相覆盖）', () => {
@@ -161,5 +161,43 @@ describe('buildWorkflowFromFolder', () => {
     expect(r.headerDeps.get('a')).toEqual([]);
     expect(r.headerDeps.get('c')).toEqual([{ projectCode: 'demo', taskName: 'a' }]);
     expect(r.headerDeps.get('d')).toEqual([{ projectCode: 'other', taskName: 'zzz' }]);
+  });
+});
+
+describe('文件夹工作流名称（须与单文件提交调度同一规范）', () => {
+  it('与同目录下单文件提交的 workflowName 完全一致', () => {
+    const folder = `${ROOT}/demo/ads`;
+    const filePath = `${folder}/a.scala`;
+    const content = header({ 引擎: 'spark' }) + 'object A {}\n';
+
+    // 单文件口径：文件所在目录的相对路径，分隔符转下划线
+    const single = mapCodeFileToTask('a.scala', content, filePath, ROOT);
+    const batch = buildWorkflowFromFolder(
+      [{ filePath, content }],
+      { rootPath: ROOT, folderPath: folder, projectCode: 'demo' },
+    );
+
+    expect(single.workflowName).toBe('demo_ads');
+    expect(batch.name).toBe(single.workflowName);
+  });
+
+  it('文件夹不在基准目录之下时退化为文件夹名（不把整条绝对路径当名称）', () => {
+    // 推导基准与单文件不同（或未传）时，toRelativePath 会回退成绝对路径——
+    // 这正是「名称不对且带斜杠」的根因，必须退化成可读的文件夹名
+    expect(deriveFolderWorkflowName('/other/place/ads', ROOT)).toBe('ads');
+    expect(deriveFolderWorkflowName('/other/place/ads', undefined)).toBe('ads');
+  });
+
+  it('文件夹就是基准目录本身时用该文件夹自身的名字', () => {
+    expect(deriveFolderWorkflowName(ROOT, ROOT)).toBe('src');
+  });
+
+  it('只做分隔符替换、不做 sanitize（清洗留给真正提交给调度系统时）', () => {
+    // 与单文件一致：base 名称保留特殊字符，两处界面显示才不会有差异
+    expect(deriveFolderWorkflowName(`${ROOT}/demo/a-b (v2)`, ROOT)).toBe('demo_a-b (v2)');
+  });
+
+  it('拿不到任何路径信息时回退 workflow', () => {
+    expect(deriveFolderWorkflowName(undefined, ROOT)).toBe('workflow');
   });
 });

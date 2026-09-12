@@ -189,6 +189,16 @@ describe('FolderSubmitScheduleModal', () => {
     expect(editor.getAttribute('data-edge-count')).toBe('1');
   });
 
+  it('副标题显示工作流名称（与单文件提交调度同一规范），不是带斜杠的路径', async () => {
+    const { findByTestId, container } = renderModal();
+    await findByTestId('wf-editor');
+
+    const subtitle = container.querySelector('.folder-submit-schedule__path');
+    // FOLDER = /proj/src/demo，基准 ROOT = /proj/src → 相对路径 'demo'，不是 'demo/demo'
+    expect(subtitle?.textContent).toBe('demo');
+    expect(subtitle?.textContent).not.toContain('/');
+  });
+
   it('不显示左侧任务节点类型面板，也不提供运行入口', async () => {
     const { findByTestId } = renderModal();
     const editor = await findByTestId('wf-editor');
@@ -328,30 +338,26 @@ describe('FolderSubmitScheduleModal', () => {
   });
 
   it('外部 @依赖：保存时自动生成「前置依赖」DEPENDENT 节点并连边', async () => {
+    // 用 sql 文件（非可编译）避免走编译/上传，聚焦依赖重建这条链路
     const extFiles: Record<string, string> = {
-      [`${FOLDER}/a.scala`]: header({ 引擎: 'spark' }) + 'object A {}\n',
-      [`${FOLDER}/h.scala`]: header({ 引擎: 'spark', 依赖: 'demo.ext_task' }) + 'object H {}\n',
+      [`${FOLDER}/a.sql`]: header({ 引擎: 'mysql' }) + 'select 1;\n',
+      [`${FOLDER}/h.sql`]: header({ 引擎: 'mysql', 依赖: 'demo.ext_task' }) + 'select 2;\n',
     };
     const dsApi = makeDsApi({
       projects: [{ code: 11, name: 'demo' }],
       workflows: [],
       externalTasks: [{ code: 700, name: 'ext_task' }],
     });
-    vi.mocked(unifiedCompile).mockResolvedValue({
-      success: true, jarPath: '/tmp/a.jar', output: '', error: '', packageName: '', className: '',
-    });
 
     const { findByTestId } = renderModal({
       dsApi,
       codeFilePaths: Object.keys(extFiles),
       readFileContent: vi.fn(async (p: string) => extFiles[p] ?? ''),
-      compileConfig: COMPILE_CONFIG,
-      devProjectId: 1,
     });
 
     fireEvent.click(await findByTestId('wf-save'));
-    // 保存链路含编译 + 上传 + 依赖重建，异步步骤较多，放宽等待
-    await waitFor(() => expect(dsApi.workflowDefinition.createWithTasks).toHaveBeenCalledTimes(1), { timeout: 8000 });
+    // 机器负载高时 jsdom 下异步链路会被显著拖慢，放宽等待
+    await waitFor(() => expect(dsApi.workflowDefinition.createWithTasks).toHaveBeenCalledTimes(1), { timeout: 20000 });
 
     const [, payload] = dsApi.workflowDefinition.createWithTasks.mock.calls[0] as any;
     // 生成了「前置依赖_h」DEPENDENT 节点
