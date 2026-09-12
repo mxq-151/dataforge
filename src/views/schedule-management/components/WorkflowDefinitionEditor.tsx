@@ -47,6 +47,26 @@ interface WorkflowDefinitionEditorProps {
    * 此时画布节点由 existingNodes 提供，用户仍在画布上编辑。
    */
   showTaskTypeSidebar?: boolean;
+  /**
+   * 是否隐藏工具栏左侧的「返回按钮 + 工作流名称」。
+   * 默认显示；以模态框形式嵌入、外层已有标题（如文件夹「提交调度」弹窗头部）时置 true，
+   * 避免同一名称在弹窗里出现两次——那里的返回按钮与外层关闭按钮语义也重复。
+   */
+  hideToolbarHeader?: boolean;
+  /**
+   * 是否隐藏工具栏右侧的「校验」按钮。
+   * 默认显示；调度管理模块的「工作流定义」置 true（该入口不需要手动校验入口，
+   * 保存前的参数校验闸门 `validateWorkflowNodes` 仍然生效），
+   * 文件夹「提交调度」保持显示（节点自动生成，批量提交前主动校验更有用）。
+   */
+  hideToolbarValidate?: boolean;
+  /**
+   * 「应用名称」自动生成上下文（`{project}.{workflow}.{task}`，见 utils/appName.ts）。
+   * 仅提交入口（单文件 / 文件夹提交调度）传入：任务节点里的应用名称变为只读派生值，
+   * 与工作流基本信息（项目 / 工作流名 / 任务名）保持一致；调度管理里不传，行为不变。
+   * workflow 应为**最终提交到调度系统的工作流名称**（含环境后缀）。
+   */
+  appNameContext?: { project: string; workflow: string };
   workflowDefinitions?: { code: number; name: string }[];
   workerGroups?: DSWorkerGroup[];
   environments?: DSEnvironment[];
@@ -77,6 +97,9 @@ const WorkflowDefinitionEditor: React.FC<WorkflowDefinitionEditorProps> = ({
   existingTimeout,
   readonly = false,
   showTaskTypeSidebar = true,
+  hideToolbarHeader = false,
+  hideToolbarValidate = false,
+  appNameContext,
   workflowDefinitions,
   workerGroups,
   environments,
@@ -422,11 +445,17 @@ const WorkflowDefinitionEditor: React.FC<WorkflowDefinitionEditorProps> = ({
   return (
     <div className="wf-editor" ref={editorRef}>
       <div className="wf-editor__toolbar">
-        <div className="wf-toolbar__left">
-          <button className="sm-btn sm-btn--ghost" onClick={onClose} title="返回">
-            <ArrowLeft size={14} />
-          </button>
-          <span className="wf-toolbar__name">{initialName}</span>
+        {/* 外层弹窗已展示名称/提供关闭入口时（hideToolbarHeader），这里只留占位，
+            保持 .wf-editor__toolbar 的 space-between 三段布局不塌陷 */}
+        <div className="wf-toolbar__left" data-testid="wf-toolbar-left">
+          {!hideToolbarHeader && (
+            <>
+              <button className="sm-btn sm-btn--ghost" onClick={onClose} title="返回">
+                <ArrowLeft size={14} />
+              </button>
+              <span className="wf-toolbar__name">{initialName}</span>
+            </>
+          )}
           {readonly && <span className="wf-toolbar__readonly-badge">只读</span>}
         </div>
         <div className="wf-toolbar__center">
@@ -482,7 +511,7 @@ const WorkflowDefinitionEditor: React.FC<WorkflowDefinitionEditorProps> = ({
               </div>
             </div>
           )}
-          {!readonly && (
+          {!readonly && !hideToolbarValidate && (
             <button
               className={`wf-toolbar__validate${liveValidation.ok ? '' : ' wf-toolbar__validate--warn'}`}
               data-testid="wf-toolbar-validate"
@@ -554,6 +583,7 @@ const WorkflowDefinitionEditor: React.FC<WorkflowDefinitionEditorProps> = ({
           task={editingTask}
           allNodes={nodes}
           edges={edges}
+          appNameContext={appNameContext}
           workflowDefinitions={workflowDefinitions}
           workerGroups={workerGroups}
           environments={environments}

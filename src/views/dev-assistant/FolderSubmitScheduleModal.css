@@ -64,13 +64,18 @@
 .folder-submit-schedule__subtitle {
   display: flex;
   align-items: center;
-  gap: 6px;
+  /* 一行放不下（窄窗口 / 超长文件夹名）时换行，而不是把节点数徽标挤出去 */
+  flex-wrap: wrap;
+  gap: 4px 6px;
   min-width: 0;
   font-size: 11px;
   color: #858585;
 }
 
 .folder-submit-schedule__path {
+  /* 名称过长时自己截断，把空间让给后面的环境单选与节点数（至少留一段可读文本） */
+  flex: 0 1 auto;
+  min-width: 80px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   white-space: nowrap;
   overflow: hidden;
@@ -82,6 +87,29 @@
   padding: 0 6px;
   border-radius: 8px;
   background-color: rgba(255, 255, 255, 0.08);
+}
+
+/* ---------- 环境单选（决定工作流名称后缀，紧跟名称之后） ---------- */
+.folder-submit-schedule__subtitle .deploy-env-radio {
+  flex-shrink: 0;
+  gap: 6px;
+  margin-left: 2px;
+}
+
+/* 副标题只有 11px，环境选项在头部行内做紧凑化，避免把头部撑高 */
+.folder-submit-schedule__subtitle .deploy-env-radio__item {
+  gap: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+}
+
+.folder-submit-schedule__subtitle .deploy-env-radio__item input[type='radio'] {
+  width: 12px;
+  height: 12px;
+}
+
+.folder-submit-schedule__subtitle .deploy-env-radio__hint {
+  flex-shrink: 0;
 }
 
 .folder-submit-schedule__close {

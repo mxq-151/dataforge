@@ -32,6 +32,9 @@ vi.mock('../schedule-management/components/WorkflowDefinitionEditor', () => ({
       data-edge-count={String(props.existingEdges.length)}
       data-sidebar={String(props.showTaskTypeSidebar)}
       data-has-trigger={String(!!props.onTrigger)}
+      data-hide-header={String(!!props.hideToolbarHeader)}
+      data-hide-validate={String(!!props.hideToolbarValidate)}
+      data-app-name-ctx={props.appNameContext ? `${props.appNameContext.project}|${props.appNameContext.workflow}` : ''}
     >
       <button
         data-testid="wf-save"
@@ -170,6 +173,13 @@ const renderModal = (overrides: Record<string, any> = {}) => {
   return { ...utils, props, onClose };
 };
 
+/** 环境单选项外层（data-testid 在包裹 label 上）：用于断言选中态 */
+const envOption = (env: 'prod' | 'gray' | 'test') =>
+  document.querySelector(`[data-testid="deploy-env-${env}"]`) as HTMLElement;
+/** 环境单选项内部的 radio 输入：点击它触发 React onChange */
+const envRadio = (env: 'prod' | 'gray' | 'test') =>
+  document.querySelector(`[data-testid="deploy-env-${env}"] input`) as HTMLInputElement;
+
 beforeEach(() => {
   saveSpy.mockClear();
   readFileContent.mockClear();
@@ -182,21 +192,185 @@ describe('FolderSubmitScheduleModal', () => {
     const editor = await findByTestId('wf-editor');
 
     expect(readFileContent).toHaveBeenCalledTimes(3);
-    // 任务名 = 文件名（不含扩展名）；工作流名 = 文件夹的项目内相对路径
+    // 任务名 = 文件名（不含扩展名）；工作流名 = 文件夹的项目内相对路径 + 默认环境后缀 _test
     expect(editor.getAttribute('data-node-names')).toBe('a,b,c');
-    expect(editor.getAttribute('data-workflow-name')).toBe('demo');
+    expect(editor.getAttribute('data-workflow-name')).toBe('demo_test');
     // c.scala 依赖 demo.a → 一条边
     expect(editor.getAttribute('data-edge-count')).toBe('1');
   });
 
-  it('副标题显示工作流名称（与单文件提交调度同一规范），不是带斜杠的路径', async () => {
+  it('副标题显示「调度项目名称 + 工作流名称」，不是带斜杠的路径', async () => {
     const { findByTestId, container } = renderModal();
     await findByTestId('wf-editor');
 
-    const subtitle = container.querySelector('.folder-submit-schedule__path');
-    // FOLDER = /proj/src/demo，基准 ROOT = /proj/src → 相对路径 'demo'，不是 'demo/demo'
-    expect(subtitle?.textContent).toBe('demo');
-    expect(subtitle?.textContent).not.toContain('/');
+    // projectCode = 'demo'（同时是调度项目名称），工作流名 = FOLDER 相对 ROOT 的 'demo' + 默认环境 _test
+    const title = container.querySelector('.folder-submit-schedule__path');
+    expect(title?.textContent).toBe('demo 工作流名称：demo_test');
+    expect(title?.textContent).not.toContain('/');
+    // 完整文件夹路径仍在 title 里可查
+    expect(title?.getAttribute('title')).toBe('demo 工作流名称：demo_test');
+  });
+
+  it('草稿就绪前头部就用同一规范推导出的工作流名（不闪相对路径）', () => {
+    const { container } = renderModal({ readFileContent: vi.fn(() => new Promise<string>(() => {})) } as any);
+
+    const title = container.querySelector('.folder-submit-schedule__path');
+    expect(title?.textContent).toBe('demo 工作流名称：demo_test');
+  });
+
+  it('环境单选：默认选中「测试」，三个选项齐全', async () => {
+    const { findByTestId } = renderModal();
+    await findByTestId('wf-editor');
+
+    expect(envOption('test').getAttribute('data-active')).toBe('true');
+    expect(envOption('gray').getAttribute('data-active')).toBe('false');
+    expect(envOption('prod').getAttribute('data-active')).toBe('false');
+  });
+
+  it('环境选项位于头部副标题内、工作流名称之后（不再是独立一行）', async () => {
+    const { findByTestId, container } = renderModal();
+    await findByTestId('wf-editor');
+
+    const subtitle = container.querySelector('.folder-submit-schedule__subtitle')!;
+    const path = subtitle.querySelector('.folder-submit-schedule__path')!;
+    const group = subtitle.querySelector('.deploy-env-radio')!;
+    expect(group).toBeTruthy();
+    // 名称在前、环境选项紧随其后
+    expect(path.compareDocumentPosition(group) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // 旧的独立环境行已移除
+    expect(container.querySelector('.folder-submit-schedule__env')).toBeNull();
+  });
+
+  it('切换环境：工作流名称与交给编辑器的名称同步换成对应后缀', async () => {
+    const { findByTestId, container } = renderModal();
+    await findByTestId('wf-editor');
+
+    fireEvent.click(envRadio('prod'));
+
+    await waitFor(() =>
+      expect(container.querySelector('.folder-submit-schedule__path')?.textContent)
+        .toBe('demo 工作流名称：demo_prod')
+    );
+    expect(document.querySelector('[data-testid="wf-editor"]')!.getAttribute('data-workflow-name'))
+      .toBe('demo_prod');
+
+    fireEvent.click(envRadio('gray'));
+    await waitFor(() =>
+      expect(document.querySelector('[data-testid="wf-editor"]')!.getAttribute('data-workflow-name'))
+        .toBe('demo_gray')
+    );
+  });
+
+  it('切换环境后保存：按带环境后缀的名称创建/更新', async () => {
+    const dsApi = makeDsApi({ projects: [{ code: 11, name: 'demo' }], workflows: [] });
+    const { findByTestId } = renderModal({
+      dsApi,
+      codeFilePaths: Object.keys(NON_COMPILABLE_FILES),
+      readFileContent: vi.fn(async (p: string) => NON_COMPILABLE_FILES[p] ?? ''),
+    });
+
+    await findByTestId('wf-editor');
+    fireEvent.click(envRadio('prod'));
+    await waitFor(() =>
+      expect(document.querySelector('[data-testid="wf-editor"]')!.getAttribute('data-workflow-name'))
+        .toBe('demo_prod')
+    );
+
+    fireEvent.click(await findByTestId('wf-save'));
+
+    await waitFor(() => expect(dsApi.workflowDefinition.createWithTasks).toHaveBeenCalledTimes(1));
+    const [, payload] = dsApi.workflowDefinition.createWithTasks.mock.calls[0] as any;
+    expect(payload.name).toBe('demo_prod');
+  });
+
+  it('任务节点的应用名称按「项目.工作流.任务」生成（交给编辑器的上下文含环境后缀）', async () => {
+    const { findByTestId } = renderModal();
+    await findByTestId('wf-editor');
+
+    // 上下文与头部名称同源：project = 调度项目名称，workflow = 带环境后缀的最终名称
+    const editorOf = () => document.querySelector('[data-testid="wf-editor"]')!;
+    expect(editorOf().getAttribute('data-app-name-ctx')).toBe('demo|demo_test');
+
+    fireEvent.click(envRadio('prod'));
+    await waitFor(() =>
+      expect(editorOf().getAttribute('data-app-name-ctx')).toBe('demo|demo_prod')
+    );
+  });
+
+  it('保存：SPARK 节点的应用名称写为 项目.工作流.任务，无该项的任务类型不写入', async () => {
+    const dsApi = makeDsApi({ projects: [{ code: 11, name: 'demo' }], workflows: [] });
+    vi.mocked(unifiedCompile).mockResolvedValue({
+      success: true, jarPath: '/tmp/a.jar', output: '', error: '', packageName: '', className: '',
+    });
+
+    const { findByTestId } = renderModal({ dsApi, compileConfig: COMPILE_CONFIG, devProjectId: 1 });
+    fireEvent.click(await findByTestId('wf-save'));
+
+    await waitFor(() => expect(dsApi.workflowDefinition.createWithTasks).toHaveBeenCalledTimes(1));
+    const [, payload] = dsApi.workflowDefinition.createWithTasks.mock.calls[0] as any;
+
+    // a.scala / c.scala 是 SPARK（有「应用名称」项）→ 项目.工作流.任务
+    const a = payload.nodes.find((n: any) => n.name === 'a');
+    const c = payload.nodes.find((n: any) => n.name === 'c');
+    expect(JSON.parse(a.taskParams).appName).toBe('demo.demo_test.a');
+    expect(JSON.parse(c.taskParams).appName).toBe('demo.demo_test.c');
+    // b.sql 是 SQL，没有「应用名称」项 → 不写入
+    const b = payload.nodes.find((n: any) => n.name === 'b');
+    expect(JSON.parse(b.taskParams).appName).toBeUndefined();
+  });
+
+  it('保存：切换环境后应用名称用带后缀的工作流名', async () => {
+    const dsApi = makeDsApi({ projects: [{ code: 11, name: 'demo' }], workflows: [] });
+    vi.mocked(unifiedCompile).mockResolvedValue({
+      success: true, jarPath: '/tmp/a.jar', output: '', error: '', packageName: '', className: '',
+    });
+
+    const { findByTestId } = renderModal({ dsApi, compileConfig: COMPILE_CONFIG, devProjectId: 1 });
+    await findByTestId('wf-editor');
+    fireEvent.click(envRadio('prod'));
+    await waitFor(() =>
+      expect(document.querySelector('[data-testid="wf-editor"]')!.getAttribute('data-workflow-name'))
+        .toBe('demo_prod')
+    );
+
+    fireEvent.click(await findByTestId('wf-save'));
+    await waitFor(() => expect(dsApi.workflowDefinition.createWithTasks).toHaveBeenCalledTimes(1));
+    const [, payload] = dsApi.workflowDefinition.createWithTasks.mock.calls[0] as any;
+    const a = payload.nodes.find((n: any) => n.name === 'a');
+    expect(JSON.parse(a.taskParams).appName).toBe('demo.demo_prod.a');
+  });
+
+  it('节点数徽标按画布上的任务节点统计，文案为「个任务节点」', async () => {
+    const { findByTestId, container } = renderModal();
+    await findByTestId('wf-editor');
+
+    // 3 个代码文件 → 3 个任务节点；文案不再是「个代码文件」
+    const count = container.querySelector('.folder-submit-schedule__count');
+    expect(count?.textContent).toBe('3 个任务节点');
+    expect(container.textContent).not.toContain('个代码文件并生成任务节点…');
+  });
+
+  it('节点数包含自动生成的「前置依赖」任务节点', async () => {
+    const extFiles: Record<string, string> = {
+      [`${FOLDER}/a.sql`]: header({ 引擎: 'mysql' }) + 'select 1;\n',
+      [`${FOLDER}/h.sql`]: header({ 引擎: 'mysql', 依赖: 'demo.ext_task' }) + 'select 2;\n',
+    };
+    const dsApi = makeDsApi({
+      projects: [{ code: 11, name: 'demo' }],
+      workflows: [],
+      externalTasks: [{ code: 700, name: 'ext_task' }],
+    });
+
+    const { findByTestId, container } = renderModal({
+      dsApi,
+      codeFilePaths: Object.keys(extFiles),
+      readFileContent: vi.fn(async (p: string) => extFiles[p] ?? ''),
+    });
+    await findByTestId('wf-editor');
+
+    await waitFor(() =>
+      expect(container.querySelector('.folder-submit-schedule__count')?.textContent).toBe('3 个任务节点')
+    );
   });
 
   it('不显示左侧任务节点类型面板，也不提供运行入口', async () => {
@@ -205,6 +379,13 @@ describe('FolderSubmitScheduleModal', () => {
 
     expect(editor.getAttribute('data-sidebar')).toBe('false');
     expect(editor.getAttribute('data-has-trigger')).toBe('false');
+  });
+
+  it('保留工具栏「校验」按钮（只有调度管理的工作流定义不显示它）', async () => {
+    const { findByTestId } = renderModal();
+    const editor = await findByTestId('wf-editor');
+
+    expect(editor.getAttribute('data-hide-validate')).toBe('false');
   });
 
   it('保存：目标项目下没有同名工作流时创建（createWithTasks）', async () => {
@@ -220,7 +401,8 @@ describe('FolderSubmitScheduleModal', () => {
     await waitFor(() => expect(dsApi.workflowDefinition.createWithTasks).toHaveBeenCalledTimes(1));
     const [projectCode, payload] = dsApi.workflowDefinition.createWithTasks.mock.calls[0] as any;
     expect(projectCode).toBe(11);
-    expect(payload.name).toBe('demo');
+    // 默认环境为「测试」→ 名称带 _test 后缀
+    expect(payload.name).toBe('demo_test');
     expect(payload.nodes).toHaveLength(3);
     expect(payload.edges).toHaveLength(1);
     // 未走到「创建后回查上线」这一步之外的分支：勾选了上线 → 回查并 release
@@ -229,9 +411,10 @@ describe('FolderSubmitScheduleModal', () => {
   });
 
   it('保存：已存在同名工作流时更新（update），并带上上线状态', async () => {
+    // 同名匹配按「带环境后缀的最终名称」，所以演示数据里的既有工作流也叫 demo_test
     const dsApi = makeDsApi({
       projects: [{ code: 11, name: 'demo' }],
-      workflows: [{ code: 99, name: 'demo' }],
+      workflows: [{ code: 99, name: 'demo_test' }],
     });
     const { findByTestId } = renderModal({
       dsApi,

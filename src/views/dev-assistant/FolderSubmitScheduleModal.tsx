@@ -8,6 +8,7 @@ import WorkflowDefinitionEditor from '../schedule-management/components/Workflow
 import {
   buildWorkflowFromFolder, sanitizeDsName, isCompilableFile, buildTaskNameToFilePathMap,
   reconcileWorkflowDependencies, layoutWorkflowByDependency, findDependencyCycle,
+  deriveFolderWorkflowName,
   GRID_START_X, GRID_START_Y, GRID_GAP_X, GRID_GAP_Y,
   type BuildWorkflowFromFolderResult, type ResolvedDependency, type HeaderDependency,
 } from '../../utils/schedulerMapping';
@@ -15,6 +16,9 @@ import { toRelativePath, splitPath } from '../../utils/pathUtils';
 import { unifiedCompile, type CompileConfig } from '../../services/unifiedCompile';
 import { readFile } from '../../bridge/fs';
 import { useToast } from '../../components/Toast';
+import DeployEnvRadio from './DeployEnvRadio';
+import { DEFAULT_DEPLOY_ENV, withDeployEnvSuffix, type DeployEnv } from '../../utils/deployEnv';
+import { applyAppNameToNodes } from '../../utils/appName';
 // 内嵌的是调度模块的工作流定义编辑器，它复用了该模块的 sm-* 基础样式
 // （保存工作流弹窗 sm-modal / 按钮 sm-btn 等，定义在 ScheduleManagementPanel.css 中）。
 // 开发助手视图不在调度模块的样式链路里，这里显式引入，否则保存弹窗会失去样式。
@@ -220,6 +224,8 @@ const FolderSubmitScheduleModal: React.FC<FolderSubmitScheduleModalProps> = ({
   const [draft, setDraft] = useState<BuildWorkflowFromFolderResult | null>(null);
   const [saving, setSaving] = useState(false);
   const [savingLabel, setSavingLabel] = useState('正在提交到调度系统…');
+  // 部署环境：默认「测试」，拼在工作流名称末尾决定提交到调度系统的名称
+  const [deployEnv, setDeployEnv] = useState<DeployEnv>(DEFAULT_DEPLOY_ENV);
   // 正在解析跨工作流/跨项目前置依赖（草稿生成后的异步阶段）
   const [depResolving, setDepResolving] = useState(false);
 
@@ -649,12 +655,16 @@ const FolderSubmitScheduleModal: React.FC<FolderSubmitScheduleModalProps> = ({
         return;
       }
 
+      // 任务节点的「应用名称」统一为 {项目}.{工作流}.{任务}，其中工作流名取**最终提交名**
+      // （可能刚在保存弹窗里被改过）——保证即使没打开过任务配置弹窗，提交的值也与工作流基本信息一致
+      const finalNodes = applyAppNameToNodes(recon.nodes, { project: projectLabel, workflow: name });
+
       // 提交前按依赖关系分层布局：前置节点（含 DEPENDENT 前置依赖节点）总在依赖节点左侧
-      layoutWorkflowByDependency(recon.nodes, recon.edges);
+      layoutWorkflowByDependency(finalNodes, recon.edges);
 
       // 3. 用回填了 mainJar 且重建了依赖的节点/边提交
       setSavingLabel('正在提交到调度系统…');
-      const payload = { ...data, nodes: recon.nodes, edges: recon.edges };
+      const payload = { ...data, nodes: finalNodes, edges: recon.edges };
       const { release, ...rest } = payload;
 
       const listRes = await dsApi.workflowDefinition.list(project.code, {
@@ -700,6 +710,18 @@ const FolderSubmitScheduleModal: React.FC<FolderSubmitScheduleModalProps> = ({
   // 画布上由跨工作流 @依赖 自动生成的「前置依赖」DEPENDENT 节点，用于向用户说明自动配置结果
   const dependentNodes = draft?.nodes.filter(n => n.taskType === 'DEPENDENT') ?? [];
 
+  // 头部标题：「调度项目名称（= 项目编码）」+「工作流名称」。
+  // 工作流名取草稿名（与真正提交给调度系统的名称同规范），草稿未就绪时按同一函数先行推导，
+  // 避免头部先闪一段相对路径再变成工作流名；末尾再拼上环境后缀（生产/灰度/测试），
+  // 该值就是最终提交给调度系统的名称（编辑器保存弹窗的默认名也用它）。
+  const projectLabel = (project?.name || projectCode || '').trim();
+  const baseWorkflowName = draft?.name || deriveFolderWorkflowName(folderPath, rootPath);
+  const workflowLabel = withDeployEnvSuffix(baseWorkflowName, deployEnv);
+  const headerTitle = `${projectLabel ? `${projectLabel} ` : ''}工作流名称：${workflowLabel}`;
+  // 节点数：草稿就绪后按画布上真实任务节点数（含自动生成的「前置依赖」节点），
+  // 尚未就绪时退回代码文件数（此时每个文件恰好对应一个待生成的节点）
+  const nodeCount = draft ? draft.nodes.length : fileCount;
+
   return (
     <div className="folder-submit-schedule__overlay" onClick={onClose}>
       <div
@@ -714,12 +736,18 @@ const FolderSubmitScheduleModal: React.FC<FolderSubmitScheduleModalProps> = ({
             <span>提交调度</span>
             {!isRealApi && <span className="folder-submit-schedule__badge">模拟环境</span>}
           </div>
-          {/* 副标题显示与单文件提交调度同一规范的工作流名称；完整路径收进 title 提示 */}
+          {/* 副标题：「调度项目名称 + 工作流名称」；完整文件夹路径收进 title 提示。
+              环境单选紧跟在名称之后：它决定的就是名称末尾的后缀，贴在一起因果关系最直观 */}
           <div className="folder-submit-schedule__subtitle" title={folderPath}>
             <FolderKanban size={13} />
-            <span className="folder-submit-schedule__path">{draft?.name ?? displayPath}</span>
-            {fileCount > 0 && (
-              <span className="folder-submit-schedule__count">{fileCount} 个代码文件</span>
+            <span className="folder-submit-schedule__path" title={headerTitle}>{headerTitle}</span>
+            <DeployEnvRadio
+              value={deployEnv}
+              onChange={setDeployEnv}
+              hint={`工作流名称将以 _${deployEnv} 结尾`}
+            />
+            {nodeCount > 0 && (
+              <span className="folder-submit-schedule__count">{nodeCount} 个任务节点</span>
             )}
           </div>
           <button className="folder-submit-schedule__close" onClick={onClose} title="关闭">
@@ -796,12 +824,17 @@ const FolderSubmitScheduleModal: React.FC<FolderSubmitScheduleModalProps> = ({
             <div className="folder-submit-schedule__editor">
               <WorkflowDefinitionEditor
                 key={`${filesKey}-${draft.nodes.length}`}
-                workflowName={draft.name}
+                // 名称含环境后缀：保存弹窗据此预填，保存时直接按该名称 create / update
+                workflowName={workflowLabel}
                 description={`由文件夹 ${displayPath} 下的代码文件生成`}
                 existingNodes={draft.nodes}
                 existingEdges={draft.edges}
                 // 不显示左侧「任务节点」类型面板：节点已按代码文件自动生成
                 showTaskTypeSidebar={false}
+                // 名称已在弹窗头部展示（项目名称 + 工作流名称），编辑器工具栏不再重复
+                hideToolbarHeader
+                // 任务节点的「应用名称」按 {项目}.{工作流}.{任务} 自动生成（只读），与头部名称同源
+                appNameContext={{ project: projectLabel, workflow: workflowLabel }}
                 workflowDefinitions={meta.workflowDefinitions}
                 workerGroups={meta.workerGroups}
                 environments={meta.environments}

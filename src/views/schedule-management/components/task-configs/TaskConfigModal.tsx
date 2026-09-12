@@ -8,6 +8,7 @@ import {
   TASK_TYPE_LABELS, Priority, getDefaultTaskParams,
 } from '../../../../types/dolphinscheduler';
 import { TASK_FORM_MAP } from './task-forms';
+import { buildTaskAppName, taskTypeHasAppName } from '../../../../utils/appName';
 import './task-config.css';
 
 const TASK_TYPE_ICONS: Record<DSTaskType, React.ReactNode> = {
@@ -60,6 +61,13 @@ interface TaskConfigModalProps {
   onSave: (task: DSWorkflowTaskNode, newEdges?: DSWorkflowEdge[]) => void;
   onClose: () => void;
   readonly?: boolean;
+  /**
+   * 「应用名称」自动生成上下文（`{project}.{workflow}.{task}`，见 utils/appName.ts）。
+   * 仅提交入口（单文件 / 文件夹提交调度）传入 —— 此时应用名称只读、恒等于
+   * 「项目.工作流.任务」；调度管理里编辑已有工作流不传，保持历史值可编辑。
+   * 任务名取当前表单里的「任务名称」（改名时应用名称实时跟随）。
+   */
+  appNameContext?: { project: string; workflow: string };
 }
 
 function parseTaskParams(taskType: DSTaskType, taskParamsStr: string): Record<string, unknown> {
@@ -70,7 +78,7 @@ function parseTaskParams(taskType: DSTaskType, taskParamsStr: string): Record<st
   return getDefaultTaskParams(taskType);
 }
 
-export default function TaskConfigModal({ task, allNodes, edges, workflowDefinitions, workerGroups, environments, api, onSave, onClose, readonly }: TaskConfigModalProps) {
+export default function TaskConfigModal({ task, allNodes, edges, workflowDefinitions, workerGroups, environments, api, onSave, onClose, readonly, appNameContext }: TaskConfigModalProps) {
   const [form, setForm] = useState<DSWorkflowTaskNode>({ ...task });
   const [taskParamsObj, setTaskParamsObj] = useState<Record<string, unknown>>(() =>
     parseTaskParams(form.taskType, form.taskParams)
@@ -99,10 +107,25 @@ export default function TaskConfigModal({ task, allNodes, edges, workflowDefinit
     setTaskParamsObj(newParams);
   }, []);
 
+  /**
+   * 自动生成的应用名称（`{project}.{workflow}.{task}`）。
+   * 传了 appNameContext 才生成：任务名用**表单里的任务名称**，改名时应用名称跟着变。
+   * 该值只对带「应用名称」项的任务类型有意义（SPARK / FLINK / MR）。
+   */
+  const autoAppName = appNameContext && taskTypeHasAppName(form.taskType)
+    ? buildTaskAppName({ project: appNameContext.project, workflow: appNameContext.workflow, task: form.name })
+    : undefined;
+
+  // 应用名称是派生值：参数对象里同步写一份，保证「不打开该字段直接保存」时提交的也是同一个值
+  React.useEffect(() => {
+    if (!autoAppName) return;
+    setTaskParamsObj(prev => (prev.appName === autoAppName ? prev : { ...prev, appName: autoAppName }));
+  }, [autoAppName]);
+
   const handleSave = () => {
     const updatedTask: DSWorkflowTaskNode = {
       ...form,
-      taskParams: JSON.stringify(taskParamsObj),
+      taskParams: JSON.stringify(autoAppName ? { ...taskParamsObj, appName: autoAppName } : taskParamsObj),
     };
 
     const newEdges = edges.filter(e => !(e.targetCode === form.code));
@@ -315,6 +338,7 @@ export default function TaskConfigModal({ task, allNodes, edges, workflowDefinit
                 currentCode={form.code}
                 workflowDefinitions={workflowDefinitions}
                 api={api}
+                appName={autoAppName}
               />
             )}
           </div>

@@ -61,6 +61,43 @@
   回退成绝对路径，名称变成一长串、界面路径带斜杠）。拿不到相对路径时退化为文件夹名。
 - 保存：按「调度项目名称 === 开发项目编码」匹配 DS 项目 → 同名走 `update`（带 releaseState）否则
   `createWithTasks`；创建分支勾选上线时**按名称回查再 `release`**（创建接口不接受 releaseState）。
+- **弹窗头部文案规范**（用户 09-12 定的）：副标题 = `{调度项目名称} 工作流名称：{工作流名称}`
+  （项目名称取 `project?.name || projectCode`），徽标 = `{N} 个任务节点`，N 取
+  `draft?.nodes.length ?? fileCount`（**含自动生成的「前置依赖_x」节点**，不是文件数）。
+  草稿未就绪时工作流名先用 `deriveFolderWorkflowName(folderPath, rootPath)` 推导（与
+  `buildWorkflowFromFolder` 同函数同参），避免头部先闪一段相对路径。
+  **名称改动只影响界面显示**，提交到 DS 的名称仍是 `sanitizeDsName(data.name)`。
+- 内嵌编辑器传 `hideToolbarHeader` 隐藏工具栏左侧「返回箭头 + 工作流名称」（名称已在弹窗头部）。
+  该 prop 默认 `false`，只影响此弹窗；**左侧 div 必须保留空占位**，否则 `space-between` 三段布局塌陷。
+- **环境单选在头部副标题行内**（用户 09-12 二次调整）：顺序为
+  `📁 名称 → DeployEnvRadio（+提示）→ N 个任务节点`。原来它独占一行（`__env` 行已删），
+  移到名称后面是为了「改的就是名称后缀」因果可见。副标题 `flex-wrap: wrap` + 名称
+  `min-width: 80px`，窄窗口时整行换行而非溢出；radio 在副标题内做了紧凑化（2px 8px / 11px）。
+
+### 工作流名称与「环境」后缀（版本链已移除）
+- 两个提交入口都有「环境」单选（生产/灰度/测试，**默认测试**），定义在
+  `src/utils/deployEnv.ts`（`DeployEnv` = prod/gray/test）+ 共用组件
+  `src/views/dev-assistant/DeployEnvRadio.tsx`。选中的环境**拼在名称末尾**：
+  `olist_code_ods` → `olist_code_ods_test`（`withDeployEnvSuffix`，只拼后缀不 sanitize）。
+- **`_v{N}` 版本链已整体删除**（`computeVersionedWorkflowName` / `WorkflowVersionReason` 及其用例已删）：
+  不再按「同前缀工作流的定时调度状态」自动升版本，改由环境区分同名工作流。
+  单文件弹窗的 `workflowName` 已从 state 改为 `useMemo(baseWorkflowName + deployEnv)` 派生。
+- 后果：名称恒带后缀 → DS 里既有的无后缀 / `_v1` 工作流**不再匹配**，重复提交会新建；
+  环境不做记忆（每次打开回到测试）。要改口径先想清楚「同名即同一工作流」这条。
+
+### 任务节点「应用名称」派生（`{project}.{workflow}.{task}`）
+- `src/utils/appName.ts`：`APP_NAME_TASK_TYPES=['SPARK','FLINK','MR']`（与表单里真有「应用名称」项的
+  三种类型一致，表单改动要同步）、`buildTaskAppName`、`applyAppNameToNode(s)`（只改这三种类型，
+  值未变/JSON 非法时**返回同一对象**，便于 setState 判等）。
+- 生效范围：**只有两个提交入口**。`TaskConfigModal` 的 `appNameContext` 由 `WorkflowDefinitionEditor`
+  透传，文件夹弹窗传 `{project: projectLabel, workflow: workflowLabel}`；单文件弹窗在
+  `applyTaskTypeParamsToMapping` 里显式写 `appName`（**空 taskTypeParams 的早退分支也要写**）。
+  **调度管理编辑工作流不传 → 保持历史值可编辑**（别顺手全局打开）。
+- `{workflow}` 一律用**带环境后缀的最终名**；文件夹弹窗提交前还对 `recon.nodes` 用最终
+  `name`（sanitize 后）再跑一次 `applyAppNameToNodes`，防保存弹窗改名造成不一致。
+- 任务段用节点名（文件夹流程）= `sanitizeDsName(taskName)`（单文件流程），两处口径要一致。
+- ⚠️ 潜在的旧口径冲突：`validateYarnJobName`（提交/运行前校验）要求**代码里** `.appName("x")`
+  必须等于文件名主干 —— 与新的「应用名称」拼接口径不同源，改动这块前先与用户确认。
 
 ### 自动依赖关系配置（关键约定）
 - **必须在「打开弹窗、草稿生成后」就完成**，不能只放在 `handleSave` 里 —— 用户是在画布上判断
@@ -99,9 +136,12 @@
   `sm-required` 标注的镜像：表单新增必填项时必须同步维护 `REQUIRED_PARAMS` 表与单测。
 - 闸门在 `WorkflowDefinitionEditor`：①「保存」→ `handleOpenSaveModal()` 校验，不通过只弹报告；
   ②`SaveWorkflowModal.onConfirm` 再防御一次。两个入口（工作流定义 / 提交调度）共用编辑器，自动都被拦。
-- **工具栏常驻「校验」按钮**（`data-testid="wf-toolbar-validate"`）是唯一校验入口；
+- 工具栏「校验」按钮（`data-testid="wf-toolbar-validate"`，`!readonly && !hideToolbarValidate`）是**手动**校验入口；
   通过态 `ShieldCheck` + `toast.info`，失败态橙色 + 失败数徽标 + 报告弹窗。
   **编辑器用了 `useToast` → 所有真实渲染它的测试必须包 `ToastProvider`**。
+- **按钮可见性按入口区分（用户 09-12 定的）**：调度管理→工作流定义传 `hideToolbarValidate`（不显示按钮，
+  但保存闸门照样拦）；文件夹「提交调度」**保留按钮**。别再按「全局唯一入口」理解——
+  去掉的只是手动入口，保存前 `validateWorkflowNodes` 与 `SaveWorkflowModal.onConfirm` 的防御校验都在。
 - 配套修复：任务参数是 `cell.setData` 直写 cell、不触发图事件，`handleSaveTask` 末尾必须手动
   `setNodes(extractNodes(graph.getNodes()))`，否则搜索/上游下拉/校验都读到旧参数。
 
@@ -117,6 +157,9 @@
   **用户自己的 Terminal 无此注入，慢只发生在 agent 代跑的 shell 里。** 详见 skill `node-run-slowdown-diagnosis`。
 - **`textmateFix.test.ts` 没有「必然失败」**（09-11 结论作废）：根因是 shim 拖慢导致 20s testTimeout 不够；
   清空 NODE_OPTIONS 后**全量 34 文件 / 613 用例全通过**。旧基线 `506 passed / 1 failed` 亦已过时。
+- **单文件弹窗（SubmitToSchedulerModal）写单测的两条硬坑**：①底部「校验/提交」事件挂在
+  **onMouseDown**，`fireEvent.click` 不触发；②`selectedProjectCode` 等任一选择项变化都会清空
+  校验结果，而项目列表是异步回填的 → 断言「提交按钮可用」时要**反复点校验**（把点击放进 waitFor）。
 - 常用回归组合：
   `npx vitest run src/views/dev-assistant/` → **4 文件 / 49 用例**（configParams 18 / multiSelect 9 /
   submitSchedule 9 / FolderSubmitScheduleModal 13）；
@@ -125,6 +168,10 @@
   `npx vitest run src/views/schedule-management/ src/components/editor/` → 14 文件 / 213 用例。
 - `--environment node` 仍更快（省掉 jsdom），但**这不是慢的主因**，shim 才是。
 - 本机内存/负载紧张时（load > 8）整目录跑会被 SIGTERM 137 杀掉；改用 `--maxWorkers=1` 并**逐文件跑**。
+- **load 高时的假失败**：`FolderSubmitScheduleModal.test.tsx` 的「外部 @依赖…DEPENDENT」用
+  `waitFor(..., { timeout: 20000 })`，恰好等于 vitest 默认 testTimeout，负载高（load≈9）时报
+  `20007ms` 失败——**不是真回归**。单独跑该文件必过；用 `--testTimeout=60000` 跑全量即
+  **36 文件 / 627 用例全通过**。判断「环境慢 vs 真坏」用这招最省时间。
 
 ## 本仓编辑约定（踩坑）
 

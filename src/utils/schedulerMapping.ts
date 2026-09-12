@@ -1223,55 +1223,9 @@ export function buildTaskNameToFilePathMap(filePaths: string[]): Map<string, str
   return map;
 }
 
-/** 工作流名称版本后缀的生成原因，用于界面提示 */
-export type WorkflowVersionReason = 'none' | 'first' | 'scheduled' | 'reuse';
-
-/**
- * 计算带版本后缀的工作流名称。
- *
- * 规则（在构建工作流名称时，检查同前缀工作流 {prefix} / {prefix}_v{N}）：
- * 1. 无任何同前缀工作流 → 默认从 {prefix}_v1 开始；
- * 2. 存在同前缀工作流但均未开启定时调度（schedule 非 ONLINE，无论工作流是否上线）
- *    → 版本号与当前（最高）版本一致，不新增版本；
- * 3. 存在已开启定时调度的工作流 → 在已开启定时调度的最大版本号上 +1 生成
- *    {prefix}_v{N+1}（基础名视为版本 0）。
- *
- * @param baseName 基础工作流名称（由文件目录路径生成，提交调度前尚未加版本后缀）
- * @param candidates 同前缀工作流的名称与「是否已开启定时调度」状态（由调用方拉取 DS 判断）
- */
-export function computeVersionedWorkflowName(
-  baseName: string,
-  candidates: { name: string; hasScheduleOnline: boolean }[],
-): { name: string; reason: WorkflowVersionReason } {
-  const prefix = sanitizeDsName(baseName);
-  if (!prefix) return { name: baseName, reason: 'none' };
-  // 转义正则特殊字符，避免目录名中的 . + ( ) 等被当作正则元字符
-  const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const versionRe = new RegExp(`^${escaped}(?:_v(\\d+))?$`);
-
-  let maxScheduledVersion = -1;
-  let maxAnyVersion = -1;
-  for (const c of candidates) {
-    const match = versionRe.exec(c.name || '');
-    if (!match) continue;
-    const version = match[1] ? parseInt(match[1], 10) : 0;
-    if (version > maxAnyVersion) maxAnyVersion = version;
-    if (c.hasScheduleOnline && version > maxScheduledVersion) {
-      maxScheduledVersion = version;
-    }
-  }
-
-  // 存在已开启定时调度的工作流：在已开启调度的最大版本号上 +1
-  if (maxScheduledVersion >= 0) {
-    return { name: `${prefix}_v${maxScheduledVersion + 1}`, reason: 'scheduled' };
-  }
-  // 无任何同前缀工作流：默认从 _v1 开始
-  if (maxAnyVersion < 0) {
-    return { name: `${prefix}_v1`, reason: 'first' };
-  }
-  // 存在同前缀工作流但均未定时调度：版本号与当前（最高）版本一致
-  return { name: maxAnyVersion > 0 ? `${prefix}_v${maxAnyVersion}` : prefix, reason: 'reuse' };
-}
+// 工作流名称的「版本后缀」（`{名称}_v{N}`，按同前缀工作流的定时调度状态自动递增）已移除：
+// 现在由提交调度的「环境」单选决定名称后缀（`{名称}_prod` / `_gray` / `_test`），
+// 见 utils/deployEnv.ts 与 SubmitToSchedulerModal.
 
 export interface ValidationError {
   field: string;

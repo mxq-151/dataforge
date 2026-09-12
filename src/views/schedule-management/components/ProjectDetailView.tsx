@@ -877,6 +877,8 @@ const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
       existingExecutionType={editingWorkflow.mode === 'edit' && editingWorkflow.definition ? editingWorkflow.definition.executionType : undefined}
       existingTimeout={editingWorkflow.mode === 'edit' && editingWorkflow.definition ? editingWorkflow.definition.timeout : undefined}
       readonly={editingWorkflow.readonly ?? (editingWorkflow.mode === 'edit' && editingWorkflow.definition ? parseReleaseState(editingWorkflow.definition.releaseState) === ReleaseState.ONLINE : false)}
+      // 工作流定义不提供手动「校验」入口；保存前的参数校验闸门仍然生效
+      hideToolbarValidate
       workflowDefinitions={workflowDefs.map(d => ({ code: d.code, name: d.name }))}
       workerGroups={workerGroups}
       environments={environments}

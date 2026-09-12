@@ -29,6 +29,50 @@ interface TaskFormProps<T> {
   currentCode: number;
   workflowDefinitions?: { code: number; name: string }[];
   api?: DolphinSchedulerApi;
+  /**
+   * 「应用名称」的自动值（`{project}.{workflow}.{task}`，见 utils/appName.ts）。
+   * 传入时该字段渲染为**只读**并展示此值（提交入口传，保证与工作流基本信息一致）；
+   * 不传时保持可编辑（调度管理里编辑已有工作流，允许沿用历史手工值）。
+   */
+  appName?: string;
+}
+
+/**
+ * 「应用名称」输入项。
+ *
+ * 传了 `autoValue`（由项目 / 工作流 / 任务名派生的拼接值）时只读展示，
+ * 否则退化成普通可编辑输入框 —— 字段位置与文案在两种模式下完全一致。
+ */
+function AppNameField({
+  autoValue, value, placeholder, onChange,
+}: {
+  autoValue?: string;
+  value: string;
+  placeholder: string;
+  onChange: (v: string) => void;
+}) {
+  if (autoValue !== undefined) {
+    return (
+      <div className="tc-field">
+        <label>应用名称</label>
+        <input
+          type="text"
+          value={autoValue}
+          readOnly
+          disabled
+          title={autoValue}
+          data-testid="task-app-name"
+        />
+        <div className="tc-help-text">由「项目.工作流.任务」自动生成，与工作流基本信息保持一致</div>
+      </div>
+    );
+  }
+  return (
+    <div className="tc-field">
+      <label>应用名称</label>
+      <input type="text" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} />
+    </div>
+  );
 }
 
 function LocalParamsEditor({ params, onChange }: { params: DSLocalParam[]; onChange: (p: DSLocalParam[]) => void }) {
@@ -402,7 +446,7 @@ export function DataXForm({ params, onChange }: TaskFormProps<DSDataXTaskParams>
   );
 }
 
-export function SparkForm({ params, onChange, api }: TaskFormProps<DSSparkTaskParams>) {
+export function SparkForm({ params, onChange, api, appName }: TaskFormProps<DSSparkTaskParams>) {
   const set = <K extends keyof DSSparkTaskParams>(key: K, val: DSSparkTaskParams[K]) =>
     onChange({ ...params, [key]: val });
   const isSql = params.programType === 'SQL';
@@ -469,10 +513,12 @@ export function SparkForm({ params, onChange, api }: TaskFormProps<DSSparkTaskPa
           </select>
         </div>
       </div>
-      <div className="tc-field">
-        <label>应用名称</label>
-        <input type="text" value={params.appName} onChange={e => set('appName', e.target.value)} placeholder="Spark Application" />
-      </div>
+      <AppNameField
+        autoValue={appName}
+        value={params.appName}
+        placeholder="Spark Application"
+        onChange={v => set('appName', v)}
+      />
       <div className="tc-row">
         <div className="tc-field">
           <label>Driver核心数</label>
@@ -517,7 +563,7 @@ export function SparkForm({ params, onChange, api }: TaskFormProps<DSSparkTaskPa
   );
 }
 
-export function FlinkForm({ params, onChange, api }: TaskFormProps<DSFlinkTaskParams>) {
+export function FlinkForm({ params, onChange, api, appName }: TaskFormProps<DSFlinkTaskParams>) {
   const set = <K extends keyof DSFlinkTaskParams>(key: K, val: DSFlinkTaskParams[K]) =>
     onChange({ ...params, [key]: val });
   const isSql = params.programType === 'SQL';
@@ -591,10 +637,12 @@ export function FlinkForm({ params, onChange, api }: TaskFormProps<DSFlinkTaskPa
           <option value="&gt;=1.12">&gt;=1.12</option>
         </select>
       </div>
-      <div className="tc-field">
-        <label>应用名称</label>
-        <input type="text" value={params.appName} onChange={e => set('appName', e.target.value)} placeholder="Flink Application" />
-      </div>
+      <AppNameField
+        autoValue={appName}
+        value={params.appName}
+        placeholder="Flink Application"
+        onChange={v => set('appName', v)}
+      />
       <div className="tc-row">
         <div className="tc-field">
           <label>JobManager内存</label>
@@ -639,7 +687,7 @@ export function FlinkForm({ params, onChange, api }: TaskFormProps<DSFlinkTaskPa
   );
 }
 
-export function MrForm({ params, onChange, api }: TaskFormProps<DSMrTaskParams>) {
+export function MrForm({ params, onChange, api, appName }: TaskFormProps<DSMrTaskParams>) {
   const set = <K extends keyof DSMrTaskParams>(key: K, val: DSMrTaskParams[K]) =>
     onChange({ ...params, [key]: val });
 
@@ -673,10 +721,12 @@ export function MrForm({ params, onChange, api }: TaskFormProps<DSMrTaskParams>)
           <input type="text" value={params.mainJar} onChange={e => set('mainJar', e.target.value)} placeholder="hdfs:///path/to/jar" />
         </div>
       )}
-      <div className="tc-field">
-        <label>应用名称</label>
-        <input type="text" value={params.appName} onChange={e => set('appName', e.target.value)} placeholder="MapReduce Application" />
-      </div>
+      <AppNameField
+        autoValue={appName}
+        value={params.appName}
+        placeholder="MapReduce Application"
+        onChange={v => set('appName', v)}
+      />
       <div className="tc-field">
         <label>主参数</label>
         <textarea value={params.mainArgs} onChange={e => set('mainArgs', e.target.value)} placeholder="程序运行参数" rows={3} />

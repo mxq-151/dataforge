@@ -166,4 +166,65 @@ describe('WorkflowDefinitionEditor - 保存前参数校验闸门', () => {
     expect(screen.queryByText('保存')).toBeNull();
     expect(screen.queryByTestId('wf-toolbar-validate')).toBeNull();
   });
+
+  it('默认在工具栏左侧显示返回按钮与工作流名称', () => {
+    renderEditor([node({ code: 11, name: 'a_shell' })]);
+
+    expect(screen.getByTitle('返回')).toBeTruthy();
+    expect(screen.getByText('demo_wf')).toBeTruthy();
+  });
+
+  it('hideToolbarHeader：去掉返回按钮与工作流名称（外层弹窗已展示名称），其余工具栏不受影响', () => {
+    render(
+      <ToastProvider>
+        <WorkflowDefinitionEditor
+          workflowName="demo_wf"
+          description=""
+          existingNodes={[node({ code: 11, name: 'a_shell' })]}
+          existingEdges={[]}
+          hideToolbarHeader
+          onSave={vi.fn()}
+          onClose={() => {}}
+        />
+      </ToastProvider>
+    );
+
+    expect(screen.queryByTitle('返回')).toBeNull();
+    expect(screen.queryByText('demo_wf')).toBeNull();
+    // 左侧占位仍在（保持 space-between 三段布局），缩放/校验/保存照常
+    expect(screen.getByTestId('wf-toolbar-left')).toBeTruthy();
+    expect(screen.getByText('100%')).toBeTruthy();
+    expect(screen.getByTestId('wf-toolbar-validate')).toBeTruthy();
+    expect(screen.getByText('保存')).toBeTruthy();
+  });
+
+  it('hideToolbarValidate：不渲染工具栏「校验」按钮，但保存前的参数校验闸门仍然生效', () => {
+    const onSave = vi.fn();
+    render(
+      <ToastProvider>
+        <WorkflowDefinitionEditor
+          workflowName="demo_wf"
+          description=""
+          existingNodes={[
+            node({ code: 11, name: 'bad_sql', taskType: 'SQL', taskParams: JSON.stringify({ sql: '', localParams: [] }) }),
+          ]}
+          existingEdges={[]}
+          hideToolbarValidate
+          onSave={onSave}
+          onClose={() => {}}
+        />
+      </ToastProvider>
+    );
+
+    // 按钮没了，保存仍在
+    expect(screen.queryByTestId('wf-toolbar-validate')).toBeNull();
+    expect(screen.queryByText('校验')).toBeNull();
+    expect(screen.getByText('保存')).toBeTruthy();
+
+    // 去掉的只是手动入口：点保存仍会被闸门拦下，onSave 不被调用
+    fireEvent.click(screen.getByText('保存'));
+    expect(screen.getByText('任务参数校验未通过')).toBeTruthy();
+    expect(screen.queryByText('保存工作流')).toBeNull();
+    expect(onSave).not.toHaveBeenCalled();
+  });
 });
