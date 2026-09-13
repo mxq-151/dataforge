@@ -6,6 +6,8 @@ import type {
   DSWorkflowEdge,
   DSWorkflowGlobalParam,
   DolphinSchedulerApi,
+  DSScheduleForm,
+  DSScheduleParam,
 } from '../types/dolphinscheduler';
 import {
   ReleaseState,
@@ -643,11 +645,102 @@ export function createRealDolphinSchedulerApi(apiUrl: string, token: string): Do
       list(projectCode, params) {
         return dsRequest(`/projects/${projectCode}/schedules`, {
           method: 'GET',
-          params: toQueryParams(params as Record<string, unknown>),
+          params: toQueryParams(params as unknown as Record<string, unknown>),
         });
+      },
+
+      create(projectCode, workflowDefinitionCode, form) {
+        return dsRequest(`/projects/${projectCode}/schedules`, {
+          method: 'POST',
+          formData: buildScheduleFormData(workflowDefinitionCode, form),
+        });
+      },
+
+      update(projectCode, scheduleId, workflowDefinitionCode, form) {
+        return dsRequest(`/projects/${projectCode}/schedules/${scheduleId}`, {
+          method: 'PUT',
+          formData: buildScheduleFormData(workflowDefinitionCode, form),
+        });
+      },
+
+      delete(projectCode, scheduleId) {
+        return dsRequest(`/projects/${projectCode}/schedules/${scheduleId}`, { method: 'DELETE' });
+      },
+
+      online(projectCode, scheduleId) {
+        return dsRequest(`/projects/${projectCode}/schedules/${scheduleId}/online`, { method: 'POST' });
+      },
+
+      offline(projectCode, scheduleId) {
+        return dsRequest(`/projects/${projectCode}/schedules/${scheduleId}/offline`, { method: 'POST' });
+      },
+
+      /**
+       * 预览 crontab 的下 N 次触发时间。
+       *
+       * 该接口在 DS 各版本里的返回形态不统一：多数版本是 `Result.data = string[]`，
+       * 也有版本直接返回裸数组；这里统一归一化成 `DolphinSchedulerResponse<string[]>`，
+       * 让调用方只处理一种形状（渲染层另有本地推导作为兜底）。
+       */
+      async preview(projectCode, param) {
+        const raw: any = await dsRequest(`/projects/${projectCode}/schedules/preview`, {
+          method: 'POST',
+          body: param,
+        });
+        if (Array.isArray(raw)) {
+          return { code: 0, msg: 'success', data: raw as string[] };
+        }
+        const list = raw?.data;
+        if (Array.isArray(list)) {
+          return { code: raw.code ?? 0, msg: raw.msg ?? 'success', data: list as string[] };
+        }
+        if (Array.isArray(list?.totalList)) {
+          return { code: raw.code ?? 0, msg: raw.msg ?? 'success', data: list.totalList as string[] };
+        }
+        return { code: raw?.code ?? 0, msg: raw?.msg ?? 'success', data: [] };
       },
     },
   };
+}
+
+/**
+ * 组装 DS 定时调度接口的表单参数。
+ *
+ * DS 把「生效区间 + crontab + 时区」这四项打包成一个 `schedule` JSON 串，
+ * 其余调度属性平铺在表单里，两者混在同一个 form-data 中提交
+ * （见 ScheduleCreateRequest#getScheduleParam）。
+ */
+function buildScheduleFormData(
+  workflowDefinitionCode: number,
+  form: DSScheduleForm,
+): Record<string, string> {
+  const param: DSScheduleParam = {
+    startTime: form.startTime,
+    endTime: form.endTime,
+    crontab: form.crontab.trim(),
+    timezoneId: form.timezoneId,
+  };
+
+  const data: Record<string, string> = {
+    workflowDefinitionCode: String(workflowDefinitionCode),
+    schedule: JSON.stringify(param),
+    failureStrategy: form.failureStrategy || 'CONTINUE',
+    warningType: form.warningType || 'NONE',
+    warningGroupId: String(form.warningGroupId ?? 0),
+    workflowInstancePriority: form.workflowInstancePriority || 'MEDIUM',
+    workerGroup: form.workerGroup || 'default',
+  };
+
+  // -1 表示「默认环境」，DS 侧用 environmentCode 缺省即代表默认，这里不传更干净；
+  // 但租户必须显式传（DS 缺省会取当前用户名，语义上不对）。
+  if (form.environmentCode !== null && form.environmentCode !== undefined) {
+    data.environmentCode = String(form.environmentCode);
+  }
+  if (form.tenantCode) {
+    data.tenantCode = form.tenantCode;
+  }
+
+  return data;
 }
 
 export async function testDolphinSchedulerConnection(apiUrl: string, token: string): Promise<{ success: boolean; message: string }> {

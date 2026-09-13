@@ -204,6 +204,69 @@ export interface DSTriggerWorkflowParams {
   complementRun?: boolean;
 }
 
+/**
+ * 定时调度（Schedule）新建 / 更新表单。
+ *
+ * 字段与 DS 的 ScheduleCreateRequest 对齐：DS 侧把「时间相关的四个字段」
+ * （startTime / endTime / crontab / timezoneId）打包成 schedule JSON 参数，
+ * 其余字段作为表单参数平铺提交（见 api/dolphinscheduler.ts 的 schedule.create）。
+ * 这里保持表单视角的扁平结构，打包动作收敛在 API 层。
+ */
+export interface DSScheduleForm {
+  /** Quartz 风格 6/7 段表达式，如 `0 0 2 * * ?` */
+  crontab: string;
+  /** 生效开始时间 `yyyy-MM-dd HH:mm:ss` */
+  startTime: string;
+  /** 生效结束时间 `yyyy-MM-dd HH:mm:ss` */
+  endTime: string;
+  /** 时区，如 Asia/Shanghai */
+  timezoneId: string;
+  failureStrategy: FailureStrategy;
+  warningType: WarningType;
+  /** 告警组 id；通知策略为「都不发」时无意义 */
+  warningGroupId: number | null;
+  workflowInstancePriority: Priority;
+  workerGroup: string;
+  environmentCode: number | null;
+  tenantCode: string | null;
+}
+
+/** 定时调度列表查询参数 */
+export interface DSScheduleListParams {
+  pageNo: number;
+  pageSize: number;
+  workflowDefinitionCode?: number;
+  searchVal?: string;
+}
+
+/** 定时调度时间预览请求体（对应 DS 的 ScheduleParam） */
+export interface DSScheduleParam {
+  startTime: string;
+  endTime: string;
+  crontab: string;
+  timezoneId: string;
+}
+
+/** 默认时区：与 DolphinScheduler 新建定时时的默认值保持一致 */
+export const DEFAULT_SCHEDULE_TIMEZONE = 'Asia/Shanghai';
+
+/** 可选时区列表（沿用 DS 前端提供的常用时区） */
+export const SCHEDULE_TIMEZONE_OPTIONS: { value: string; label: string }[] = [
+  { value: 'Asia/Shanghai', label: '(GMT+08:00) Asia/Shanghai' },
+  { value: 'Asia/Hong_Kong', label: '(GMT+08:00) Asia/Hong_Kong' },
+  { value: 'Asia/Tokyo', label: '(GMT+09:00) Asia/Tokyo' },
+  { value: 'Asia/Seoul', label: '(GMT+09:00) Asia/Seoul' },
+  { value: 'Asia/Singapore', label: '(GMT+08:00) Asia/Singapore' },
+  { value: 'Asia/Kolkata', label: '(GMT+05:30) Asia/Kolkata' },
+  { value: 'Asia/Dubai', label: '(GMT+04:00) Asia/Dubai' },
+  { value: 'Europe/London', label: '(GMT+00:00) Europe/London' },
+  { value: 'Europe/Paris', label: '(GMT+01:00) Europe/Paris' },
+  { value: 'Europe/Moscow', label: '(GMT+03:00) Europe/Moscow' },
+  { value: 'America/New_York', label: '(GMT-05:00) America/New_York' },
+  { value: 'America/Los_Angeles', label: '(GMT-08:00) America/Los_Angeles' },
+  { value: 'UTC', label: '(GMT+00:00) UTC' },
+];
+
 export type DSTaskType =
   | 'SHELL'
   | 'SUB_PROCESS'
@@ -1007,7 +1070,13 @@ export interface DolphinSchedulerApi {
     createDir(data: { type: string; name: string; currentDir: string; description?: string }): Promise<DolphinSchedulerResponse<null>>;
   };
   schedule: {
-    list(projectCode: number, params: { pageNo: number; pageSize: number; workflowDefinitionCode?: number; searchVal?: string }): Promise<DolphinSchedulerResponse<PageResult<DSSchedule>>>;
+    list(projectCode: number, params: DSScheduleListParams): Promise<DolphinSchedulerResponse<PageResult<DSSchedule>>>;
+    create(projectCode: number, workflowDefinitionCode: number, form: DSScheduleForm): Promise<DolphinSchedulerResponse<null>>;
+    update(projectCode: number, scheduleId: number, workflowDefinitionCode: number, form: DSScheduleForm): Promise<DolphinSchedulerResponse<null>>;
+    delete(projectCode: number, scheduleId: number): Promise<DolphinSchedulerResponse<null>>;
+    online(projectCode: number, scheduleId: number): Promise<DolphinSchedulerResponse<null>>;
+    offline(projectCode: number, scheduleId: number): Promise<DolphinSchedulerResponse<null>>;
+    preview(projectCode: number, param: DSScheduleParam): Promise<DolphinSchedulerResponse<string[]>>;
   };
 }
 

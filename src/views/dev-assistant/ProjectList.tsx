@@ -5,27 +5,18 @@ import type { ProjectInfo, CreateProjectDTO } from '../../api/devProject';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../components/Toast';
 import { validateName, validateCode } from '../../utils/validation';
+import { hasPlatformAdminRole } from '../../utils/roleAccess';
 import './ProjectList.css';
 
 interface ProjectListProps {
   onSelectProject: (project: ProjectInfo) => void;
 }
 
-const PROJECT_MANAGE_ROLE_NAMES = ['ROLE_ADMIN', 'ADMIN', 'SUPER_ADMIN', '超级管理员', 'ROLE_OPS_ENGINEER', 'OPS_ENGINEER', '运维工程师'];
-
-function canManageProject(roles: { roleCode: string }[] | undefined): boolean {
-  if (!roles || roles.length === 0) return false;
-  return roles.some(role =>
-    PROJECT_MANAGE_ROLE_NAMES.some(allowed =>
-      role.roleCode === allowed || role.roleCode?.toUpperCase() === allowed.toUpperCase()
-    )
-  );
-}
-
 const ProjectList: React.FC<ProjectListProps> = ({ onSelectProject }) => {
   const toast = useToast();
   const { user } = useAuth();
-  const canManage = canManageProject(user?.roles);
+  // 项目管理（增删项目）与定时调度共用同一套「超级管理员 + 运维人员」准入判定
+  const canManage = hasPlatformAdminRole(user?.roles);
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

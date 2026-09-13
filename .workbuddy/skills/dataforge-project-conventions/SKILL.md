@@ -1,6 +1,6 @@
 ---
 name: dataforge-project-conventions
-description: DataForge（Tauri + React 数仓开发平台）项目的实现细节与踩坑约定。当任务涉及提交调度、配置参数、程序参数提取、工作流保存闸门、x6 画布测试、AI 对话面板、回滚/删除安全闸门、opencode sidecar 或模型上下文窗口判定时加载本 skill 获取准确的函数名、文件行号与既有约定。
+description: DataForge（Tauri + React 数仓开发平台）项目的实现细节与踩坑约定。当任务涉及提交调度、**定时调度/Schedule/Quartz crontab**、**角色准入（超级管理员/运维人员）**、配置参数、程序参数提取、工作流保存闸门、x6 画布测试、AI 对话面板、回滚/删除安全闸门、opencode sidecar 或模型上下文窗口判定时加载本 skill 获取准确的函数名、文件行号与既有约定。
 agent_created: true
 ---
 
@@ -15,7 +15,10 @@ agent_created: true
   `readFileSync` 变一次同步 IPC，jsdom 788 个文件 ⇒ `import 'jsdom'` 从 0.5s 变 96s。
   指纹：CPU 占用 ~1%（纯等待）。用户自己的 Terminal 无此注入。
   详见 skill `node-run-slowdown-diagnosis`。
-- 回归基线（2026-09-13 12:00 全量复跑）：**48 文件 / 797 例全绿**。
+- 回归基线（2026-09-13 15:50 全量复跑）：**52 文件 / 861 例**（48 文件 / 797 例为 12:00 的旧基线）。
+  其中 `src/views/dev-assistant/FolderSubmitScheduleModal.test.tsx` 的「外部 @依赖」例在
+  **load 9.86**（落在下面那条 7~10 误报区）时也复现超时；已用 `git stash push -u` 在**原始状态**
+  复跑确认同样失败 ⇒ 是 load 误报，不是回归。**下结论前先 `uptime` 看 load。**
 - load 高时加 `--testTimeout=60000`。`FolderSubmitScheduleModal` 的「外部 @依赖」用例在 load≈7~10 时
   `waitFor` 超时（`createWithTasks` 0 次调用）。该文件与 `programArgs` / `useProgramRunner` 无引用关系
   （后者只被 DevAssistantView 链引用），已用 `git stash push <paths>` 在改动前状态对比排除；load 回落即过。
@@ -205,3 +208,80 @@ agent_created: true
   （后者见 status 非空即跳过）。只删一两个文件不该被「自动还原」。
 - 恢复：`git -C <worktree> checkout -- .`（index 干净时无损）。若报 `index.lock: File Exists`，
   先 `ps aux | grep [g]it` + `lsof` 确认无持有者，再把 0 字节陈旧锁 **`mv` 走**（不要 `rm`）。
+
+## 9. 定时调度（DolphinScheduler Schedule）
+
+入口在 `views/schedule-management/components/ProjectDetailView.tsx` 工作流列表行内的「定时」按钮
+（原为 `setError('定时功能开发中...')` 占位）。实现三件套：
+`components/ScheduleModal.tsx`（弹窗）、`utils/crontab.ts`（Quartz 表达式纯函数）、
+`utils/roleAccess.ts`（角色准入）。
+
+### 准入：只有超级管理员与运维人员
+
+- **唯一真源** `src/utils/roleAccess.ts`：
+  `PLATFORM_ADMIN_ROLE_NAMES` = `ROLE_ADMIN / ADMIN / SUPER_ADMIN / 超级管理员 /`
+  `ROLE_OPS_ENGINEER / OPS_ENGINEER / 运维工程师`；`hasPlatformAdminRole(roles)`（大小写不敏感）；
+  `canManageSchedule(user)` = `isSuperAdmin || hasPlatformAdminRole(roles)`。
+  **`dev-assistant/ProjectList.tsx` 已改为复用这里**（原先自带一份同内容数组 + `canManageProject()`，
+  别再复制第三份）。
+- 门禁是**双重防御**：父组件按钮 `disabled` + `title` 写原因（沿用 ProjectList「无删除权限」的
+  既有模式，**弹窗内再拦一次提交**）。
+- `ProjectDetailView` 现在 `useAuth()`；它的测试（`ScheduleManagementPanel.*.test.tsx`）必须
+  `vi.mock('../../contexts/AuthContext')`，否则 `useAuth` 抛错。
+
+### API（DS 3.2 的 form-data 风格 v1 接口）
+
+`src/api/dolphinscheduler.ts::schedule`，全都走既有的 `dsRequest`：
+
+| 动作 | 端点 | 关键点 |
+|---|---|---|
+| 查已有 | `GET /projects/{pc}/schedules` | 带 `workflowDefinitionCode` 过滤；**一个工作流只应有一条** |
+| 新建 | `POST /projects/{pc}/schedules` | form-data |
+| 更新 | `PUT /projects/{pc}/schedules/{id}` | 同新建参数 |
+| 删除 | `DELETE /projects/{pc}/schedules/{id}` | |
+| 上/下线 | `POST .../{id}/online` `.offline` | |
+| 预览 | `POST .../schedules/preview` | JSON body = `ScheduleParam` |
+
+form-data 的组装在 `buildScheduleFormData()`：**「生效区间+crontab+时区」四项打包成
+`schedule` JSON 串**，其余字段平铺。踩坑：
+- 优先级字段是 **`workflowInstancePriority`**（3.2 改名），不是 `processInstancePriority`；
+- `environmentCode` 用「不传」表达默认环境，别传 -1；
+- `tenantCode` 必须显式传（DS 缺省会取当前用户名）；
+- preview 的返回形态跨版本不一致（`Result.data` / 裸数组 / `data.totalList`），
+  已在 API 层归一化成 `DolphinSchedulerResponse<string[]>`。
+- **DS 硬约束**：定时上线要求关联工作流已上线（否则 `WORKFLOW_DEFINITION_NOT_RELEASE`）；
+  重复创建返回 `SCHEDULE_ALREADY_EXISTS`；**启用状态下改 crontab 可能被拒，需先停用**。
+  前两条已拦下并提示，第三条只做非阻断提示。
+
+### crontab 是 Quartz 方言，不是 Linux 5 段
+
+`src/utils/crontab.ts`（纯函数，可放心加边界用例）：
+`parseCrontab / validateCrontab / describeCrontab / nextFireTimes / isLocallyComputable /
+defaultScheduleRange / validateScheduleRange / formatScheduleDateTime / zonedParts`。
+
+- 6 或 7 段（秒 分 时 日 月 周 [年]）；**周字段 1=周日**（JS `getDay()` 是 0=周日，差 1）；
+- **「日」「周」必须有一个写 `?`**，且不能同时为 `*` —— Quartz 硬约束，照搬 Linux crontab 必踩；
+- 只支持 `* ? , - /` 与日字段 `L`；`W` / `#` / `nL` **语法接受但置 `needsServerPreview`**，
+  `nextFireTimes` 直接返回空数组（宁可让用户去问 DS，也不本地算错时间），由弹窗引导到
+  「从调度系统预览」；
+- 时区：`Intl.DateTimeFormat.formatToParts` 取墙上时间（`hourCycle:'h23'`，别用 `hour12:false`
+  单独控制，会出现 24 点），非法时区名回退本地时区而不是抛错。
+- **性能坑（必读）**：逐分钟空转会被「2 月 30 日」这类永不成立的表达式放大到 **2.5s**（输入框实时
+  预览直接卡 UI）。现改为**日期不匹配时按天跳到目标时区次日 00:00**，最坏 366 次迭代，
+  整个测试文件从 2.5s → 78ms。两个必须守住的细节：
+  1. `wallTimeToUtc()` 迭代逼近时 **偏差必须带上时分秒一起比对**（`Date.UTC(y,m,d,h,mi,s)`）。
+     只比日期会「看起来已收敛」，返回值整体偏移一个时区偏移量 —— 曾让跳跃落到当天 08:00、
+     漏掉凌晨触发点；
+  2. 跨年那一刻**不能用 `+24h` 硬跳**，否则会越过年初的触发点（用例：`0 0 0 1 1 ? 2027`）。
+
+### 弹窗约定
+
+- 表单状态用 `DSScheduleForm`（扁平视角），打包成 DS 参数的动作只在 API 层做。
+- 逐字符**不发请求**（与 `SearchBar` 一致）：本地校验/描述/预览走纯函数；
+  「从调度系统预览」按钮才调 `schedule.preview`，并把结果标为「来源：调度系统」。
+- `data-testid`：`schedule-crontab / schedule-warning-type / schedule-warning-group /
+  schedule-save / schedule-status / cron-desc / cron-preview`（表单里 select 多，靠 testid 断言才稳）。
+- 通知策略非「都不发」时**必须选告警组**（保存按钮禁用）；选「都不发」则提交时
+  `warningGroupId` 置 null。默认区间「立即生效 + `2099-12-31 23:59:59`」。
+- 样式：基础类在 `ScheduleManagementPanel.css`（要显式 import），定时专有的在
+  `components/ScheduleModal.css`。该弹窗**不用 `useToast`**，测试无需 `ToastProvider`。

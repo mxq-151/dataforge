@@ -17,6 +17,9 @@ import {
 import WorkflowDefinitionEditor, { TriggerWorkflowModal } from './WorkflowDefinitionEditor';
 import WorkflowInstanceDetail from './WorkflowInstanceDetail';
 import TaskInstanceDetailView from './TaskInstanceDetail';
+import ScheduleModal from './ScheduleModal';
+import { useAuth } from '../../../contexts/AuthContext';
+import { canManageSchedule } from '../../../utils/roleAccess';
 import {
   PAGE_SIZE,
   PROJECT_SUB_TAB_META,
@@ -55,7 +58,14 @@ const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
   alertGroups,
   onBack,
 }) => {
+  const { user } = useAuth();
+  /** 定时调度只有超级管理员与运维人员可配置：入口按钮对其它角色禁用 */
+  const canSchedule = canManageSchedule(user);
+
   const [projectSubTab, setProjectSubTab] = useState<ProjectSubTab>('workflowDefinitions');
+
+  /** 正在配置定时的工作流定义；非 null 时渲染定时弹窗 */
+  const [schedulingWorkflow, setSchedulingWorkflow] = useState<DSWorkflowDefinition | null>(null);
 
   const [editingWorkflow, setEditingWorkflow] = useState<{
     mode: 'create' | 'edit';
@@ -648,7 +658,12 @@ const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                     >
                       {parseReleaseState(d.releaseState) === ReleaseState.ONLINE ? <ArrowDownCircle size={12} /> : <ArrowUpCircle size={12} />}
                     </button>
-                    <button className="sm-btn sm-btn--ghost sm-btn--xs" title="定时" onClick={() => setError('定时功能开发中...')}>
+                    <button
+                      className="sm-btn sm-btn--ghost sm-btn--xs"
+                      title={canSchedule ? '定时' : '无定时调度权限（仅超级管理员与运维人员）'}
+                      disabled={!canSchedule}
+                      onClick={() => setSchedulingWorkflow(d)}
+                    >
                       <Clock size={12} />
                     </button>
                     <button className="sm-btn sm-btn--ghost sm-btn--xs" title="复制" onClick={() => handleCopyWorkflowDef(d)}>
@@ -985,6 +1000,19 @@ const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
           environments={environments}
           alertGroups={alertGroups}
           tenants={tenants}
+        />
+      )}
+      {schedulingWorkflow && (
+        <ScheduleModal
+          api={api}
+          projectCode={project.code}
+          workflow={schedulingWorkflow}
+          workerGroups={workerGroups}
+          environments={environments}
+          alertGroups={alertGroups}
+          tenants={tenants}
+          onClose={() => setSchedulingWorkflow(null)}
+          onChanged={fetchWorkflowDefs}
         />
       )}
     </div>

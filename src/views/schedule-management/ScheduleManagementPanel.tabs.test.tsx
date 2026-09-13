@@ -46,6 +46,9 @@ const h = vi.hoisted(() => {
     environment: { list: vi.fn(async () => page([])) },
     alertGroup: { list: vi.fn(async () => page([])) },
     workerGroup: { list: vi.fn(async () => page([])) },
+    // ProjectDetailView 挂载即拉租户，缺这一项会让每个用例都往 stderr 里刷一条
+    // 「Cannot read properties of undefined」——噪音会掩盖真正的问题，因此补上桩
+    tenant: { list: vi.fn(async () => page([])) },
   };
 
   return {
