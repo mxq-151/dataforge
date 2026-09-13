@@ -139,14 +139,23 @@ const AIPanel: React.FC<AIPanelProps> = ({ chatBackend, llmModels, onRollback, o
     setSelectedLLMId(m ? m.id : null);
   }, []);
 
-  // ── 任务类型切换：自动创建新对话 ──
-  // 用户切换任务类型时，先更新 taskType（决定下一会话的系统指令），
-  // 再 resetState 清空当前会话，下一次 sendMessage 会以新 taskType 创建会话。
+  // ── 任务类型切换：开发助手保留上下文，数据探索维持新建 ──
+  // 任务类型的系统指令是「逐轮下发」的：useOpencodeChat 每次 sendMessage 都重算
+  // getDeveloperInstructions(roleType) 并作为 session.prompt 的 system 传入；服务端只取
+  // 「最后一条用户消息」的 system 拼进系统提示（opencode session/llm/request.ts::prepare
+  // → input.user.system），历史消息的 system 不参与回放。
+  // 因此开发助手这里只更新 taskType：新角色从下一轮生效，之前的对话与工具调用结果全部保留，
+  // 智能体仍能看到「之前做了什么」。不要调用 newSession() —— 那会清空 messages 并开新会话。
+  // 需要真正开一段全新对话时，走头部的「新建会话」按钮（SessionSwitcher.onNewSession）。
+  //
+  // 数据探索例外：该模块的指令在 getDeveloperInstructions 里按 moduleName 短路返回
+  // （opencodeInstructions.ts:687），与 roleType 无关 ⇒ 保留上下文没有收益；而 newSession()
+  // 同时承担「新建时间戳工作目录」（会话=标签页）的语义，去掉会破坏该模型。故维持原行为。
   const handleTaskTypeChange = useCallback((newType: string) => {
     if (newType === taskType) return;
     setTaskType(newType);
-    newSession();
-  }, [taskType, setTaskType, newSession]);
+    if (moduleId === 'data-explore') newSession();
+  }, [taskType, setTaskType, newSession, moduleId]);
 
   const [panelWidth, setPanelWidth] = useState(() => {
     const saved = localStorage.getItem('ai-panel-width');
