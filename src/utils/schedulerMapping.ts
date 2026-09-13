@@ -1,6 +1,6 @@
 import type { DSTaskType, DSWorkflowTaskNode, DSWorkflowEdge, DSWorkflowGlobalParam, DSLocalParam, DSDependentTaskParams } from '../types/dolphinscheduler';
 import { getDefaultTaskParams, ExecutionType, Priority, TASK_CATEGORIES, TASK_TYPE_LABELS } from '../types/dolphinscheduler';
-import { parseFileHeader } from './index';
+import { parseFileHeader } from './fileHeader';
 import { deriveTaskParamsFromHeader, type HeaderParamHit } from './headerTaskParams';
 import { toRelativePath, normalizePath } from './pathUtils';
 

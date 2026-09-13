@@ -4,9 +4,9 @@ import { Store } from './bridge/store';
  * 会话配置：后端地址与鉴权凭据。
  *
  * 原先这两个职责寄居在 api/index.ts（一个同时承载请求发送、签名、错误映射的胖模块），
- * 导致 utils 层为拿一个 host 就得反向依赖整个 api 层（见 utils/historyIsolation.ts、
+ * 导致下层模块为拿一个 host 就得反向依赖整个 api 层（见 features/execHistory/historyIsolation.ts、
  * utils/commitSummary.ts）。会话配置是比 api 更底层的基础设施，单独成模块后：
- *   utils  → session  ✅
+ *   下层模块 → session  ✅
  *   api    → session  ✅
  * api/index.ts 原样 re-export 这四个函数，既有引用无需改动。
  */

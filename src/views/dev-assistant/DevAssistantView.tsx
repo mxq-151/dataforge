@@ -14,7 +14,8 @@ import useDevProjectConfig from '../../hooks/useDevProjectConfig';
 import { useAuth } from '../../contexts/AuthContext';
 import { useDataSourceCache } from '../../contexts/DataSourceContext';
 import { StatusBarInfo, Tab, FileNode } from '../../types';
-import { generateId, generateFileHeader } from '../../utils';
+import { generateId } from '../../utils';
+import { generateFileHeader } from '../../utils/fileHeader';
 import { getBaseName, splitPath, toNativePath, samePath, isPathUnder, pathKey, joinPath } from '../../utils/pathUtils';
 import {
   assessRollbackSafety,

@@ -14,7 +14,7 @@
  * 那条链路仍按空格拆分（见 useProgramRunner 的 splitArgs）。
  */
 
-import { parseFileHeader } from './index';
+import { parseFileHeader } from './fileHeader';
 
 export interface ProgramParamItem {
   id?: string;
@@ -387,3 +387,38 @@ export function mergeExtractedKeys(
   for (const key of missing) merged.push(createParamRow(key, ''));
   return merged;
 }
+
+/** 引擎侧默认任务参数：@任务参数 表单打开时按引擎预填的基础行 */
+const ENGINE_DEFAULT_TASK_PARAMS: Record<string, ProgramParamItem[]> = {
+  kyuubi: [
+    { id: '_eng_ky_1', key: 'engine', value: 'kyuubi' },
+    { id: '_eng_ky_2', key: 'kyuubi.url', value: '' },
+    { id: '_eng_ky_3', key: 'kyuubi.user', value: '' },
+    { id: '_eng_ky_4', key: 'queue.name', value: 'default' },
+    { id: '_eng_ky_5', key: 'spark.executor.cores', value: '2' },
+    { id: '_eng_ky_6', key: 'spark.executor.memory', value: '4g' },
+    { id: '_eng_ky_7', key: 'spark.executor.instances', value: '2' },
+    { id: '_eng_ky_8', key: 'spark.driver.memory', value: '2g' },
+  ],
+  spark: [
+    { id: '_eng_sp_2', key: 'deploy.mode', value: 'client' },
+    { id: '_eng_sp_3', key: 'spark.executor.cores', value: '1' },
+    { id: '_eng_sp_4', key: 'spark.executor.memory', value: '4g' },
+    { id: '_eng_sp_5', key: 'spark.executor.instances', value: '2' },
+    { id: '_eng_sp_6', key: 'spark.driver.memory', value: '2g' },
+    { id: '_eng_sp_7', key: 'spark.sql.shuffle.partitions', value: '200' },
+    { id: '_eng_sp_8', key: 'spark.dynamicAllocation.enabled', value: 'true' },
+  ],
+  flink: [
+    { id: '_eng_fl_1', key: 'parallelism.default', value: '4' },
+    { id: '_eng_fl_2', key: 'jobmanager.memory.process.size', value: '1600m' },
+    { id: '_eng_fl_3', key: 'taskmanager.memory.process.size', value: '1728m' },
+    { id: '_eng_fl_4', key: 'taskmanager.numberOfTaskSlots', value: '1' },
+    { id: '_eng_fl_5', key: 'restart-strategy.type', value: 'fixed-delay' },
+    { id: '_eng_fl_6', key: 'restart-strategy.fixed-delay.attempts', value: '3' },
+  ],
+};
+
+export const getEngineDefaultTaskParams = (engine: string): ProgramParamItem[] | null => {
+  return ENGINE_DEFAULT_TASK_PARAMS[engine.trim().toLowerCase()] || null;
+};

@@ -6,7 +6,7 @@ import type { CodeFileMapping, SavedConfig, ValidationError } from '../../utils/
 import { buildWorkflowFromCodeFile, validateSubmission, getAvailableTaskTypes, mapCodeFileToTask, sanitizeDsName, validateYarnJobName, buildDependentTaskNode, buildJarsArg, parseDependencyHeader, reconcileWorkflowDependencies, findDependencyCycle, dependentNodeName, layoutWorkflowByDependency, type ResolvedDependency, type HeaderDependency } from '../../utils/schedulerMapping';
 import { type CompileResult } from '../../services/compileService';
 import { unifiedCompile } from '../../services/unifiedCompile';
-import { validateFileHeader, parseFileHeader } from '../../utils/index';
+import { validateFileHeader, parseFileHeader } from '../../utils/fileHeader';
 import { splitPath, getBaseName } from '../../utils/pathUtils';
 import { useToast } from '../../components/Toast';
 import DeployEnvRadio from './DeployEnvRadio';

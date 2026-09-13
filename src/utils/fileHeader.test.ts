@@ -16,7 +16,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { generateFileHeader, parseFileHeader, validateFileHeader } from './index';
+import { generateFileHeader, parseFileHeader, validateFileHeader } from './fileHeader';
 import { extractProgramParams } from './programArgs';
 import { mapCodeFileToTask } from './schedulerMapping';
 import { deriveTaskParamsFromHeader } from './headerTaskParams';

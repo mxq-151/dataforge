@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { FileNode } from '../types';
-import { generateId, generateFileHeader } from '../utils';
+import { generateId } from '../utils';
+import { generateFileHeader } from '../utils/fileHeader';
 import { notifyWatchedFilesChanges, WatchChangeType, pathToUri } from '../services/lsp';
 import { getBaseName, getDirName, isPathUnder, joinPath, toRelativePath } from '../utils/pathUtils';
 import { TRASH_DIR_NAME, formatTrashStamp, uniqueTrashName } from '../utils/rollbackSafety';

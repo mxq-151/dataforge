@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, basename } from 'node:path';
+import { homedir } from 'node:os';
 import {
   parseDependencyHeader,
   reconcileWorkflowDependencies,
@@ -11,12 +12,12 @@ import {
   type ResolvedDependency,
   type HeaderDependency,
 } from './schedulerMapping';
-import { parseFileHeader } from './index';
+import { parseFileHeader } from './fileHeader';
 import type { DSWorkflowTaskNode, DSWorkflowEdge, DSWorkflowGlobalParam } from '../types/dolphinscheduler';
 
 /**
  * 模拟「用户乱序提交调度」验证脚本（临时文件）：
- * 以 /Users/mxq/.dataforge/localhost_8082/code/test_project/src/test_project 为本地项目，
+ * 以 ~/.dataforge/<host>/code/test_project/src/test_project 为本地项目（host 随部署环境自动探测），
  * 完整模拟 SubmitToSchedulerModal.handleSubmit 的提交流程。
  *
  * 与真实调度服务对齐的接口闭环：
@@ -31,7 +32,20 @@ import type { DSWorkflowTaskNode, DSWorkflowEdge, DSWorkflowGlobalParam } from '
  * 多个随机乱序 + 完全逆序提交后，断言最终依赖图与代码头 @依赖 声明完全一致，
  * 且每种提交顺序的结果完全一致，并输出最终依赖关系图。
  */
-const PROJECT_ROOT = '/Users/mxq/.dataforge/localhost_8082/code/test_project/src/test_project';
+/** 定位本地 test_project：.dataforge/<host>/code/test_project/src/test_project。
+ *  host 目录随部署环境而异（localhost_8082 / 192.168.1.110_8082 等），逐个探测取第一个命中；
+ *  都未命中时回退默认 host，让测试以 ENOENT 形式失败（与未修改前行为一致）。 */
+function resolveProjectRoot(): string {
+  const base = join(homedir(), '.dataforge');
+  const defaultRoot = join(base, 'localhost_8082', 'code', 'test_project', 'src', 'test_project');
+  if (!existsSync(base)) return defaultRoot;
+  for (const host of readdirSync(base)) {
+    const candidate = join(base, host, 'code', 'test_project', 'src', 'test_project');
+    if (existsSync(candidate)) return candidate;
+  }
+  return defaultRoot;
+}
+const PROJECT_ROOT = resolveProjectRoot();
 const PROJECT_CODE = 9527;
 
 // —— 与 SubmitToSchedulerModal 中一致的工具（网格布局/节点构造） ——
@@ -97,7 +111,8 @@ function scanLocalFiles(root: string): LocalFile[] {
   for (const full of walkFiles(root)) {
     const ext = basename(full).includes('.') ? basename(full).split('.').pop()! : '';
     if (!CODE_EXTS.has(ext)) continue;
-    const rel = relative(root, full);
+    // 统一为 '/' 分隔：Windows 下 relative() 返回 '\' 分隔路径，会破坏 ads/code/ 前缀过滤与目录切分
+    const rel = relative(root, full).replace(/\\/g, '/');
     const rawTaskName = basename(full).replace(/\.[^.]+$/, '');
     const dirPath = rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/')) : '';
     const header = parseFileHeader(readFileSync(full, 'utf-8'));

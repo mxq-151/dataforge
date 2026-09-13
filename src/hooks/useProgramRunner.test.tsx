@@ -13,7 +13,7 @@ const mocks = vi.hoisted(() => ({
   unifiedCompile: vi.fn(),
 }));
 
-vi.mock('../services/taskExecutionService', () => ({
+vi.mock('../features/execHistory', () => ({
   TaskExecutionService: class {
     subscribe() { return () => {}; }
     isActive() { return false; }
@@ -22,6 +22,10 @@ vi.mock('../services/taskExecutionService', () => ({
     stop() { /* noop */ }
     destroy() { /* noop */ }
   },
+  buildScopedStorageKey: (base: string, user: string) => `${base}::${user}`,
+  ensureHistoryStore: async () => {},
+  readHistory: () => [],
+  writeHistory: () => {},
 }));
 
 vi.mock('../services/unifiedCompile', () => ({

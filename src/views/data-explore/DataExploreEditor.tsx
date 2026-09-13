@@ -1,8 +1,8 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import Editor, { useMonaco } from '@monaco-editor/react';
 import { Play, ChevronDown, Square } from 'lucide-react';
-import ExecutionResultTabs from '../../components/editor/ExecutionResultTabs';
-import type { ResultItem, HistoryItem, TabKey } from '../../components/editor/ExecutionResultTabs';
+import ExecutionResultTabs from '../../features/execHistory';
+import type { ResultItem, HistoryItem, TabKey } from '../../features/execHistory';
 import TabBar from '../../components/editor/TabBar';
 import { useDataSourceCache } from '../../contexts/DataSourceContext';
 import { getEngineTypeByDatasourceType, parseSQLResultData } from '../../api/codeExecution';
@@ -11,10 +11,8 @@ import { useSqlCompletion } from '../../hooks/useSqlCompletion';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../components/Toast';
 import { initFileSystemAPI } from '../../hooks/useFileSystem';
-import { buildScopedStorageKey } from '../../utils/historyIsolation';
-import { ensureHistoryStore, readHistory, writeHistory } from '../../utils/historyStore';
-import { TaskExecutionService, parseSqlStatements } from '../../services/taskExecutionService';
-import type { TaskDefinition, TaskItem } from '../../services/taskExecutionService';
+import { buildScopedStorageKey, ensureHistoryStore, readHistory, writeHistory, TaskExecutionService, parseSqlStatements } from '../../features/execHistory';
+import type { TaskDefinition, TaskItem } from '../../features/execHistory';
 import { registerAllTextmateLanguages } from '../../services/textmate';
 import './DataExploreEditor.css';
 
@@ -132,7 +130,7 @@ function mapTaskToHistoryItem(task: TaskItem): ExecutionHistoryItem {
   };
 }
 
-// ─── 执行历史持久化（统一走 utils/historyStore，落盘到主进程磁盘） ──
+// ─── 执行历史持久化（统一走 features/execHistory，落盘到主进程磁盘） ──
 
 const HISTORY_STORAGE_KEY = 'dataforge_dataexplore_history';
 

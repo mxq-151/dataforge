@@ -20,7 +20,7 @@ import { useOpencodeChat } from './useOpencodeChat';
 import { useOpencodeSessions } from './useOpencodeSessions';
 import type { DataExploreSessionService } from './dataExploreSessionService';
 import { joinPath } from '../../utils/pathUtils';
-import { buildScopedStorageKey } from '../../utils/historyIsolation';
+import { buildScopedStorageKey } from '../../features/execHistory';
 import {
   buildSessionHistoryKey,
   loadSessionHistory,

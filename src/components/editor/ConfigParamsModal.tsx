@@ -3,7 +3,8 @@ import { X, Package, Sliders, ClipboardList, Plus, Trash2, RefreshCw, ChevronDow
 import useDependencyList from '../../hooks/useDependencyList';
 import type { DependencyRecord } from '../../api/dependency';
 import useDevProjectConfig from '../../hooks/useDevProjectConfig';
-import { parseFileHeader, getEngineDefaultTaskParams, validateFileHeader } from '../../utils';
+import { parseFileHeader, validateFileHeader } from '../../utils/fileHeader';
+import { getEngineDefaultTaskParams } from '../../utils/programArgs';
 import { useToast } from '../Toast';
 import './ConfigParamsModal.css';
 

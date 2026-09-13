@@ -1,19 +1,19 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { generateId, parseFileHeader, validateFileHeader } from '../utils';
+import { generateId } from '../utils';
+import { parseFileHeader, validateFileHeader } from '../utils/fileHeader';
 import { validateYarnJobName } from '../utils/schedulerMapping';
 import { toRelativePath } from '../utils/pathUtils';
 import { extractProgramParams, paramsFromItems } from '../utils/programArgs';
 import type { ProgramParamItem } from '../utils/programArgs';
 import type { CodeExecutionResult } from '../api/codeExecution';
 import { unifiedCompile } from '../services/unifiedCompile';
-import { TaskExecutionService } from '../services/taskExecutionService';
-import type { TaskDefinition, TaskSet } from '../services/taskExecutionService';
+import { TaskExecutionService } from '../features/execHistory';
+import type { TaskDefinition, TaskSet } from '../features/execHistory';
 import type { Tab, EditorAreaHandle } from '../types';
 import type { ProjectInfo } from '../api/devProject';
 import type { OpenCodeConfig } from '../types/opencode-backend';
 import type { DependencyItemLite } from '../utils/dependencyMerge';
-import { buildScopedStorageKey } from '../utils/historyIsolation';
-import { ensureHistoryStore, readHistory, writeHistory } from '../utils/historyStore';
+import { buildScopedStorageKey, ensureHistoryStore, readHistory, writeHistory } from '../features/execHistory';
 import { invoke } from '../bridge/ipc';
 import { listen } from '../bridge/event';
 
@@ -271,7 +271,7 @@ function taskSetToExecutionRecords(taskSet: TaskSet, filePath: string): Executio
     }));
 }
 
-// ─── 执行历史持久化（统一走 utils/historyStore，落盘到主进程磁盘） ──
+// ─── 执行历史持久化（统一走 features/execHistory，落盘到主进程磁盘） ──
 
 const HISTORY_STORAGE_KEY = 'dataforge_execution_history';
 

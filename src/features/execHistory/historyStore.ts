@@ -1,4 +1,4 @@
-import { getSyncedStore } from './syncedStore';
+import { getSyncedStore } from '../../utils/syncedStore';
 
 /**
  * 执行/查询历史的统一持久化。

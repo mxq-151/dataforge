@@ -1,10 +1,10 @@
-import { generateId } from '../utils';
+import { generateId } from '../../utils';
 import {
   executeCode, cancelExecution, submitCode, submitCodeWithJar,
   pollUntilComplete, shouldUseAsyncExecution,
-} from '../api/codeExecution';
-import type { CodeExecutionResult, CodeExecutionRequest } from '../api/codeExecution';
-import type { DevJarDependency } from '../api/devProject';
+} from '../../api/codeExecution';
+import type { CodeExecutionResult, CodeExecutionRequest } from '../../api/codeExecution';
+import type { DevJarDependency } from '../../api/devProject';
 
 // ─── 类型定义 ────────────────────────────────────────────────
 

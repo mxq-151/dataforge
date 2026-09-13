@@ -25,7 +25,7 @@
  * SubmitToSchedulerModal 负责落地。
  */
 
-import { parseFileHeader } from './index';
+import { parseFileHeader } from './fileHeader';
 import { paramFlagName } from './programArgs';
 
 /** 参数名合法性：与代码头参数声明、runParams 的口径一致 */
