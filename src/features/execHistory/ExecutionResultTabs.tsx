@@ -89,10 +89,15 @@ export default function ExecutionResultTabs({
   // 执行结果区域的右键菜单
   const [resultContextMenu, setResultContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [panelHeight, setPanelHeight] = useState(() => {
+    // 高度在合理范围内钳制（下限避免残留历史小值，上限避免过高挤压编辑器）
+    const clamp = (v: number) => Math.min(Math.max(v, 200), window.innerHeight * 0.85);
     const saved = localStorage.getItem('exec-panel-height');
-    if (saved) return Number(saved);
+    if (saved) {
+      const n = Number(saved);
+      if (!Number.isNaN(n)) return clamp(n);
+    }
     // 默认占窗口高度的较大比例，让日志区更充分铺满窗口
-    return Math.min(Math.max(window.innerHeight * 0.6, 220), window.innerHeight * 0.7);
+    return clamp(window.innerHeight * 0.7);
   });
   const isResizing = useRef(false);
   const startY = useRef(0);
@@ -206,7 +211,7 @@ export default function ExecutionResultTabs({
     const handleMouseMove = (e: MouseEvent) => {
       if (!isResizing.current) return;
       const delta = startY.current - e.clientY; // 向上拖为正（增大高度）
-      const newHeight = Math.min(Math.max(startHeight.current + delta, 120), window.innerHeight * 0.7);
+      const newHeight = Math.min(Math.max(startHeight.current + delta, 200), window.innerHeight * 0.85);
       setPanelHeight(newHeight);
     };
     const handleMouseUp = () => {

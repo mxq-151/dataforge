@@ -348,8 +348,6 @@
   font-size: 12px;
   white-space: pre-wrap;
   word-break: break-all;
-  max-height: 100px;
-  overflow-y: auto;
   font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
   line-height: 1.5;
 }
