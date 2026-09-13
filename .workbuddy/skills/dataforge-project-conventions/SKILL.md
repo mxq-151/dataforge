@@ -111,16 +111,20 @@ agent_created: true
 
 ### 参数名提取 `extractProgramParams(content, codeType)`
 
-- v3 代码头把参数拆成两个字段：
-  - `@程序参数` → 程序自身入参 → `keys`，进预填行
-  - `@任务参数` → 引擎/资源参数 → `taskParamKeys`，只列出告知、不下发 runParams
-  - **无该类参数时写「无」**；两者写法同为 `--参数名 取值`，只收参数名**不收取值**（那是示例值）。
+- 代码头把参数拆成**三个**字段（v3 从 `@用法` 拆出前两个，v4 再把「资源」单列）：
+  - `@程序参数` → 程序自身业务入参 → `keys`，**进预填行**
+  - `@资源参数` → 任务所需**资源**（并行度/内存/核数/slot/队列）→ `resourceParamKeys`，只告知
+  - `@任务参数` → 除资源外的**提交与引擎侧参数**（`--master`/`--deploy-mode`/`--class`/`-Dk=v`）→ `taskParamKeys`，只告知
+  - **无该类参数时写「无」**。取值是**真实生效值**（v5 起改口径，不再是"示例值"）：本函数仍**只收参数名**
+    （弹窗预填用），取值由 `utils/headerTaskParams.ts` 取去落调度节点 —— 同一份声明、两个消费面。
+  - 三者互斥的判定口径写在 S3 提示词「代码头格式规范 → 三个参数字段的区别」表里
+    （"这次要算什么 / 这次给多少资源 / 这个任务怎么提交、引擎侧怎么配"），`fileHeader.test.ts` 有守卫用例。
 - SQL 另取正文 `${day}`。Java/Scala/Python 正文里的 `${}` 是日志模板，不是入参。
 - `@程序参数` 是**显式声明即分类结果**，不再按引擎二次剔除。
-- 旧字段 `@用法` 仅保留解析兼容（`header.usage`，弹窗显示「@用法（旧格式，建议拆成 @程序参数 / @任务参数）」
-  提示迁移）；新旧字段并存时一并解析、不丢参数。
-- `parseFileHeader` 映射：`@程序参数`→`programArgs`、`@任务参数`→`taskArgs`；生成模板
-  `src/utils/index.ts::HEADER_FIELDS` 已换成这两个字段（不再产出 `@用法`）。
+- 旧字段 `@用法` 仅保留解析兼容（`header.usage`，弹窗显示「@用法（旧格式，建议拆成 @程序参数 / @资源参数 / @任务参数）」
+  提示迁移）；新旧字段并存时一并解析（四类都不丢）。
+- `parseFileHeader` 映射：`@程序参数`→`programArgs`、`@资源参数`→`resourceArgs`、`@任务参数`→`taskArgs`；
+  生成模板 `src/utils/index.ts::HEADER_FIELDS` 含这三个字段（不再产出 `@用法`）。
 - 弹窗把识别到的名字并成空白行（`mergeExtractedKeys`，已存在的按名去重、无缺失时返回原数组）+
   「从代码提取」按钮补回误删行；扫描前先 `stripSqlComments`（保留字符串字面量），`$[yyyyMMdd]` 不误判。
 - **提示词侧已同口径**（S3「SQL 开发规范」→「变量编写规范」）：变量须为纯标识符
@@ -130,11 +134,50 @@ agent_created: true
   **提示词里不得新增 ```sql/java/scala/python 围栏块** —— `promptSamples()` 会把它们当代码头样例断言。
 - **`isEngineParamFlag` 只服务旧格式 `@用法` 的兼容拆分**（SPARK 的 `--master/--deploy-mode/--class/
   --num-executors/--driver-memory/--conf…`、FLINK 的 `-c/-p/-m/-yjm/-ytm/-ys…` 与 `-Dk=v`）：
-  v3 由 `@任务参数` 显式声明，落在 `taskParamKeys` 里由弹窗列出告知去向（**不静默丢**），不进预填行。
+  老文件无从区分资源与提交参数，统一落在 `taskParamKeys`（**不静默丢**），不进预填行。
   **只按显式 `@引擎` 判定**，kyuubi/hive/python 等不剔除（避免误伤同名参数）；
   `-checkpoint` 是程序自己的入参，**不在**剔除表里（规范样例就这么写）。
   「本地运行」（`RunLocalModal` / `PendingLocalRun.defaultArgs`）仍是单行文本、保持裸 `--k v`
   （本地 args 是数组、不经 shell）。
+- **改动这条契约的连锁面**（漏一处就出现"提示词写了但弹窗不认"的静默漂移）：S3 提示词（字段说明 +
+  三者区别表 + 落节点字段对照 + 两个样例 + 写法示例 + 交付自检清单）→ `parseFileHeader`（case +
+  `FileHeaderInfo` + 默认值）→ `HEADER_FIELDS` → `extractProgramParams`（返回 `resourceParamKeys` /
+  `resourceArgs`）→ `PendingProgramRun` → `ProgramRunModal` 的 props 与告知块 → `DevAssistantView` 传参 →
+  四个测试文件（`fileHeader` / `programArgs` / `useProgramRunner` / `ProgramRunModal`）。
+  **再加一条消费面**：`headerTaskParams.ts` 别名表（改字段 ≈ 改此表）→ `schedulerMapping.CodeFileMapping`
+  的三个新字段 → `SubmitToSchedulerModal` 回填与提示块 → `schedulerMapping.test` /
+  `SubmitToSchedulerModal.headerParams.test`。
+
+### 提交调度的节点参数 ← 代码头（`utils/headerTaskParams.ts`）
+
+第二个消费面：代码头的 `@资源参数` / `@任务参数` / `@程序参数` 直接落调度任务节点 `taskParams`。
+
+- 换算唯一入口 `deriveTaskParamsFromHeader(codeContent, taskType)` → `{ supported, params, applied, unmapped }`；
+  `mapCodeFileToTask` 在 switch 与 `applyRuntimeParams` **之后** `Object.assign`，因此**代码头优先级最高**：
+  `代码头 > SavedConfig（「配置参数」已保存值）> 引擎默认值 > 「提交调度」localStorage 记住的上次取值`。
+- `CodeFileMapping` 新增 `headerTaskParams` / `headerParamHits` / `headerParamUnmapped`；
+  弹窗回填 effect 最后再叠一次 `headerTaskParams`（否则"记住的上次取值"会盖掉代码头），
+  并用 **签名串** `headerParamsSignature` 当依赖（直接依赖对象会在每次重算时重置用户手填值）。
+  回填时只接受 `TASK_TYPE_PARAMS_CONFIG` 里真实存在的 key（别名表写错字 → 宁可不写，也不让脏键进 taskParams）。
+- 别名表（只列**确定唯一去向**的项，其余原样进 `others`，不猜）：
+  - SPARK：`--num-executors→numExecutors`、`--driver-memory→driverMemory`、`--driver-cores→driverCores`、
+    `--executor-memory→executorMemory`、`--executor-cores→executorCores`、`--queue→yarnQueue`、
+    `--deploy-mode→deployMode`、`--class→mainClass`
+  - FLINK/FLINK_STREAM：`-p/--parallelism→parallelism`、`-yjm→jobManagerMemory`、`-ytm→taskManagerMemory`、
+    `-ys→slot`、`-yn→taskManager`、`-yqu/--queue→yarnQueue`、`-m/--deploy-mode→deployMode`、`-c/--class→mainClass`
+  - MR：`--queue→yarnQueue`、`--class→mainClass`；JAVA：`--class→mainClass`
+  - `select` 类取值会收敛（`yarn-cluster`→`cluster`）；**收敛不了就原样进 others**，不塞非法取值
+  - `autoManaged`：`--jars/--name/--main-jar`（SPARK）、`-j/--jarfile/--yarnname`（FLINK）由依赖/编译产物/
+    `项目.工作流.任务` 自动生成 ⇒ 代码头声明**不覆盖但必须回报**（进 `unmapped` + 界面提示）
+  - `@程序参数` 原文 → `mainArgs`（SPARK/FLINK/MR/JAVA）；没有 mainArgs 字段的类型（SQL/FLINK_STREAM）
+    **不进 unmapped**（程序参数的正常去向是「运行程序」弹窗），否则每个 SQL 文件都刷提示
+  - `fallback`：SPARK/FLINK/MR = `others`；FLINK_STREAM/JAVA = `null`（无承载字段 → 回报给界面）
+  - 没有 spec 的任务类型（SQL/HIVECLI/DATAX…）→ `supported=false`，声明全进 `unmapped`，
+    提示去「配置参数 → 配置任务参数」维护（kyuubi 的资源属计算资源，不该塞进 SQL 节点字段）
+- 两条提交入口都经过 `mapCodeFileToTask`：单文件（`SubmitToSchedulerModal`）与
+  文件夹（`FolderSubmitScheduleModal::buildWorkflowFromFolder`，`savedConfig` 恒 null）都能拿到代码头取值。
+- 单文件弹窗在参数区下方渲染提示块（testid `submit-scheduler-header-params`）：已按代码头填充了哪几项 +
+  逐条未落字段声明的去向；`ProgramRunModal` 的两处告知文案同口径（不再说"请去配置任务参数"）。
 
 ### 工作流名称与依赖
 

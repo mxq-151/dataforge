@@ -39,7 +39,12 @@
   `position:fixed`（`.ai-panel{overflow:hidden}` 会裁剪绝对定位）。仍未改造：`AIPanel` 头部「压缩」按钮。
 - 「运行程序」**必须先弹 `ProgramRunModal` 确认参数**；参数是**键值对逐行编辑**，语义
   **所见即所发**（整体替换已保存配置，不回写落库，删光即不带参数）。
-- `extractProgramParams`：`@程序参数` → 进预填行；`@任务参数` → 只列出告知、不下发；两者**只收参数名**。
+- 代码头参数字段共**三个**：`@程序参数`（业务入参）/ `@资源参数`（资源诉求）/ `@任务参数`（提交与引擎侧参数）。
+  **取值是真实值**，有两个消费面：①「运行程序」弹窗**只取参数名**预填（`extractProgramParams`）；
+  ②「提交调度」把**取值**落进任务节点 `taskParams`（`headerTaskParams.ts`，代码头优先级最高）。
+  改字段名/语义须同步：S3 提示词 → `parseFileHeader` → `HEADER_FIELDS` → `extractProgramParams` /
+  `headerTaskParams` → `PendingProgramRun` → `ProgramRunModal` + `SubmitToSchedulerModal` → 6 个测试文件。
+  调度侧的「任务参数」是 DolphinScheduler 概念，**别跟着改**。
 - 工作流名称**不 sanitize**、环境后缀**默认 test**；**`_v{N}` 版本链已整体删除**（重复提交会新建）。
 - `mainJar` 是编译派生值，**不要加必填校验**（会让文件夹路径无法保存）。
 - 工作流保存有闸门；**表单加必填项必须同步 `REQUIRED_PARAMS` 与单测**。
