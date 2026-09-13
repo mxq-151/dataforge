@@ -22,6 +22,132 @@ function createClient() {
   return { client: { session: { create, prompt } } as any, prompt, create };
 }
 
+/**
+ * 构造带消息列表的回滚 client 桩。
+ * messages: [{ info: { id, role }, parts: [] }]
+ */
+function createRollbackClient(messages: Array<{ id: string; role: string }>) {
+  const revert = vi.fn().mockResolvedValue({ data: {} });
+  const deleteMessage = vi.fn().mockResolvedValue({ data: true });
+  const messagesApi = vi.fn().mockResolvedValue({
+    data: messages.map(m => ({ info: { id: m.id, role: m.role }, parts: [] })),
+    // 无 x-next-cursor：单页返回全部
+    response: { headers: new Headers() },
+  });
+  const client = {
+    session: {
+      revert,
+      deleteMessage,
+      messages: messagesApi,
+    },
+  } as any;
+  return { client, revert, deleteMessage, messagesApi };
+}
+
+describe('useOpencodeChat 回滚（revert + 边界消息删除）', () => {
+  it('回滚成功后立即删除边界消息及其后的全部消息（服务端暂存式 revert 的补齐）', async () => {
+    const { client, revert, deleteMessage, messagesApi } = createRollbackClient([
+      { id: 'u1', role: 'user' },
+      { id: 'a1', role: 'assistant' },
+      { id: 'u2', role: 'user' },
+      { id: 'a2', role: 'assistant' },
+      { id: 'a3', role: 'assistant' },
+    ]);
+    const { result } = renderHook(() =>
+      useOpencodeChat({
+        username: 'u',
+        moduleId: 'dev-assistant',
+        roleType: 'DATA_ARCHITECT',
+        currentSessionId: 'sess-1',
+        setCurrentSessionId: vi.fn(),
+      }),
+    );
+
+    // 回滚到 u2：删除 u2、a2、a3（与服务端 cleanup 的 msgs.slice(index) 同范围）
+    let res: { success: boolean } | undefined;
+    await act(async () => { res = await result.current.sendRollback(client, 'u2'); });
+
+    expect(res?.success).toBe(true);
+    expect(revert).toHaveBeenCalledWith({ sessionID: 'sess-1', messageID: 'u2' });
+    expect(messagesApi).toHaveBeenCalled();
+    const deletedIds = deleteMessage.mock.calls.map(c => c[0].messageID);
+    expect(deletedIds).toEqual(['u2', 'a2', 'a3']);
+  });
+
+  it('回滚到首条消息时删除全部消息', async () => {
+    const { client, deleteMessage } = createRollbackClient([
+      { id: 'u1', role: 'user' },
+      { id: 'a1', role: 'assistant' },
+    ]);
+    const { result } = renderHook(() =>
+      useOpencodeChat({
+        username: 'u',
+        moduleId: 'dev-assistant',
+        roleType: 'DATA_ARCHITECT',
+        currentSessionId: 'sess-1',
+        setCurrentSessionId: vi.fn(),
+      }),
+    );
+
+    await act(async () => { await result.current.sendRollback(client, 'u1'); });
+
+    expect(deleteMessage.mock.calls.map(c => c[0].messageID)).toEqual(['u1', 'a1']);
+  });
+
+  it('revert 返回 HTTP 错误（result.error）时不删除消息并报失败', async () => {
+    const messages = [
+      { id: 'u1', role: 'user' },
+      { id: 'a1', role: 'assistant' },
+    ];
+    const revert = vi.fn().mockResolvedValue({ data: undefined, error: { status: 500, message: 'boom' } });
+    const deleteMessage = vi.fn();
+    const client = {
+      session: {
+        revert,
+        deleteMessage,
+        messages: vi.fn(),
+      },
+    } as any;
+    const { result } = renderHook(() =>
+      useOpencodeChat({
+        username: 'u',
+        moduleId: 'dev-assistant',
+        roleType: 'DATA_ARCHITECT',
+        currentSessionId: 'sess-1',
+        setCurrentSessionId: vi.fn(),
+      }),
+    );
+
+    let res: { success: boolean } | undefined;
+    await act(async () => { res = await result.current.sendRollback(client, 'u1'); });
+
+    expect(res?.success).toBe(false);
+    expect(deleteMessage).not.toHaveBeenCalled();
+  });
+
+  it('边界消息不在服务端消息列表中时安全跳过（不报错）', async () => {
+    const { client, deleteMessage } = createRollbackClient([
+      { id: 'u1', role: 'user' },
+      { id: 'a1', role: 'assistant' },
+    ]);
+    const { result } = renderHook(() =>
+      useOpencodeChat({
+        username: 'u',
+        moduleId: 'dev-assistant',
+        roleType: 'DATA_ARCHITECT',
+        currentSessionId: 'sess-1',
+        setCurrentSessionId: vi.fn(),
+      }),
+    );
+
+    let res: { success: boolean } | undefined;
+    await act(async () => { res = await result.current.sendRollback(client, 'nonexistent'); });
+
+    expect(res?.success).toBe(true);
+    expect(deleteMessage).not.toHaveBeenCalled();
+  });
+});
+
 describe('useOpencodeChat 角色指令逐轮下发', () => {
   it('切换 roleType 后下一轮 prompt 带新角色的 system，且会话被复用', async () => {
     const { client, prompt, create } = createClient();

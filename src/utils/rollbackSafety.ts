@@ -168,6 +168,34 @@ export function assessRollbackSafety(params: {
   };
 }
 
+/**
+ * 由文件路径集合推导所有祖先目录，返回统一为 pathCompareKey 的集合。
+ *
+ * 回滚删除「快照之后新增的文件夹」时，需要判断当前工作区的某个文件夹是否出现在
+ * 快照的祖先目录中。2026-09-13 二次事故：组件内旧实现用 `splitPath(...).join('/')`
+ * 生成的是**无前导斜杠**的路径（如 `Users/mxq/.../src/a`），而文件树节点 path 是
+ * **带前导斜杠的绝对路径**（如 `/Users/mxq/.../src/a`），两种格式永远不相等 ——
+ * 全部文件夹被误判为「快照中不存在」，整棵目录树连文件一起被搬进回收站。
+ *
+ * 本函数输出与 `collectFolderPaths(tree).map(pathCompareKey)` 同键可直接求差集；
+ * 逐级向上的推导不依赖外部模块，保持本文件零依赖。
+ */
+export function deriveFolderKeys(filePaths: string[]): Set<string> {
+  const keys = new Set<string>();
+  for (const fp of filePaths) {
+    const norm = fp.replace(/\\/g, '/').replace(/\/+$/, '');
+    let dir = norm.slice(0, norm.lastIndexOf('/'));
+    while (dir) {
+      keys.add(pathCompareKey(dir));
+      if (!dir.includes('/')) break; // 已到顶部（如 'C:'）
+      const parent = dir.slice(0, dir.lastIndexOf('/'));
+      if (parent === dir) break;
+      dir = parent;
+    }
+  }
+  return keys;
+}
+
 /** 回收站批次目录名：YYYYMMDD-HHmmss */
 export function formatTrashStamp(d: Date = new Date()): string {
   const p = (n: number) => String(n).padStart(2, '0');

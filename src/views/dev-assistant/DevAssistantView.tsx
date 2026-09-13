@@ -18,7 +18,9 @@ import { generateId, generateFileHeader } from '../../utils';
 import { getBaseName, splitPath, toNativePath, samePath, isPathUnder, pathKey, joinPath } from '../../utils/pathUtils';
 import {
   assessRollbackSafety,
+  deriveFolderKeys,
   formatTrashStamp,
+  pathCompareKey,
   TRASH_DIR_NAME,
   type WorkspaceSnapshot,
 } from '../../utils/rollbackSafety';
@@ -67,19 +69,6 @@ async function snapshotWorkspaceFiles(
   }
   await traverse(nodes);
   return files;
-}
-
-/** Derive all folder paths from a set of file paths */
-function deriveFolderPaths(filePaths: string[]): Set<string> {
-  const folders = new Set<string>();
-  for (const fp of filePaths) {
-    const parts = splitPath(fp);
-    // Build parent paths: 'a/b/c.txt' → 'a', 'a/b'
-    for (let i = 1; i < parts.length; i++) {
-      folders.add(parts.slice(0, i).join('/'));
-    }
-  }
-  return folders;
 }
 
 /** Collect all folder paths from a file tree */
@@ -575,11 +564,17 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
       if (to) trashed.push({ path, to });
     }
 
-    const snapshotFolderPaths = deriveFolderPaths(Object.keys(snapshotFiles));
+    // 快照文件的祖先目录集合：与文件树节点 path 统一为 pathCompareKey 后求差集。
+    // 二次事故根因：旧 deriveFolderPaths 生成无前导斜杠的路径，与绝对路径的节点
+    // path 永远不相等，导致全部文件夹被误判为「快照之后新增」而整体搬入回收站。
+    const snapshotFolderKeys = deriveFolderKeys(Object.keys(snapshotFiles));
     const currentFolderPaths = collectFolderPaths(currentTree);
     // Sort by depth descending (deepest first) so children are deleted before parents
     const foldersToDelete = currentFolderPaths
-      .filter(p => !snapshotFolderPaths.has(p))
+      .filter(p => !snapshotFolderKeys.has(pathCompareKey(p)))
+      // 纵深防御：包含任何快照文件的目录绝不允许删除。即使上面的键比较再出
+      // 任何形式的失配，也只会波及空目录，快照内的文件始终留在原位。
+      .filter(p => !Object.keys(snapshotFiles).some(f => isPathUnder(f, p)))
       .sort((a, b) => splitPath(b).length - splitPath(a).length);
     for (const folderPath of foldersToDelete) {
       const to = await trashNode(folderPath, 'folder', batch);

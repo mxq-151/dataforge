@@ -20,6 +20,76 @@ export interface UseOpencodeChatOptions {
   addLog?: (entry: LogEntry) => void;
 }
 
+/**
+ * 服务端 session.messages 分页单页上限（与 useOpencodeSessions 保持一致）
+ */
+const MESSAGE_PAGE_SIZE = 200;
+
+/**
+ * 删除会话中从边界消息（含）开始的全部消息。
+ *
+ * 背景：v2 服务端的 session.revert 是「暂存式回滚」——只标记回滚边界并回退文件，
+ * 消息要等到下一次 prompt 时才由 revert.cleanup 真正删除（见服务端 prompt.ts
+ * shellImpl / loop 中的 `if (session.revert) cleanup`）。若止步于 revert 调用，
+ * 切换会话或重启应用后 loadSession 会把「已回滚」的消息原样拉回来，
+ * 表现为「消息列表没有回退」。
+ *
+ * 这里在 revert 成功后立即用 deleteMessage 逐条删除，删除范围与服务端
+ * cleanup 的 msgs.slice(index) 完全一致（边界消息本身及其后的全部消息）。
+ * deleteMessage 每条都会持久化删除并推送 message.removed 事件。
+ */
+async function deleteMessagesFromBoundary(
+  client: OpencodeClient,
+  sessionID: string,
+  boundaryMessageID: string,
+  onError: (msg: string) => void,
+): Promise<void> {
+  // 分页拉取全部消息（与 loadSession 相同的 x-next-cursor 游标机制）
+  const all: Array<{ info: { id: string } }> = [];
+  let cursor: string | undefined;
+  let pageNum = 0;
+  const maxPages = 50; // 安全上限，与 loadSession 一致
+  while (pageNum < maxPages) {
+    const result = await client.session.messages({
+      sessionID,
+      limit: MESSAGE_PAGE_SIZE,
+      ...(cursor ? { before: cursor } : {}),
+    });
+    if (result.error) {
+      onError(`回滚后拉取消息失败：${JSON.stringify(result.error)}`);
+      return;
+    }
+    const page = Array.isArray(result.data) ? result.data : [];
+    all.push(...page);
+    const next: string | undefined = result.response?.headers?.get('x-next-cursor') ?? undefined;
+    if (!next) break;
+    cursor = next;
+    pageNum++;
+  }
+
+  const idx = all.findIndex(m => m.info?.id === boundaryMessageID);
+  if (idx < 0) return; // 边界消息不存在（可能已被删除），无需处理
+
+  let failed = 0;
+  for (const msg of all.slice(idx)) {
+    const id = msg.info?.id;
+    if (!id) continue;
+    try {
+      const result = await client.session.deleteMessage({ sessionID, messageID: id });
+      if (result.error) {
+        failed++;
+        console.error('[useOpencodeChat] deleteMessage failed:', id, result.error);
+      }
+    } catch (err) {
+      failed++;
+      console.error('[useOpencodeChat] deleteMessage exception:', id, err);
+    }
+  }
+  if (failed > 0) {
+    onError(`回滚已完成，但有 ${failed} 条消息删除失败（服务端仍保留，重进会话可能部分恢复）`);
+  }
+}
+
 export interface UseOpencodeChatReturn {
   sendMessage: (client: OpencodeClient | null, line: string, existingSessionId?: string | null, model?: { providerID: string; modelID: string }) => Promise<string | null>;
   sendInterrupt: (client: OpencodeClient | null) => Promise<void>;
@@ -128,6 +198,10 @@ export function useOpencodeChat(options: UseOpencodeChatOptions): UseOpencodeCha
 
   /**
    * 回滚到指定消息
+   *
+   * v2 SDK 默认不在 HTTP 错误时抛异常（错误在 result.error 中），必须显式检查。
+   * revert 成功后立即删除边界之后的消息（deleteMessagesFromBoundary），
+   * 否则服务端只是暂存回滚点，重进会话时消息会全部恢复。
    */
   const sendRollback = useCallback(async (
     client: OpencodeClient | null,
@@ -135,9 +209,16 @@ export function useOpencodeChat(options: UseOpencodeChatOptions): UseOpencodeCha
   ): Promise<{ success: boolean }> => {
     if (!client || !currentSessionId) return { success: false };
     try {
-      await client.session.revert({
+      const result = await client.session.revert({
         sessionID: currentSessionId,
         messageID: messageId,
+      });
+      if (result.error) {
+        reportError('回滚消息失败', result.error);
+        return { success: false };
+      }
+      await deleteMessagesFromBoundary(client, currentSessionId, messageId, (msg) => {
+        reportError('回滚清理', msg);
       });
       return { success: true };
     } catch (err) {

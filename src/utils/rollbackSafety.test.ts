@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   assessRollbackSafety,
+  deriveFolderKeys,
   formatTrashStamp,
   uniqueTrashName,
   isSameRoot,
@@ -189,6 +190,59 @@ describe('assessRollbackSafety — 路径归一化', () => {
   it('pathCompareKey 统一分隔符、去除尾斜杠、忽略大小写', () => {
     expect(pathCompareKey('C:\\A\\B\\')).toBe('c:/a/b');
     expect(pathCompareKey('/a/b///')).toBe('/a/b');
+  });
+});
+
+describe('deriveFolderKeys — 二次事故回归（文件夹被整体搬入回收站）', () => {
+  /**
+   * 现场事实：回滚后文件级安全检查放行（toDelete 为 0），但文件夹差集把
+   * 全部目录判定为「快照中不存在」，整棵目录树连文件一起被 rename 进回收站。
+   * 根因：旧 deriveFolderPaths 用 splitPath(...).join('/') 生成无前导斜杠路径，
+   * 与绝对路径的文件树节点 path 永远不相等。
+   */
+
+  it('快照祖先集合必须命中文件树节点的绝对路径（事故形状）', () => {
+    const snapshotFiles = [
+      `${ROOT}/olist/olist_task_0_f.sql`,
+      `${ROOT}/ads/code/ads/ads_task_0_f.java`,
+      `${ROOT}/pom.xml`,
+    ];
+    const treeFolderPaths = [
+      `${ROOT}/olist`,
+      `${ROOT}/ads`,
+      `${ROOT}/ads/code`,
+      `${ROOT}/ads/code/ads`,
+    ];
+    const keys = deriveFolderKeys(snapshotFiles);
+    // 修复前：has() 全部为 false（无法命中）→ 差集包含全部文件夹 → 整树被误删。
+    // 修复后：快照祖先必须全部命中。
+    for (const p of treeFolderPaths) {
+      expect(keys.has(pathCompareKey(p)), p).toBe(true);
+    }
+  });
+
+  it('快照之后新增的文件夹不被祖先集合命中，仍会被正常删除', () => {
+    const keys = deriveFolderKeys([`${ROOT}/olist/a.sql`]);
+    expect(keys.has(pathCompareKey(`${ROOT}/ads`))).toBe(false);
+    expect(keys.has(pathCompareKey(`${ROOT}/olist/new_dir`))).toBe(false);
+  });
+
+  it('逐级推导出全部祖先目录', () => {
+    const keys = deriveFolderKeys([`${ROOT}/ads/code/ads/a.java`]);
+    expect([...keys].map(k => k)).toContain(pathCompareKey(`${ROOT}/ads/code/ads`));
+    expect([...keys]).toContain(pathCompareKey(`${ROOT}/ads/code`));
+    expect([...keys]).toContain(pathCompareKey(`${ROOT}/ads`));
+    expect([...keys]).toContain(pathCompareKey(ROOT));
+  });
+
+  it('分隔符 / 尾部斜杠 / 大小写差异不影响命中', () => {
+    const keys = deriveFolderKeys([`C:\\Work\\Proj\\olist\\a.sql`]);
+    expect(keys.has(pathCompareKey('c:/work/proj/olist'))).toBe(true);
+    expect(keys.has(pathCompareKey('C:/Work/Proj/olist/'))).toBe(true);
+  });
+
+  it('空输入返回空集合', () => {
+    expect(deriveFolderKeys([]).size).toBe(0);
   });
 });
 
