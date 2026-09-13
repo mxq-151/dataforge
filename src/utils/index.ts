@@ -34,8 +34,11 @@ const getSupportedLang = (filename: string): SupportedLang | null => {
  * 「SQL 有引擎、Java 没有引擎」这类漂移。
  *
  * 自 v2 起代码头统一使用块注释（/* ... *\/）逐行书写，不再支持行注释（-- // #）。
+ * 自 v3 起原 `@用法` 拆分为 `@程序参数`（程序自身入参）与 `@任务参数`（引擎与资源参数）
+ * 两个字段，无该类参数时写「无」。`@用法` 仅保留解析兼容（旧文件仍能识别），
+ * 新模板不再生成；两类参数的名义与调度侧「程序参数 / 任务参数」一致。
  */
-const HEADER_FIELDS = ['备注', '数仓', '引擎', '依赖', '用法', '数据源'] as const;
+const HEADER_FIELDS = ['备注', '数仓', '引擎', '依赖', '程序参数', '任务参数', '数据源'] as const;
 
 export const generateFileHeader = (filePath: string, _rootPath?: string): string => {
   const fileName = filePath.split(/[/\\]/).pop() || filePath;
@@ -59,7 +62,16 @@ export interface FileHeaderInfo {
   warehouse?: string;
   engine?: string;
   dependency?: string;
+  /**
+   * 旧格式（v2）`@用法` 原文 —— 仅保留解析兼容：老文件里「程序参数」与「任务参数」
+   * 混写在这一个字段里（见 utils/programArgs.ts 的引擎参数表）。新文件应使用
+   * programArgs / taskArgs。
+   */
   usage?: string;
+  /** 程序自身运行入参（v3 `@程序参数` 原文），如 `--day 20260501 -checkpoint 60000`；无则「无」 */
+  programArgs?: string;
+  /** 引擎与资源参数（v3 `@任务参数` 原文），如 `--num-executors 4 -yjm 1024`；无则「无」 */
+  taskArgs?: string;
   dataSource?: string;
   /**
    * 代码头注释风格。
@@ -80,7 +92,11 @@ function parseHeaderField(key: string, value: string, info: FileHeaderInfo): voi
     case '数仓': info.warehouse = value; break;
     case '引擎': info.engine = value; break;
     case '依赖': info.dependency = value; break;
+    // 旧格式（v2）单字段写法，仅为兼容老文件保留
     case '用法': info.usage = value; break;
+    // v3：原 `@用法` 拆成的两个字段
+    case '程序参数': info.programArgs = value; break;
+    case '任务参数': info.taskArgs = value; break;
     case '数据源': info.dataSource = value; break;
   }
 }
@@ -100,6 +116,8 @@ export const parseFileHeader = (content: string): FileHeaderInfo | null => {
     engine: '',
     dependency: '',
     usage: '',
+    programArgs: '',
+    taskArgs: '',
     dataSource: '',
     style: 'none',
   };

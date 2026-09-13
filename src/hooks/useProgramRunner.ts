@@ -2,6 +2,8 @@ import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { generateId, parseFileHeader, validateFileHeader } from '../utils';
 import { validateYarnJobName } from '../utils/schedulerMapping';
 import { toRelativePath } from '../utils/pathUtils';
+import { extractProgramParams, paramsFromItems } from '../utils/programArgs';
+import type { ProgramParamItem } from '../utils/programArgs';
 import type { CodeExecutionResult } from '../api/codeExecution';
 import { unifiedCompile } from '../services/unifiedCompile';
 import { TaskExecutionService } from '../services/taskExecutionService';
@@ -49,12 +51,18 @@ interface UseProgramRunnerParams {
 
 interface UseProgramRunnerReturn {
   handleRunProgram: (selectedCode?: string) => Promise<void>;
+  /** 「运行程序」参数弹窗点「确定」：以弹窗里确认的键值对编译/提交执行 */
+  handleProgramRunConfirm: (items: ProgramParamItem[]) => Promise<void>;
+  /** 关闭「运行程序」参数弹窗（放弃本次运行） */
+  handleCancelProgramRun: () => void;
   handleCompileDryRun: () => Promise<void>;
   handleCancelExecution: () => Promise<void>;
   handleRunLocal: () => Promise<void>;
   handleLocalRunExecute: (cfg: { mainClass: string; vmArgs: string; programArgs: string }) => Promise<void>;
   handleCancelLocalRun: () => void;
   pendingLocalRun: PendingLocalRun | null;
+  /** 待确认的「运行程序」参数（非空时显示参数弹窗） */
+  pendingProgramRun: PendingProgramRun | null;
   isRunning: boolean;
   isCompiling: boolean;
   executionHistory: ExecutionRecord[];
@@ -68,6 +76,27 @@ interface PendingLocalRun {
   defaultArgs: string;
   /** 默认主类（预填，取自当前文件：包名.文件名/类名） */
   defaultMainClass: string;
+}
+
+/** 远程「运行程序」待确认状态：先弹程序运行参数框，用户点「确定」后才编译/提交 */
+interface PendingProgramRun {
+  /** 预填的键值对（取自当前文件「配置参数 → 配置程序参数」），弹窗里逐行可编辑 */
+  defaultParams: ProgramParamItem[];
+  /** 从代码里识别到的**程序参数**名（代码头 `@程序参数`、SQL 的 `${day}`），弹窗并成空白行预填 */
+  extractedKeys: string[];
+  /**
+   * 代码头 `@任务参数` 声明的引擎/资源参数（`--num-executors`、`-p`…）。
+   * 它们属「任务参数」不是业务入参，弹窗只列出告知，不进预填行、不下发 runParams。
+   */
+  taskParamKeys: string[];
+  /** 代码头 `@程序参数` 原文（空串=未声明），弹窗里作为填写提示 */
+  programArgsHint: string;
+  /** 代码头 `@任务参数` 原文（空串=未声明） */
+  taskArgsHint: string;
+  /** 旧格式 `@用法` 原文（空串=未使用旧格式），弹窗据此提示迁移 */
+  usageHint: string;
+  /** 触发时选中的代码片段（有选区时只跑选区）；未选中为 undefined = 整个文件 */
+  selectedCode?: string;
 }
 
 /** 根据源码与文件名推断默认主类（编译前预填模态框用） */
@@ -276,6 +305,8 @@ export function useProgramRunner({
   const [isCompiling, setIsCompiling] = useState(false);
   /** 本地运行待确认配置（空=不显示模态框）；编译成功后待用户确认运行参数 */
   const [pendingLocalRun, setPendingLocalRun] = useState<PendingLocalRun | null>(null);
+  /** 「运行程序」待确认参数（空=不显示参数弹窗） */
+  const [pendingProgramRun, setPendingProgramRun] = useState<PendingProgramRun | null>(null);
   const [_runningExecutionId, setRunningExecutionId] = useState<string | null>(null);
   const [executionHistory, setExecutionHistory] = useState<ExecutionRecord[]>([]);
   const [currentResults, setCurrentResults] = useState<ExecutionRecord[]>([]);
@@ -371,11 +402,20 @@ export function useProgramRunner({
     return { fileName, filePath, ext, codeType };
   }, [tabs, activeTabId]);
 
-  const handleRunProgram = useCallback(async (selectedCode?: string) => {
+  /**
+   * 真正执行「运行程序」：校验 → 编译（Java/Scala）/ 组装任务 → 提交后端。
+   *
+   * @param runParamsOverride 运行前参数弹窗确认的内容（所见即所发，覆盖已保存的
+   *        「配置程序参数」）；不传时回退到已保存配置。
+   */
+  const runProgram = useCallback(async (
+    selectedCode: string | undefined,
+    runParamsOverride?: Record<string, unknown>,
+  ) => {
     const service = serviceRef.current;
     if (!service || service.isActive()) return;
 
-    // 每次点击运行程序时，清空执行结果标签页
+    // 清空执行结果标签页
     setCurrentResults([]);
     setRunningLogs('');
 
@@ -453,8 +493,15 @@ export function useProgramRunner({
     const resolvedDataSource = resolveDataSource(content, header);
 
     const fileParams = savedConfigParams[filePath];
+    // 程序参数：用户在运行前弹窗里确认的内容优先（非空对象即以其为准，不与其合并 ——
+    // 弹窗是所见即所发，用户删掉的参数不应被「已保存值」悄悄补回来）；
+    // 没有弹窗（runParamsOverride 为 undefined）时回退到「配置参数 → 配置程序参数」。
     const runParams: Record<string, unknown> = {};
-    (fileParams?.programParams || []).forEach(p => { if (p.key) runParams[p.key] = p.value; });
+    if (runParamsOverride) {
+      Object.assign(runParams, runParamsOverride);
+    } else {
+      (fileParams?.programParams || []).forEach(p => { if (p.key) runParams[p.key] = p.value; });
+    }
     const computeResources: Record<string, unknown> = {};
     (fileParams?.taskParams || []).forEach(p => { if (p.key) computeResources[p.key] = p.value; });
 
@@ -595,6 +642,49 @@ export function useProgramRunner({
       setExecutionHistory(prev => [errorRecord, ...prev]);
     }
   }, [currentContent, getFileInfo, savedConfigParams, config, projectCwd, readFile, project, editorAreaRef]);
+
+  /**
+   * 「运行程序」入口：不直接执行，先弹「程序运行参数」框（键值对逐行编辑），
+   * 用户点「确定」后才运行。
+   *
+   * 预填当前文件「配置参数 → 配置程序参数」里已保存的键值对。打开弹窗即清空上一次的
+   * 执行结果，避免用户在确认参数期间把残留结果误判成本次运行（口径与「本地运行」一致）。
+   *
+   * 同时从代码里提取**程序参数名**（代码头 `@程序参数` 的 `--day ...`、SQL 正文的 `${day}`）
+   * 交给弹窗并成空白行 —— 只给名字不给取值，取值由用户在弹窗里填。提取的是**即将执行的内容**：
+   * 选中执行时看选区，否则看整个文件，与真正下发的内容同源。代码头 `@任务参数` 只转达给弹窗展示。
+   */
+  const handleRunProgram = useCallback(async (selectedCode?: string) => {
+    const service = serviceRef.current;
+    if (!service || service.isActive()) return;
+
+    const { filePath, codeType } = getFileInfo();
+    const content = selectedCode || currentContent;
+    const { keys, taskParamKeys, programArgs, taskArgs, usage } = extractProgramParams(content, codeType);
+
+    setCurrentResults([]);
+    setRunningLogs('请确认程序运行参数后点击「确定」，确认后将开始执行。');
+    setPendingProgramRun({
+      defaultParams: savedConfigParams[filePath]?.programParams ?? [],
+      extractedKeys: keys,
+      taskParamKeys,
+      programArgsHint: programArgs,
+      taskArgsHint: taskArgs,
+      usageHint: usage,
+      selectedCode,
+    });
+  }, [currentContent, getFileInfo, savedConfigParams]);
+
+  /** 参数弹窗点「确定」：把确认后的键值对换算成 runParams 后交给 runProgram */
+  const handleProgramRunConfirm = useCallback(async (items: ProgramParamItem[]) => {
+    const selectedCode = pendingProgramRun?.selectedCode;
+    setPendingProgramRun(null);
+    await runProgram(selectedCode, paramsFromItems(items));
+  }, [pendingProgramRun, runProgram]);
+
+  const handleCancelProgramRun = useCallback(() => {
+    setPendingProgramRun(null);
+  }, []);
 
   const handleCompileDryRun = useCallback(async () => {
     if (serviceRef.current?.isActive()) return;
@@ -929,12 +1019,15 @@ export function useProgramRunner({
 
   return {
     handleRunProgram,
+    handleProgramRunConfirm,
+    handleCancelProgramRun,
     handleCompileDryRun,
     handleCancelExecution,
     handleRunLocal,
     handleLocalRunExecute,
     handleCancelLocalRun,
     pendingLocalRun,
+    pendingProgramRun,
     isRunning,
     isCompiling,
     executionHistory,

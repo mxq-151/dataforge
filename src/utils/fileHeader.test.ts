@@ -8,12 +8,16 @@
  * - 使用块注释（/* ... *\/）逐行书写，行注释书写的代码头会被判为不合规
  * - 位于文件开头，不得被 import 或 package 语句隔断
  * - 含 @备注 / @引擎 / @数据源 必填项，且 @引擎 取值可被识别为调度任务类型
+ * - 参数声明用 v3 的 @程序参数 / @任务参数（无则「无」），不再使用旧字段 @用法
  *
  * 本测试直接从提示词中抽取样例代码块并喂给真实解析器，防止改提示词时破坏解析。
+ * 文末另锁「SQL 开发规范」里的变量写法（${参数名}）：正文变量由 parseSqlVarKeys 识别，
+ * 须与 @程序参数 同名且为合法标识符。
  */
 
 import { describe, it, expect } from 'vitest';
 import { generateFileHeader, parseFileHeader, validateFileHeader } from './index';
+import { extractProgramParams } from './programArgs';
 import { mapCodeFileToTask } from './schedulerMapping';
 import { DATA_DEV_ENGINEER_INSTRUCTIONS } from '../hooks/opencode/opencodeInstructions';
 
@@ -62,6 +66,22 @@ describe('数据开发提示词样例 — 代码头可被解析', () => {
     }
   });
 
+  it('每个样例都声明了 @程序参数 与 @任务参数（无参数时写「无」），且不再出现旧字段 @用法', () => {
+    for (const s of promptSamples()) {
+      const header = parseFileHeader(s.content);
+      expect(header!.programArgs, `.${s.lang} 样例缺少 @程序参数`).toBeTruthy();
+      expect(header!.taskArgs, `.${s.lang} 样例缺少 @任务参数`).toBeTruthy();
+      expect(header!.usage, `.${s.lang} 样例仍在使用旧字段 @用法`).toBe('');
+    }
+  });
+
+  it('样例的两个参数字段被正确分流：@程序参数 → 预填行，@任务参数 → 只告知', () => {
+    const { content } = sampleOf('java');
+    const { keys, taskParamKeys } = extractProgramParams(content, 'java');
+    expect(keys).toEqual(['day', 'checkpoint']);
+    expect(taskParamKeys).toEqual(['-m', '-p', '-yjm', '-ytm']);
+  });
+
   it('SQL 样例被识别为 SQL 任务，数据源取自 @数据源', () => {
     const { content } = sampleOf('sql');
     const mapping = mapCodeFileToTask('dwd_user_login_etl_d.sql', content);
@@ -86,9 +106,47 @@ describe('数据开发提示词样例 — 代码头可被解析', () => {
 });
 
 /**
+ * 「SQL 开发规范」里的变量写法同样是机器解析契约：src/utils/programArgs.ts::parseSqlVarKeys
+ * 先剥离注释，再扫 SQL 正文的 ${} 取纯标识符名，最后与代码头 @程序参数 合并、按名去重，
+ * 作为「运行程序」弹窗的预填兜底。提示词写错（用 $[yyyyMMdd]、变量与声明不同名、
+ * 只在注释里写变量）都会让参数漏配，这里钉住口径。
+ */
+describe('数据开发提示词 — SQL 变量规范与解析器口径一致', () => {
+  it('提示词声明了变量的写法约束', () => {
+    for (const key of ['变量编写规范', '${参数名}', '@程序参数', '$[yyyyMMdd]', '同名']) {
+      expect(DATA_DEV_ENGINEER_INSTRUCTIONS, `S3 提示词缺少 SQL 变量规范片段: ${key}`).toContain(key);
+    }
+  });
+
+  it('SQL 样例的正文变量与 @程序参数 同名（合并去重后只剩一个 day）', () => {
+    const { content } = sampleOf('sql');
+    const { keys, programArgs } = extractProgramParams(content, 'sql');
+    expect(programArgs).toContain('--day');
+    expect(keys).toEqual(['day']);
+  });
+
+  it('提示词里的错误写法不会被解析器误收：$[yyyyMMdd] 与带默认值的模板表达式', () => {
+    // 取自提示词的反例说明：这两种写法都不是合法参数名，写进正文也不会被识别
+    const sql = "select 1 from t where dt = '$[yyyyMMdd]' and d = '${day:20260501}' limit 1";
+    expect(extractProgramParams(sql, 'sql').keys).toEqual([]);
+  });
+
+  it('只在注释里出现的变量不算参数（注释先被剥离）', () => {
+    const sql = [
+      '/*',
+      ' * @备注: 示例 ${notParam} 只是注释里的说明',
+      ' */',
+      'select 1 from t;',
+    ].join('\n');
+    expect(extractProgramParams(sql, 'sql').keys).toEqual([]);
+  });
+});
+
+/**
  * 新建文件时由 generateFileHeader 灌入的代码头模板，是人工书写代码头的范本。
  * 模板若漏字段，人工新建的 .java/.scala/.py 就只会填模板里有的项，
  * 进而丢 @引擎（任务被默认判为 SPARK）与 @数据源（调度依赖缺失）。
+ * v3 起模板含 @程序参数 / @任务参数（原 @用法 已拆分），漏掉会导致「运行程序」识别不到参数。
  */
 describe('generateFileHeader — 模板字段完整性', () => {
   const cases: Array<{ file: string }> = [
@@ -104,9 +162,11 @@ describe('generateFileHeader — 模板字段完整性', () => {
     expect(header).toBeTruthy();
     expect(header.startsWith('/*')).toBe(true);
     expect(header.endsWith(' */')).toBe(true);
-    for (const field of ['备注', '数仓', '引擎', '依赖', '用法', '数据源']) {
+    // v3：原 @用法 已拆成 @程序参数 / @任务参数（无则「无」），生成器不得再产出 @用法
+    for (const field of ['备注', '数仓', '引擎', '依赖', '程序参数', '任务参数', '数据源']) {
       expect(header).toContain(`@${field}: `);
     }
+    expect(header).not.toContain('@用法: ');
 
     // 模板必须能被真实解析器识别为块注释，且各字段键都在（值留空待填）
     const parsed = parseFileHeader(header);
@@ -115,6 +175,9 @@ describe('generateFileHeader — 模板字段完整性', () => {
     expect(parsed!.remark).toBe('');
     expect(parsed!.engine).toBe('');
     expect(parsed!.dependency).toBe('');
+    expect(parsed!.programArgs).toBe('');
+    expect(parsed!.taskArgs).toBe('');
+    expect(parsed!.usage).toBe('');
     expect(parsed!.dataSource).toBe('');
   });
 

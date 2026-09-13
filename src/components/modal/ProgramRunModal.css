@@ -1,0 +1,262 @@
+.program-run-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.program-run-modal {
+  width: 520px;
+  max-width: 90vw;
+  background: var(--bg-panel, #1f2532);
+  border: 1px solid var(--border-color, #3a4152);
+  border-radius: 8px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+
+.program-run__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color, #3a4152);
+}
+
+.program-run__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary, #e8ecf4);
+}
+
+.program-run__close {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary, #9aa3b2);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+}
+
+.program-run__close:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary, #e8ecf4);
+}
+
+.program-run__body {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.program-run__list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.program-run__label {
+  font-size: 12px;
+  color: var(--text-secondary, #9aa3b2);
+}
+
+.program-run__add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  font-size: 12px;
+  color: var(--text-secondary, #9aa3b2);
+  background: transparent;
+  border: 1px solid var(--border-color, #3a4152);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.program-run__add-btn:hover:not(:disabled) {
+  color: var(--accent, #3aa0ff);
+  border-color: var(--accent, #3aa0ff);
+}
+
+.program-run__add-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.program-run__list-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 代码识别到的参数名提示：告诉用户这些行的出处，不是凭空冒出来的 */
+.program-run__source {
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--accent, #3aa0ff);
+  word-break: break-all;
+}
+
+/* 代码头 @任务参数 的引擎/资源参数：说明它们不下发 runParams、该去哪配（不静默丢弃） */
+.program-run__task-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--text-secondary, #9aa3b2);
+  word-break: break-all;
+}
+
+.program-run__task-note svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+/* 参数行较多时限制高度，避免弹窗被撑高到超出屏幕 */
+.program-run__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.program-run__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.program-run__input {
+  width: 100%;
+  padding: 7px 10px;
+  font-size: 13px;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  color: var(--text-primary, #e8ecf4);
+  background: var(--bg-input, #171c26);
+  border: 1px solid var(--border-color, #3a4152);
+  border-radius: 6px;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.program-run__input--key {
+  flex: 0 0 40%;
+}
+
+.program-run__input--value {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.program-run__input:focus {
+  border-color: var(--accent, #3aa0ff);
+}
+
+.program-run__remove {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  padding: 5px;
+  color: var(--text-secondary, #9aa3b2);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.program-run__remove:hover {
+  color: #e06c75;
+  background: rgba(224, 108, 117, 0.12);
+}
+
+.program-run__empty {
+  padding: 12px 0;
+  font-size: 12px;
+  text-align: center;
+  color: var(--text-secondary, #9aa3b2);
+}
+
+.program-run__hint {
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--text-secondary, #9aa3b2);
+}
+
+.program-run__hint code {
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
+.program-run__status {
+  font-size: 11px;
+  color: var(--text-secondary, #9aa3b2);
+}
+
+.program-run__warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: #e0a458;
+}
+
+.program-run__warning svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.program-run__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border-color, #3a4152);
+}
+
+.program-run__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 16px;
+  font-size: 13px;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.program-run__btn--ghost {
+  background: transparent;
+  color: var(--text-secondary, #9aa3b2);
+  border-color: var(--border-color, #3a4152);
+}
+
+.program-run__btn--ghost:hover {
+  color: var(--text-primary, #e8ecf4);
+}
+
+.program-run__btn--primary {
+  background: var(--accent, #3aa0ff);
+  color: #fff;
+}
+
+.program-run__btn--primary:hover {
+  opacity: 0.9;
+}

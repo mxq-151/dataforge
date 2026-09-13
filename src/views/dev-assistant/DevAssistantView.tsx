@@ -5,6 +5,7 @@ import type { EditorAreaHandle } from '../../types';
 import ExplorerPanel from './ExplorerPanel';
 import SubmitToSchedulerModal from './SubmitToSchedulerModal';
 import { RunLocalModal } from '../../components/modal/RunLocalModal';
+import { ProgramRunModal } from '../../components/modal/ProgramRunModal';
 import ExtractMetricsModal from './ExtractMetricsModal';
 import FileHistoryModal from './FileHistoryModal';
 import { gitRestoreFile, gitFileHasChanges, toRepoRelativePath } from '../../api/git';
@@ -459,12 +460,15 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
   // 提取的运行/编译/取消执行逻辑
   const {
     handleRunProgram,
+    handleProgramRunConfirm,
+    handleCancelProgramRun,
     handleCompileDryRun,
     handleCancelExecution,
     handleRunLocal,
     handleLocalRunExecute,
     handleCancelLocalRun,
     pendingLocalRun,
+    pendingProgramRun,
     isRunning,
     isCompiling,
     executionHistory,
@@ -1252,6 +1256,18 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
         onSuccess={(_projectName, workflowName) => {
           console.log(`已提交到调度系统，工作流: ${workflowName}`);
         }}
+      />
+      {/* 「运行程序」前的程序运行参数确认框：确定后才编译/提交执行 */}
+      <ProgramRunModal
+        open={!!pendingProgramRun}
+        defaultParams={pendingProgramRun?.defaultParams ?? []}
+        extractedKeys={pendingProgramRun?.extractedKeys ?? []}
+        taskParamKeys={pendingProgramRun?.taskParamKeys ?? []}
+        programArgsHint={pendingProgramRun?.programArgsHint ?? ''}
+        taskArgsHint={pendingProgramRun?.taskArgsHint ?? ''}
+        usageHint={pendingProgramRun?.usageHint ?? ''}
+        onConfirm={handleProgramRunConfirm}
+        onCancel={handleCancelProgramRun}
       />
       <RunLocalModal
         open={!!pendingLocalRun}
