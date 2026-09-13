@@ -175,7 +175,7 @@ describe('ensureGitWorktree', () => {
       'prunable gitdir file points to non-existent location',
       '',
     ]);
-    // 目录里只剩 .git（源码文件已丢失），HEAD 仍有内容
+    // 目录里只剩 .git（源码文件已丢失），HEAD 仍有内容：git 侧报告「已跟踪文件全部缺失」
     readDirMock.mockResolvedValue([{ name: '.git', isDirectory: false, isFile: true, isSymlink: false }]);
     const base = responder;
     responder = (call) => {
@@ -198,6 +198,10 @@ describe('ensureGitWorktree', () => {
         return { code: 1, stdout: '', stderr: 'error: unable to locate repository' };
       }
       if (call.args[2] === 'ls-tree') return { code: 0, stdout: 'ddls/ads_ddl.sql\n' };
+      if (call.args.includes('status') && call.args.includes('--porcelain')) {
+        // worktree 目录被清空后，git 只会报一堆 ` D `，不会自动还原文件
+        return { code: 0, stdout: ' D ddls/ads_ddl.sql\n' };
+      }
       return base(call);
     };
 
@@ -206,6 +210,61 @@ describe('ensureGitWorktree', () => {
     expect(cmdList().some(c => c.includes('worktree repair'))).toBe(true);
     expect(cmdList().some(c => c.includes('worktree add'))).toBe(false);
     expect(cmdList().some(c => c.includes('checkout'))).toBe(true);
+  });
+
+  it('工作树已注册但文件大面积缺失：先恢复源码再同步（2026-09-13 事故后目录一直空着）', async () => {
+    inWorkTree = new Set([REPO, SRC]);
+    const base = responder;
+    let statusCalls = 0;
+    responder = (call) => {
+      if (call.args[2] === 'ls-tree') return { code: 0, stdout: 'olist/a.sql\nads/b.java\n' };
+      if (call.args.includes('status') && call.args.includes('--porcelain')) {
+        statusCalls += 1;
+        // 第 1 次是自愈探测：file 全缺失；checkout 之后第 2 次应当干净，同步才能继续
+        return { code: 0, stdout: statusCalls === 1 ? ' D olist/a.sql\n D ads/b.java\n' : '' };
+      }
+      return base(call);
+    };
+
+    await ensureGitWorktree(REPO, SRC, 'p1');
+
+    expect(cmdList().some(c => c.includes('checkout'))).toBe(true);
+    // 自愈必须发生在同步之前：syncWorktreeWithRemote 见到「工作区不干净」会直接跳过，
+    // 原实现只在挂载路径里恢复，已注册的工作树永远走不到，于是目录一直空着。
+    expect(indexOf('checkout')).toBeLessThan(indexOf('fetch'));
+  });
+
+  it('工作树干净时不误发 checkout', async () => {
+    inWorkTree = new Set([REPO, SRC]);
+    const base = responder;
+    responder = (call) => {
+      if (call.args[2] === 'ls-tree') return { code: 0, stdout: 'olist/a.sql\n' };
+      if (call.args.includes('status') && call.args.includes('--porcelain')) {
+        return { code: 0, stdout: '' };
+      }
+      return base(call);
+    };
+
+    await ensureGitWorktree(REPO, SRC, 'p1');
+
+    expect(cmdList().some(c => c.includes('checkout'))).toBe(false);
+  });
+
+  it('用户只删掉个别文件时不自动恢复（不打断用户自己的删除意图）', async () => {
+    inWorkTree = new Set([REPO, SRC]);
+    const base = responder;
+    const tracked = Array.from({ length: 40 }, (_, i) => `olist/t${i}.sql`);
+    responder = (call) => {
+      if (call.args[2] === 'ls-tree') return { code: 0, stdout: `${tracked.join('\n')}\n` };
+      if (call.args.includes('status') && call.args.includes('--porcelain')) {
+        return { code: 0, stdout: ' D olist/t0.sql\n' };
+      }
+      return base(call);
+    };
+
+    await ensureGitWorktree(REPO, SRC, 'p1');
+
+    expect(cmdList().some(c => c.includes('checkout'))).toBe(false);
   });
 
   it('分支挂在旧路径（仅分隔符不同）时不 remove，不误删源码目录', async () => {

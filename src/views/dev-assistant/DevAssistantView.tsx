@@ -15,7 +15,13 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useDataSourceCache } from '../../contexts/DataSourceContext';
 import { StatusBarInfo, Tab, FileNode } from '../../types';
 import { generateId, generateFileHeader } from '../../utils';
-import { getBaseName, splitPath, toNativePath, samePath, isPathUnder, pathKey } from '../../utils/pathUtils';
+import { getBaseName, splitPath, toNativePath, samePath, isPathUnder, pathKey, joinPath } from '../../utils/pathUtils';
+import {
+  assessRollbackSafety,
+  formatTrashStamp,
+  TRASH_DIR_NAME,
+  type WorkspaceSnapshot,
+} from '../../utils/rollbackSafety';
 import { extractMetricsFromMarkdown, expandCalcExprBatch } from '../../utils/extractMetrics';
 import { generateCommitSummary } from '../../utils/commitSummary';
 import { mapCodeFileToTask } from '../../utils/schedulerMapping';
@@ -331,9 +337,11 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
   // （第二次调用时 setEditorContent 的占位内容尚未刷到 ref，会误判为未加载而重复读取）
   const fetchingTabsRef = useRef<Set<string>>(new Set());
 
-  // File snapshots for rollback: Map<userMessageIndex, Record<filePath, content>>
-  const [fileSnapshots, setFileSnapshots] = useState<Map<number, Record<string, string>>>(new Map());
-  const fileSnapshotsRef = useRef<Map<number, Record<string, string>>>(new Map());
+  // File snapshots for rollback: Map<userMessageIndex, WorkspaceSnapshot>
+  // 快照必须连同「拍摄时的 rootPath」一起存：root 为空说明当时文件树未装载，
+  // 这种空快照是不可信的，回滚时会把整个工作区当成「快照之后新增的文件」删光。
+  const [fileSnapshots, setFileSnapshots] = useState<Map<number, WorkspaceSnapshot>>(new Map());
+  const fileSnapshotsRef = useRef<Map<number, WorkspaceSnapshot>>(new Map());
 
   // Keep ref in sync with state
   useEffect(() => {
@@ -375,6 +383,7 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
     createFolder,
     saveFile,
     deleteNode,
+    trashNode,
     renameNode,
     moveNode,
     copyNode,
@@ -494,14 +503,23 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
   const sendMessageWithSnapshot = useCallback(async (line: string) => {
     // Take snapshot of current workspace files before sending
     const currentUserCount = chatBackend.messages.filter(e => e.info.role === 'user').length;
-    const snapshot = await snapshotWorkspaceFiles(fileTree, readFileContent);
+
+    // 文件树为空或 rootPath 未就绪时先刷新：否则会拍到一个「空快照 + 空 root」，
+    // 而回滚会把磁盘上所有文件都当成「快照之后新增的」删掉（2026-09-13 事故成因）。
+    // 正常路径（树已装载）不触发刷新，发送延迟不受影响。
+    let tree = fileTree;
+    if (!rootPath || tree.length === 0) {
+      tree = await refreshTree();
+    }
+    const files = await snapshotWorkspaceFiles(tree, readFileContent);
+
     setFileSnapshots(prev => {
       const newMap = new Map(prev);
-      newMap.set(currentUserCount, snapshot);
+      newMap.set(currentUserCount, { root: rootPath, files });
       return newMap;
     });
     chatBackend.sendMessage(line);
-  }, [chatBackend, fileTree, readFileContent]);
+  }, [chatBackend, fileTree, readFileContent, rootPath, refreshTree]);
 
   // Handle rollback: restore files + rollback context
   const handleRollback = useCallback(async (messageId: string) => {
@@ -514,41 +532,87 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
       ? chatBackend.messages.slice(0, messageIdx + 1).filter(e => e.info.role === 'user').length - 1
       : -1;
 
-    // 1. Restore files from snapshot
     const snapshot = userMessageIndex >= 0 ? fileSnapshotsRef.current.get(userMessageIndex) : undefined;
-    if (snapshot) {
-      // Restore all files from the snapshot
-      for (const [path, content] of Object.entries(snapshot)) {
-        await saveFile(path, content);
-      }
 
-      // Delete files that were created after the snapshot (exist on disk but not in snapshot)
-      const currentFiles = await snapshotWorkspaceFiles(currentTree, readFileContent);
-      for (const path of Object.keys(currentFiles)) {
-        if (!(path in snapshot)) {
-          await deleteNode(path, 'file');
-        }
-      }
+    // 1. 执行前安全检查（纯函数，见 utils/rollbackSafety.ts）
+    //    2026-09-13 事故：这一层完全缺失，一次空快照（拍摄于文件树未装载时）把
+    //    「待删除集合」放大成全部现存文件，test_project 的 71 个已提交文件被直接抹掉，
+    //    既无备份也无日志。现在快照不可信 / 不同源 / 大比例删除都会先被拦下。
+    const currentFiles = await snapshotWorkspaceFiles(currentTree, readFileContent);
+    const currentPaths = Object.keys(currentFiles);
 
-      // Delete folders that were created after the snapshot
-      const snapshotFolderPaths = deriveFolderPaths(Object.keys(snapshot));
-      const currentFolderPaths = collectFolderPaths(currentTree);
-      // Sort by depth descending (deepest first) so children are deleted before parents
-      const foldersToDelete = currentFolderPaths
-        .filter(p => !snapshotFolderPaths.has(p))
-        .sort((a, b) => splitPath(b).length - splitPath(a).length);
-      for (const folderPath of foldersToDelete) {
-        await deleteNode(folderPath, 'folder');
-      }
+    const assessWith = (force: boolean) =>
+      assessRollbackSafety({ snapshot, currentPaths, currentRoot: rootPath, force });
 
-      // Refresh tree again to reflect restored + deleted files
-      await refreshTree();
+    let assessment = assessWith(false);
+
+    // 大比例删除属可疑区间：经用户确认后放行，否则整体中止（此时尚未动过任何文件）
+    if (assessment.code === 'mass-deletion') {
+      if (window.confirm(`${assessment.message}\n\n确定要继续回滚吗？`)) {
+        assessment = assessWith(true);
+      }
     }
 
-    // 2. Rollback context via backend
+    if (!assessment.allowed) {
+      toast.error(assessment.message);
+      return;
+    }
+
+    const snapshotFiles = snapshot?.files ?? {};
+
+    // 2. 还原快照中记录的文件内容
+    for (const [path, content] of Object.entries(snapshotFiles)) {
+      await saveFile(path, content);
+    }
+
+    // 3. 删除「快照之后新增」的文件与目录 —— 走回收站而非 fs.remove 直删：
+    //    误判时用户可按原相对路径从 .dataforge-trash/<批次>/ 移回。
+    const batch = formatTrashStamp();
+    const trashed: Array<{ path: string; to: string }> = [];
+
+    for (const path of assessment.toDelete) {
+      const to = await trashNode(path, 'file', batch);
+      if (to) trashed.push({ path, to });
+    }
+
+    const snapshotFolderPaths = deriveFolderPaths(Object.keys(snapshotFiles));
+    const currentFolderPaths = collectFolderPaths(currentTree);
+    // Sort by depth descending (deepest first) so children are deleted before parents
+    const foldersToDelete = currentFolderPaths
+      .filter(p => !snapshotFolderPaths.has(p))
+      .sort((a, b) => splitPath(b).length - splitPath(a).length);
+    for (const folderPath of foldersToDelete) {
+      const to = await trashNode(folderPath, 'folder', batch);
+      if (to) trashed.push({ path: folderPath, to });
+    }
+
+    // Refresh tree again to reflect restored + deleted files
+    await refreshTree();
+
+    // 4. 审计留痕：渲染层日志不会落进主进程日志，因此把「删了什么、为什么删」
+    //    写进回收站批次目录。这条记录本身就是事后复盘与还原的操作手册。
+    if (rootPath && trashed.length > 0) {
+      const manifest = {
+        at: new Date().toISOString(),
+        reason: 'rollback',
+        messageId,
+        userMessageIndex,
+        snapshotRoot: snapshot?.root ?? null,
+        currentRoot: rootPath,
+        restoredCount: Object.keys(snapshotFiles).length,
+        trashed,
+        note: '本次回滚删除的文件已按原相对路径移入本目录，可直接移回工作区还原。',
+      };
+      await saveFile(
+        joinPath(rootPath, TRASH_DIR_NAME, batch, '_manifest.json'),
+        JSON.stringify(manifest, null, 2)
+      );
+    }
+
+    // 5. Rollback context via backend
     await chatBackend.sendRollback(messageId);
 
-    // 3. Clean up snapshots for rolled-back messages
+    // 6. Clean up snapshots for rolled-back messages
     if (userMessageIndex >= 0) {
       setFileSnapshots(prev => {
         const newMap = new Map(prev);
@@ -561,33 +625,28 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
       });
     }
 
-    // 4. Update open tabs: close tabs for deleted files, update content for restored files
-    setTabs(prev => {
-      let tabsAfterClose = prev;
-      if (snapshot) {
-        tabsAfterClose = prev.filter(tab => {
-          if (!(tab.path in snapshot)) {
-            // File was deleted, remove from editorContent
-            setEditorContent(editorPrev => {
-              const next = { ...editorPrev };
-              delete next[tab.id];
-              return next;
-            });
-            return false;
-          }
-          return true;
-        });
-      }
-      return tabsAfterClose;
-    });
+    // 7. Update open tabs: close tabs for deleted files, update content for restored files
+    //    先算出要关闭的 Tab 再分别更新：原实现在 setTabs 的 updater 内部调用 setEditorContent，
+    //    属于在 reducer 里做副作用（StrictMode 下 updater 会被执行两次）。
+    const closedTabIds = tabs.filter(tab => !(tab.path in snapshotFiles)).map(tab => tab.id);
+    if (closedTabIds.length > 0) {
+      setTabs(prev => prev.filter(tab => !closedTabIds.includes(tab.id)));
+      setEditorContent(prev => {
+        const next = { ...prev };
+        for (const id of closedTabIds) {
+          delete next[id];
+        }
+        return next;
+      });
+    }
 
-    // 5. Update editor content for tabs whose files were restored
-    if (snapshot) {
+    // 8. Update editor content for tabs whose files were restored
+    if (Object.keys(snapshotFiles).length > 0) {
       setEditorContent(prev => {
         const next = { ...prev };
         for (const tab of tabs) {
-          if (tab.path in snapshot) {
-            next[tab.id] = snapshot[tab.path];
+          if (tab.path in snapshotFiles) {
+            next[tab.id] = snapshotFiles[tab.path];
           }
         }
         return next;
@@ -595,7 +654,7 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
     }
 
     toast.info('已回滚到指定消息之前的状态');
-  }, [chatBackend, readFileContent, saveFile, deleteNode, refreshTree, toast, tabs]);
+  }, [chatBackend, readFileContent, saveFile, trashNode, refreshTree, toast, tabs, rootPath]);
 
   const handleOpenFolder = useCallback(async () => {
     await openFolder(rootPath || undefined);

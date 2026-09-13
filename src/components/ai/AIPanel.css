@@ -1591,6 +1591,36 @@
   font-weight: 500;
 }
 
+/* 上下文明细提示（自定义 tooltip，替换原生 title 的 0.5~1s 延迟）
+   用 position: fixed 定位：.ai-panel 是 overflow: hidden，绝对定位会被裁掉；
+   祖先链上没有 transform/will-change/contain，fixed 相对视口，不会被裁剪。 */
+.ai-panel__context-tip {
+  position: fixed;
+  z-index: 3000;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 8px;
+  border: 1px solid #3c3c3c;
+  border-radius: 6px;
+  background-color: #1b1b1b;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+  color: #d4d4d4;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: nowrap;
+  /* 纯展示层：不能挡住鼠标，否则 mouseleave 抖动 */
+  pointer-events: none;
+}
+
+.ai-panel__context-tip-line {
+  display: block;
+}
+
+.ai-panel__context-tip-line--dim {
+  color: #9a9a9a;
+}
+
 /* ── 上下文压缩按钮（头部） ──────────────────────────────────── */
 .ai-panel__compress-btn {
   display: flex;

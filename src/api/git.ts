@@ -1,5 +1,7 @@
-import { isWindows as checkIsWindows, joinPath, normalizePath, isPathUnder, toRelativePath } from '../utils/pathUtils';
+import { isWindows as checkIsWindows, joinPath, normalizePath, isPathUnder, toRelativePath, getDirName } from '../utils/pathUtils';
 import { Command } from '../bridge/shell';
+import { TRASH_DIR_NAME, formatTrashStamp, uniqueTrashName, isMassFileLoss } from '../utils/rollbackSafety';
+import { ensureTrashIgnored } from '../utils/workspaceTrash';
 
 export interface GitFileStatus {
   path: string;
@@ -452,25 +454,36 @@ const inspectMountDir = async (dir: string): Promise<DirState> => {
 };
 
 /**
- * 工作树已挂载但源码文件全部缺失时，从 index 恢复。
+ * 工作树源码文件大面积缺失时，从 index 恢复。
  *
  * 典型成因：链接工作树的 `.git` 文件丢失后目录被清空（或被误删），
- * git 侧仍完整持有 index 与 HEAD，此时目录里一个文件都没有，
- * 属于明确的损坏状态（正常项目的目录不可能为空而分支又有内容），直接恢复即可。
+ * git 侧仍完整持有 index 与 HEAD，却只会报告一堆 ` D ` 而不会自动还原 ——
+ * 2026-09-13 工作区被清空后目录一直空着，就是这个原因（原实现只在「目录里一个文件都没有」时
+ * 才恢复，且只在挂载路径上调用，已注册的工作树永远走不到）。
+ *
+ * 判定标准见 isMassFileLoss：全空必然恢复；部分缺失则要求达到数量与比例阈值，
+ * 以免把用户在编辑器里主动删掉的一两个文件「自动恢复」回来。
  */
 const restoreMissingWorktreeFiles = async (workTreeDir: string): Promise<void> => {
   try {
-    const { readDir } = await import('../bridge/fs');
-    const names = (await readDir(workTreeDir)).map(e => e.name).filter(n => n !== '.git');
-    if (names.length > 0) return;
     const lsTree = await Command.create('git', ['-C', workTreeDir, 'ls-tree', '-r', '--name-only', 'HEAD']).execute();
     if (lsTree.code !== 0 || !lsTree.stdout.trim()) return; // 分支本来就没有内容，无需恢复
+
+    const trackedCount = lsTree.stdout.split('\n').map(s => s.trim()).filter(Boolean).length;
+
+    // porcelain 第 1/2 列分别是 index / 工作区状态，` D ` 与 `D ` 都表示文件从工作区消失
+    const status = await Command.create('git', ['-C', workTreeDir, 'status', '--porcelain']).execute();
+    if (status.code !== 0) return;
+    const missingCount = status.stdout.split('\n').filter(l => /^(D | D)/.test(l)).length;
+
+    if (!isMassFileLoss(missingCount, trackedCount)) return;
+
     const checkout = await Command.create('git', ['-C', workTreeDir, 'checkout', '--', '.']).execute();
     if (checkout.code !== 0) {
       console.warn('[git] 恢复工作树缺失文件失败:', checkout.stderr);
       return;
     }
-    console.log(`[git] 已恢复工作树缺失的源码文件: ${workTreeDir}`);
+    console.log(`[git] 已恢复工作树缺失的源码文件: ${workTreeDir}（缺失 ${missingCount}/${trackedCount}）`);
   } catch (err) {
     console.warn('[git] restoreMissingWorktreeFiles 异常:', err);
   }
@@ -556,8 +569,11 @@ export const ensureGitWorktree = async (
 
   const branch = `dataforge/${sanitizeBranchSegment(projectCode)}`;
 
-  // 已是链接工作树 → 复用，并尝试 fast-forward 到远端最新（让「拉取最新代码」生效）
+  // 已是链接工作树 → 先自愈内容缺失，再尝试 fast-forward 到远端最新（让「拉取最新代码」生效）
+  // 顺序不能反：syncWorktreeWithRemote 见到工作区不干净（一堆 ` D `）会直接跳过，
+  // 而 2026-09-13 事故后正是这种状态，导致目录一直空着、永远等不到恢复。
   if (await isInsideWorkTree(workTreeDir)) {
+    await restoreMissingWorktreeFiles(workTreeDir);
     await syncWorktreeWithRemote(repoRoot, workTreeDir, branch);
     return;
   }
@@ -723,7 +739,8 @@ export const gitRestoreFile = async (
  *   - 已跟踪文件（modified / deleted / renamed）：`git restore --staged --worktree`
  *     同时清空暂存区与工作区改动（deleted 会从 index 恢复文件）；
  *   - 未跟踪 / 已暂存新增文件（untracked / added）：HEAD 中本就不存在该文件，
- *     restore 无法生效，直接将其从磁盘删除。
+ *     restore 无法生效，改为移入工作区回收站 `.dataforge-trash/<批次>/`。
+ *     这些文件从没进过版本库，删掉即不可恢复，因此不能直删磁盘。
  *
  * files 需来自 gitStatus 返回的状态（含 path 与 status）。任一步失败即抛错，由调用方提示。
  */
@@ -753,9 +770,26 @@ export const gitDiscardFiles = async (
   }
 
   if (pathsToDelete.length > 0) {
-    const { remove } = await import('../bridge/fs');
+    const { mkdir, rename, exists } = await import('../bridge/fs');
+    // 先让回收站对 git 隐身，再落盘（否则 untracked 条目会污染 git status、让自动同步跳过）
+    await ensureTrashIgnored(rootPath);
+    const batchDir = joinPath(rootPath, TRASH_DIR_NAME, formatTrashStamp());
+    await mkdir(batchDir, { recursive: true });
+
+    const taken = new Set<string>();
     for (const p of pathsToDelete) {
-      await remove(joinPath(rootPath, p));
+      const abs = joinPath(rootPath, p);
+      if (!(await exists(abs))) continue;
+
+      let candidate = uniqueTrashName(p, taken);
+      while (await exists(joinPath(batchDir, candidate))) {
+        taken.add(candidate);
+        candidate = uniqueTrashName(p, taken);
+      }
+
+      const target = joinPath(batchDir, candidate);
+      await mkdir(getDirName(target), { recursive: true });
+      await rename(abs, target);
     }
   }
 };

@@ -42,6 +42,7 @@ export interface TaskRecord {
 import * as fileReviewStore from './fileReviewStore';
 import type { OpenCodeConfig, Todo, MessageEntry, LogEntry, FileChange } from '../../types/opencode-backend';
 import type { OpencodeClient } from '@opencode-ai/sdk/v2/client';
+import { getHardcodedContextLimit, resolveContextLimit } from './modelContextLimit';
 
 /**
  * 读取「会话ID → 独立工作目录」映射（按 host+user 隔离键）。
@@ -177,46 +178,9 @@ export interface OpencodeClientBackend {
 }
 
 /**
- * 硬编码的模型 context 窗口大小（已知模型的官方限制）。
- * 用于：
- * 1. API `model.list()` 失败时的 fallback
- * 2. API 返回值低估时的下限保护（取 API 值与硬编码值的较大值）
- *
- * 注意：API 返回的 limit 有时不准确（例如 deepseek-v4-flash 实际支持 1M，
- * 但 API 可能返回 128000），因此对已知模型以硬编码值为下限。
+ * 硬编码的模型 context 窗口表 + 合并策略见 ./modelContextLimit。
+ * 这里只保留 API 查询策略（location + 重试）。
  */
-function getHardcodedContextLimit(modelID: string): number {
-  const model = modelID.toLowerCase();
-  if (model.includes('gpt-4o') || model.includes('gpt-4-turbo')) {
-    return 128_000;
-  }
-  if (model.includes('gpt-4')) {
-    return 8_192;
-  }
-  if (model.includes('gpt-3.5')) {
-    return 16_385;
-  }
-  if (model.includes('claude-3') || model.includes('claude-4')) {
-    return 200_000;
-  }
-  // deepseek-v4 系列（含 deepseek-v4-flash）支持 1M context
-  if (model.includes('deepseek-v4')) {
-    return 1_048_576;
-  }
-  if (model.includes('deepseek-v3') || model.includes('deepseek-r1') || model.includes('deepseek-v2') || model.includes('deepseek')) {
-    return 128_000;
-  }
-  if (model.includes('qwen')) {
-    return 32_000;
-  }
-  if (model.includes('gemini-1.5-pro') || model.includes('gemini-2')) {
-    return 1_000_000;
-  }
-  if (model.includes('gemini')) {
-    return 32_000;
-  }
-  return 128_000;
-}
 
 // ── Context: 每个 (moduleId, projectId) 独立实例 ──
 
@@ -632,69 +596,104 @@ function useOpencodeClientImpl(
   // ── 设置模型 context 限制 ──
   // 优先从 SDK client.model.list() 获取当前模型的真实 limit.context，
   // 替代硬编码推断（硬编码无法覆盖自定义模型和新模型）。
-  // 对已知模型以硬编码值为下限保护：API 返回的 limit 有时不准确
-  // （如 deepseek-v4-flash 实际支持 1M，但 API 可能返回 128000），
-  // 取 API 值与硬编码值的较大值，避免低估 context 窗口导致进度条误报满载。
-  const fetchModelContextLimit = useCallback(async (c: OpencodeClient, modelID: string, providerID: string) => {
+  //
+  // 两个必须踩住的坑（2026-09-13 修复，症状：进度条显示 181.7k/128.0k = 142%）：
+  // 1. **必须带 location**。`/api/model` 按 location 惰性初始化实例，不带
+  //    location 时服务端只用自己的 cwd 兜底；带 location 才能查到目标项目实例
+  //    的模型表。SDK 会把它同时写进 header 与 query。
+  // 2. **冷实例首次查询会「成功但返回空」**。实例尚未完成 provider 加载时接口
+  //    返回 200 + `data: []`，只查一次就会静默回落到硬编码表，而那正是被
+  //    `deepseek-flash`（DeepSeek V4.1 Flash）漏判成 128k 的那张表。故按
+  //    递增间隔重试几次，把冷启动窗口让过去。
+  const fetchModelContextLimit = useCallback(async (
+    c: OpencodeClient,
+    modelID: string,
+    providerID: string,
+    dir: string | null,
+    isCancelled: () => boolean,
+  ) => {
     const hardcodedLimit = getHardcodedContextLimit(modelID);
-    try {
-      const result = await c.v2.model.list();
-      const models = (result.data as any)?.data ?? result.data;
-      if (Array.isArray(models)) {
-        const matched = models.find((m: any) =>
-          m.id === modelID && m.providerID === providerID
+
+    /** 查一次 API，返回 limit.context（查不到返回 null） */
+    const queryApiLimit = async (): Promise<{ limit: number | null; reason: string }> => {
+      try {
+        const result = await c.v2.model.list(
+          dir ? { location: { directory: dir } } : undefined
         );
-        if (matched?.limit?.context) {
-          const finalLimit = Math.max(matched.limit.context, hardcodedLimit);
-          setContextLimit(finalLimit);
-          addLog({
-            source: 'opencode',
-            text: `模型 ${providerID}/${modelID} contextLimit=${finalLimit}（API=${matched.limit.context}, 硬编码=${hardcodedLimit}）`,
-            timestamp: new Date(),
-            level: 'info',
-          });
-          return;
+        const models = (result.data as any)?.data ?? result.data;
+        if (!Array.isArray(models)) {
+          return { limit: null, reason: '返回体不是模型数组' };
         }
-        // fallback: 只按 modelID 匹配
-        const fallback = models.find((m: any) => m.id === modelID);
-        if (fallback?.limit?.context) {
-          const finalLimit = Math.max(fallback.limit.context, hardcodedLimit);
-          setContextLimit(finalLimit);
-          addLog({
-            source: 'opencode',
-            text: `模型 ${modelID} contextLimit=${finalLimit}（API=${fallback.limit.context}, 硬编码=${hardcodedLimit}, provider 未匹配）`,
-            timestamp: new Date(),
-            level: 'info',
-          });
-          return;
+        const matched = models.find((m: any) => m.id === modelID && m.providerID === providerID)
+          ?? models.find((m: any) => m.id === modelID);
+        const ctx = matched?.limit?.context;
+        if (typeof ctx === 'number' && ctx > 0) {
+          return { limit: ctx, reason: 'ok' };
         }
+        return { limit: null, reason: `模型表中无 ${modelID}（共 ${models.length} 条）` };
+      } catch (err) {
+        return { limit: null, reason: err instanceof Error ? err.message : String(err) };
       }
+    };
+
+    // 冷实例返回空列表是「会自愈」的，重试间隔按 0 / 800 / 1600 / 3200ms 递增
+    const RETRY_DELAYS_MS = [0, 800, 1600, 3200];
+    let lastReason = '';
+
+    for (let attempt = 0; attempt < RETRY_DELAYS_MS.length; attempt++) {
+      if (attempt > 0) {
+        await new Promise(r => setTimeout(r, RETRY_DELAYS_MS[attempt]));
+      }
+      if (isCancelled()) return;
+
+      const { limit, reason } = await queryApiLimit();
+      if (isCancelled()) return;
+
+      if (limit != null) {
+        const finalLimit = resolveContextLimit(limit, modelID);
+        setContextLimit(finalLimit);
+        addLog({
+          source: 'opencode',
+          text: `模型 ${providerID}/${modelID} contextLimit=${finalLimit}（API=${limit}, 硬编码=${hardcodedLimit}, 第 ${attempt + 1} 次查询）`,
+          timestamp: new Date(),
+          level: 'info',
+        });
+        return;
+      }
+
+      lastReason = reason;
       addLog({
         source: 'opencode',
-        text: `未从 API 找到模型 ${providerID}/${modelID} 的 limit，使用硬编码 fallback (${hardcodedLimit})`,
-        timestamp: new Date(),
-        level: 'warn',
-      });
-    } catch (err) {
-      addLog({
-        source: 'opencode',
-        text: `model.list() 失败: ${err instanceof Error ? err.message : String(err)}，使用硬编码 fallback (${hardcodedLimit})`,
+        text: `第 ${attempt + 1}/${RETRY_DELAYS_MS.length} 次查询模型 ${providerID}/${modelID} 的 limit 未命中：${reason}`,
         timestamp: new Date(),
         level: 'warn',
       });
     }
+
+    // 重试耗尽 → 硬编码兜底（此处才是真正需要警惕的路径：说明 API 一直不可用）
+    if (isCancelled()) return;
     setContextLimit(hardcodedLimit);
+    addLog({
+      source: 'opencode',
+      text: `未从 API 获得模型 ${providerID}/${modelID} 的 limit（${lastReason}），使用硬编码 fallback (${hardcodedLimit})`,
+      timestamp: new Date(),
+      level: 'warn',
+    });
   }, [setContextLimit, addLog]);
 
-  // 当客户端连接或模型切换时，获取真实的 contextLimit
+  // 当客户端连接、目录变化或模型切换时，获取真实的 contextLimit。
+  // 用自增序号做「最后一次调用生效」的保护：模型/目录连续切换时，先发起的那次
+  // 查询（含重试）可能后返回，不能让它覆盖新模型的结果。
+  const limitFetchSeqRef = useRef(0);
   useEffect(() => {
     const c = clientRef.current;
     if (!c || !ready) return;
     const modelID = activeLLMModel?.modelID ?? config.model;
     const providerID = activeLLMModel?.providerID ?? config.modelProvider;
     if (!modelID) return;
-    fetchModelContextLimit(c, modelID, providerID);
-  }, [ready, config.model, config.modelProvider, activeLLMModel, fetchModelContextLimit]);
+    const seq = ++limitFetchSeqRef.current;
+    fetchModelContextLimit(c, modelID, providerID, currentDirectory, () => seq !== limitFetchSeqRef.current);
+  }, [ready, currentDirectory, config.model, config.modelProvider, activeLLMModel, fetchModelContextLimit]);
 
   // ── 对话控制 ──
   const {

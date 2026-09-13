@@ -1,190 +1,148 @@
 # DataForge 项目长期记忆
 
-## 性能基准（AI 对话模块）
+> 只放「跨会话必须记住、忘掉就会出错」的规则。过程细节/一次性排查见 `.workbuddy/memory/YYYY-MM-DD.md`。
 
-- 设施：`bench.html` + `src/views/ai-bench/`（`?page=ai-bench` 免登录），合成事件喂真实
-  `useOpencodeEvents` → 真实 `MessageTimeline` / `PacedMarkdown`；预设 medium(8K)/long(24K)/
-  conversation(40轮+16K)；工具 `scripts/ai-bench*.mjs`；报告在 `perf/`；raw json 每份 3~4MB 用后删。
-- 本机跑基准前提：①显式 `--browser "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"`
-  （脚本默认 Windows Edge 路径）；②**先 `unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy`**
-  （本机代理会让 curl 探活返回 502，误判「服务器没起来」）；③`npx vite` 会卡住，改用
-  `node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5173 --strictPort`；
-  ④端口：`ai-bench.mjs`=9333、`ai-bench-profile.mjs`=9334。
-- 测量陷阱：编辑器输入探针（`startTyping`）自身耗 ~580ms Monaco CPU，测对话模块必须 `--typing false`；
-  `(idle)` 占 55%~72%，**非空闲 CPU = 总采样 − idle** 才有效；开发构建绝对值远高于生产，只比比值；
-  `longtask` 在 headless 下不稳定属噪声。
-- 第二轮后基线：medium-8k 阻塞 172.8 / 提交 127.6ms；long-24k 非空闲 1213.1 / 阻塞 526.3 / 提交 394ms；
-  conv-40t-16k 非空闲 2214.4 / 阻塞 354.8 / 提交 362.4ms。
-  回归防线：`renderedChars` 必须逐字节一致（6558 / 19617 / 13087）。
+## 环境与命令（必守）
 
-## 架构约定
+- **跑 vitest / tsc / vite 一律 `env -u NODE_OPTIONS`**：agent shell 注入的 broker fs shim 让每次
+  `readFileSync` 变成一次同步 IPC，jsdom 788 个文件 ⇒ `import 'jsdom'` 从 0.5s 变 96s。
+  指纹：CPU 占用 ~1%（纯等待）。用户自己的 Terminal 无此注入。详见 skill `node-run-slowdown-diagnosis`。
+- 回归基线（2026-09-13 全量复跑）：**42 文件 / 734 例**（09-12 为 725 例；本模块口径 =
+  `src/utils/programArgs.test`(45) + `ProgramRunModal.test`(21) + `useProgramRunner.test`(12) +
+  `fileHeader.test`(22)）。
+- load 高时加 `--testTimeout=60000`：`FolderSubmitScheduleModal` 的「外部 @依赖」用例在 load≈7~10 时
+  会 `waitFor` 超时（`createWithTasks` 0 次调用）。**与本模块无引用关系（`programArgs`/`useProgramRunner`
+  只被 DevAssistantView 链引用），已用 `git stash push <paths>` 在改动前状态对比排除；load 回落即过。**
+- 本机跑对话性能基准：显式 `--browser "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"`、
+  先 `unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy`、用
+  `node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5173 --strictPort`（`npx vite` 会卡），
+  端口 ai-bench=9333 / profile=9334，测对话模块必须 `--typing false`（输入探针自身耗 ~580ms）。
+- **同一文件的多处编辑必须串行**：并行两个 `Edit` 各自基于旧快照写回全文件，后写的静默抹掉先写的。
+  排除并发写者：`find src -mmin -8`。macOS 陷阱：`grep "a\|b"` 交替静默失败，须 `grep -E`。
 
-- 流式文本分两层：`partTextAccumDelta`（ref，逐字即时）+ `messages`（结构性状态）。逐字增长只走
-  ref + `subscribePartText`，**不进 `messages`**（写它会连带投影/查找表/可见行全部重算）。
-  例外：part 首次上屏必须写 `messages`（投影靠它判断可渲染性）；用户消息文本始终全量同步。
-- `PacedMarkdown` 稳定前缀必须**按块缓存元素**（整段缓存 = 每次前缀前进整段重解析 = O(n²)）。
-- 虚拟化只解决 DOM 数量，不解决「每次 commit 重建视口内行元素树」；行包装组件需 `React.memo`。
-- 行投影/查找表是 O(消息数)，长对话要单独用 `conversation` 预设验证，`long` 测不出。
+## 上下文使用量 / 模型元数据（2026-09-13 起）
 
-## 配置参数（ConfigParamsModal）
+- 进度条分母来自 `hooks/opencode/modelContextLimit.ts`（纯函数表 + `resolveContextLimit` 取
+  API 与硬编码较大值）与 `useOpencodeClient.fetchModelContextLimit`。**改模型判定必须同步单测**。
+- `deepseek-flash` = DeepSeek **V4.1** Flash（界面显示 `ds-v4.1`），**1M 窗口**；判定里既没有
+  `v3` 也没有 `v4` 字样，**只能显式列出**，否则掉进泛化 `deepseek` → 128k（曾致进度条 142%）。
+  DeepSeek V4 系一律 **1_000_000**，不要写 1_048_576（Math.max 会让分母虚高）。
+- **`GET /api/model` 必须带 location**（`location[directory]=…`，SDK 同时写 header/query），
+  且**冷实例首次查询会返回 `200 + data: []`**（自愈），所以查询要重试，不能「查一次就回落硬编码」。
+  传不存在的目录会 500（`FileSystem.realPath NotFound`）。
+- 真相源速查：app 配置 `~/Library/Application Support/com.dataforge/opencode-config.json`
+  （key=`config`）；sidecar `127.0.0.1:4096` 的 `/config`、`/provider`、`/api/model`；
+  服务端日志 `~/.local/share/opencode/log/opencode.log`；官方窗口口径 `https://models.dev/api.json`。
+  **sidecar 由 app 托管，应用一关端口就拒连**（此时 502/refused 属正常，不是故障）。
+- 提示类 UI **不要用原生 `title`**（悬停延迟 0.5~1s）：改用 hover 零延迟的自定义 tooltip，
+  且 `.ai-panel{overflow:hidden}` 会裁剪绝对定位，需 `position:fixed`（祖先链无 transform，
+  相对视口安全）。仍未改造：`AIPanel` 头部「压缩」按钮等其它 `title=`。
 
-- 入口：编辑器右键（`EditorArea`）与文件浏览器右键（`ExplorerPanel`）。批量模式 `targetPaths?: string[]`
-  非空即启用；**不回填既有配置**，保存时逐文件 `saveConfig` upsert；`onSave(data, filePath?)` 第二参
-  仅批量模式传。
-- 引擎必须**逐文件**解析（同文件夹可能混 .sql/.py）；`ExplorerPanel` 的「待配置代码文件」遍历
-  `fileTree`（完整树，含折叠子目录）而非渲染行；扩展名 scala/sql/java/py。
+## 提交调度 / 配置参数
+
 - **菜单可见性门禁**（「配置参数」「提交调度」共用 `canConfigureParams`，分隔线一并条件渲染）：
-  右键目标必须**全部是文件夹**，且都位于 `code/{ads|dws|dwd|ods|dqc|dim}/…` 之下（含更深子目录）。
-  判定为纯函数 `utils/programLayout.ts` 的 `isUnderCodeLayerPath`（大小写不敏感、兼容 `\`）；
-  `sql/`、`algo/`、`code/utils`、`code` 自身一律不显示。
-- 竞态防护：单文件配置拉取用自增序号 `loadSeqRef` 丢弃过期响应；`EditorArea` 里弹窗常驻挂载，
-  用递增 `configParamsOpenSeq` 作 `key` 强制重挂载。
-- 目标列表展示为「项目编码 + 项目内相对路径」（`toDisplayFilePath`），**落库路径不带项目编码**
-  （DB 行自带 projectId）。展示与落库是两个口径。
-- 默认全选、可取消，未勾选不写入；选择态用「被取消集合」`excludedBatchPaths`（默认空集）。
-  引擎推导只按已勾选目标，重推导前用 `injectedBatchKeysRef` 摘掉上次引擎默认值补齐的键。
+  右键目标必须**全是文件夹**且位于 `code/{ads|dws|dwd|ods|dqc|dim}/…` 之下（含更深子目录）。
+  纯函数 `utils/programLayout.ts::isUnderCodeLayerPath`（大小写不敏感、兼容 `\`）。
+- 配置参数：批量模式 `targetPaths` 非空启用；**不回填既有配置**；逐文件 `saveConfig` upsert；
+  引擎必须**逐文件**解析；展示路径带项目编码、落库路径不带。
+- **「运行程序」必须先弹 `ProgramRunModal` 确认程序参数再执行**，参数形态是**键值对逐行编辑**
+  （与「配置参数 → 配置程序参数」同形态，2026-09-12 由单行文本改过来；后端只收
+  `runParams` 键值对）。换算与校验收口在 `utils/programArgs.ts`：`paramsFromItems`（**空参数名的行
+  整行丢弃**、同名后者生效、值一律字符串）、`findRowsMissingKey` / `findDuplicateKeys`（弹窗提示
+  「会被忽略 / 后者生效」，不静默）、`toParamRows`（预填复制 + 新 id，保证重开时行元素重挂载）。
+  语义是**所见即所发**：确认内容整体替换已保存配置、不回写落库；删光即不带参数（`{}` → `runParams: undefined`）。
+- **参数名提取**（`extractProgramParams(content, codeType)`）：v3 代码头把参数拆成两个字段 ——
+  `@程序参数`（程序自身入参 → `keys`，进预填行）、`@任务参数`（引擎/资源参数 → `taskParamKeys`，
+  只列出告知、不下发 runParams），**无该类参数时写「无」**；两者写法同为 `--参数名 取值`，
+  只收参数名**不收取值**（那是示例值）。SQL 另取正文 `${day}`（Java/Scala/Python 正文 `${}` 是日志模板不是入参）。
+  `@程序参数` 是**显式声明即分类结果**，不再按引擎二次剔除。旧字段 `@用法` 仅保留解析兼容
+  （`header.usage`，弹窗显示「@用法（旧格式，建议拆成 @程序参数 / @任务参数）」提示迁移），
+  新旧字段并存时一并解析、不丢参数。`parseFileHeader` 映射：`@程序参数`→`programArgs`、`@任务参数`→`taskArgs`；
+  生成模板 `utils/index.ts::HEADER_FIELDS` 已换成这两个字段（不再产出 `@用法`）。
+  弹窗把识别到的名字并成空白行（`mergeExtractedKeys`，已存在的按名去重、无缺失时返回原数组）+
+  「从代码提取」按钮补回误删行；扫描前先 `stripSqlComments`（保留字符串字面量），`$[yyyyMMdd]` 不误判。
+  **提示词侧已同口径**（S3「SQL 开发规范」→「变量编写规范」）：变量须为纯标识符（`[A-Za-z_][\w.\-]*`）、
+  只算**正文语句**里的 `${}`（注释内不算）、须与 `@程序参数` **同名**（逐字、大小写敏感、按名去重）、
+  日期不得用 `$[yyyyMMdd]`、引用保留引号（`dt = '${day}'`）；`fileHeader.test.ts` 有守卫用例
+  （提示词片段存在 + SQL 样例 `keys === ['day']` + 反例写法不被误收）。**提示词里不得新增
+  ```sql/java/scala/python 围栏块**——`promptSamples()` 会把它们当代码头样例断言。
+- **引擎参数表（`isEngineParamFlag`）现在只服务旧格式 `@用法` 的兼容拆分**（SPARK 的
+  `--master/--deploy-mode/--class/--num-executors/--driver-memory/--conf…`、FLINK 的
+  `-c/-p/-m/-yjm/-ytm/-ys…` 与 `-Dk=v`）：v3 由 `@任务参数` 显式声明，落在 `taskParamKeys` 里由弹窗
+  列出告知去向（**不静默丢**），不进预填行。**只按显式 `@引擎` 判定**，kyuubi/hive/python 等不剔除
+  （避免误伤同名参数）；`-checkpoint` 是程序自己的入参，**不在**剔除表里（规范样例就这么写）。
+  「本地运行」(`RunLocalModal`/`PendingLocalRun.defaultArgs`) 仍是单行文本、保持裸 `--k v`（本地 args 是数组、不经 shell）。
+- 工作流名称：项目内相对目录 → 分隔符转 `_`，**不 sanitize**（清洗留给提交时）；环境后缀
+  `withDeployEnvSuffix`（prod/gray/test，**默认 test**，只拼后缀）。**`_v{N}` 版本链已整体删除**，
+  名称恒带后缀 ⇒ DS 里无后缀/`_v1` 工作流不再匹配、重复提交会新建。推导基准必须同源用
+  `projectCwd`（**不能**用 `useFileSystem` 的 rootPath，否则退化成绝对路径一长串）。
+- 文件夹弹窗头部：副标题 `{调度项目名称} 工作流名称：{名}`，徽标 `{draft?.nodes.length ?? fileCount} 个任务节点`
+  （含自动生成的「前置依赖_x」节点）；**环境单选放在副标题行内**，顺序 `📁名称 → 环境 → N 个任务节点`；
+  草稿未就绪先用 `deriveFolderWorkflowName` 推导避免闪路径；内嵌编辑器传 `hideToolbarHeader`（左侧保留空占位）。
+- **自动依赖必须在「打开弹窗、草稿生成后」就完成**（用户在画布上看有没有连线，保存时才生成他看不到）：
+  `resolveExternalDeps` → `reconcileWorkflowDependencies`（跨工作流/项目生成专属 `前置依赖_{任务名}` DEPENDENT 节点）。
+  `resolvedDepsRef` 缓存（草稿解析一次、保存复用）、`reconciledForRef` 防 effect 重入；
+  `localHeaderDeps` 的 key = `sanitizeDsName(任务名)`；**自依赖既不停边也不进 `unresolved`**（否则成环）。
+- 「应用名称」`{project}.{workflow}.{task}`（`utils/appName.ts`，只改 SPARK/FLINK/MR，值未变返回同一对象）；
+  `{workflow}` 用**带环境后缀的最终名**；**只有两个提交入口生效**，调度管理传空 → 保持历史值可编辑。
+- `mainJar` 是编译产物派生值（编译→上传→回填），**不要加必填校验**（会让文件夹路径无法保存）。
 
-## 提交调度（文件夹 → 工作流）
+## 工作流保存闸门
 
-- 入口：文件浏览器右键「提交调度」（仅 code 分层目录下的文件夹，与「配置参数」共用
-  `canConfigureParams` 判定，见上节「菜单可见性门禁」）。
-  模态框 `FolderSubmitScheduleModal.tsx`，内嵌 `WorkflowDefinitionEditor`：
-  `showTaskTypeSidebar={false}`、**不传 `onTrigger`**（只保存不运行）。
-- 节点/边由 `buildWorkflowFromFolder(files, {rootPath, folderPath, projectCode})` 生成：每个代码文件
-  一个任务节点，同文件夹依赖直接连边；跨项目/不在本批次的记入 `unresolved`。返回还含
-  `headerDeps`（`sanitizeDsName(任务名)` → @依赖 列表，供依赖重建）。
-  **自依赖（`sourceCode === code`）既不停边也不进 `unresolved`**——否则会被解析成指向自身的前置依赖节点成环。
-- **工作流名称须与单文件提交调度同规范**（`deriveFolderWorkflowName`）：项目内相对目录 → 分隔符转 `_`，
-  **不做 sanitize**（清洗留给真正提交时，否则含特殊字符的目录名两边显示不同）。推导基准必须同源：
-  单文件用 `projectCwd`，文件浏览器侧经 `projectRoot` prop 透传 `projectCwd`，
-  **不能用 `useFileSystem` 的 rootPath**（它可被 openFolder 改变；基准不同会让 `toRelativePath`
-  回退成绝对路径，名称变成一长串、界面路径带斜杠）。拿不到相对路径时退化为文件夹名。
-- 保存：按「调度项目名称 === 开发项目编码」匹配 DS 项目 → 同名走 `update`（带 releaseState）否则
-  `createWithTasks`；创建分支勾选上线时**按名称回查再 `release`**（创建接口不接受 releaseState）。
-- **弹窗头部文案规范**（用户 09-12 定的）：副标题 = `{调度项目名称} 工作流名称：{工作流名称}`
-  （项目名称取 `project?.name || projectCode`），徽标 = `{N} 个任务节点`，N 取
-  `draft?.nodes.length ?? fileCount`（**含自动生成的「前置依赖_x」节点**，不是文件数）。
-  草稿未就绪时工作流名先用 `deriveFolderWorkflowName(folderPath, rootPath)` 推导（与
-  `buildWorkflowFromFolder` 同函数同参），避免头部先闪一段相对路径。
-  **名称改动只影响界面显示**，提交到 DS 的名称仍是 `sanitizeDsName(data.name)`。
-- 内嵌编辑器传 `hideToolbarHeader` 隐藏工具栏左侧「返回箭头 + 工作流名称」（名称已在弹窗头部）。
-  该 prop 默认 `false`，只影响此弹窗；**左侧 div 必须保留空占位**，否则 `space-between` 三段布局塌陷。
-- **环境单选在头部副标题行内**（用户 09-12 二次调整）：顺序为
-  `📁 名称 → DeployEnvRadio（+提示）→ N 个任务节点`。原来它独占一行（`__env` 行已删），
-  移到名称后面是为了「改的就是名称后缀」因果可见。副标题 `flex-wrap: wrap` + 名称
-  `min-width: 80px`，窄窗口时整行换行而非溢出；radio 在副标题内做了紧凑化（2px 8px / 11px）。
+- 纯函数 `utils/workflowNodeValidation.ts::validateWorkflowNodes(nodes)` 是 `task-forms.tsx` 里
+  `sm-required` 的镜像 —— 表单加必填项必须同步 `REQUIRED_PARAMS` 与单测。
+- 闸门：`handleOpenSaveModal()` + `SaveWorkflowModal.onConfirm` 双重防御；手动入口是工具栏「校验」
+  按钮（`data-testid="wf-toolbar-validate"`，`!readonly && !hideToolbarValidate`，**调度管理不显示、
+  文件夹提交调度保留**）。编辑器用了 `useToast` ⇒ **真实渲染它的测试必须包 `ToastProvider`**。
+- 任务参数是 `cell.setData` 直写、不触发图事件 ⇒ `handleSaveTask` 末尾必须手动
+  `setNodes(extractNodes(graph.getNodes()))`，否则搜索/上游下拉/校验读到旧参数。
 
-### 工作流名称与「环境」后缀（版本链已移除）
-- 两个提交入口都有「环境」单选（生产/灰度/测试，**默认测试**），定义在
-  `src/utils/deployEnv.ts`（`DeployEnv` = prod/gray/test）+ 共用组件
-  `src/views/dev-assistant/DeployEnvRadio.tsx`。选中的环境**拼在名称末尾**：
-  `olist_code_ods` → `olist_code_ods_test`（`withDeployEnvSuffix`，只拼后缀不 sanitize）。
-- **`_v{N}` 版本链已整体删除**（`computeVersionedWorkflowName` / `WorkflowVersionReason` 及其用例已删）：
-  不再按「同前缀工作流的定时调度状态」自动升版本，改由环境区分同名工作流。
-  单文件弹窗的 `workflowName` 已从 state 改为 `useMemo(baseWorkflowName + deployEnv)` 派生。
-- 后果：名称恒带后缀 → DS 里既有的无后缀 / `_v1` 工作流**不再匹配**，重复提交会新建；
-  环境不做记忆（每次打开回到测试）。要改口径先想清楚「同名即同一工作流」这条。
+## 测试与画布（易踩）
 
-### 任务节点「应用名称」派生（`{project}.{workflow}.{task}`）
-- `src/utils/appName.ts`：`APP_NAME_TASK_TYPES=['SPARK','FLINK','MR']`（与表单里真有「应用名称」项的
-  三种类型一致，表单改动要同步）、`buildTaskAppName`、`applyAppNameToNode(s)`（只改这三种类型，
-  值未变/JSON 非法时**返回同一对象**，便于 setState 判等）。
-- 生效范围：**只有两个提交入口**。`TaskConfigModal` 的 `appNameContext` 由 `WorkflowDefinitionEditor`
-  透传，文件夹弹窗传 `{project: projectLabel, workflow: workflowLabel}`；单文件弹窗在
-  `applyTaskTypeParamsToMapping` 里显式写 `appName`（**空 taskTypeParams 的早退分支也要写**）。
-  **调度管理编辑工作流不传 → 保持历史值可编辑**（别顺手全局打开）。
-- `{workflow}` 一律用**带环境后缀的最终名**；文件夹弹窗提交前还对 `recon.nodes` 用最终
-  `name`（sanitize 后）再跑一次 `applyAppNameToNodes`，防保存弹窗改名造成不一致。
-- 任务段用节点名（文件夹流程）= `sanitizeDsName(taskName)`（单文件流程），两处口径要一致。
-- ⚠️ 潜在的旧口径冲突：`validateYarnJobName`（提交/运行前校验）要求**代码里** `.appName("x")`
-  必须等于文件名主干 —— 与新的「应用名称」拼接口径不同源，改动这块前先与用户确认。
+- **x6 画布在 jsdom 下不可渲染**（`new Graph()` → `viewport.getCTM is not a function`）。
+  只关心父组件传参 → 整体 `vi.mock` 编辑器；要测编辑器内部交互/闸门 → **只 `vi.mock('../dag/DagCanvas')`**
+  （`graphRef` 恒 null，编辑器回退到 `existingNodes` 派生的 `nodes`，真实接线都能断言，优先用这种）。
+- `sm-modal` / `sm-btn` 定义在 `ScheduleManagementPanel.css`（只被该面板引入），调度模块之外渲染
+  `WorkflowDefinitionEditor` 必须显式 `import`，否则保存弹窗失样式。
+- 单文件弹窗 `SubmitToSchedulerModal`：底部按钮事件挂在 **onMouseDown**（`fireEvent.click` 不触发）；
+  任一选择项变化会清空校验结果且项目列表异步回填 ⇒ 断言可用性要**反复点校验**。
 
-### 自动依赖关系配置（关键约定）
-- **必须在「打开弹窗、草稿生成后」就完成**，不能只放在 `handleSave` 里 —— 用户是在画布上判断
-  「有没有自动连线」的，保存时才生成他根本看不到（曾因此被判定为「未自动连线」）。
-  教训：面向用户的自动化要发生在用户能看见的那一刻。
-- 链路：`resolveExternalDeps`（扫 DS 项目工作流任务建索引，把 `@依赖` label 解析为 `ResolvedDependency`）
-  → `reconcileWorkflowDependencies`（同工作流直接连边；跨工作流/跨项目生成专属
-  `前置依赖_{任务名}` DEPENDENT 节点并连边）。该函数**单文件/文件夹两条提交路径共用**。
-- `localHeaderDeps` 的 key 必须是 `sanitizeDsName(任务名)`；文件夹场景无主任务，`mainTaskName` 传 `''`。
-- 结果用 `resolvedDepsRef`（label → 解析结果）缓存，**草稿阶段解析一次、保存阶段复用**，
-  避免重复全量扫描调度项目；`reconciledForRef` 记录已处理的 draft 对象引用防 effect 重入
-  （`setDraft(next)` 前先 `reconciledForRef.current = next`）。
-- 提示三态：解析中 / 已自动配置（列出生成的节点名）/ **调度系统中确实找不到**才报未配置。
-  旧文案「不在本文件夹内，未自动连线」已删（误导）。
+## AI 对话性能架构
 
-### 主 Jar 包自动填充
-- `mainJar` 是**编译产物派生值**，不是用户手填：编译 → 上传资源中心 → 回填 `taskParams.mainJar`。
-  目录层级 `{baseDir}/{项目编码}/{相对目录}/{文件名}_{时间戳}.jar`。
-  判定 `isCompilableFile`（.java/.scala 且类型 ∈ SPARK/FLINK/FLINK_STREAM/MR/JAVA）。
-  **不要给 mainJar 加必填校验**（会让文件夹路径无法保存）。
-- `bridge/fs.ts` 的 `readFile` 返回 `Uint8Array<ArrayBufferLike>`，进 `Blob` 前要 `new Uint8Array(x)` 复制。
+- 流式文本两层：`partTextAccumDelta`（ref，逐字）+ `messages`（结构态）。逐字增长**不进 `messages`**
+  （写它会连带投影/查找表/可见行全量重算），走 ref + `subscribePartText`；例外：part 首次上屏必须
+  写 `messages`；用户消息文本始终全量同步。
+- `PacedMarkdown` 稳定前缀必须**按块缓存元素**；行包装组件需 `React.memo`；虚拟化不解决「每次 commit
+  重建视口行元素树」；行投影/查找表是 O(消息数)，长对话要单独用 `conversation` 预设验证。
+- 基线：medium-8k 阻塞 172.8 / 提交 127.6ms；long-24k 非空闲 1213.1 / 阻塞 526.3 / 提交 394ms；
+  conv-40t-16k 非空闲 2214.4 / 阻塞 354.8 / 提交 362.4ms。回归防线：`renderedChars` 必须逐字节一致
+  （6558 / 19617 / 13087）。非空闲 CPU = 总采样 − `(idle)` 才有效；开发构建只比比值不比绝对值。
 
-### 跨模块依赖与测试注意（易踩）
-- **样式**：`sm-modal` / `sm-btn` 定义在 `ScheduleManagementPanel.css`（只被该面板引入）。
-  调度模块之外渲染 `WorkflowDefinitionEditor` 必须显式 `import` 它，否则保存弹窗失样式。
-- **x6 画布在 jsdom 下不可渲染**（`new Graph()` → `this.viewport.getCTM is not a function`）。测法二选一：
-  只关心父组件传参 → 整体 `vi.mock` 编辑器；要测编辑器内部交互/闸门 → **只 `vi.mock('../dag/DagCanvas')`**，
-  `graphRef` 恒 null 后编辑器回退到 `existingNodes` 派生的 `nodes` state，真实接线都能断言（优先用这种）。
-- `layoutWorkflowByDependency` 的 `layerOf` 有 `inProgress` 环保护；`buildWorkflowFromFolder` 检测到环时
-  改用 3 列网格兜底布局。
+## 回滚 / 删除安全闸门（2026-09-13 工作区清空事故后）
 
-## 工作流保存闸门（任务节点参数校验）
-
-- 纯函数 `src/utils/workflowNodeValidation.ts` → `validateWorkflowNodes(nodes)` 返回
-  `{ ok, issues, failedNodes }`（按节点聚合）。规则是任务配置表单 `task-forms.tsx` 里
-  `sm-required` 标注的镜像：表单新增必填项时必须同步维护 `REQUIRED_PARAMS` 表与单测。
-- 闸门在 `WorkflowDefinitionEditor`：①「保存」→ `handleOpenSaveModal()` 校验，不通过只弹报告；
-  ②`SaveWorkflowModal.onConfirm` 再防御一次。两个入口（工作流定义 / 提交调度）共用编辑器，自动都被拦。
-- 工具栏「校验」按钮（`data-testid="wf-toolbar-validate"`，`!readonly && !hideToolbarValidate`）是**手动**校验入口；
-  通过态 `ShieldCheck` + `toast.info`，失败态橙色 + 失败数徽标 + 报告弹窗。
-  **编辑器用了 `useToast` → 所有真实渲染它的测试必须包 `ToastProvider`**。
-- **按钮可见性按入口区分（用户 09-12 定的）**：调度管理→工作流定义传 `hideToolbarValidate`（不显示按钮，
-  但保存闸门照样拦）；文件夹「提交调度」**保留按钮**。别再按「全局唯一入口」理解——
-  去掉的只是手动入口，保存前 `validateWorkflowNodes` 与 `SaveWorkflowModal.onConfirm` 的防御校验都在。
-- 配套修复：任务参数是 `cell.setData` 直写 cell、不触发图事件，`handleSaveTask` 末尾必须手动
-  `setNodes(extractNodes(graph.getNodes()))`，否则搜索/上游下拉/校验都读到旧参数。
-
-## 测试基线（回归判断口径）
-
-- **跑 vitest 必须清空注入的 NODE_OPTIONS**：`env -u NODE_OPTIONS npx vitest run`。
-  agent shell 注入 `NODE_OPTIONS=--require=…/cli/vendor/shim/node-language-shim.cjs`，它加载
-  `node-brokered-fs-shim.cjs` 并 patch `fs.readFileSync`/`fs.openSync`，**每次模块文件读取都是一次
-  同步 broker IPC**（~120ms/文件）。jsdom 有 788 个 .js ⇒ `import 'jsdom'` 单次 96s（正常 0.5s）。
-  实测：单文件 176s → 1.58s；全量 34 文件/613 用例 从 >10min 未完成 → **8.84s 全通过**。
-  指纹：CPU 占用 ~1%（纯等待，非计算）。精准关闭：
-  `CODEBUDDY_BROKERED_FS_HOOK_ENABLED=0 CODEBUDDY_SAFE_DELETE_SANDBOX=0`（单 `CODEBUDDY_SAFE_DELETE_ENABLED=0` 无效）。
-  **用户自己的 Terminal 无此注入，慢只发生在 agent 代跑的 shell 里。** 详见 skill `node-run-slowdown-diagnosis`。
-- **`textmateFix.test.ts` 没有「必然失败」**（09-11 结论作废）：根因是 shim 拖慢导致 20s testTimeout 不够；
-  清空 NODE_OPTIONS 后**全量 34 文件 / 613 用例全通过**。旧基线 `506 passed / 1 failed` 亦已过时。
-- **单文件弹窗（SubmitToSchedulerModal）写单测的两条硬坑**：①底部「校验/提交」事件挂在
-  **onMouseDown**，`fireEvent.click` 不触发；②`selectedProjectCode` 等任一选择项变化都会清空
-  校验结果，而项目列表是异步回填的 → 断言「提交按钮可用」时要**反复点校验**（把点击放进 waitFor）。
-- 常用回归组合：
-  `npx vitest run src/views/dev-assistant/` → **4 文件 / 49 用例**（configParams 18 / multiSelect 9 /
-  submitSchedule 9 / FolderSubmitScheduleModal 13）；
-  `npx vitest run --environment node src/utils/` → **180 用例通过**（另 `pathUtils.test.ts` 必须 jsdom，
-  node 下 12 例因缺 `window` 失败，属环境不匹配）；
-  `npx vitest run src/views/schedule-management/ src/components/editor/` → 14 文件 / 213 用例。
-- `--environment node` 仍更快（省掉 jsdom），但**这不是慢的主因**，shim 才是。
-- 本机内存/负载紧张时（load > 8）整目录跑会被 SIGTERM 137 杀掉；改用 `--maxWorkers=1` 并**逐文件跑**。
-- **load 高时的假失败**：`FolderSubmitScheduleModal.test.tsx` 的「外部 @依赖…DEPENDENT」用
-  `waitFor(..., { timeout: 20000 })`，恰好等于 vitest 默认 testTimeout，负载高（load≈9）时报
-  `20007ms` 失败——**不是真回归**。单独跑该文件必过；用 `--testTimeout=60000` 跑全量即
-  **36 文件 / 627 用例全通过**。判断「环境慢 vs 真坏」用这招最省时间。
-
-## 本仓编辑约定（踩坑）
-
-- **对同一文件的多处编辑必须严格串行**。并行发两个 `Edit` 到同一路径，二者基于同一份旧快照各自
-  写回全文件，**后写的静默抹掉先写的**：症状是 `tsc` 报刚加的 import 未定义（TS2304），而同文件里
-  串行发出的其他编辑全都在。跨文件并行无害。
-- 排除「第二个写入者」：`find src -mmin -8` + `ps aux | grep -iE "vite|tsc|vitest"`。项目自带的
-  `vite` / `tsc --watch` **只读源码**，出现它们不代表并发编辑。详见 skill
-  `shared-file-concurrent-edit-guard`。
-- macOS BSD 陷阱：`grep "a\|b"` 交替静默失败（须 `grep -E`）、`find -newermt` 不可靠（用 `-mmin`）。
+- **事故**：`handleRollback` 拿到「空快照」（拍摄时文件树未装载 ⇒ `root=null`、`files={}`），
+  把「待删除集合」放大成全部现存文件，`fs.remove` 直删 test_project 的 71 个已提交文件。
+  判据：磁盘只剩 83 字节 `.git`（`buildFileTree` 过滤 `.` 开头 ⇒ `.git` 是唯一幸存者）。
+- 闸门在纯函数 `utils/rollbackSafety.ts::assessRollbackSafety`：`no-snapshot` /
+  `untrusted-snapshot`（`snapshot.root === null`，**本次根因**）/ `root-mismatch` 一律中止；
+  `mass-deletion`（`toDelete/current >= 0.5` 且 `current >= 4`）要 `window.confirm` 后带 `force` 重跑。
+  快照结构已改成 `{ root, files }`，**新增字段必须同步单测**。
+- 删除改走**回收站**：`useFileSystem.trashNode` → `rename` 到 `<root>/.dataforge-trash/<stamp>/<原相对路径>`，
+  并在批次目录写 `_manifest.json`（渲染层日志不落 `main.log`，这是唯一审计痕迹）。
+  `gitDiscardFiles` 的 untracked/added 同样走回收站，不再 `remove`。
+- **回收站必须对 git 隐身**（否则 `?? .dataforge-trash/` 会让 `syncWorktreeWithRemote` 的
+  「工作区必须干净」前置失败、自动同步静默失效，还可能被 `git add -A` 提交进去）：
+  `utils/workspaceTrash.ts::ensureTrashIgnored` 写 `info/exclude`。**实测（git 2.50.1）：
+  链接工作树解析到的 `info/exclude` 是主仓库共享那一份，不是 per-worktree** —— 影响范围是
+  该仓库下所有工作树，因目录名固定所以可接受，但不要当成项目隔离。
+- 工作树自愈：`restoreMissingWorktreeFiles` 判据从「目录为空」改成 `isMassFileLoss`（` D ` 计数，
+  阈值：全空必恢复；否则 `>=5` 个且 `>=50%`），且必须在 `syncWorktreeWithRemote` **之前**调用
+  （后者见 status 非空即跳过）。只删一两个文件不该被「自动还原」。
+- 恢复：`git -C <worktree> checkout -- .`（index 干净时无损）。若报 `index.lock: File Exists`，
+  先 `ps aux | grep [g]it` + `lsof` 确认无持有者，再把 0 字节陈旧锁 **`mv` 走**（不要 `rm`）。
 
 ## 用户偏好（项目相关）
 
-- 性能类任务**诊断驱动**：先量化定位（CPU profile / 计数器）再改，不接受凭猜测优化。
-- 交付含**量化对比**、变更表、决策理由、未改动项清单。
+- 性能类任务**诊断驱动**：先量化定位再改，不接受凭猜测优化。
+- 交付含**量化对比**、变更表、决策理由、**未改动项清单**。
 - 改动需附 `tsc --noEmit` 与 `vitest` 计数；新增逻辑配套单测（尤其纯函数分支边界）。

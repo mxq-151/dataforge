@@ -2,6 +2,9 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { FileNode } from '../types';
 import { generateId, generateFileHeader } from '../utils';
 import { notifyWatchedFilesChanges, WatchChangeType, pathToUri } from '../services/lsp';
+import { getBaseName, getDirName, isPathUnder, joinPath, toRelativePath } from '../utils/pathUtils';
+import { TRASH_DIR_NAME, formatTrashStamp, uniqueTrashName } from '../utils/rollbackSafety';
+import { ensureTrashIgnored } from '../utils/workspaceTrash';
 
 // 纯函数实现已迁至 utils/workspacePath，此处 re-export 保持既有引用可用
 export { getPlatformDefaultWorkspace } from '../utils/workspacePath';
@@ -628,6 +631,68 @@ const useFileSystem = (initialPath?: string) => {
     }
   }, [apiReady, refreshTree]);
 
+  /**
+   * 把文件/目录移入工作区回收站，而不是直接删除。
+   *
+   * 事故背景（2026-09-13）：回滚功能用 fs.remove 直删磁盘文件，无备份、无日志，
+   * 一次异常（空）快照就抹掉了 test_project 整个工作区（71 个已提交文件）。
+   * 回收站把「删除」降级为「移动到 <root>/.dataforge-trash/<批次>/<原相对路径>」，
+   * 误操作可原样移回，且批次目录本身就是一份可事后审计的现场记录。
+   *
+   * 目录名以 `.` 开头，buildFileTree 会跳过，因此不会出现在文件树里；
+   * 同批次路径冲突由 uniqueTrashName 追加 `-1`/`-2` 解决。
+   *
+   * @param batch 批次目录名，同一批操作传入同一个值以便归拢；缺省按当前时间新建
+   * @returns 移入回收站后的绝对路径；文件不存在或失败返回 null
+   */
+  const trashNode = useCallback(async (
+    nodePath: string,
+    nodeType: 'file' | 'folder',
+    batch?: string
+  ): Promise<string | null> => {
+    if (!apiReady || !rootPath) {
+      console.warn('⚠️ [trashNode] API 或 rootPath 未就绪，跳过执行');
+      return null;
+    }
+
+    try {
+      const api = await initFileSystemAPI();
+      if (!(await api.exists(nodePath))) {
+        return null;
+      }
+
+      // 先让回收站对 git 隐身，再落盘（否则 untracked 条目会污染 git status、让自动同步跳过）
+      await ensureTrashIgnored(rootPath);
+      const batchDir = joinPath(rootPath, TRASH_DIR_NAME, batch || formatTrashStamp());
+      await api.createDir(batchDir);
+
+      // 保留原相对路径（含子目录），便于人工辨认；不在 rootPath 下时退化为文件名
+      const rel = isPathUnder(nodePath, rootPath)
+        ? toRelativePath(nodePath, rootPath)
+        : getBaseName(nodePath);
+
+      const taken = new Set<string>();
+      let candidate = uniqueTrashName(rel, taken);
+      while (await api.exists(joinPath(batchDir, candidate))) {
+        taken.add(candidate);
+        candidate = uniqueTrashName(rel, taken);
+      }
+
+      const target = joinPath(batchDir, candidate);
+      await api.createDir(getDirName(target));
+      await api.rename(nodePath, target);
+
+      setFileTree(prev => removeFromTree(prev, nodePath));
+      // 通知 JDT.LS / Metals：文件/目录已从原位置消失
+      notifyWatchedFilesChanges([{ uri: pathToUri(nodePath), type: WatchChangeType.Deleted }]);
+      console.log(`🗑️ [trash] ${nodeType} ${nodePath} → ${target}`);
+      return target;
+    } catch (error) {
+      console.error('移入回收站失败:', error);
+      return null;
+    }
+  }, [apiReady, rootPath]);
+
   const renameNode = useCallback(async (
     oldPath: string,
     newName: string,
@@ -778,6 +843,7 @@ const useFileSystem = (initialPath?: string) => {
     createFolder,
     saveFile,
     deleteNode,
+    trashNode,
     renameNode,
     moveNode,
     copyNode,
