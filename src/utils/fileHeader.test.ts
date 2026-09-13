@@ -8,7 +8,7 @@
  * - 使用块注释（/* ... *\/）逐行书写，行注释书写的代码头会被判为不合规
  * - 位于文件开头，不得被 import 或 package 语句隔断
  * - 含 @备注 / @引擎 / @数据源 必填项，且 @引擎 取值可被识别为调度任务类型
- * - 参数声明用 v3 的 @程序参数 / @任务参数（无则「无」），不再使用旧字段 @用法
+ * - 参数声明用 @程序参数 / @资源参数 / @任务参数（无则「无」），不再使用旧字段 @用法
  *
  * 本测试直接从提示词中抽取样例代码块并喂给真实解析器，防止改提示词时破坏解析。
  * 文末另锁「SQL 开发规范」里的变量写法（${参数名}）：正文变量由 parseSqlVarKeys 识别，
@@ -19,6 +19,7 @@ import { describe, it, expect } from 'vitest';
 import { generateFileHeader, parseFileHeader, validateFileHeader } from './index';
 import { extractProgramParams } from './programArgs';
 import { mapCodeFileToTask } from './schedulerMapping';
+import { deriveTaskParamsFromHeader } from './headerTaskParams';
 import { DATA_DEV_ENGINEER_INSTRUCTIONS } from '../hooks/opencode/opencodeInstructions';
 
 interface PromptSample {
@@ -66,20 +67,72 @@ describe('数据开发提示词样例 — 代码头可被解析', () => {
     }
   });
 
-  it('每个样例都声明了 @程序参数 与 @任务参数（无参数时写「无」），且不再出现旧字段 @用法', () => {
+  it('每个样例都声明了 @程序参数 / @资源参数 / @任务参数（无参数时写「无」），且不再出现旧字段 @用法', () => {
     for (const s of promptSamples()) {
       const header = parseFileHeader(s.content);
       expect(header!.programArgs, `.${s.lang} 样例缺少 @程序参数`).toBeTruthy();
+      expect(header!.resourceArgs, `.${s.lang} 样例缺少 @资源参数`).toBeTruthy();
       expect(header!.taskArgs, `.${s.lang} 样例缺少 @任务参数`).toBeTruthy();
       expect(header!.usage, `.${s.lang} 样例仍在使用旧字段 @用法`).toBe('');
     }
   });
 
-  it('样例的两个参数字段被正确分流：@程序参数 → 预填行，@任务参数 → 只告知', () => {
+  it('样例的三个参数字段被正确分流：@程序参数 → 预填行，@资源参数 / @任务参数 → 只告知', () => {
     const { content } = sampleOf('java');
-    const { keys, taskParamKeys } = extractProgramParams(content, 'java');
+    const { keys, taskParamKeys, resourceParamKeys } = extractProgramParams(content, 'java');
     expect(keys).toEqual(['day', 'checkpoint']);
-    expect(taskParamKeys).toEqual(['-m', '-p', '-yjm', '-ytm']);
+    expect(resourceParamKeys).toEqual(['-p', '-yjm', '-ytm']);
+    expect(taskParamKeys).toEqual(['-m', '-Dyarn.application.name=ods_trade_order_load_r']);
+  });
+
+  it('SQL 样例的资源参数（kyuubi/spark 形态）只进资源参数、不混进预填行', () => {
+    const { content } = sampleOf('sql');
+    const { keys, resourceParamKeys, taskParamKeys } = extractProgramParams(content, 'sql');
+    expect(keys).toEqual(['day']);
+    expect(resourceParamKeys).toEqual(['--num-executors', '--driver-memory', '--executor-cores']);
+    expect(taskParamKeys).toEqual([]);
+  });
+
+  it('提示词给出了三个参数字段的区别说明（三者互斥的判定口径）', () => {
+    for (const key of [
+      '三个参数字段的区别',
+      '@资源参数',
+      '回答"这次给多少资源"',
+      '判定顺序',
+      // 取值语义与落到节点的字段对照：提示词与「提交调度」的换算口径必须一致
+      '真实取值',
+      '落到节点字段的对照',
+      'Executor数量',
+    ]) {
+      expect(DATA_DEV_ENGINEER_INSTRUCTIONS, `S3 提示词缺少三者区别说明片段: ${key}`).toContain(key);
+    }
+  });
+
+  it('Java 样例（flink）的三类声明能落到调度节点参数：资源/任务字段 + 主参数 + 其他参数', () => {
+    const { content } = sampleOf('java');
+    const { params } = deriveTaskParamsFromHeader(content, 'FLINK');
+    expect(params).toMatchObject({
+      parallelism: 4,
+      jobManagerMemory: '1024',
+      taskManagerMemory: '2048',
+      // -m yarn-cluster 收敛成节点「部署模式」的合法取值
+      deployMode: 'cluster',
+      mainArgs: '--day 20260501 -checkpoint 60000',
+    });
+    // -Dyarn.application.name 在节点参数里没有对应字段 → 原样进「其他参数」
+    expect(params.others).toBe('-Dyarn.application.name=ods_trade_order_load_r');
+  });
+
+  it('SQL 样例（kyuubi）的资源参数不写进 SQL 节点，逐条回报给用户（不静默丢弃）', () => {
+    const { content } = sampleOf('sql');
+    const { supported, params, unmapped } = deriveTaskParamsFromHeader(content, 'SQL');
+    expect(supported).toBe(false);
+    expect(params).toEqual({});
+    expect(unmapped.map(h => h.raw)).toEqual([
+      '--num-executors 4',
+      '--driver-memory 2g',
+      '--executor-cores 2',
+    ]);
   });
 
   it('SQL 样例被识别为 SQL 任务，数据源取自 @数据源', () => {
@@ -146,7 +199,8 @@ describe('数据开发提示词 — SQL 变量规范与解析器口径一致', (
  * 新建文件时由 generateFileHeader 灌入的代码头模板，是人工书写代码头的范本。
  * 模板若漏字段，人工新建的 .java/.scala/.py 就只会填模板里有的项，
  * 进而丢 @引擎（任务被默认判为 SPARK）与 @数据源（调度依赖缺失）。
- * v3 起模板含 @程序参数 / @任务参数（原 @用法 已拆分），漏掉会导致「运行程序」识别不到参数。
+ * v3 起模板含 @程序参数 / @任务参数（原 @用法 已拆分），v4 起补 @资源参数，
+ * 漏掉会导致「运行程序」识别不到参数。
  */
 describe('generateFileHeader — 模板字段完整性', () => {
   const cases: Array<{ file: string }> = [
@@ -162,8 +216,8 @@ describe('generateFileHeader — 模板字段完整性', () => {
     expect(header).toBeTruthy();
     expect(header.startsWith('/*')).toBe(true);
     expect(header.endsWith(' */')).toBe(true);
-    // v3：原 @用法 已拆成 @程序参数 / @任务参数（无则「无」），生成器不得再产出 @用法
-    for (const field of ['备注', '数仓', '引擎', '依赖', '程序参数', '任务参数', '数据源']) {
+    // 原 @用法 已拆成 @程序参数 / @资源参数 / @任务参数（无则「无」），生成器不得再产出 @用法
+    for (const field of ['备注', '数仓', '引擎', '依赖', '程序参数', '资源参数', '任务参数', '数据源']) {
       expect(header).toContain(`@${field}: `);
     }
     expect(header).not.toContain('@用法: ');
@@ -176,6 +230,7 @@ describe('generateFileHeader — 模板字段完整性', () => {
     expect(parsed!.engine).toBe('');
     expect(parsed!.dependency).toBe('');
     expect(parsed!.programArgs).toBe('');
+    expect(parsed!.resourceArgs).toBe('');
     expect(parsed!.taskArgs).toBe('');
     expect(parsed!.usage).toBe('');
     expect(parsed!.dataSource).toBe('');

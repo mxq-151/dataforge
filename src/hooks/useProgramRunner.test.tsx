@@ -72,7 +72,9 @@ describe('useProgramRunner — 运行程序前的参数确认', () => {
       defaultParams: [{ id: 'p1', key: 'env', value: 'prod' }],
       extractedKeys: [],
       taskParamKeys: [],
+      resourceParamKeys: [],
       programArgsHint: '',
+      resourceArgsHint: '',
       taskArgsHint: '',
       usageHint: '',
       selectedCode: undefined,
@@ -159,6 +161,7 @@ describe('useProgramRunner — 运行程序前的参数确认', () => {
       '/*',
       ' * @引擎: kyuubi',
       ' * @程序参数: --day 20260501',
+      ' * @资源参数: 无',
       ' * @任务参数: 无',
       ' */',
       "insert overwrite table t partition(dt = '${day}')",
@@ -174,6 +177,8 @@ describe('useProgramRunner — 运行程序前的参数确认', () => {
     expect(result.current.pendingProgramRun?.programArgsHint).toBe('--day 20260501');
     expect(result.current.pendingProgramRun?.taskArgsHint).toBe('无');
     expect(result.current.pendingProgramRun?.taskParamKeys).toEqual([]);
+    expect(result.current.pendingProgramRun?.resourceArgsHint).toBe('无');
+    expect(result.current.pendingProgramRun?.resourceParamKeys).toEqual([]);
   });
 
   it('Java：旧格式 @用法 下参数名只来自代码头，正文里的 ${} 不算', async () => {
@@ -222,12 +227,13 @@ describe('useProgramRunner — 运行程序前的参数确认', () => {
     expect(result.current.pendingProgramRun?.usageHint).toContain('--master yarn');
   });
 
-  it('新格式 @任务参数：显式声明的引擎参数进 taskParamKeys，不进预填行', async () => {
+  it('新格式 @资源参数 / @任务参数：两者都只告知、不进预填行，且各归各的桶', async () => {
     const content = [
       '/*',
       ' * @引擎: spark',
       ' * @程序参数: --day 20260501 -checkpoint 60000',
-      ' * @任务参数: --num-executors 4 --driver-memory 2g',
+      ' * @资源参数: --num-executors 4 --driver-memory 2g',
+      ' * @任务参数: --master yarn --deploy-mode cluster',
       ' */',
       'package TEST.scala.ods;',
       'object Test {}',
@@ -242,9 +248,11 @@ describe('useProgramRunner — 运行程序前的参数确认', () => {
     await act(async () => { await result.current.handleRunProgram(); });
 
     expect(result.current.pendingProgramRun?.extractedKeys).toEqual(['day', 'checkpoint']);
-    expect(result.current.pendingProgramRun?.taskParamKeys).toEqual(['--num-executors', '--driver-memory']);
+    expect(result.current.pendingProgramRun?.resourceParamKeys).toEqual(['--num-executors', '--driver-memory']);
+    expect(result.current.pendingProgramRun?.taskParamKeys).toEqual(['--master', '--deploy-mode']);
     expect(result.current.pendingProgramRun?.programArgsHint).toBe('--day 20260501 -checkpoint 60000');
-    expect(result.current.pendingProgramRun?.taskArgsHint).toBe('--num-executors 4 --driver-memory 2g');
+    expect(result.current.pendingProgramRun?.resourceArgsHint).toBe('--num-executors 4 --driver-memory 2g');
+    expect(result.current.pendingProgramRun?.taskArgsHint).toBe('--master yarn --deploy-mode cluster');
     expect(result.current.pendingProgramRun?.usageHint).toBe('');
   });
 

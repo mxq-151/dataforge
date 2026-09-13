@@ -10,7 +10,9 @@ import { ProgramRunModal } from './ProgramRunModal';
  *  1. 打开时用「配置参数 → 配置程序参数」的值逐行预填，可增删改；
  *  2. 「确定」回传的是**当前行里的内容**（所见即所发），不是已保存的旧值；
  *  3. 会被丢弃 / 被覆盖的两种情况必须显式提示（缺参数名、参数名重复）；
- *  4. 每次重新打开都回到预填值，不残留上一次的临时输入。
+ *  4. 每次重新打开都回到预填值，不残留上一次的临时输入；
+ *  5. 代码头 @资源参数 / @任务参数 里的非业务入参（资源与提交参数）只列出告知，
+ *     既不占预填行、也不参与下发计数，且两类各自独立提示。
  */
 const setup = (props: Partial<React.ComponentProps<typeof ProgramRunModal>> = {}) => {
   const onConfirm = vi.fn();
@@ -193,7 +195,7 @@ describe('ProgramRunModal', () => {
   it('旧格式 @用法 的文件仍展示原文，并提示迁移到新字段', () => {
     const { getByTestId } = setup({ extractedKeys: ['day'], usageHint: '--day 20260501' });
     const source = getByTestId('program-run-extracted');
-    expect(source.textContent).toContain('代码头 @用法（旧格式，建议拆成 @程序参数 / @任务参数）：--day 20260501');
+    expect(source.textContent).toContain('代码头 @用法（旧格式，建议拆成 @程序参数 / @资源参数 / @任务参数）：--day 20260501');
   });
 
   it('未识别到参数时不显示提取入口与来源提示', () => {
@@ -206,8 +208,8 @@ describe('ProgramRunModal', () => {
     const { getByTestId, queryByTestId } = setup({
       defaultParams: [],
       extractedKeys: ['day'],
-      taskParamKeys: ['--num-executors', '--driver-memory', '-p'],
-      taskArgsHint: '--num-executors 2 --driver-memory 2g -p 4',
+      taskParamKeys: ['--master', '--deploy-mode', '--class'],
+      taskArgsHint: '--master yarn --deploy-mode cluster --class com.x.Y',
     });
 
     // 只预填程序参数 day，任务参数不占行、不参与计数
@@ -217,15 +219,45 @@ describe('ProgramRunModal', () => {
 
     const note = getByTestId('program-run-task-params');
     expect(note.textContent).toContain('已识别 3 个任务参数');
-    expect(note.textContent).toContain('--num-executors');
-    expect(note.textContent).toContain('-p');
-    expect(note.textContent).toContain('配置任务参数');
-    expect(note.textContent).toContain('代码头 @任务参数：--num-executors 2 --driver-memory 2g -p 4');
+    expect(note.textContent).toContain('--master');
+    expect(note.textContent).toContain('--deploy-mode');
+    // 任务参数的落点是「提交调度」的节点字段（部署模式/主Class），其余原样进「其他参数」
+    expect(note.textContent).toContain('提交调度时会填入');
+    expect(note.textContent).toContain('其他参数');
+    expect(note.textContent).toContain('代码头 @任务参数：--master yarn --deploy-mode cluster --class com.x.Y');
   });
 
-  it('没有任务参数时不显示任务参数提示', () => {
+  it('代码头 @资源参数 同样只列出告知，且与任务参数分开提示', () => {
+    const { getByTestId, queryByTestId } = setup({
+      defaultParams: [],
+      extractedKeys: ['day'],
+      resourceParamKeys: ['--num-executors', '-yjm'],
+      resourceArgsHint: '--num-executors 4 -yjm 1024',
+    });
+
+    // 资源参数不占预填行、不参与下发计数
+    expect((getByTestId('program-run-key-0') as HTMLInputElement).value).toBe('day');
+    expect(queryByTestId('program-run-key-1')).toBeNull();
+    expect(getByTestId('program-run-status').textContent).toContain('将下发 1 个程序参数');
+
+    const note = getByTestId('program-run-resource-params');
+    expect(note.textContent).toContain('已识别 2 个资源参数');
+    expect(note.textContent).toContain('--num-executors');
+    expect(note.textContent).toContain('-yjm');
+    expect(note.textContent).toContain('不随程序参数下发');
+    // 资源参数在提交调度时自动落到节点字段；对不上字段的项才指向「配置任务参数」
+    expect(note.textContent).toContain('提交调度时会自动填入任务节点');
+    expect(note.textContent).toContain('配置任务参数');
+    expect(note.textContent).toContain('代码头 @资源参数：--num-executors 4 -yjm 1024');
+
+    // 没有任务参数时不显示任务参数提示（两类各自独立）
+    expect(queryByTestId('program-run-task-params')).toBeNull();
+  });
+
+  it('没有任务参数 / 资源参数时不显示对应提示', () => {
     const { queryByTestId } = setup({ extractedKeys: ['day'] });
     expect(queryByTestId('program-run-task-params')).toBeNull();
+    expect(queryByTestId('program-run-resource-params')).toBeNull();
   });
 
   it('「从代码提取」把删掉的行补回来；没有缺失时按钮禁用', () => {

@@ -113,7 +113,7 @@ describe('createParamRow / toParamRows', () => {
 });
 
 /**
- * 参数声明文本（代码头 `@程序参数` / `@任务参数`，旧格式 `@用法`）的原文形式：
+ * 参数声明文本（代码头 `@程序参数` / `@资源参数` / `@任务参数`，旧格式 `@用法`）的原文形式：
  * `--day 20260501 -checkpoint 60000`
  */
 describe('parseParamKeys', () => {
@@ -172,43 +172,80 @@ describe('stripSqlComments / parseSqlVarKeys', () => {
   });
 });
 
-describe('extractProgramParams — v3 新格式：@程序参数 / @任务参数', () => {
-  const SQL_V3 = [
+describe('extractProgramParams — 新格式：@程序参数 / @资源参数 / @任务参数', () => {
+  const SQL_V4 = [
     '/*',
     ' * @引擎: kyuubi',
     ' * @程序参数: --day 20260501',
+    ' * @资源参数: --num-executors 4 --driver-memory 2g',
     ' * @任务参数: 无',
     ' */',
     "insert overwrite table t partition(dt = '${day}')",
     "select * from s where dt = '${day}' and city = '${city}';",
   ].join('\n');
 
-  it('SQL：@程序参数 在前，正文变量在后（合并去重）', () => {
-    expect(extractProgramParams(SQL_V3, 'sql')).toEqual({
+  it('SQL：@程序参数 在前，正文变量在后（合并去重）；资源参数只告知不预填', () => {
+    expect(extractProgramParams(SQL_V4, 'sql')).toEqual({
       keys: ['day', 'city'],
       taskParamKeys: [],
+      resourceParamKeys: ['--num-executors', '--driver-memory'],
       programArgs: '--day 20260501',
+      resourceArgs: '--num-executors 4 --driver-memory 2g',
       taskArgs: '无',
       usage: '',
     });
   });
 
-  it('@任务参数 原样收进 taskParamKeys（不进预填行）；Java/Scala 不看正文的 ${} 与 --x', () => {
+  it('三个字段各自分流：@程序参数 → 预填行，@资源参数 / @任务参数 → 只告知；Java/Scala 不看正文的 ${} 与 --x', () => {
     const scala = [
       '/*',
       ' * @引擎: flink',
       ' * @程序参数: --day 20260501 -checkpoint 60000',
-      ' * @任务参数: -m yarn-cluster -p 4 -yjm 1024',
+      ' * @资源参数: -p 4 -yjm 1024',
+      ' * @任务参数: -m yarn-cluster',
       ' */',
       'object Test { val tpl = "${notAParam}"; val flag = "--nope" }',
     ].join('\n');
     expect(extractProgramParams(scala, 'scala')).toEqual({
       keys: ['day', 'checkpoint'],
-      taskParamKeys: ['-m', '-p', '-yjm'],
+      taskParamKeys: ['-m'],
+      resourceParamKeys: ['-p', '-yjm'],
       programArgs: '--day 20260501 -checkpoint 60000',
-      taskArgs: '-m yarn-cluster -p 4 -yjm 1024',
+      resourceArgs: '-p 4 -yjm 1024',
+      taskArgs: '-m yarn-cluster',
       usage: '',
     });
+  });
+
+  it('资源参数写成 spark 提交框架参数形态时也只进 resourceParamKeys，不混进预填行', () => {
+    const sql = [
+      '/*',
+      ' * @引擎: spark',
+      ' * @程序参数: --day 20260501',
+      ' * @资源参数: --num-executors 4 --queue root.default',
+      ' * @任务参数: --master yarn --deploy-mode cluster',
+      ' */',
+      "select 1 from t where dt = '${day}';",
+    ].join('\n');
+    const result = extractProgramParams(sql, 'sql');
+    expect(result.keys).toEqual(['day']);
+    expect(result.resourceParamKeys).toEqual(['--num-executors', '--queue']);
+    expect(result.taskParamKeys).toEqual(['--master', '--deploy-mode']);
+  });
+
+  it('@资源参数 写「无」→ 资源参数为空，且不影响 @程序参数 的预填', () => {
+    const sql = [
+      '/*',
+      ' * @程序参数: --day 20260501',
+      ' * @资源参数: 无',
+      ' * @任务参数: 无',
+      ' */',
+      'select 1;',
+    ].join('\n');
+    const result = extractProgramParams(sql, 'sql');
+    expect(result.keys).toEqual(['day']);
+    expect(result.resourceParamKeys).toEqual([]);
+    expect(result.resourceArgs).toBe('无');
   });
 
   it('显式声明即分类结果：@程序参数 里的名字不再按引擎表二次剔除', () => {
@@ -216,6 +253,7 @@ describe('extractProgramParams — v3 新格式：@程序参数 / @任务参数'
       '/*',
       ' * @引擎: spark',
       ' * @程序参数: --class MyJob --day 20260501',
+      ' * @资源参数: 无',
       ' * @任务参数: 无',
       ' */',
       'package TEST.java.ods;',
@@ -223,25 +261,26 @@ describe('extractProgramParams — v3 新格式：@程序参数 / @任务参数'
     const result = extractProgramParams(java, 'java');
     expect(result.keys).toEqual(['class', 'day']);
     expect(result.taskParamKeys).toEqual([]);
+    expect(result.resourceParamKeys).toEqual([]);
   });
 
-  it('未声明 / 写「无」→ 两类参数都为空（弹窗只给一行空白）', () => {
+  it('未声明 / 写「无」→ 三类参数都为空（弹窗只给一行空白）', () => {
     expect(extractProgramParams('select 1;', 'sql')).toEqual({
-      keys: [], taskParamKeys: [], programArgs: '', taskArgs: '', usage: '',
+      keys: [], taskParamKeys: [], resourceParamKeys: [], programArgs: '', resourceArgs: '', taskArgs: '', usage: '',
     });
-    expect(extractProgramParams('/*\n * @程序参数: 无\n * @任务参数: 无\n */\nselect 1;', 'sql')).toEqual({
-      keys: [], taskParamKeys: [], programArgs: '无', taskArgs: '无', usage: '',
+    expect(extractProgramParams('/*\n * @程序参数: 无\n * @资源参数: 无\n * @任务参数: 无\n */\nselect 1;', 'sql')).toEqual({
+      keys: [], taskParamKeys: [], resourceParamKeys: [], programArgs: '无', resourceArgs: '无', taskArgs: '无', usage: '',
     });
   });
 
   it('codeType 省略时按 SQL 处理（未知扩展名在 getFileInfo 里也默认 sql）', () => {
-    expect(extractProgramParams(SQL_V3).keys).toEqual(['day', 'city']);
+    expect(extractProgramParams(SQL_V4).keys).toEqual(['day', 'city']);
   });
 });
 
 /**
- * v2 兼容：旧文件只有一个 `@用法`，两类参数混写，此时仍按 `@引擎` 查表拆分，
- * 保证老工作空间的「运行程序」行为不因代码头拆字段而改变。
+ * v2 兼容：旧文件只有一个 `@用法`，各类参数混写（老文件无从区分资源参数与提交参数），
+ * 此时仍按 `@引擎` 查表拆分，保证老工作空间的「运行程序」行为不因代码头拆字段而改变。
  */
 describe('extractProgramParams — 旧格式 @用法 兼容', () => {
   const SQL = [
@@ -257,7 +296,9 @@ describe('extractProgramParams — 旧格式 @用法 兼容', () => {
     expect(extractProgramParams(SQL, 'sql')).toEqual({
       keys: ['day', 'city'],
       taskParamKeys: [],
+      resourceParamKeys: [],
       programArgs: '',
+      resourceArgs: '',
       taskArgs: '',
       usage: '--day 20260501',
     });
@@ -275,32 +316,36 @@ describe('extractProgramParams — 旧格式 @用法 兼容', () => {
     expect(extractProgramParams(java, 'java')).toEqual({
       keys: ['day', 'checkpoint'],
       taskParamKeys: [],
+      resourceParamKeys: [],
       programArgs: '',
+      resourceArgs: '',
       taskArgs: '',
       usage: '--day 20260501 -checkpoint 60000',
     });
   });
 
-  it('迁移期新旧字段并存：一并解析，两类都不丢', () => {
+  it('迁移期新旧字段并存：四类一并解析，都不丢', () => {
     const mixed = [
       '/*',
       ' * @引擎: kyuubi',
       ' * @用法: --day 20260501',
       ' * @程序参数: --hour 08',
-      ' * @任务参数: --num-executors 4',
+      ' * @资源参数: --num-executors 4',
+      ' * @任务参数: --master yarn',
       ' */',
       'select 1;',
     ].join('\n');
     const result = extractProgramParams(mixed, 'sql');
     // @程序参数 先解析，旧 @用法 里的业务参数追加在后
     expect(result.keys).toEqual(['hour', 'day']);
-    expect(result.taskParamKeys).toEqual(['--num-executors']);
+    expect(result.resourceParamKeys).toEqual(['--num-executors']);
+    expect(result.taskParamKeys).toEqual(['--master']);
     expect(result.usage).toBe('--day 20260501');
   });
 
   it('旧格式里既有 @用法 又没有任何参数 → 空（弹窗只给一行空白）', () => {
     expect(extractProgramParams('select 1;', 'sql')).toEqual({
-      keys: [], taskParamKeys: [], programArgs: '', taskArgs: '', usage: '',
+      keys: [], taskParamKeys: [], resourceParamKeys: [], programArgs: '', resourceArgs: '', taskArgs: '', usage: '',
     });
   });
 });
@@ -309,7 +354,8 @@ describe('extractProgramParams — 旧格式 @用法 兼容', () => {
  * 旧格式（v2）的 `@用法` 常写成 spark / flink 提交命令形态，框架参数与业务入参混在一起。
  * 框架参数属于「任务参数」（见 schedulerMapping 的 driverMemory/executorCores/parallelism 映射），
  * 不能当成 runParams 下发 —— 这里钉住「剔哪些、留哪些」。
- * v3 起改用 `@任务参数` 显式声明，本组用例只覆盖老文件的兼容路径。
+ * 新格式改用 `@资源参数`（资源类）与 `@任务参数`（提交/引擎侧）显式声明，本组用例只覆盖
+ * 老文件的兼容路径 —— 老文件里两类混写在一起，统一按任务参数处理（无法再区分）。
  */
 describe('extractProgramParams — 旧格式 @用法 的引擎参数剔除', () => {
   const header = (engine: string, usage: string) =>

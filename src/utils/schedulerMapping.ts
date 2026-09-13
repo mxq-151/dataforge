@@ -1,6 +1,7 @@
 import type { DSTaskType, DSWorkflowTaskNode, DSWorkflowEdge, DSWorkflowGlobalParam, DSLocalParam, DSDependentTaskParams } from '../types/dolphinscheduler';
 import { getDefaultTaskParams, ExecutionType, Priority, TASK_CATEGORIES, TASK_TYPE_LABELS } from '../types/dolphinscheduler';
 import { parseFileHeader } from './index';
+import { deriveTaskParamsFromHeader, type HeaderParamHit } from './headerTaskParams';
 import { toRelativePath, normalizePath } from './pathUtils';
 
 function extractCodePackage(code: string): string {
@@ -116,6 +117,17 @@ export interface CodeFileMapping {
   dataDependencies: string[];
   /** 代码头 @依赖 声明的前置任务依赖（{调度项目}.{前置任务名称}，前置任务名称不含文件扩展名） */
   headerDependencies: HeaderDependency[];
+  /**
+   * 代码头（@程序参数 / @资源参数 / @任务参数）换算出的节点参数，**优先级最高**。
+   *
+   * 已经并入 taskParams，这里单独留一份是为了让「提交调度」弹窗在回填时把
+   * 「上次记住的取值」也压过去（记忆值只在初始化时叠加，会盖掉 taskParams 里的代码头取值）。
+   */
+  headerTaskParams: Record<string, unknown>;
+  /** 代码头声明逐条落到哪个节点参数（已写入的），供界面显示「哪些来自代码头」 */
+  headerParamHits: HeaderParamHit[];
+  /** 代码头声明了但没能写进节点的（本任务类型没有对应字段 / 被自动生成值接管），界面须提示 */
+  headerParamUnmapped: HeaderParamHit[];
 }
 
 /**
@@ -793,6 +805,12 @@ export function mapCodeFileToTask(
     }
   }
 
+  // 代码头声明（@程序参数 / @资源参数 / @任务参数）是节点参数的**最高优先级来源**：
+  // 放在 switch 与 applyRuntimeParams 之后统一应用，才能压过引擎默认值与「配置参数」里存的值。
+  // 换算口径见 utils/headerTaskParams.ts（映射不到的项原样进「其他参数」，被自动生成值接管的项回报给界面）。
+  const headerDerivation = deriveTaskParamsFromHeader(codeContent, taskType);
+  Object.assign(baseParams, headerDerivation.params);
+
   const dataDependencies = extractDataDependencies(codeContent, header);
   const headerDependencies = parseDependencyHeader(header?.dependency);
 
@@ -810,6 +828,9 @@ export function mapCodeFileToTask(
     dataSource: header?.dataSource || null,
     dataDependencies,
     headerDependencies,
+    headerTaskParams: headerDerivation.params,
+    headerParamHits: headerDerivation.applied,
+    headerParamUnmapped: headerDerivation.unmapped,
   };
 }
 

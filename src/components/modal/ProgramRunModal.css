@@ -110,7 +110,7 @@
   word-break: break-all;
 }
 
-/* 代码头 @任务参数 的引擎/资源参数：说明它们不下发 runParams、该去哪配（不静默丢弃） */
+/* 代码头 @资源参数 / @任务参数 的非业务入参：说明它们不下发 runParams、该去哪配（不静默丢弃） */
 .program-run__task-note {
   display: flex;
   align-items: flex-start;

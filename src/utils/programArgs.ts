@@ -88,7 +88,7 @@ const SQL_VAR_PATTERN = /\$\{([^{}]+)\}/g;
  * 去掉 SQL 注释（`-- 行注释` 与 `/* … *\/ 块注释`），返回仅含有效语句的文本。
  *
  * 目的是避免注释里的示例变量被当成真参数：代码头本身是块注释，`@备注` 里若举例写了
- * `${day}`，不该因此多出一个参数（代码头 @程序参数 / @任务参数 另行解析，不受影响）。
+ * `${day}`，不该因此多出一个参数（代码头 @程序参数 / @资源参数 / @任务参数 另行解析，不受影响）。
  */
 export function stripSqlComments(sql: string): string {
   const text = sql ?? '';
@@ -138,7 +138,7 @@ export function paramFlagName(token: string): string {
 }
 
 /**
- * 从代码头参数声明文本（`@程序参数` / `@任务参数`，旧格式 `@用法`）里取出**原始 flag**
+ * 从代码头参数声明文本（`@程序参数` / `@资源参数` / `@任务参数`，旧格式 `@用法`）里取出**原始 flag**
  * （保持出现顺序与去重）：
  *   `--day 20260501 -checkpoint 60000` → ['--day', '-checkpoint']
  *   `--env=prod`                       → ['--env=prod']
@@ -172,9 +172,10 @@ export function parseParamKeys(declaration: string | null | undefined): string[]
 // 引擎（框架）参数识别 —— 仅用于**旧格式** `@用法` 的兼容拆分
 // ══════════════════════════════════════════════════════════════
 //
-// v3 代码头把参数拆成了两个字段（见 opencodeInstructions.ts「代码头格式规范」）：
+// 代码头把参数拆成了三个字段（见 opencodeInstructions.ts「代码头格式规范」）：
 //   @程序参数: --day 20260501 -checkpoint 60000      → 业务入参（→ runParams）
-//   @任务参数: --num-executors 4 --driver-memory 2g  → 引擎/资源参数（调度侧任务参数）
+//   @资源参数: --num-executors 4 --driver-memory 2g  → 算力/资源归属（调度侧任务的资源配置）
+//   @任务参数: --master yarn --deploy-mode cluster   → 提交与引擎侧参数（调度侧任务配置）
 // 显式声明即分类结果，**不再**按引擎类型二次推断。
 //
 // 下面的表只服务于 v2 老文件：那时只有一个 `@用法`，spark / flink 的提交命令和业务入参
@@ -224,8 +225,8 @@ const FLINK_ENGINE_FLAGS = new Set([
 /**
  * 该 flag 是否属于 spark / flink 的**提交框架参数**（不是业务入参）。
  *
- * 只服务于**旧格式** `@用法` 的兼容拆分（见本文件上方说明）：v3 代码头用 `@任务参数`
- * 显式声明，不再走这个判定。旧格式下只在代码头 `@引擎` 明确声明为 spark / flink /
+ * 只服务于**旧格式** `@用法` 的兼容拆分（见本文件上方说明）：新代码头用 `@资源参数` /
+ * `@任务参数` 显式声明，不再走这个判定。旧格式下只在代码头 `@引擎` 明确声明为 spark / flink /
  * flink_stream 时才判定 —— 其它引擎（kyuubi、hive、python……）的 `@用法` 全是业务入参，
  * 不做剔除，避免误伤同名参数；未声明 @引擎 时同样不判定（@引擎 必填，缺了会被代码头校验拦下）。
  *
@@ -275,8 +276,15 @@ export interface ExtractedProgramParams {
    * 弹窗只把它们列出来告诉用户「该去哪配」，不进预填行、不随程序参数下发。
    */
   taskParamKeys: string[];
+  /**
+   * 识别出的**资源参数**原始 flag —— 来自代码头 `@资源参数`（v4 起从 `@任务参数` 中单列）。
+   * 与 taskParamKeys 同理：只告知、不进预填行、不随程序参数下发。
+   */
+  resourceParamKeys: string[];
   /** 代码头 `@程序参数` 原文（空串=未声明），弹窗里作为填写提示展示 */
   programArgs: string;
+  /** 代码头 `@资源参数` 原文（空串=未声明） */
+  resourceArgs: string;
   /** 代码头 `@任务参数` 原文（空串=未声明） */
   taskArgs: string;
   /** 旧格式代码头 `@用法` 原文（空串=未用旧格式），非空时弹窗提示迁移到新字段 */
@@ -286,14 +294,15 @@ export interface ExtractedProgramParams {
 /**
  * 按语言提取「运行程序」的程序参数名 —— 弹窗打开时用它们预填空白行，用户只需填取值。
  *
- * 代码头两个字段（v3 规范）各自产出一种结果，**显式声明即分类结果**，不再按引擎二次推断：
- *   - `@程序参数`：程序自身的入参（`--day 20260501 -checkpoint 60000`）→ `keys`
+ * 代码头三个字段各自产出一种结果，**显式声明即分类结果**，不再按引擎二次推断：
+ *   - `@程序参数`：程序自身的业务入参（`--day 20260501 -checkpoint 60000`）→ `keys`
  *     写法为 `--参数名 取值`，只认以 `-` 开头的 token；写「无」或留空表示没有程序参数
- *   - `@任务参数`：引擎与资源参数（`--num-executors 4 -yjm 1024`）→ `taskParamKeys`
+ *   - `@资源参数`：任务运行所需的资源（`--num-executors 4 -yjm 1024`）→ `resourceParamKeys`
+ *   - `@任务参数`：除资源外的提交与引擎侧参数（`--master yarn --deploy-mode cluster`）→ `taskParamKeys`
  *
- * 旧格式（v2）只有一个 `@用法`，两类参数混写，此时按 `@引擎` 查表把提交框架参数剔进
- * `taskParamKeys`（isEngineParamFlag），行为与拆分前一致；若同一文件既有 `@用法` 又有新字段，
- * 三者一并解析（迁移期不丢参数）。
+ * 旧格式（v2）只有一个 `@用法`，各类参数混写，此时按 `@引擎` 查表把提交框架参数（含资源类参数）
+ * 一律剔进 `taskParamKeys`（isEngineParamFlag），行为与拆分前一致 —— 老文件无从区分资源参数与
+ * 提交参数；若同一文件既有 `@用法` 又有新字段，四者一并解析（迁移期不丢参数）。
  *
  * 语言差异：
  *   - SQL：代码头 `@程序参数` + 正文里的 `${day}` 变量（正文是实际占位、代码头是声明，两者都取）
@@ -309,6 +318,7 @@ export function extractProgramParams(content: string, codeType?: string): Extrac
   const text = content ?? '';
   const header = parseFileHeader(text);
   const programArgs = (header?.programArgs || '').trim();
+  const resourceArgs = (header?.resourceArgs || '').trim();
   const taskArgs = (header?.taskArgs || '').trim();
   // 旧格式 @用法：仅在老文件里出现（新模板不再生成）
   const usage = (header?.usage || '').trim();
@@ -316,6 +326,7 @@ export function extractProgramParams(content: string, codeType?: string): Extrac
 
   const keys: string[] = [];
   const taskParamKeys: string[] = [];
+  const resourceParamKeys: string[] = [];
 
   const pushKey = (flag: string) => {
     const key = paramFlagName(flag);
@@ -324,14 +335,20 @@ export function extractProgramParams(content: string, codeType?: string): Extrac
   const pushTaskParamKey = (flag: string) => {
     if (!taskParamKeys.includes(flag)) taskParamKeys.push(flag);
   };
+  const pushResourceParamKey = (flag: string) => {
+    if (!resourceParamKeys.includes(flag)) resourceParamKeys.push(flag);
+  };
 
   // v3：@程序参数 是显式声明的业务入参，原样预填
   for (const flag of parseParamFlags(programArgs)) pushKey(flag);
 
-  // v3：@任务参数 是显式声明的引擎/资源参数，只告知不预填
+  // v4：@资源参数 是显式声明的资源（算力/资源归属），只告知不预填
+  for (const flag of parseParamFlags(resourceArgs)) pushResourceParamKey(flag);
+
+  // v3：@任务参数 是显式声明的提交/引擎侧参数，只告知不预填
   for (const flag of parseParamFlags(taskArgs)) pushTaskParamKey(flag);
 
-  // v2 兼容：@用法 里两类混写，按 @引擎 查表拆分
+  // v2 兼容：@用法 里各类参数混写，按 @引擎 查表把提交框架参数剔进 taskParamKeys
   for (const flag of parseParamFlags(usage)) {
     if (isEngineParamFlag(flag, engine)) pushTaskParamKey(flag);
     else pushKey(flag);
@@ -343,7 +360,7 @@ export function extractProgramParams(content: string, codeType?: string): Extrac
     }
   }
 
-  return { keys, taskParamKeys, programArgs, taskArgs, usage };
+  return { keys, taskParamKeys, resourceParamKeys, programArgs, resourceArgs, taskArgs, usage };
 }
 
 /**
