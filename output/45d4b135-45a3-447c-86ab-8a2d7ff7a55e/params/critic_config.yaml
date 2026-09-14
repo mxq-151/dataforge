@@ -1,0 +1,21 @@
+critic_mode_hint: "per-section"
+force_mode: null
+rubrics_files:
+  - "experts/general-writer/references/quality-framework.md"
+  - "experts/general-writer/references/doc-type-matrix.md"
+pass_score: 75
+max_loops: 2
+decision: "skip"
+decision_reason: "genre=general 命中风险分档表低风险档（默认 skip，优先级高于 critic_mode_hint）；用户未要求严格审查，故不驱动 Critic 引擎。"
+section_params:
+  scope: "section"
+  min_issues: 1
+  min_instructions: 2
+full_params:
+  scope: "full"
+  min_issues: 2
+  min_instructions: 3
+revision_params:
+  scope: "revision"
+  min_issues: 1
+  min_instructions: 1

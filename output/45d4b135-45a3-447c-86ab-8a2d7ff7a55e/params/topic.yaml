@@ -1,0 +1,16 @@
+detected_doc_type: "项目计划书（技术改造/平台建设方案）"
+doc_subtype: "企业级数据开发平台项目计划书"
+target_reader: "技术决策层 + 项目干系人（研发负责人、数据平台团队、运维/合规）"
+target_length: 9000
+target_tone: "正式、务实、工程化，第一人称复数（我方/本项目组），正式度★★★★☆"
+first_person: "我方 / 本项目组"
+core_messages:
+  - "DataForge 是一套「桌面端一体化 IDE + 平台化后端 + 双引擎写入合规网关」的数据开发平台，解决数据开发链路割裂、写权限失控、AI 无法感知平台元数据三大痛点。"
+  - "四大子系统职责分明：dataforge 桌面端（开发入口/AI 助手/编辑与调度）、dataforge-server（元数据与权限中台）、spark-listener 与 flink-listener（计算引擎侧写入合规闸门）。"
+  - "技术选型基于既有工程实况：Electron 44 + React 19 + Monaco/VS Code 内核 + opencode AI 内核；SpringBoot 3.2 + MyBatis-Plus；Spark 2.4/3.1/4.1 跨版本与 Flink 1.14~1.20 跨版本适配。"
+  - "分期实施：基础平台打通 → 核心业务模块 → AI 能力深化与合规网关全面落地，配套里程碑与验收标准。"
+  - "风险集中在跨版本适配、AI 生成代码的写入合规、多租户权限边界与打包分发体积。"
+research_needed: true
+research_focus:
+  - "数据开发平台 / DataOps 行业趋势与 AI 辅助数据开发的落地形态"
+  - "写入合规（Write Compliance / 数据安全网关）在湖仓场景的通行做法"

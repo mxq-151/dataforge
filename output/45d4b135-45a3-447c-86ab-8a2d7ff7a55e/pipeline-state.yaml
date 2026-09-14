@@ -1,0 +1,84 @@
+schema_version: 1
+request_id: 45d4b135-45a3-447c-86ab-8a2d7ff7a55e
+created_at: 2026-09-14T11:43:35+08:00
+updated_at: 2026-09-14T12:50:00+08:00
+
+entry_type: full_pipeline
+stage_chain: [1, 2, 3]
+
+output_docx_path: /Users/mxq/Desktop/dataforge/output/45d4b135-45a3-447c-86ab-8a2d7ff7a55e/stage3/DataForge数据开发平台-项目计划书.docx
+output_docx_user_specified: false
+
+current_stage: completed
+
+stages:
+  stage_0:
+    status: completed
+    completed_at: 2026-09-14T11:43:35+08:00
+    decision: full_pipeline
+
+  stage_1:
+    status: completed
+    started_at: 2026-09-14T11:50:00+08:00
+    completed_at: 2026-09-14T12:05:00+08:00
+    output_path: "stage1/final_draft.md"
+    genre: "general"
+    expert_used: "general-writer"
+    route_tag: "general_writing"
+    critic_decision: null
+
+  stage_2:
+    status: completed
+    started_at: 2026-09-14T12:06:00+08:00
+    completed_at: 2026-09-14T12:40:00+08:00
+    route: html
+    html_sub: template
+    output_path: "stage2/formatted-DataForge项目计划书.html"
+    output_format: html
+    skills_invoked: [design-token, doc-typeset, html-review]
+    design_tokens_path: "stage2/design_tokens.json"
+    fallback: false
+    fallback_reason: null
+
+  stage_3:
+    status: completed
+    started_at: 2026-09-14T12:41:00+08:00
+    completed_at: 2026-09-14T12:50:00+08:00
+    executor: "doc-converter"
+    input_format: html
+    output_path: /Users/mxq/Desktop/dataforge/output/45d4b135-45a3-447c-86ab-8a2d7ff7a55e/stage3/DataForge数据开发平台-项目计划书.docx
+    skill_used: ["html-to-docx"]
+    present_files_opened: true
+    fallback: false
+    fallback_reason: null
+
+consistency_check:
+  output_files_exist: pass
+  stage_chain_complete: pass
+  last_checked_at: 2026-09-14T17:42:00+08:00
+  errors: []
+
+revisions:
+  - at: 2026-09-14T17:42:00+08:00
+    reason: 用户指出「文件浏览（分布式文件系统与对象存储）」「库表管理（对接查询网关）」实际已落地，文档误标为规划中
+    root_cause: 采信了滞后的 dataforge-server/README.md（停留 2024 年），未用代码交叉验证
+    evidence:
+      - "dataforge-server/modules/devops/filesystem/{FileSystemFactory,LocalFileSystem,HdfsFileSystem,S3FileSystem}.java"
+      - "StorageConfigService 已注册存储类型 List.of(\"hdfs\",\"s3\",\"juicefs\")；FileExplorerController 11 个端点"
+      - "MetadataController /metadata/tables、/table/columns、/table/{id}/permission + MetadataSyncService"
+      - "服务端实际 6 个业务模块、20 个控制器、28 张表（README 称 2 个模块 / 6 张表）"
+    changed:
+      - "表1 子系统定位、表4 分层职责、表6 桌面端模块清单（新增文件浏览器行）、表7 服务端分层结构（2 → 6 个业务模块）"
+      - "表10 优先级交付状态、表12 阶段二/阶段四交付物、表17 现状规模、4.2 节数据模型与后续规划"
+    sources_updated: ["stage1/final_draft.md", "stage2/formatted-DataForge项目计划书.html"]
+    regenerated_via: html-to-docx（原地替换交付文件；因该 docx 被 wpsoffice 进程持有写锁，editor_sdk 的 save_file 报 Export file is occupied）
+
+  - at: 2026-09-14T18:46:00+08:00
+    reason: 用户纠正定位——核心是"让智能体正确理解业务数据"，四大核心组件为 dataforge / dataforge-server / Marquez / DolphinScheduler；spark-listener / flink-listener 降为治理增强
+    changed:
+      - "重写定位与建设目标；新增 3.2 核心设计（五类信息）"
+      - "组件设计重排：dataforge → server → Marquez → DolphinScheduler → 合规组件（spark+flink 合并一节）"
+      - "优先级表：合规组件降为 P2；预期效益以智能体理解业务数据为首要"
+    sources_updated: ["stage1/final_draft.md", "stage2/formatted-DataForge项目计划书.html"]
+    regenerated_via: df_gen_stage2.py（md→HTML）→ html-review(98) → html-to-docx → df_make_web.py（网页版）
+

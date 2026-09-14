@@ -1,0 +1,12 @@
+topic: "企业级数据开发平台 2025-2026 年技术趋势，以及 AI 辅助数据开发与计算引擎侧写入合规的落地形态"
+tools: ["web_search"]
+scope: "web"
+max_loops: 2
+min_facts_required: 8
+gap_check_strict: "relaxed"
+search_dimensions:
+  - "行业趋势"
+  - "技术形态"
+  - "合规与治理"
+tier_priority: ["白皮书", "官方文档", "apache.org", "cncf.io"]
+snapshot_path: "output/45d4b135-45a3-447c-86ab-8a2d7ff7a55e/research/data-platform-research.md"
