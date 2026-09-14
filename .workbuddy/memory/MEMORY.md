@@ -11,7 +11,7 @@
 - **同一文件的多处编辑必须串行**：并行两个 `Edit` 各基于旧快照写回全文件，后写者静默抹掉先写者。
   查并发写者 `find src -mmin -8`。
 - macOS 陷阱：`grep "a\|b"` 会静默失败，须 `grep -E`。
-- 回归基线（2026-09-13 12:00 全量）：**48 文件 / 797 例全绿**。
+- 回归基线（2026-09-14 全量）：**54 文件 / 905 例**（load<5 全绿；load>12 时 `FolderSubmitScheduleModal` 超时误报）。
 - 测试大面积失败先看 load：load≈7~10 时 `FolderSubmitScheduleModal` 的 `waitFor` 会超时误报，
   **load 回落即过**。
 

@@ -4,11 +4,22 @@
  * 定位生成的 JAR。
  * 源码根统一为 src（Maven <sourceDirectory>src</sourceDirectory>），Java/Scala 源码均写入
  * {buildDir}/src/{包目录}；临时工程自包含，与工作区实际源码路径解耦。
+ * {buildDir} 固定为 {系统临时目录}/build/{projectCode?}/{timestamp}（见 BUILD_ROOT）。
  */
 import * as fs from 'node:fs';
 import * as fsp from 'node:fs/promises';
+import * as os from 'node:os';
 import * as path from 'node:path';
-import { formatTimestamp, hostLabel, resolveMvnBin, runMvn, workspaceHome } from './maven';
+import { formatTimestamp, resolveMvnBin, runMvn } from './maven';
+
+/**
+ * 编译临时工程根目录 = {系统临时目录}/build。
+ * 用 os.tmpdir() 而非字面量 /tmp：macOS 为 /var/folders/<...>/T、Linux 为 /tmp、
+ * Windows 为 C:\Users\<user>\AppData\Local\Temp，跨平台都是合法的可写临时目录。
+ * 编译产物是一次性中间产物（jar 会被读回上传/本地运行），不需要留在工作区，
+ * 放系统临时目录可避免污染 ~/.dataforge 并随系统自动清理。
+ */
+const BUILD_ROOT = path.join(os.tmpdir(), 'build');
 
 export interface MavenDependency {
   groupId: string;
@@ -232,9 +243,8 @@ export async function compileJavaScala(req: CompileRequest): Promise<CompileResu
   const mvnBin = resolveMvnBin(mavenHome);
   const timestamp = formatTimestamp();
 
-  // build 目录：~/.dataforge/{后端host标签}/build/{projectCode?}/{timestamp}
-  const hostLabel_ = hostLabel(req.backendHost ?? '');
-  let buildDir = path.join(workspaceHome(), hostLabel_, 'build');
+  // build 目录：{系统临时目录}/build/{projectCode?}/{timestamp}
+  let buildDir = BUILD_ROOT;
   if (req.projectCode) {
     buildDir = path.join(buildDir, req.projectCode);
   }
