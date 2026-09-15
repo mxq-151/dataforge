@@ -61,11 +61,32 @@
   回收站**必须对 git 隐身**（否则自动同步静默失效）。
 - **快照结构新增字段必须同步单测。**
 
+## 写计划书/方案前的事实核查基线（2026-09-15 实测，勿凭印象写）
+
+- **血缘与调度是桌面端直连上游**，不经服务端中转：`src/api/marquez.ts`、`src/api/dolphinscheduler.ts`，
+  地址在客户端设置项；**服务端没有 Marquez 客户端**。OpenLineage 传输参数由提交 Spark 任务时注入
+  （`SubmitToSchedulerModal` 取 `lineage.transportUrl`）；服务端构建 spark-submit 时会**剔除**业务侧
+  自带的 `openlineage*` / `lineage.enabled` 配置。
+- **租户不是数据隔离边界**：`sys_tenant_user` 对 `tenant_id` 与 `user_id` 各加了单列唯一约束
+  （租户 ↔ 用户 1:1）；`datasource_config` / `storage_config` / `dev_project` / 各权限表**都没有 tenant_id**，
+  租户只影响角色绑定与审计日志。写"多租户隔离"前先想清楚这句话站不站得住。
+- **权限校验的三处软肋**：① DML 权限检查**解析失败即放行**（`AbstractBaseExecutionStrategy` catch 里
+  "放行执行"）；② 行/列权限合并是**取并集放宽**——任一命中权限未对该表限制即整体放宽
+  （`getMergedRowFilterSql` / `getAllowedColumns` 注释明写）；③ 行/列后过滤只覆盖 Kyuubi 与 JDBC
+  （MySQL/PgSQL/Doris），`Spark/Flink/HBase` 三个策略直接实现 `ExecutionStrategy`、**不生效**；
+  且是结果集后过滤 ⇒ `count(*)` 等聚合值不受行级权限影响。`ROLE_SUPER_ADMIN` 短路所有检查。
+- **凭据落盘是明文**：主进程 `userData/df-stores/<file>.json`（`JSON.stringify` 直写），
+  **无 safeStorage / keytar**；只有服务端的数据源与租户密码是 AES。
+- **元数据同步失败只 warn 不阻断**（DDL 后同步异常仅记日志）⇒ 元数据会静默滞后。
+
 ## 交付偏好
 
 - 性能类任务**诊断驱动**：先量化定位再改，不接受凭猜测优化。
 - 交付含**量化对比**、变更表、决策理由、**未改动项清单**；改动附 `tsc --noEmit` 与 `vitest` 计数，
   新增逻辑配套单测（尤其纯函数分支边界）。
+- **计划书类交付不再出 Word（2026-09-15 用户明确）**：`output/<request_id>/` 的最终交付物是
+  `stage3/…html`（网页版）；不再跑 html-to-docx，也不再走 editor_sdk 改 docx。
+  内容源仍维护 `stage1/final_draft.md`，`stage2/…html` 保留（网页版由它生成），只是不转 docx。
 
 ## 平台定位（对外叙事，写文档/计划书时必守）
 

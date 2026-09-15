@@ -82,3 +82,57 @@ revisions:
     sources_updated: ["stage1/final_draft.md", "stage2/formatted-DataForge项目计划书.html"]
     regenerated_via: df_gen_stage2.py（md→HTML）→ html-review(98) → html-to-docx → df_make_web.py（网页版）
 
+  - at: 2026-09-15T09:20:00+08:00
+    reason: 用户要求把「规范开发环境」的价值主张由「规范且无歧义」改写为「规范且前后相互关联」
+    changed:
+      - "表1 dataforge 行：从源头保证开发产生的信息规范且前后相互关联"
+      - "表4 dataforge（桌面端）行：保证开发产生的信息规范且前后相互关联"
+      - "1.2 节收口句：保证源头信息规范且前后关联"
+      - "1.3 建设目标·规范开发环境目标：确保开发产生的信息规范且前后相互关联"
+      - "3.2 节：源头是否规范、前后是否关联；五类信息表·规范开发环境行补「是否前后关联」"
+      - "3.3 决策二补一句，把「关联」落到代码头参数与调度任务参数显式对齐这一机制上"
+    unchanged: ["1.1 项目背景「规范、无歧义、可检索的信息」", "3.3 决策一「规范、无歧义的业务信息」", "九、预期效益「规范无歧义的库表描述…」（均为信息整体的质量主张，非规范开发环境的专属贡献）"]
+    sources_updated: ["stage1/final_draft.md", "stage2/formatted-DataForge项目计划书.html", "stage3/DataForge数据开发平台-项目计划书.html"]
+    regenerated_via: df_reword_related.py（三份文本源原地替换，21 处）→ editor_sdk doc_find_and_replace（docx 原地 7 处替换 + save_file）
+
+  - at: 2026-09-15T09:44:00+08:00
+    reason: 用户要求补全自检发现的 2 处偏弱项（效益量化未绑本项目基线、需求—模块—验收追溯链断裂），并顺带校正附录回归基线
+    changed:
+      - "2.2 新增第 4 类需求「运维与治理类能力（规划中）」：自动化问题排障 / 知识检索增强 / 数据价值评估，各给就绪判据"
+      - "8.2 补一条：规划中能力不纳入本期功能验收，按 2.2 第 4 条就绪判据判定"
+      - "8.5 新增「需求—模块—验收对应关系」表（需求类别 → 模块 → 交付状态 → 验收方式）+ 追溯规则"
+      - "9.1 新增「效益指标与度量基线」表（7 行）：效益维度 → 本项目基线 → 目标口径 → 度量方式"
+      - "九章开发效率段改为显式标注：6—8 小时→5—10 分钟、合规率 98% 属外部参照，不构成本项目承诺值"
+      - "附录回归基线 48 文件 / 797 用例 → 54 文件 / 905 用例（当日全量跑 54/905；48/797 为滞后值）"
+    evidence:
+      - "vitest 全量：54 files / 905 tests，其中 FolderSubmitScheduleModal 1 例超时；单独复跑该文件 24/24 通过（1.09s）"
+      - "src 共 321 个 ts/tsx/css，加 electron 15 个 = 336，与附录文件数口径一致；非空行约 7.93 万，与「约 7.99 万行」同口径"
+    sources_updated: ["stage1/final_draft.md"]
+    regenerated_via: df_gen_stage2.py（md→stage2 HTML）→ html-to-docx（--page-size A4 --margin-top 2.5 --margin-bottom 2.0 --margin-left 2.5 --margin-right 2.5；页边距须与既有交付件一致）→ df_make_web.py（网页版）
+    verify: "docx 解包取 w:t 全文与改前逐句 diff，仅 4 处替换 + 新增句；段落 557→622，表格 23→25"
+
+  - at: 2026-09-15T10:20:00+08:00
+    reason: 用户指出第七章风险描述"不清楚或不正确"（例：R4「多租户与权限边界不严」看不出哪里不严；R2「血缘与任务依赖信息不全」没说清什么场景下不全）
+    root_cause: 原表只有一句结论式短语，没写触发场景；且 R4/R7 两处与代码实况不符
+    corrections:
+      - "R7 原写「上游对接收敛在服务端接口层，客户端不直连」——与实况相反：Marquez 与 DolphinScheduler 都是桌面端直连（地址在客户端设置项），服务端无 Marquez 客户端"
+      - "R4 原把「可信凭据集中在主进程受控存储」写在应对里——属 R6 职责，已移回 R6"
+      - "R4「多租户」定性不准——租户实为 1:1 用户绑定（sys_tenant_user 对 tenant_id、user_id 各加唯一约束），资源表无 tenant_id，租户不是数据隔离边界"
+    changed:
+      - "整章重写为四列：编号 / 风险场景与触发条件 / 影响 / 应对措施（已落地｜待补），并加分类导语"
+      - "R1 补：元数据同步失败只 warn 不阻断 → 描述静默滞后场景"
+      - "R2 补三种缺口：未配 OpenLineage 传输地址或非平台提交则不产生血缘；血缘视图靠客户端直连 Marquez；任务依赖仅覆盖平台提交的工作流"
+      - "R4 补四个已核实情形：租户非隔离边界；DML 检查解析失败即放行（fail-open）且行/列合并规则取并集放宽；行/列后过滤只覆盖 Kyuubi 与 JDBC(MySQL/PgSQL/Doris)，Spark/Flink/HBase 不生效且聚合值不受影响；ROLE_SUPER_ADMIN 短路"
+      - "R6 补：凭据落 userData/df-stores 明文 JSON、未接系统钥匙串"
+      - "R5 补空快照误删与回收站被清理两个触发场景"
+    evidence:
+      - "DataAccessPermissionService#getMergedRowFilterSql / getAllowedColumns 注释：任一命中权限未做限制即整体放宽"
+      - "AbstractBaseExecutionStrategy DML 检查 catch 分支：'DML权限检查解析失败, 放行执行'"
+      - "applyRowFilterAndMasking 仅 KyuubiExecutionStrategy 与 AbstractJdbcExecutionStrategy 调用；Spark/Flink/HBase 直接实现 ExecutionStrategy"
+      - "sql/init/dataforge-postgresql.sql：sys_tenant_user 有 uk_tenant_id 与 uk_user_id 两个单列唯一约束；datasource_config / storage_config / dev_project / sys_table_permission 无 tenant_id"
+      - "src/api/marquez.ts、src/api/dolphinscheduler.ts 客户端直连；SubmitToSchedulerModal 注入 lineage.transportUrl；SparkExecutionStrategy 剔除 openlineage/lineage 配置"
+      - "electron/backend/store.ts：df-stores/<file>.json 明文 JSON.stringify 落盘，无 safeStorage/keytar"
+    sources_updated: ["stage1/final_draft.md"]
+    regenerated_via: df_gen_stage2.py → df_make_web.py（本轮起不再产出 docx）
+    verify: "三份文本源与新表对齐；旧表述（客户端不直连 / 多租户与权限边界不严 / 血缘与任务依赖信息不全）零残留"
+
