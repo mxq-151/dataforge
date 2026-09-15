@@ -1,0 +1,83 @@
+@page { @bottom-center { content: counter(page); } }
+@page cover { @bottom-center { content: none; } }
+section[role="cover"] { page: cover; }
+:root {
+  --typography-fontFamily-heading: 微软雅黑, Microsoft YaHei, PingFang SC;
+  --typography-fontFamily-body: 微软雅黑, Microsoft YaHei, PingFang SC;
+  --typography-fontFamily-data: DIN Next, Arial, sans-serif;
+  --typography-fontSize-coverTitle: 22pt;
+  --typography-fontSize-coverCategory: 14pt;
+  --typography-fontSize-sectionHeader: 13pt;
+  --typography-fontSize-h1: 20pt;
+  --typography-fontSize-h2: 11pt;
+  --typography-fontSize-h3: 10pt;
+  --typography-fontSize-body: 9pt;
+  --typography-fontSize-small: 8pt;
+  --typography-fontSize-tiny: 7pt;
+  --typography-lineHeight-title: 1.3;
+  --typography-lineHeight-body: 1.6;
+  --typography-lineHeight-compact: 1.2;
+  --typography-fontWeight-heading: 600;
+  --typography-fontWeight-bold: 700;
+  --color-primary: #1565C0;
+  --color-accent: #00897B;
+  --color-text: #212121;
+  --color-textSecondary: #616161;
+  --color-heading: #1A237E;
+  --color-divider: #E0E0E0;
+  --color-background: #FFFFFF;
+  --color-surface: #F5F7FA;
+  --color-danger: #C62828;
+  --spacing-paragraph: 0.75em;
+  --spacing-sectionGap: 2.5em;
+  --spacing-cardPadding: 1.5em;
+  --spacing-cell: 0.5em;
+  --spacing-block: 0.9em;
+  --layout-maxContentWidth: 160mm;
+  --decoration-headingBorderWidth: 4px;
+  --decoration-h3BorderWidth: 3px;
+  --hairline: 1px;
+  --summary-border-width: 4px;
+  --fs-h1: var(--typography-fontSize-h1);
+  --fs-h2: var(--typography-fontSize-h2);
+  --fs-h3: var(--typography-fontSize-h3);
+  --fs-section: var(--typography-fontSize-sectionHeader);
+  --fs-body: var(--typography-fontSize-body);
+  --fs-small: var(--typography-fontSize-small);
+  --fs-tiny: var(--typography-fontSize-tiny);
+  --ff-heading: var(--typography-fontFamily-heading);
+  --ff-body: var(--typography-fontFamily-body);
+  --ff-data: var(--typography-fontFamily-data);
+  --lh-body: var(--typography-lineHeight-body);
+  --lh-compact: var(--typography-lineHeight-compact);
+  --fw-bold: var(--typography-fontWeight-bold);
+  --page-content-width: var(--layout-maxContentWidth);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--ff-body); font-size: var(--fs-body); line-height: var(--lh-body); color: var(--color-text); background: var(--color-background); max-width: var(--page-content-width); margin-left: auto; margin-right: auto; }
+.cover-category { font-family: var(--ff-heading); font-size: var(--typography-fontSize-coverCategory); font-weight: var(--fw-bold); color: var(--color-primary); text-align: left; letter-spacing: 0.08em; margin-bottom: var(--spacing-block); }
+.cover-title { font-family: var(--ff-heading); font-size: var(--typography-fontSize-coverTitle); font-weight: var(--fw-bold); color: var(--color-primary); text-align: left; line-height: var(--typography-lineHeight-title); margin-bottom: var(--spacing-block); }
+.cover-subtitle { font-family: var(--ff-body); font-size: var(--fs-h2); color: var(--color-textSecondary); text-align: left; margin-bottom: var(--spacing-sectionGap); }
+.cover-meta-line { font-family: var(--ff-body); font-size: var(--fs-small); color: var(--color-textSecondary); text-align: left; border-top: var(--hairline) solid var(--color-divider); padding-top: var(--spacing-cell); margin-bottom: var(--spacing-cell); line-height: var(--lh-compact); }
+.toc-title { font-family: var(--ff-heading); font-size: var(--fs-section); font-weight: var(--fw-bold); color: var(--color-heading); text-align: left; text-indent: 0; margin-bottom: var(--spacing-block); }
+.toc-list, .toc-list ol, .toc-list ul { list-style: none; list-style-type: none; padding-left: 0; }
+.toc-list li { font-size: var(--fs-body); color: var(--color-text); text-align: left; margin-bottom: var(--spacing-cell); line-height: var(--lh-compact); }
+h2 { font-family: var(--ff-heading); font-size: var(--fs-section); font-weight: var(--fw-bold); color: var(--color-heading); text-align: left; background: var(--color-surface); border-bottom: var(--decoration-headingBorderWidth) solid var(--color-primary); padding: var(--spacing-cell) var(--spacing-cell); margin-top: var(--spacing-sectionGap); margin-bottom: var(--spacing-block); line-height: var(--typography-lineHeight-title); }
+h3 { font-family: var(--ff-heading); font-size: var(--fs-h3); font-weight: var(--fw-bold); color: var(--color-primary); text-align: left; border-left: var(--decoration-h3BorderWidth) solid var(--color-accent); padding-left: var(--spacing-cell); margin-top: var(--spacing-block); margin-bottom: var(--spacing-paragraph); line-height: var(--typography-lineHeight-title); }
+h4 { font-family: var(--ff-heading); font-size: var(--fs-body); font-weight: var(--fw-bold); color: var(--color-text); text-align: left; margin-top: var(--spacing-paragraph); margin-bottom: var(--spacing-paragraph); }
+p { font-size: var(--fs-body); color: var(--color-text); text-align: justify; margin-bottom: var(--spacing-paragraph); line-height: var(--lh-body); }
+li { font-size: var(--fs-body); color: var(--color-text); text-align: left; margin-bottom: var(--spacing-cell); line-height: var(--lh-body); }
+ol.plain-list, ul.plain-list { padding-left: var(--spacing-cardPadding); }
+table.data-table { width: 100%; border-collapse: collapse; margin-bottom: var(--spacing-block); }
+table.data-table caption { font-size: var(--fs-small); font-weight: var(--fw-bold); color: var(--color-textSecondary); text-align: left; margin-bottom: var(--spacing-cell); }
+table.data-table th { font-family: var(--ff-heading); font-size: var(--fs-small); font-weight: var(--fw-bold); color: var(--color-background); background: var(--color-primary); text-align: left; border: var(--hairline) solid var(--color-primary); padding: var(--spacing-cell); line-height: var(--lh-compact); }
+table.data-table td { font-size: var(--fs-small); color: var(--color-text); text-align: left; border: var(--hairline) solid var(--color-divider); padding: var(--spacing-cell); vertical-align: top; line-height: var(--lh-compact); }
+table.data-table tbody tr:nth-child(even) td { background: var(--color-surface); }
+table.metric-table { width: 100%; border-collapse: collapse; margin-top: var(--spacing-block); margin-bottom: var(--spacing-block); }
+table.metric-table th { font-family: var(--ff-heading); font-size: var(--fs-small); font-weight: var(--fw-bold); color: var(--color-background); background: var(--color-primary); text-align: left; border: var(--hairline) solid var(--color-primary); padding: var(--spacing-cell); line-height: var(--lh-compact); }
+table.metric-table td { background: var(--color-background); border: var(--hairline) solid var(--color-divider); padding: var(--spacing-cell); text-align: center; vertical-align: middle; }
+table.metric-table .metric-value { text-indent: 0; font-family: var(--ff-data); font-size: var(--fs-h2); font-weight: var(--fw-bold); color: var(--color-primary); text-align: center; margin-bottom: 0; line-height: var(--lh-compact); }
+table.metric-table .metric-label { text-indent: 0; font-size: var(--fs-tiny); color: var(--color-textSecondary); text-align: center; margin-bottom: 0; line-height: var(--lh-compact); }
+.data-emphasis { color: var(--color-danger); font-weight: var(--fw-bold); }
+p.callout-info { font-size: var(--fs-body); color: var(--color-text); text-align: justify; text-indent: 0; background: var(--color-surface); border-left: var(--summary-border-width) solid var(--color-primary); padding: var(--spacing-cell); margin-bottom: var(--spacing-block); }
+.doc-footnote { font-size: var(--fs-small); color: var(--color-textSecondary); text-align: left; text-indent: 0; border-top: var(--hairline) solid var(--color-divider); padding-top: var(--spacing-cell); margin-top: var(--spacing-sectionGap); }

@@ -1,0 +1,1315 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-page-node-id="spBOLOpwEy13FI75JSfYiY">
+<head data-page-node-id="2qPpNpVHgb0tHfBjrnMD9M">
+<meta charset="UTF-8" data-page-node-id="jxhbKliMH1WViofy3Ro9MZ">
+<meta name="viewport" content="width=device-width, initial-scale=1.0" data-page-node-id="GkVj6hY8xG1x9EhhKhMBIy">
+<meta name="docx-page-size" content="A4" data-page-node-id="oNeAsbg9V0KWouknRoVtqO">
+<title>DataForge 数据开发平台项目计划书</title>
+<style>@page { @bottom-center { content: counter(page); } }
+@page cover { @bottom-center { content: none; } }
+section[role="cover"] { page: cover; }
+:root {
+  --typography-fontFamily-heading: 微软雅黑, Microsoft YaHei, PingFang SC;
+  --typography-fontFamily-body: 微软雅黑, Microsoft YaHei, PingFang SC;
+  --typography-fontFamily-data: DIN Next, Arial, sans-serif;
+  --typography-fontSize-coverTitle: 22pt;
+  --typography-fontSize-coverCategory: 14pt;
+  --typography-fontSize-sectionHeader: 13pt;
+  --typography-fontSize-h1: 20pt;
+  --typography-fontSize-h2: 11pt;
+  --typography-fontSize-h3: 10pt;
+  --typography-fontSize-body: 9pt;
+  --typography-fontSize-small: 8pt;
+  --typography-fontSize-tiny: 7pt;
+  --typography-lineHeight-title: 1.3;
+  --typography-lineHeight-body: 1.6;
+  --typography-lineHeight-compact: 1.2;
+  --typography-fontWeight-heading: 600;
+  --typography-fontWeight-bold: 700;
+  --color-primary: #1565C0;
+  --color-accent: #00897B;
+  --color-text: #212121;
+  --color-textSecondary: #616161;
+  --color-heading: #1A237E;
+  --color-divider: #E0E0E0;
+  --color-background: #FFFFFF;
+  --color-surface: #F5F7FA;
+  --color-danger: #C62828;
+  --spacing-paragraph: 0.75em;
+  --spacing-sectionGap: 2.5em;
+  --spacing-cardPadding: 1.5em;
+  --spacing-cell: 0.5em;
+  --spacing-block: 0.9em;
+  --layout-maxContentWidth: 160mm;
+  --decoration-headingBorderWidth: 4px;
+  --decoration-h3BorderWidth: 3px;
+  --hairline: 1px;
+  --summary-border-width: 4px;
+  --fs-h1: var(--typography-fontSize-h1);
+  --fs-h2: var(--typography-fontSize-h2);
+  --fs-h3: var(--typography-fontSize-h3);
+  --fs-section: var(--typography-fontSize-sectionHeader);
+  --fs-body: var(--typography-fontSize-body);
+  --fs-small: var(--typography-fontSize-small);
+  --fs-tiny: var(--typography-fontSize-tiny);
+  --ff-heading: var(--typography-fontFamily-heading);
+  --ff-body: var(--typography-fontFamily-body);
+  --ff-data: var(--typography-fontFamily-data);
+  --lh-body: var(--typography-lineHeight-body);
+  --lh-compact: var(--typography-lineHeight-compact);
+  --fw-bold: var(--typography-fontWeight-bold);
+  --page-content-width: var(--layout-maxContentWidth);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--ff-body); font-size: var(--fs-body); line-height: var(--lh-body); color: var(--color-text); background: var(--color-background); max-width: var(--page-content-width); margin-left: auto; margin-right: auto; }
+.cover-category { font-family: var(--ff-heading); font-size: var(--typography-fontSize-coverCategory); font-weight: var(--fw-bold); color: var(--color-primary); text-align: left; letter-spacing: 0.08em; margin-bottom: var(--spacing-block); }
+.cover-title { font-family: var(--ff-heading); font-size: var(--typography-fontSize-coverTitle); font-weight: var(--fw-bold); color: var(--color-primary); text-align: left; line-height: var(--typography-lineHeight-title); margin-bottom: var(--spacing-block); }
+.cover-subtitle { font-family: var(--ff-body); font-size: var(--fs-h2); color: var(--color-textSecondary); text-align: left; margin-bottom: var(--spacing-sectionGap); }
+.cover-meta-line { font-family: var(--ff-body); font-size: var(--fs-small); color: var(--color-textSecondary); text-align: left; border-top: var(--hairline) solid var(--color-divider); padding-top: var(--spacing-cell); margin-bottom: var(--spacing-cell); line-height: var(--lh-compact); }
+.toc-title { font-family: var(--ff-heading); font-size: var(--fs-section); font-weight: var(--fw-bold); color: var(--color-heading); text-align: left; text-indent: 0; margin-bottom: var(--spacing-block); }
+.toc-list, .toc-list ol, .toc-list ul { list-style: none; list-style-type: none; padding-left: 0; }
+.toc-list li { font-size: var(--fs-body); color: var(--color-text); text-align: left; margin-bottom: var(--spacing-cell); line-height: var(--lh-compact); }
+h2 { font-family: var(--ff-heading); font-size: var(--fs-section); font-weight: var(--fw-bold); color: var(--color-heading); text-align: left; background: var(--color-surface); border-bottom: var(--decoration-headingBorderWidth) solid var(--color-primary); padding: var(--spacing-cell) var(--spacing-cell); margin-top: var(--spacing-sectionGap); margin-bottom: var(--spacing-block); line-height: var(--typography-lineHeight-title); }
+h3 { font-family: var(--ff-heading); font-size: var(--fs-h3); font-weight: var(--fw-bold); color: var(--color-primary); text-align: left; border-left: var(--decoration-h3BorderWidth) solid var(--color-accent); padding-left: var(--spacing-cell); margin-top: var(--spacing-block); margin-bottom: var(--spacing-paragraph); line-height: var(--typography-lineHeight-title); }
+h4 { font-family: var(--ff-heading); font-size: var(--fs-body); font-weight: var(--fw-bold); color: var(--color-text); text-align: left; margin-top: var(--spacing-paragraph); margin-bottom: var(--spacing-paragraph); }
+p { font-size: var(--fs-body); color: var(--color-text); text-align: justify; margin-bottom: var(--spacing-paragraph); line-height: var(--lh-body); }
+li { font-size: var(--fs-body); color: var(--color-text); text-align: left; margin-bottom: var(--spacing-cell); line-height: var(--lh-body); }
+ol.plain-list, ul.plain-list { padding-left: var(--spacing-cardPadding); }
+table.data-table { width: 100%; border-collapse: collapse; margin-bottom: var(--spacing-block); }
+table.data-table caption { font-size: var(--fs-small); font-weight: var(--fw-bold); color: var(--color-textSecondary); text-align: left; margin-bottom: var(--spacing-cell); }
+table.data-table th { font-family: var(--ff-heading); font-size: var(--fs-small); font-weight: var(--fw-bold); color: var(--color-background); background: var(--color-primary); text-align: left; border: var(--hairline) solid var(--color-primary); padding: var(--spacing-cell); line-height: var(--lh-compact); }
+table.data-table td { font-size: var(--fs-small); color: var(--color-text); text-align: left; border: var(--hairline) solid var(--color-divider); padding: var(--spacing-cell); vertical-align: top; line-height: var(--lh-compact); }
+table.data-table tbody tr:nth-child(even) td { background: var(--color-surface); }
+table.metric-table { width: 100%; border-collapse: collapse; margin-top: var(--spacing-block); margin-bottom: var(--spacing-block); }
+table.metric-table th { font-family: var(--ff-heading); font-size: var(--fs-small); font-weight: var(--fw-bold); color: var(--color-background); background: var(--color-primary); text-align: left; border: var(--hairline) solid var(--color-primary); padding: var(--spacing-cell); line-height: var(--lh-compact); }
+table.metric-table td { background: var(--color-background); border: var(--hairline) solid var(--color-divider); padding: var(--spacing-cell); text-align: center; vertical-align: middle; }
+table.metric-table .metric-value { text-indent: 0; font-family: var(--ff-data); font-size: var(--fs-h2); font-weight: var(--fw-bold); color: var(--color-primary); text-align: center; margin-bottom: 0; line-height: var(--lh-compact); }
+table.metric-table .metric-label { text-indent: 0; font-size: var(--fs-tiny); color: var(--color-textSecondary); text-align: center; margin-bottom: 0; line-height: var(--lh-compact); }
+.data-emphasis { color: var(--color-danger); font-weight: var(--fw-bold); }
+p.callout-info { font-size: var(--fs-body); color: var(--color-text); text-align: justify; text-indent: 0; background: var(--color-surface); border-left: var(--summary-border-width) solid var(--color-primary); padding: var(--spacing-cell); margin-bottom: var(--spacing-block); }
+.doc-footnote { font-size: var(--fs-small); color: var(--color-textSecondary); text-align: left; text-indent: 0; border-top: var(--hairline) solid var(--color-divider); padding-top: var(--spacing-cell); margin-top: var(--spacing-sectionGap); }
+
+</style>
+</head>
+<body data-page-node-id="bHcBgPj0OPOKaRuN3IG2Cb">
+
+<section role="cover" data-page-node-id="lsGans2mUv98lIkovsBHQw">
+  <p class="cover-category" data-page-node-id="CCDHdj67DejW3sfLvyVBCI">数据平台建设</p>
+  <h1 class="cover-title" data-page-node-id="00hfRqwhzcDwHaM8x2KTXM">DataForge 数据开发平台项目计划书</h1>
+  <p class="cover-subtitle" data-page-node-id="vYoxQc3rJ73WczWlvHZGbT">规范开发环境 · 信息底座 · 数据血缘与任务依赖</p>
+  <p class="cover-meta-line" data-page-node-id="7hGWZwQVppzV5Dj9RhAisC">编制单位：DataForge 项目组</p>
+  <p class="cover-meta-line" data-page-node-id="aE7PE8n514BYfdSffgLQjb">文档版本：V1.0</p>
+  <p class="cover-meta-line" data-page-node-id="q72C8U7hkdcNVlGWZ65Puk">编制日期：2026 年 9 月</p>
+  <p class="cover-meta-line" data-page-node-id="H28Xoz8tSWv5nux0WUuThC">文档密级：内部资料</p>
+</section>
+
+<section role="body" data-page-restart="1" data-page-node-id="8ZCfAEcu9XB6COmbjTjN7D">
+
+  <nav class="doc-toc" aria-label="文档目录" data-page-node-id="GwEJwDCN6QOo3HAiFFGdEv">
+    <p class="toc-title" data-page-node-id="An9yAe59ojXRfP2sQBrKlq">目录</p>
+    <ol class="toc-list" data-page-node-id="8qFSCkxFT3bzSa8e3dWg8u"><li data-page-node-id="CLYi2vhCc4brWvLWCoqOPx"><a href="#section-1" data-page-node-id="tKA9FjoAKGA9f9Mtwhhfen">一、项目概述</a></li>
+<li data-page-node-id="YPvc5HKN5cCc9H570P6Sja"><a href="#section-2" data-page-node-id="MopzqfVA6cK7UYRPzqZ1Jx">二、需求分析</a></li>
+<li data-page-node-id="IvmZriPPJ8FfvtIB0Tj2MJ"><a href="#section-3" data-page-node-id="NtL8I8QRsn4zwKebwFpHku">三、总体架构</a></li>
+<li data-page-node-id="Uu6H5e3ntwVsgpDA0WAlj7"><a href="#section-4" data-page-node-id="zhJTBOsBw4SbHzacfB4ssb">四、组件设计</a></li>
+<li data-page-node-id="VKU5UuWXJl9sLsQnVfh16h"><a href="#section-5" data-page-node-id="bW9ACyrBcDx4Nsss4XNNWw">五、功能模块规划与优先级</a></li>
+<li data-page-node-id="YLESHzXAhdMc8AVR8tjXUK"><a href="#section-6" data-page-node-id="KaLe52tAraDTWd8I3ZEnaH">六、推广计划与公开活动时间计划</a></li>
+<li data-page-node-id="M5G3f8CWery4TXNhpIz4ZN"><a href="#section-7" data-page-node-id="H9yUeAajU9CC9Lsv6EQAGn">七、验收标准与质量保障</a></li>
+<li data-page-node-id="z0OPXLZJVP6OjskfeGDwdC"><a href="#section-8" data-page-node-id="jaF697QhnUw2k6YSnlwYIA">八、预期效益</a></li>
+<li data-page-node-id="UMEEiTEk3YRKrLD3rBS6ql"><a href="#section-9" data-page-node-id="h7F7DXJRDXlA2fA0rUfjmP">九、附录：现状基线</a></li></ol>
+  </nav>
+
+  
+  <h2 id="section-1" data-page-node-id="5P8Z2ZGC71xa5NiOXk8kNg">一、项目概述</h2>
+<p style="text-indent:18pt" data-page-node-id="Syp6mznAH02NnYyFBkdoyf">本章说明项目的提出背景、平台定位、与 AI 编程助手及云数据平台的差异（谁提出需求）、与同类平台的对照、建设目标与范围边界，为后续章节的需求分析与方案设计提供依据。</p>
+<h3 data-page-node-id="DC9KpD5YEpSAgoZEFex5lQ">（一）项目背景</h3>
+<p style="text-indent:18pt" data-page-node-id="cpTZsn0KOyz4HWvvV3FI1q">过去十余年，企业数据团队的作业模式并未发生本质变化：手动搭建数据管道、逐行编写 ETL 逻辑、人工排查任务异常、在多个系统之间反复切换。行业调研数据显示，一个 10 至 15 人的中型数据团队，约六到七成的工时被消耗在配置同步任务、编写标准 SQL、排查数据质量、维护元数据文档等重复性操作上，真正投入数据建模、业务分析与架构设计的精力不足三成。</p>
+<p style="text-indent:18pt" data-page-node-id="JHmW59XiEsLdfCIvfRXnvZ">2025 年以来，大语言模型从"代码生成器"进化为"意图理解与任务执行体"，数据研发的核心命题从"代码写不完"转向"AI 生成的代码是否正确"。但这个命题背后有一个更深层的前提常被忽略：<strong data-page-node-id="ybxSeA0Q7U1xkiCzFKCkHm">智能体要正确理解业务数据，靠的既不是更大的模型，也不是更巧的提示词，而是企业能否为它提供规范、无歧义、可检索的信息</strong>——一张表是什么、一个指标怎么算、数据从哪来到哪去、由哪个任务在何时产出。缺少这些信息，智能体就只能"看似会写 SQL，实则猜口径"，产出越大、错得越快。</p>
+<p style="text-indent:18pt" data-page-node-id="HQHupMlBauO35a9edsxl3v">这一进化最先在通用编程领域被验证：以 opencode、WorkBuddy、Cursor、Claude Code 为代表的 AI 编程助手，已经把"人提需求、智能体编码、人做确认"变成日常。但这类工具有一个共同前提——<strong data-page-node-id="MNv6N1qpCJps1OAGctcZMe">提需求的人就是写代码的人</strong>：需求以技术语言表述（用什么语言、读哪些表、按什么粒度聚合），智能体的上下文是代码仓库与工程结构，使用者天然具备把业务诉求翻译成技术指令的能力。</p>
+<p style="text-indent:18pt" data-page-node-id="UkCtyCHUDvDrUsUoTbuuoh">数据开发恰恰不满足这个前提：<strong data-page-node-id="ky5YaD1E10JF4OoJGsW1TK">懂业务的人不会写 SQL，会写 SQL 的人不懂业务</strong>。因此本项目的落点不是做一个"更会写代码的工具"，而是把 AI 编程助手已经验证有效的范式<strong data-page-node-id="ZUPb2LiyvBC5IgzL4osYq2">往业务方那一侧前移一格</strong>——让不懂代码的业务方也能直接驱动数据开发；为此必须把"让智能体正确理解业务数据"所需的<strong data-page-node-id="tZSsG60kMThhTf6I8eSKig">规范开发环境</strong>与<strong data-page-node-id="xK8EJ1jEfABie3Z6pFBDdc">四类基础信息</strong>系统性地补齐。"谁站在需求的起点上"，是本平台与 AI 编程助手、与 DataWorks 等云数据平台的分界线，详见 1.3。</p>
+<h3 data-page-node-id="TI7e7eVoSqMK8FN5thshf7">（二）项目定位</h3>
+<p style="text-indent:18pt" data-page-node-id="JmrVhHIMfTTfCDalqC4rxu">DataForge 是面向数据开发的一体化平台，核心目标是<strong data-page-node-id="32MR2mn08paTPDEWMwFioe">让智能体正确理解业务数据</strong>。平台由四大核心组件构成：</p>
+<table class="data-table" data-page-node-id="uGzkzR3M8StnWFQIsYtW5R">
+<thead data-page-node-id="A9O1blIvuYGTtEt6e7BIIq"><tr data-page-node-id="t74B2KjKUs4HCTTNiyw50u">
+<th data-page-node-id="FYFE1tLIdBf40FXUtjZdXI">组件</th>
+<th data-page-node-id="3Zhc0cYjuPpH1crtXmGZc5">形态</th>
+<th data-page-node-id="7Gyy7zJPpMHTGH89WnDAPw">提供的关键能力</th>
+<th data-page-node-id="3WTVlJcOBH7KiNE5BfD6W3">在"智能体理解业务数据"中的角色</th>
+</tr></thead><tbody data-page-node-id="0zIUbHFFvKYxFS1eXnp3tq">
+<tr data-page-node-id="vAvTOLzm0UlgEr7GbKZ9n8">
+<td data-page-node-id="G3svIzMkAyGnx5T7F3TGjE">dataforge</td>
+<td data-page-node-id="yW6j1zH31yVjragt4VY4Zd">桌面应用</td>
+<td data-page-node-id="YkciUGBtwHChit2FMW2ATF">规范开发环境：代码头参数声明、编译校验、命名与口径约束</td>
+<td data-page-node-id="u8UBr9sYAWPis5B3ds1sPE">从源头保证开发产生的信息规范且前后相互关联</td>
+</tr>
+<tr data-page-node-id="voprIOXJb7PtDsV1ns0TDp">
+<td data-page-node-id="vWSm74qnrAFdUy9fuFrfBs">dataforge-server</td>
+<td data-page-node-id="msxTy6bIqfbSydVhixa8xc">平台服务</td>
+<td data-page-node-id="AL5AlHI3LJTp62pBxL0QEr">库表描述信息、数据指标描述信息、统一身份与权限</td>
+<td data-page-node-id="bSreVdPmiChnVA5m8piNmc">回答"表/字段是什么、指标口径是什么"</td>
+</tr>
+<tr data-page-node-id="GhJfyHsrVg8F7LO3wPePoe">
+<td data-page-node-id="gUJvbcabhJIhOATtInFfkU">Marquez</td>
+<td data-page-node-id="PyN1hWuFa1Ti1V26qa2Cj7">开源系统（集成）</td>
+<td data-page-node-id="lPl6B6MRplBJZZQX2k54IP">数据血缘信息（OpenLineage）</td>
+<td data-page-node-id="ZiDA6N4McyBJ4jZruBAVa3">回答"数据从哪来、流向哪、影响谁"</td>
+</tr>
+<tr data-page-node-id="mqsZVrIf7RsBkJCC38UY3d">
+<td data-page-node-id="iOrdAevpUdGsF6uL9N5IHj">DolphinScheduler</td>
+<td data-page-node-id="ThGrrk8Y9lOjuty7GJAJGu">开源系统（集成）</td>
+<td data-page-node-id="MHSpriLlehc8aLWh5yErST">任务依赖信息（工作流 / DAG / 调度）</td>
+<td data-page-node-id="crY4FkixW7GADwNW3ulRsu">回答"数据由什么任务、在何时产出"</td>
+</tr>
+</tbody></table>
+<p style="text-indent:18pt" data-page-node-id="rTXCKoAAuCL4vkveAiy0U3">四大核心组件共同回答同一个问题——<strong data-page-node-id="sTLHXrKDi2jCyH443mB02R">如何让智能体正确理解业务数据</strong>：dataforge 构建规范开发环境，保证源头信息规范且前后关联；dataforge-server 提供库表与指标描述，回答"是什么"；Marquez 提供血缘，回答"从哪来、到哪去"；DolphinScheduler 提供任务依赖，回答"何时、依赖什么产出"。</p>
+<p class="callout-info" data-page-node-id="EqchAHavHHlhXIfQu55VXl">&nbsp;&nbsp;<strong data-page-node-id="UmqIrZJLtvR9tfhIXRStRF">强调一：谁使用本平台。</strong> 本平台的第一使用者不只是数据工程师。<strong data-page-node-id="PBmBiUvEyxNdH3lYIEynYu">业务需求方是平台内的一级角色</strong>——他不需要写代码，也不需要先把需求翻译成技术语言，只需要在开发助手里把"要算什么、多久要、多准才行"讲清楚，其余由智能体与平台完成。这一点决定了本平台的全部设计重心（见 1.3）。</p>
+<p class="callout-info" data-page-node-id="ogLBFp9Ez4fj90fjBYT2aU">&nbsp;&nbsp;<strong data-page-node-id="adTcnCDfWgpnZ5Fv84F77y">强调二：本项目所有程序可在企业内部免费使用（代码不开源）；公司主要收益来源为数据开发与集群运维服务。</strong></p>
+<h3 data-page-node-id="AIsOkAQZAg8vnrKvABWJaQ">（三）差异定位：与 AI 编程助手、云数据平台的分界在"谁提需求"</h3>
+<p style="text-indent:18pt" data-page-node-id="oiqqhoHIYywYaiexdHWq1f">本平台有三类参照物：AI 编程助手（opencode、WorkBuddy、Cursor、Claude Code 等，已经证明"人提需求、智能体编码"这条路走得通）、云厂商一体化数据开发治理平台（阿里云 DataWorks、华为云 DataArts Studio、腾讯云 WeData、瓴羊 Dataphin）、开源 Web 开发门户（Apache Hue，在 Cloudera 发行版中已改名 Cloudera Data Explorer），此外还有企业自建脚本与自研工具。<strong data-page-node-id="pcfEG0kjgimB2QASxHx0sZ">DataForge 与它们的分界不在"用不用 AI"，而在"谁站在需求的起点上"。</strong></p>
+<table class="data-table" data-page-node-id="GMvax5bzsq3Kr1KyFSD0k7">
+<thead data-page-node-id="AI0BqJnf1emyqkcZtwKAXB"><tr data-page-node-id="Tys6tGW7PXCeBBxCtTQMna">
+<th data-page-node-id="SqeK7CQsQiqIyNPRicbwTf">维度</th>
+<th data-page-node-id="xD87O9h8EQgaf7KBKzTEM1">AI 编程助手（opencode / WorkBuddy / Cursor 等）</th>
+<th data-page-node-id="uqR40YaU3VwRaxFjxzFICS">云数据开发平台（DataWorks / WeData 等，含其 Copilot）</th>
+<th data-page-node-id="kHxscbY3Y8PYmX2dgxre0r">DataForge</th>
+</tr></thead><tbody data-page-node-id="4dEynm0BEAHA6xxh5JqSz0">
+<tr data-page-node-id="875959IfkdPitFCxpYEnTW">
+<td data-page-node-id="gyhb5gDAHi5gcnNnu1HUUw">谁提需求</td>
+<td data-page-node-id="cABFOKD7BrjpaOEzR2Mv3f"><strong data-page-node-id="LCrCDhrng4XNgF3YVGPdL1">开发者本人</strong>——提需求的人就是写代码的人</td>
+<td data-page-node-id="t1j0jyhmcYsIS2MOGadvZt">业务方在平台<strong data-page-node-id="WvK2fsmZSYu9IJ9cEjpv3t">之外</strong>提（会议 / 文档 / 工单），由开发者转述进平台</td>
+<td data-page-node-id="YzODunklGYb6jh6d80yBNO"><strong data-page-node-id="s1gxoNCWRFbHmgzSjzKJiz">业务方在平台之内直接提</strong>——业务需求方是平台一级角色</td>
+</tr>
+<tr data-page-node-id="3QLXG7Kc8jOcO5MrVxXkwN">
+<td data-page-node-id="Vv7MsMrUJVrQyDrWeWeet3">需求的表述方式</td>
+<td data-page-node-id="aEyPrXMI7cqTCHWdBNjvZL">技术语言：用什么语言、读哪些表、按什么粒度聚合</td>
+<td data-page-node-id="bvSH4THEVAJggP8UHGyAcW">需求文档或工单；进入平台后仍需开发者翻译成任务配置</td>
+<td data-page-node-id="MhtDiUoOsoCeGGSmE0T8TF"><strong data-page-node-id="7FAvQDgmKPBkGD8xyep9xq">业务语言</strong>：要算什么指标、什么口径、多久要、多准才行、哪些是敏感数据</td>
+</tr>
+<tr data-page-node-id="9nFrvXVr4vzXg7CAQzcTuv">
+<td data-page-node-id="IynWijLFKarXvnkdZdx7mW">智能体读到的上下文</td>
+<td data-page-node-id="gOn5qnJUznCYflJGESf1nF">代码仓库、工程结构、依赖源码</td>
+<td data-page-node-id="u4dmmMFX6MRKKSB0weL11Q">云上元数据、表结构、任务配置</td>
+<td data-page-node-id="k3uBGDH1jooy6N2MLiBVno"><strong data-page-node-id="faiEloy0VKOmmt7m35QGg5">规范开发环境 + 库表与字段描述 + 指标口径 + 血缘 + 任务依赖</strong>（五类信息，见 3.2）</td>
+</tr>
+<tr data-page-node-id="sG9g8zvdaUQGBgAYWtz2Kg">
+<td data-page-node-id="MaAIQ4vihZiFL8CtCJKvxT">需求到代码由谁翻译</td>
+<td data-page-node-id="ISGWXTvRHSGd417n425XEY">开发者自己（他同时是需求方与实现方）</td>
+<td data-page-node-id="Fx1XpyS5RyMGDCH7IsHZqH">开发者，或由开发者驱动的 Copilot 辅助</td>
+<td data-page-node-id="7yCon0wDCl89kGBTUWJxLq"><strong data-page-node-id="SwrE97Ro9vCc9vl5d4qAcg">智能体</strong>：需求编写 → 数仓设计 → 数据开发 三段接力（见 3.3）</td>
+</tr>
+<tr data-page-node-id="36fdMyWqYBRIRNDcrpCroV">
+<td data-page-node-id="gj3lqgY2CyowPJQn896pea">交付终点</td>
+<td data-page-node-id="prHmDf2B1EFleu1z0Cy9x3">本地代码</td>
+<td data-page-node-id="YjntzjUXvDuJKh0KRFvc7X">云上任务，运维由客户自理或另购服务</td>
+<td data-page-node-id="k7EuGVbPFC6SPJCADJ5OJH"><strong data-page-node-id="zdBDyQ3ua1bJR6WvSLXw73">程序 + 调度任务</strong>，并可整体交由我方代开发与代运维（见 1.6）</td>
+</tr>
+<tr data-page-node-id="um75fO5k7aO0J6PYvnzgMW">
+<td data-page-node-id="4TEywvpQI1sLJAxTVdxsLx">业务方是否需要懂技术</td>
+<td data-page-node-id="7XxWbVE2bB9OHLKS6zb1EF">需要</td>
+<td data-page-node-id="x6SjUTGsMVpi8BDps7uOgP">不需要，但需求必须经人转述</td>
+<td data-page-node-id="uAHx16xevSotE4A5y5iLnO">不需要，且<strong data-page-node-id="7PYz16OYBkfBX6cecub3Kg">无需转述</strong></td>
+</tr>
+</tbody></table>
+<p style="text-indent:18pt" data-page-node-id="MOBGPn4nfu8FU7HBLFcD1b"><strong data-page-node-id="1hTBJNCcpxBHWjLFQsCwLK">一句话概括</strong>：DataForge 做的是把 AI 编程助手已经跑通的能力<strong data-page-node-id="5qLUw3ZFITFopwURK1ifQG">前移到业务方这一侧</strong>——它不是让开发者写得更快，而是让不懂代码的业务方也能直接开工。因此 AI 编程助手不是本项目的竞品，而是本项目所继承的范式；云数据平台也不是本项目的对手，而是对照面：<strong data-page-node-id="6UCQV3WgeVutm0qFy2miBv">它们让"会写代码的人"和"买了平台的人"更高效，DataForge 让"有业务问题的人"自己开工。</strong></p>
+<p style="text-indent:18pt" data-page-node-id="xfHET28Aukyg6nio8OUdJI"><strong data-page-node-id="tU8zLfpjlSuMkoX8F5ZuYG">为什么"谁提需求"这个位置差异至关重要</strong>，有三点：</p>
+<ol class="plain-list" data-page-node-id="hfxqGCEQXI5T0sdOIYeJdA">
+<li data-page-node-id="Kas68hEAI6se3zkl6phVI9"><strong data-page-node-id="EPwGBqcgCZcjL5AD8kgefZ">数据开发的损耗主要发生在"业务语义 → 技术语义"这一跳。</strong>通用编程里这一跳在开发者脑中完成、成本近乎为零；数据开发里它要跨越专业壁垒，且每传递一轮都可能丢信息。把起点前移到业务方，等于把这一跳交给上下文可核查的智能体，而不是交给会议纪要。</li>
+<li data-page-node-id="4eh5wmmWw3HT4KwCw4Caxz"><strong data-page-node-id="PJzUxlf1EGZDowprKiLLGS">它决定了智能体的上下文从哪来。</strong>开发者提需求时，上下文是代码仓库；业务方提需求时，智能体读不懂代码仓库，只能依赖库表描述、指标口径、血缘与任务依赖——这正是本项目把"让智能体正确理解业务数据"作为第一设计原则的原因（见 3.2）。<strong data-page-node-id="9VfxxGnfwWCBpWoJPBmCW1">换句话说，四类基础信息不是附加功能，而是"业务方能提需求"这件事的前提条件。</strong></li>
+<li data-page-node-id="dv9slMGB5dOUzgCsE27HdA"><strong data-page-node-id="9yjqayUHX0r7x3XS19K2Fa">它是数据代开发服务能够成立的技术基础。</strong>既然业务方能在平台内用业务语言把需求讲清楚，智能体又能把它翻译成设计、代码与调度任务，那么"企业方人员提出数据开发需求、我方完成数据处理程序开发及上线维护"就不再依赖驻场与口传——服务可以被产品化、被计量、被交接。详见 1.6。</li>
+</ol>
+<p style="text-indent:18pt" data-page-node-id="E8Xaw1T9Jp3SfzQgbVs93s"><strong data-page-node-id="Oi7pz6lyj6HTTUFZwmaQOD">再按产品能力逐项对照。</strong>下表把开源门户与云平台拉到同一组维度上逐项比较；<strong data-page-node-id="rps17mUpg0QkbGYT02TmhL">对手能力按公开资料整理，具体版本与功能以厂商文档为准。</strong></p>
+<table class="data-table" data-page-node-id="ppzbbvBbKTR6ORy6iVnlmr">
+<thead data-page-node-id="0DqFysKGDYtnetSQNKwHw5"><tr data-page-node-id="ScqkFRx3BnxbhLqtXzlPN8">
+<th data-page-node-id="tM3QWgyx8XzyWIapV1yDpP">维度</th>
+<th data-page-node-id="EFMRnphtYl7MQcffWP2rCW">DataForge</th>
+<th data-page-node-id="Kc4SryjQlOtBFuHtshODQH">Hue（Cloudera Data Explorer）</th>
+<th data-page-node-id="anzH4Bt279fkHZTmrAONcF">阿里云 DataWorks</th>
+<th data-page-node-id="e3v5bjb2fFUVCGv8P8JaGG">其他云平台（DataArts / WeData / Dataphin）</th>
+</tr></thead><tbody data-page-node-id="x0OJW3zDxHlU4Nzmoi0Ilf">
+<tr data-page-node-id="tRf40oiZfcTuRcHHPHZrfp">
+<td data-page-node-id="iCTyrf3SCJDkjo8LMGI6lP">形态与部署</td>
+<td data-page-node-id="daHMh3is8Cs5sum9Sj2UVc">桌面端 IDE + 自建服务端，私有部署，面向既有集群</td>
+<td data-page-node-id="Q7BhlkxLeBQXVqX1PZWCiG">Web 门户，随 Cloudera 发行版部署（开源 Hue 可独立部署）</td>
+<td data-page-node-id="Z4tKf4w4ByTCoN80jV3ttd">云上服务，Serverless 资源组，兼容 EMR 等云引擎</td>
+<td data-page-node-id="M6ZJpjD2q2vy8TIuetC11A">云上服务；DataArts 强调鲲鹏 / 欧拉 / 高斯全栈信创</td>
+</tr>
+<tr data-page-node-id="pBUo7KYyraiDRG5UcoyiBw">
+<td data-page-node-id="kucj63gReootJRvMHOIcfv">开发语言</td>
+<td data-page-node-id="n5ENpdqF7ADIMt5PMmsxiy"><strong data-page-node-id="p7aU3rDT3znoIIwwrGiJvC">Java / Scala / Python / SQL / Shell 五类，同一开发环境内编辑与调试</strong></td>
+<td data-page-node-id="3yEtWpUiZ0AcZfJ8brnkHJ">以 SQL 为主（Hive / Impala / Spark SQL / Trino），另有 Spark / PySpark 交互式笔记</td>
+<td data-page-node-id="9uUV9JHtLwbUYuhyBDUG2Y">以 SQL / Python / Shell 为主，支持 Notebook</td>
+<td data-page-node-id="fBDnGX6Hw1TMxylsuToHVJ">以 SQL / Python / Shell 为主</td>
+</tr>
+<tr data-page-node-id="tBGDrlEoDU9WzXO9646e9H">
+<td data-page-node-id="IoPZzEvKqVKIES2rAZpAX1">编译与一键上调度</td>
+<td data-page-node-id="9dbRzrqQB0LC5IfmRz2J1o"><strong data-page-node-id="pvcfCMQolR19ljpcdCm6QD">Java / Scala 本地编译（Maven）产出主 Jar 包，Python / SQL / Shell 免编译；五类程序一并一键提交调度，代码头声明的参数自动落地任务节点</strong></td>
+<td data-page-node-id="cIctjkzo8by7H64LzOzR6l">可在门户内调度查询与工作流，不涉及程序编译与提交</td>
+<td data-page-node-id="nn3lur2yC79bMwOLubzC4R">支持把任务发布到调度系统；Java / Scala 需自行编译打包后以资源或 UDF 形式引用，无本地编译闭环</td>
+<td data-page-node-id="TiCSYa2ET7gAtjPncAuiDg">支持发布到调度系统；无本地编译闭环</td>
+</tr>
+<tr data-page-node-id="gaDs66JF69vpnWwlC4xHKF">
+<td data-page-node-id="RDM45BVZxeeOvPj6c18o9t">需求与角色</td>
+<td data-page-node-id="UzGlYgCLi6sjJJ7wiTdDw6"><strong data-page-node-id="IBvXEV2SDnGqPrTfP8wswk">业务需求方是平台一级角色；需求编写 → 数仓设计 → 数据开发三段产物同一命名贯穿，同一会话内换角色保留上下文</strong>（对照见上表）</td>
+<td data-page-node-id="z7JvcNAjN41ngIVHgEqcu1">无需求与角色模型</td>
+<td data-page-node-id="wIyeUDTE3mCbiBkFIEoYHe">以用户提交的需求文档驱动开发 Agent 生成并发布任务；业务方本身不进入平台</td>
+<td data-page-node-id="6Y27i4WS9DvngKo2Lnn4j7">无需求与角色模型</td>
+</tr>
+<tr data-page-node-id="bffK4ZeTGvfcFAgU4wr8qZ">
+<td data-page-node-id="nEYGrhyZZb7SW9p7t1Yrrv">优化对象</td>
+<td data-page-node-id="WXNLGYm6IfV2KRTaC2nq82"><strong data-page-node-id="ZiEkE3RTUQ5euQye1IpEM6">让智能体正确理解业务数据</strong>：把规范开发环境与四类信息做成智能体的上下文供给层</td>
+<td data-page-node-id="FLhYso6BWra3WgLbHyczAu">让分析师在浏览器里写 SQL、查表、看历史、调试查询</td>
+<td data-page-node-id="sZKLuJBsmaV1InaKayymkn">让开发者在云上完成开发—调度—运维—治理闭环</td>
+<td data-page-node-id="YdO44n3nFhJ9XQt1QLyNnv">同左，并叠加行业方法论</td>
+</tr>
+<tr data-page-node-id="n4GbcRWXGjcPbJV6mA6nDD">
+<td data-page-node-id="lwjCrVNBPV71iPbaxzPguh">AI 落点</td>
+<td data-page-node-id="imdHUT6wz3NOcC8WAggoRG">智能体在桌面端本地进程推理，模型与密钥由用户自配，<strong data-page-node-id="cxykeQh5lbinAvTpkGA11x">服务端零模型调用</strong>；业务能力以 6 个工具组注册，经平台接口取上下文</td>
+<td data-page-node-id="jvW8DDFtBzkknGLGZsDApt">SQL AI Assistant：自然语言生成 / 编辑 / 解释 / 优化 / 修复 SQL，模型由客户自选（Cloudera AI、Azure OpenAI、Bedrock 等）</td>
+<td data-page-node-id="f2ClJ0B03LhRE1oJ2boBZq">DataWorks Copilot：代码生成与纠错、智能建表、发布描述、异常诊断（对接 Qwen、DeepSeek-R1），并已发布端到端的数据开发 Agent</td>
+<td data-page-node-id="P1iFUewJjdkCqNMu40WrL4">借云侧大模型做标准推荐、质量规则推荐、异常归因与资产盘点</td>
+</tr>
+<tr data-page-node-id="AkT6LK7BPlw5NHboedxUR6">
+<td data-page-node-id="F8gDSj2SKMFHfXNHnya5q7">参数与约束</td>
+<td data-page-node-id="xWxE2NltbfFkHk6sCjxCDg">代码头参数三段式声明（业务入参 / 资源诉求 / 引擎侧参数），提交时落地任务节点；命名与口径约束</td>
+<td data-page-node-id="niYdwNzhanhcNcq04UVwBR">无参数声明机制</td>
+<td data-page-node-id="ljiQndQrUEaBrDME8fvVJk">任务参数在平台内配置；Copilot Rule 规则引擎可用团队规范约束 Agent 产出</td>
+<td data-page-node-id="D128KaUgebHJJnA2VWhIQU">任务参数在平台内配置</td>
+</tr>
+<tr data-page-node-id="t1ZWnE0AldBRR8yjXUEtVe">
+<td data-page-node-id="legkiqfWBuMq5N4kYC5rTR">库表与指标描述</td>
+<td data-page-node-id="0MQtnYzoYK3JFHXt7IETPF">服务端沉淀库表 / 字段描述与指标口径，并给出未标注项清单，供智能体结构化读取</td>
+<td data-page-node-id="Ct1q92d8EClqWEBBiukcPW">左栏库表与对象存储浏览、查询历史；无指标口径体系</td>
+<td data-page-node-id="OKigdmwAO8FOkE3AKv6I6d">数据地图、智能建模、数据服务 API</td>
+<td data-page-node-id="JUzQ8dH114AhjBs82b6EKh">数据标准、资产目录、质量规则体系</td>
+</tr>
+<tr data-page-node-id="HHn0FMYfzDuVcTzLfgkRBe">
+<td data-page-node-id="AvOqGSdflMPBhwfDgvy2KF">血缘与任务依赖</td>
+<td data-page-node-id="IzPDzdZ00tpwFlheDdzJz0">集成 Marquez（OpenLineage）与 DolphinScheduler，血缘与依赖在平台内可查</td>
+<td data-page-node-id="FMRlK02XC8JDUHuQE4DWmR">无血缘图谱，提供查询历史与执行计划</td>
+<td data-page-node-id="H9mcNjwA43CPYDrb02Rg1B">内置血缘图谱与自带调度</td>
+<td data-page-node-id="dqqKFcij6tUPTSZWegxRxC">内置血缘解析与自带调度</td>
+</tr>
+<tr data-page-node-id="zYJ2NpgPCvlfsvu8pDrk86">
+<td data-page-node-id="H27kldsUikmUjdEiAJD0BM">权限粒度</td>
+<td data-page-node-id="cLnaMIjYxBndzDDX4vmuLx">角色—资源三级授权，行 / 列级权限在 SQL 下发前改写生效</td>
+<td data-page-node-id="as9RZ7JbmQGnFDZPo5oLbx">以自身与底层引擎授权为主</td>
+<td data-page-node-id="k7s2Q8UOcC5ca7mB4Z9Gwd">云侧权限体系，含敏感数据识别与脱敏</td>
+<td data-page-node-id="qE2lBPw9zFNEKk0stD8CaD">权限体系与数据分级分类（信创合规见长）</td>
+</tr>
+<tr data-page-node-id="tyYSfjrRYzK8cqHcNmJEOh">
+<td data-page-node-id="MCtVROJncHBFMOHeWXL0eO">引擎侧写入合规</td>
+<td data-page-node-id="JlASZhrku9rxZIK6HWOQ5l">可选装 spark / flink-listener，在计算引擎侧对写入做合规拦截</td>
+<td data-page-node-id="VtoBAflzBcdbusVKs5Ezse">无</td>
+<td data-page-node-id="CK1zDm06Kio7qalJwyYW1U">平台侧权限与审批控制</td>
+<td data-page-node-id="FbpB9Ei8XBZKPxtbzcft7C">平台侧控制</td>
+</tr>
+<tr data-page-node-id="dobi7LLE1F7ACEzKgotMqp">
+<td data-page-node-id="uRqC0jAd7O6qt0Qy5DnMY1">引擎与集群兼容</td>
+<td data-page-node-id="dAKUBcAGFNRyD1KnFLMrUw">Hive / Spark / Flink / Doris / ClickHouse / Kyuubi 等 13 种数据源，面向企业既有集群</td>
+<td data-page-node-id="9xyzr84CAoMCfmi7OXGs0n">Impala / Hive / Spark / Trino / Phoenix，随发行版</td>
+<td data-page-node-id="s26P5TKacdM2A4ZfPCNAdp">以阿里云引擎为主（MaxCompute / Hologres / EMR）</td>
+<td data-page-node-id="UqbFRR3Fs9pc8YeXWladAW">以各自云引擎为主，另有多云连接器</td>
+</tr>
+<tr data-page-node-id="WdNItTT75TAMO09AoRtdL6">
+<td data-page-node-id="8BhDsFGXz2p4OBvli3aa3M">收费模式</td>
+<td data-page-node-id="lQcoD84AriTzBQRwui1EYI">软件在企业内部免费使用（闭源），收益来自数据开发与集群运维服务</td>
+<td data-page-node-id="DCibTYgciiBaP73Qfj48lE">随 Cloudera 商业订阅；开源版免费</td>
+<td data-page-node-id="QRol1WVHiiLd0qbFAn8wpq">云资源与平台订阅按量计费</td>
+<td data-page-node-id="GqLQpL1Vq1o7mmgRib6wHD">云资源与平台订阅按量计费</td>
+</tr>
+</tbody></table>
+<p style="text-indent:18pt" data-page-node-id="mrATzER5Usl4XtkWWh8q7G"><strong data-page-node-id="5zx3rmIf5Mtvn49fwalGe5">本平台的优势</strong>：</p>
+<ol class="plain-list" data-page-node-id="lmeCsrLGRRUgf7kVxsuSKe">
+<li data-page-node-id="fMmluuGVktVI44ORGuT3jl"><strong data-page-node-id="03Jx8PmLM5E7xtLAFHJQI0">业务方直接提需求、智能体负责编码</strong>（对照见前文两表）。业务需求方是平台一级角色，用业务语言提需求，智能体按「需求编写 → 数仓设计 → 数据开发」三段分别产出需求文档、数仓设计与分层 DDL、程序与调度任务；三段用同一业务名称、以指标为唯一主线贯穿，同一会话内切换角色不清空上下文（见 3.3）。</li>
+<li data-page-node-id="nCnoArBXrEN2Xu1j7Gh0Cn"><strong data-page-node-id="ucOBnnEX2zA7l5H1xLKNHf">开发到上线是一条闭环，且不限 SQL。</strong>在一个开发环境里用 Java / Scala / Python / SQL / Shell 写程序：Java / Scala 本地编译（Maven）产出主 Jar 包，Python / SQL / Shell 免编译，随后<strong data-page-node-id="undDA9mtmeaTDbeAN6DL22">一键提交调度</strong>，代码头声明的参数自动落在调度任务节点上。同类平台以 SQL / Python / Shell 编辑器为主，Java / Scala 通常要自己编译打包、再以资源或 UDF 形式引用，开发与上线是两段。</li>
+<li data-page-node-id="7VKQqYjmVGxE3ADsGS7FPp"><strong data-page-node-id="kiL8GgZRqY65wRpPQdENwo">给智能体喂上下文，而不是只给人用界面。</strong>开发环境、库表与指标描述、血缘、任务依赖在本平台里首先是<strong data-page-node-id="J8V4eomkP6krGOfxEPY2Zq">给智能体读的上下文</strong>——经元数据代理等接口按权限、按结构提供；并让信息缺口可见（未标注表 / 字段清单、血缘覆盖率）。</li>
+<li data-page-node-id="WEmF5eZEpMkffJd6GOWUe9"><strong data-page-node-id="OFGBksE5igbCtCgz31nd2F">推理在本地，平台不做模型调用。</strong>智能体在桌面端本地进程执行，模型与密钥由用户自配，服务端零模型调用，适合数据不宜出内网的场景；云平台的 AI 能力默认走云侧模型。</li>
+<li data-page-node-id="GH2bQpMr4fquaZcFsjuDJT"><strong data-page-node-id="IWTENMo1V7KUaBmy9M3QyJ">写入在引擎侧还有一道闸门。</strong>可选装 spark / flink-listener，在计算引擎侧对写入做合规拦截——这是同类平台没有的一层，它们依赖平台侧权限与审批。</li>
+</ol>
+<p style="text-indent:18pt" data-page-node-id="TRCCXuiZlFyXuMkY0EKe0E"><strong data-page-node-id="a0HgkMtjx1wp4nBiHZmZdI">客观说明</strong>：在托管运维与连接器丰富度上云平台明显领先（DataWorks 的 Serverless 资源组与数十种数据源连接器、WeData 与 Dataphin 的开箱即用）；Hue 在浏览器端即开即用与稳定性上有十余年积累；云平台在数据集成、数据质量、资产目录等治理模块的完整度也更成熟。本平台的取舍是放弃"托管"与"连接器广度"，把工程投入集中在"多语言开发闭环 + 让智能体读懂业务数据"这一件事上；集群部署与运维由配套服务承接（见 1.6）。另需说明一点：本平台在工程上的额外复杂度（上下文供给、口径治理、面向业务方的安全边界），正来自"提需求的人是业务方"这一前提——这是本项目主动承担的代价，不是待补的短板。</p>
+<h3 data-page-node-id="mKzV5pQuLB7yXhDjfP38Wu">（四）建设目标</h3>
+<p style="text-indent:18pt" data-page-node-id="qhijyxDChhmZVGeM5gbE6X">总体目标：建成"规范开发环境 + 四类基础信息"的数据开发平台，使智能体能够正确理解业务数据，把"AI 生成的代码是否正确"从风险变成可验证的常态。具体目标分为七个方面：</p>
+<ol class="plain-list" data-page-node-id="RxdBjdQu9arGfQe8xuddbN">
+<li data-page-node-id="F2hGjEOCX19fKie3d3Vxbb"><strong data-page-node-id="g5u67ebxayqTRJ7rdArQdg">规范开发环境目标</strong>：由 dataforge 桌面端把数据开发收敛到一个受约束的入口——代码头参数声明、编译与 SQL 校验、命名与口径约束，确保开发产生的信息规范且前后相互关联。</li>
+<li data-page-node-id="1X1dZGbA3toZveYO3ZMZwo"><strong data-page-node-id="EyV9V7QpUXBIbREgAjIUFh">信息底座目标</strong>：由 dataforge-server 沉淀库表描述信息与数据指标描述信息，作为智能体理解"数据是什么"的权威口径来源。</li>
+<li data-page-node-id="Ll4wm5cbamRMjhShrAZGEx"><strong data-page-node-id="Rvs1aGnHnq0hFN944gJNJ8">血缘与依赖目标</strong>：集成 Marquez 获取数据血缘信息、集成 DolphinScheduler 获取任务依赖信息，让数据"从哪来、何时产出、影响谁"可追溯。</li>
+<li data-page-node-id="DIZwaK4uANvL4GlXQpGvZW"><strong data-page-node-id="aJErdbTqDCnzRutJdLevqg">智能体上下文闭环目标</strong>：将上述规范环境与四类信息汇聚为智能体的上下文供给层，使其在生成代码前即可调用准确的业务上下文，而非凭空推断。</li>
+<li data-page-node-id="dhtsLlxCSm1j01TOKRkbWb"><strong data-page-node-id="TEJ4pcGtADqPNjEqNDSFCa">业务方直提需求目标</strong>：把业务需求方作为平台一级角色纳入开发闭环——他无需懂 SQL、也无需经开发者转述，用业务语言即可提出需求；由智能体完成从需求到数仓设计、程序代码与调度任务的翻译，人只做澄清、确认与验收（见 3.3）。这是本平台与 AI 编程助手、云数据平台的根本差异，也是数据代开发服务可规模化交付的前提（见 1.3、1.6）。</li>
+<li data-page-node-id="QFRT7SOX5jWH3EsyHajBwU"><strong data-page-node-id="XFsOCygSnX0t5zzSxmFemp">自动化运维目标</strong>：为 SQL / Scala / Java 三类程序提供<strong data-page-node-id="bpc1WLGqmfuNwuj7rGHE95">一键上线调度</strong>（已具备）——把编译、参数声明、提交与依赖编排收敛为一次操作；并推进<strong data-page-node-id="ojH7edcr2P5wDFgNC7icXA">自动化问题排障</strong>（功能规划中），基于集群部署信息与任务依赖关系，在任务失败时自动定位到受影响的上游任务或资源瓶颈。</li>
+<li data-page-node-id="XDtmTZJFOIQhJKaHDSzKTE"><strong data-page-node-id="gADOYHQynO7cU5yWzNVC4L">数据价值评估目标（功能规划中）</strong>：整理数据资产清单及其处理所消耗的计算资源，结合数据使用情况（访问频次、下游引用等），评估数据的使用价值，识别高价值资产与长期闲置的低效资产，为资源优化与治理决策提供依据。</li>
+</ol>
+<h3 data-page-node-id="cYMtbEb0njvbdhp85CPY4E">（五）建设范围与边界</h3>
+<p style="text-indent:18pt" data-page-node-id="1QrxCz14IygvBPQdWRGI93"><strong data-page-node-id="envinHu89UF23ZvvONBVmv">本期建设范围</strong>：</p>
+<ul class="plain-list" data-page-node-id="jMuLParXN5X0QJwurF9ota">
+<li data-page-node-id="WLDYKbPeBzfWsCR1BtuZhC">dataforge 桌面端全功能客户端（规范开发环境：AI 助手、代码编辑与语言服务、编译与 SQL 校验、程序参数声明、调度提交）。</li>
+<li data-page-node-id="XeBz9eIHy0r72LiagAwJPa">dataforge-server 平台服务（库表描述、字段描述、指标描述、统一身份与多级权限、知识库、数据源与存储、审计）。</li>
+<li data-page-node-id="BLmInQJ0OZIC83mqlC9hvp">Marquez 与 DolphinScheduler 的集成（血缘信息采集与图谱展示、工作流定义与任务依赖管理、运行实例监控）。</li>
+</ul>
+<p style="text-indent:18pt" data-page-node-id="tRadDaAGfb9OodRj6gKKje"><strong data-page-node-id="X4Krus8qqeu8izh083Mtcc">明确不包含在本期范围</strong>：</p>
+<ul class="plain-list" data-page-node-id="AC9JE9YWmZ7hDjkfKlWuQ9">
+<li data-page-node-id="kNj3vv7PhlutQ9kKYCjsCb">不替代底层存储与计算引擎本身（Hive / Spark / Flink / Doris / ClickHouse 由既有集群提供）。</li>
+<li data-page-node-id="pCAM0xSv7oug5sWC3WvcEX">不自研元数据存储引擎与血缘采集引擎，而是集成 Marquez / OpenLineage 与既有元数据体系。</li>
+<li data-page-node-id="UluMrRegSZi9Rr8kwjKAQR">不承担数据模型设计与数仓分层建模的方法论落地，平台只提供承载与校验能力。</li>
+</ul>
+<h3 data-page-node-id="A9pZCklfyJsDn3hIix97R9">（六）产品与商业模式</h3>
+<p style="text-indent:18pt" data-page-node-id="bEn81GPLAyXEEqLIJxiDNw">本项目所有程序（dataforge 桌面端、dataforge-server 及配套组件）<strong data-page-node-id="16hlQPoX5i289HrGI6HsUE">可在企业内部免费使用</strong>，软件<strong data-page-node-id="DSzR1p66x8FaC4N6pmyA4P">代码不开源</strong>，以闭源形式提供。</p>
+<p style="text-indent:18pt" data-page-node-id="jKSC2r3Jar2RoDSlm0dMrA">公司的收益来源不是软件授权收费，而是以<strong data-page-node-id="cW7MORSBydR6xbqKhtwLAT">数据开发服务</strong>与<strong data-page-node-id="mXGc9cOMAP2pSkfFiSyF8q">集群运维服务</strong>为核心的专业服务收费——软件作为获客与留客的载体，专业服务作为主要收益来源，形成"软件免费、服务收费"的模式。</p>
+<p style="text-indent:18pt" data-page-node-id="XpZpmBCNeKE6AbOjpeD7lN"><strong data-page-node-id="Qxi2Sagu4KK0iAjgdFoivx">业务方能够在平台内直接提需求，是上述服务模式得以成立的技术基础</strong>（见 1.3）：企业方人员用业务语言提出数据开发需求，智能体完成需求澄清、数仓设计、程序编码与提交调度，我方工程师负责口径确认、评审把关、上线发布与后续运维——<strong data-page-node-id="knZrprpSsad9u5ua6zLF1O">企业出需求，我方出开发与运维</strong>。</p>
+<h4 data-page-node-id="AlryDUZPYUCiLsG2ucETqo">1. 数据代开发服务的交付路径</h4>
+<p style="text-indent:18pt" data-page-node-id="bSyU7UIrZV5OyJZ3Ppf5M4">数据代开发服务的成本，传统上集中在两处：需求调研与口径确认（随指标数线性增长、高度依赖驻场沟通），以及开发与上线（逐指标手写与人工配置）。基于本平台的交付路径，把这两处的承担者换了：</p>
+<table class="data-table" data-page-node-id="1UKc7OkWnjSzHA8JNFFBVJ">
+<thead data-page-node-id="c3GDHsPz0KxbRPE0hTmwJL"><tr data-page-node-id="goU8z6Sw2C0IMX7ga0lXGb">
+<th data-page-node-id="ds1ZNblAhUVLUfkNRzrPgp">环节</th>
+<th data-page-node-id="ajfa7csaJX84pzR9BthTnx">传统数据代开发</th>
+<th data-page-node-id="EDDZzpAGB3YcALuBLPqdFW">基于 DataForge</th>
+</tr></thead><tbody data-page-node-id="Ni3TO5HQMyJ0YnN5L0vGM7">
+<tr data-page-node-id="HW13ueZE6p13wF8s2vksBi">
+<td data-page-node-id="gCODnEIcPrYTkI90uDUGgq">需求提出</td>
+<td data-page-node-id="f18uzHgGaAPiO7HGQeh0Nv">业务方口述，实施方整理成需求文档，往返多轮</td>
+<td data-page-node-id="LXHF8XqM2jOPPX6xY7AIPi">业务方在平台内按模板直接填写，智能体一次性列出全部待确认问题</td>
+</tr>
+<tr data-page-node-id="1KGCUlvyE5bGZiD2bxqHVV">
+<td data-page-node-id="cFEjkIHQjb3dAGzttSqj8T">口径定义</td>
+<td data-page-node-id="xCAhDACvGOjcU5DHaJoEAY">会议与文档对齐，易出现同一指标多种算法</td>
+<td data-page-node-id="DoFYGuXsu0ZsjyrZdCDVit">指标编码在需求阶段确定，需求 / 设计 / 程序三段产物共用同一编码（见 3.3）</td>
+</tr>
+<tr data-page-node-id="yceabT3Efee0nucvbFIgXJ">
+<td data-page-node-id="UCs5WoqGMzc6BVi88QkXds">设计与编码</td>
+<td data-page-node-id="Y1gAZJFQaku7TxnElHkXSm">工程师逐指标手写</td>
+<td data-page-node-id="SlZBDE4S5nZarMhzBmgD5a">智能体产出设计文档、分层 DDL 与程序，工程师评审确认</td>
+</tr>
+<tr data-page-node-id="4c8CYPXund8EuAEze8H8z7">
+<td data-page-node-id="TqhwDwVEuOBiAWguoLJ56D">编译与上线</td>
+<td data-page-node-id="53uw23CWsqjvIWf3qeaCH1">人工打包，在调度系统里手工配置参数</td>
+<td data-page-node-id="RbYi143mgNSEE27EC57GC4">本地编译产出主 Jar 包，代码头参数自动落地任务节点，一键提交调度</td>
+</tr>
+<tr data-page-node-id="JgTDoeFS63aPbhUyAiUF1e">
+<td data-page-node-id="RqCW6Ie58m43SQNjr4v2nW">运维与变更</td>
+<td data-page-node-id="hWcidsx9SHqeUpY670IWUQ">依赖原开发人员的记忆，换人即断层</td>
+<td data-page-node-id="9mm1LcdFJ2fwq2kFq1Ro6J">口径、血缘、任务依赖在平台内可查，换人可接手</td>
+</tr>
+</tbody></table>
+<p style="text-indent:18pt" data-page-node-id="ZJzA3L4pCkKIORk44MOiJQ"><strong data-page-node-id="hQy3olhPBkkVeRGNE5Wp2y">由此得到三个服务特征</strong>：单指标交付的人工投入从"编写"转为"确认"——人不再是产能瓶颈；服务可以按指标数计量与定价（见下节）；交付物不依赖个人记忆，长期代运维可持续。<strong data-page-node-id="ZmtH0LfbyXe9AZmaJ2XpSL">这也是"软件免费、服务收费"能够闭环的原因：软件把服务的人力成本压下来，服务把软件的价值变现。</strong></p>
+<h4 data-page-node-id="sjhMDmZJEnsUHusjKrhzjC">2. 收入来源</h4>
+<p style="text-indent:18pt" data-page-node-id="riiahyLmQD3LcTHDafqhKy">服务分两大类，覆盖平台全生命周期，每一项收费清晰透明。</p>
+<p style="text-indent:18pt" data-page-node-id="pGZb8sRqQ3VdbayBpdRAal"><strong data-page-node-id="tcWYWCdA7LWmMkHQ4fOutE">平台构建</strong>：</p>
+<table class="data-table" data-page-node-id="y5PB1k1ePuwC8t2DCzkjOf">
+<thead data-page-node-id="tPxSEZzpMyFvd5dGSryVyC"><tr data-page-node-id="rb0ThHCuqYJhVpFD8FemNq">
+<th data-page-node-id="X40PflEkB5uycls8JrCoLB">服务项</th>
+<th data-page-node-id="B4wzz8vsBh6gV4J9OnpdUH">收费方式</th>
+<th data-page-node-id="DYSuwT6KPSLIewZJ8RB2iV">说明</th>
+</tr></thead><tbody data-page-node-id="DTG3G9r7yT76hn0BfuNaGX">
+<tr data-page-node-id="qmkTuNVXFf8dgyklwfJ00a">
+<td data-page-node-id="wIc4cxIpYKaxR26nSA6huE">大数据集群部署</td>
+<td data-page-node-id="tF2uKjAGY2hmvBrinVpSq9">标准版本免费，其他版本收费</td>
+<td data-page-node-id="KaV09OG6JxWrpsmdEZUtzk">部署与调优大数据基础组件；标准版本：Hive Metastore 4.1.1、Spark 4.1.0、Flink 1.20.4、Doris 4.0.1、JuiceFS 1.3.1、YARN 3.4.3、Kyuubi 1.1.1</td>
+</tr>
+<tr data-page-node-id="e95J2PMs5tNRyMgJkbrELr">
+<td data-page-node-id="4YfHfN4gxDKZtfZ7ZuCfWq">数据接入</td>
+<td data-page-node-id="HXA7d77WqWrnH2ZT4siczK">200 元 / 链接</td>
+<td data-page-node-id="2fL3bnIZoo05hLRW6QW7Vb">将企业现有数据源接入平台（MySQL / PostgreSQL、Hive / HDFS、Kafka、API 数据源等）</td>
+</tr>
+<tr data-page-node-id="6DGOSTF15g9w81LllqLk0T">
+<td data-page-node-id="CaW9SUsODgxYurKMuMYPzu">集群运维</td>
+<td data-page-node-id="OB5DYa7DGW5jv9SgoXsEJq">¥2,000 / 月</td>
+<td data-page-node-id="yYXfejlsCvTRDLUCumLfqH">7×12 监控告警、故障响应处理、定期巡检优化、容量规划建议、版本升级支持</td>
+</tr>
+</tbody></table>
+<p style="text-indent:18pt" data-page-node-id="RF8THDiHsqcWywGFSLAoIz"><strong data-page-node-id="cNFgtnWf0chxnzkgVBsB2m">开发代管</strong>：</p>
+<table class="data-table" data-page-node-id="DKeOGaWXkRKZTHrHoOlhdD">
+<thead data-page-node-id="urGLOkbCxrCj6c42rAK50X"><tr data-page-node-id="XxK9vvicDiYZ7f7KdTkOZD">
+<th data-page-node-id="OAr4JhpkV24Y4Hvqn0P39U">服务项</th>
+<th data-page-node-id="D47DoF5FsAhbkDSFLYwEgh">收费方式</th>
+<th data-page-node-id="1YVTvH9ZPkpEqlgrBV6HfU">说明</th>
+</tr></thead><tbody data-page-node-id="oS09y3xMc90nio6LRQNanG">
+<tr data-page-node-id="CSHRUsAb0TH4EQ69etJxDt">
+<td data-page-node-id="jyIjiqdd2BH5sElrrJ95hn">指标开发代管</td>
+<td data-page-node-id="OuKdG28fXbeB04Fbm7R84L">¥50 / 指标 / 月</td>
+<td data-page-node-id="Y7A53iQmawPhf3icRI0YPC">含指标 SQL 开发、测试验证、上线调度、日常运维</td>
+</tr>
+<tr data-page-node-id="psxhylCP2W2s42cBAs0wWD">
+<td data-page-node-id="p8xyVaRs7scCc9artT7TDJ">线上问题解决</td>
+<td data-page-node-id="6zLH4G9cqg01F4voEe0Aab">按次计费</td>
+<td data-page-node-id="AmW3utmQqMpsSSgsd7CBsF">数据接入延迟 200 元/次；数据质量异常 200 元/次</td>
+</tr>
+<tr data-page-node-id="DHcC43lcr8wd30uQJaHcZF">
+<td data-page-node-id="QIxmEhBhhEYHVwzV8ZgaZU">指标业务逻辑调整</td>
+<td data-page-node-id="xxydwmUYuOw2Pc1nTR9gcV">按次计费</td>
+<td data-page-node-id="THNc6mJbyV7DIuyOQ1Tajk">计算口径变更、数据源调整、指标拆分/合并、历史数据回刷，各 100 元/次</td>
+</tr>
+</tbody></table>
+<p style="text-indent:18pt" data-page-node-id="DzgIG87c2x5RZsBscgRWxR">服务交付遵循标准化流程：需求沟通 → 方案设计 → 实施交付 → 运营保障。</p>
+<h4 data-page-node-id="oGDCPaonryzZXy6IGb3gyx">3. 预估收入</h4>
+<p style="text-indent:18pt" data-page-node-id="55p16NFHqoaOIr05eRlGrF">基于上述定价，按每客户 100 个指标、客户规模分三档测算年度收入（仅计常续费项，一次性接入与按次服务作为弹性补充未计入）：</p>
+<table class="data-table" data-page-node-id="TvKmzESHEDcG03iyOAXmjS">
+<thead data-page-node-id="U3W6CnlK7LsjE6m4AZQULE"><tr data-page-node-id="eToW9j5WKWcPHrGrmvHWmU">
+<th data-page-node-id="1Dtv4HSmy3kZnE4FSJwpvQ">场景</th>
+<th data-page-node-id="nBnzOUkjIDBc6yraeA8Rqp">签约客户</th>
+<th data-page-node-id="7EdAHRvmeWnHZ47U5GI5KT">每客户指标数</th>
+<th data-page-node-id="oObq8pbYY7PGXBQItoOsUs">年度收入测算</th>
+</tr></thead><tbody data-page-node-id="JbNFxFAVrbD913RfzU0pPJ">
+<tr data-page-node-id="TABrTaVaoSeF1AVKyt14OA">
+<td data-page-node-id="kCgNJHvMbvpLtFaqSoOomJ">保守</td>
+<td data-page-node-id="txUVFlUb36cGDyFmUetExC">5 家</td>
+<td data-page-node-id="FULkF9ZDg3SVBsZV6dUMLX">100 个</td>
+<td data-page-node-id="wGLvMlP0gawui9K5jAybL5">运维 5 × ¥24,000 + 指标 5 × 100 × ¥600 ≈ ¥42 万/年</td>
+</tr>
+<tr data-page-node-id="janpypRfOqxzcEfWCRobnL">
+<td data-page-node-id="JaGKB2SZtWodKT4gi2rB2s">中性</td>
+<td data-page-node-id="Y5OAQBHNKH47U5ufbLjiRp">10 家</td>
+<td data-page-node-id="swksETTFGQkCVpfCP5493T">100 个</td>
+<td data-page-node-id="f9950xnlB3VMDwCzuKd726">运维 10 × ¥24,000 + 指标 10 × 100 × ¥600 ≈ ¥84 万/年</td>
+</tr>
+<tr data-page-node-id="gSS6iEmhrPlGEMtN9syePY">
+<td data-page-node-id="RzUx5S30AfvVLNksyThzmE">乐观</td>
+<td data-page-node-id="17H6B3Xja8LmuHF5k0JoqC">30 家</td>
+<td data-page-node-id="pIFQBAtyMzcVNK25yUyzTm">100 个</td>
+<td data-page-node-id="cEaDhtcKgvQGlwgIjTZzM2">运维 30 × ¥24,000 + 指标 30 × 100 × ¥600 ≈ ¥252 万/年</td>
+</tr>
+</tbody></table>
+<p class="callout-info" data-page-node-id="hA4BnbVsZuYJB4HXYAo8Do">&nbsp;&nbsp;测算口径：每客户指标数统一按 100 个假设；集群运维按 ¥2,000/月 × 12 = ¥24,000/年；指标代管按 ¥50/指标/月 × 12 = ¥600/指标/年。数据接入（¥200/链接）、线上问题解决与指标逻辑调整按次收费，属弹性收入，未计入上述测算。</p>
+
+  <h2 id="section-2" data-page-node-id="50KcPEG5Er8GPoKEduHz5x">二、需求分析</h2>
+<p style="text-indent:18pt" data-page-node-id="XxLoGCzQn92iFkXvNbOMuA">本章从使用角色出发梳理典型场景，并给出规范开发环境、信息底座、血缘与任务依赖三类功能需求。</p>
+<h3 data-page-node-id="yrDa5nVISdwL96CX8OAJEr">（一）用户角色与典型场景</h3>
+<p style="text-indent:18pt" data-page-node-id="I1EqkrlejDybXHGCpAWLD8">平台按角色收敛权限（服务端初始化脚本预置 1 个超级管理员角色，其余角色按需创建）；内置角色类型覆盖业务需求方、数据架构师、数据开发工程师、数据分析师、运维工程师与超级管理员，其中前三个与开发助手内的任务类型一一对应（见 3.3）。典型使用场景如下：</p>
+<table class="data-table" data-page-node-id="JKX26dXUr4iPwbXmUy7D2a">
+<thead data-page-node-id="swv6Q56BcKgtL4g2UllnHs"><tr data-page-node-id="X4eTJTsuQUIXXiqEQgN0mD">
+<th data-page-node-id="NDj435asJnV9Rm9uO8kXuv">角色</th>
+<th data-page-node-id="9JMI8ONjiaLF0rcHRS9MwC">典型场景</th>
+<th data-page-node-id="5ygYGvnfrunj4AkGoPGkfy">核心诉求</th>
+</tr></thead><tbody data-page-node-id="RNo7A92Xuol9B7MBIDbz5E">
+<tr data-page-node-id="2UERGv3OHmYGJQm33FEm86">
+<td data-page-node-id="kdqaxQ7ozwCpLCEx8T0Vpn">业务需求方</td>
+<td data-page-node-id="4buD3AJVi4uNesiNWiPhaC">在开发助手中用业务语言<strong data-page-node-id="gmWzIHkv6U43sQdXiDgypP">直接提出</strong>数据需求（无需懂 SQL、无需经开发者转述），澄清指标口径与时效要求，确认需求文档</td>
+<td data-page-node-id="EVBGftNRA6EKuYk2Ne3uS0">提需求不用懂 SQL、口径一次说清、不必反复传话</td>
+</tr>
+<tr data-page-node-id="KrPoiVNYwTo5J1FI2nlzgg">
+<td data-page-node-id="UoNVm6HRfRMc1uuWYIIFas">数据架构师</td>
+<td data-page-node-id="6jd3Krcl7LRWMiPK6YCQFt">依据需求文档做分层建模与指标编码，产出 DDL、质量规则与脱敏建议</td>
+<td data-page-node-id="iB7SH6HYMV7lC4x6U0EBfN">需求可追溯、设计可复用、口径不重复定义</td>
+</tr>
+<tr data-page-node-id="zMDAI23ZU0UmQEqkNtQ1SR">
+<td data-page-node-id="SesAM5d3dyw7hFIhdwbTRl">数据开发工程师</td>
+<td data-page-node-id="niWeHRh6NZOrgmCtcjwLk9">在规范环境中编写程序，借助 AI 助手生成与纠错代码，编排工作流并提交调度</td>
+<td data-page-node-id="zelU8rGvC6JCwLcGhlHzSY">环境规范、上下文完整、提交一步到位</td>
+</tr>
+<tr data-page-node-id="ncb3qaxst1fBfH6o7OQAaX">
+<td data-page-node-id="NARxJCCeod1HR36Zk0aTgC">数据分析人员</td>
+<td data-page-node-id="ftROuTBM9MTLb07ywZ7G96">浏览库表与指标口径，编写即席查询并可视化，查看字段血缘与任务依赖</td>
+<td data-page-node-id="oWJ3pmkvjCOeo0jMSr326c">找数快、口径准、来龙去脉可追溯</td>
+</tr>
+<tr data-page-node-id="N710GueMxPdipOmNActGpb">
+<td data-page-node-id="LctrpGfwaOVJBvW6WHW3xH">运维 / 平台管理员</td>
+<td data-page-node-id="fx77SxiSnHsnovT8qHBrbx">管理用户角色租户、配置数据源与外部系统连接、查看审计日志</td>
+<td data-page-node-id="3ammoaTERbeBQVf8RwEBOc">权限边界清晰、配置集中、操作留痕</td>
+</tr>
+<tr data-page-node-id="JzGqdTnIBMi2I4qNVz50LG">
+<td data-page-node-id="5VVBHPMwe4qrGHb2bYnodX">数据平台负责人</td>
+<td data-page-node-id="IOgyd1xCptdJcw4uNR50Iw">掌握任务运行状态、数据资产分布、平台使用情况</td>
+<td data-page-node-id="a0J7r7XRIfidyNFQmu0kpG">全局可视、问题可定位</td>
+</tr>
+</tbody></table>
+<p style="text-indent:18pt" data-page-node-id="z9vBG65FppMpaGSA0fjZbb">功能需求按规范开发环境、信息底座、血缘与任务依赖三个方向描述。</p>
+<h3 data-page-node-id="y6fNYB1C24rJUYbB1O1wZR">（二）功能需求</h3>
+<h4 data-page-node-id="ni7Xnr9YKw4L9lhqKBEmLQ">1. 规范开发环境（dataforge）</h4>
+<ul class="plain-list" data-page-node-id="GNGJGPidJg6Vn7lPBkVfdp">
+<li data-page-node-id="GI8yZ4iWuKn8GZPGJ6z19m"><strong data-page-node-id="g5pjBum2NI8XkGpvMjAHHk">AI 开发助手</strong>：支持多模型切换、工具调用（命令执行 / 文件编辑 / 网络检索 / 任务 / Skill 等）、沙箱执行、权限审批与交互式问答；支持会话切换与任务历史回溯；支持不同任务类型的角色化系统指令。</li>
+<li data-page-node-id="uwID9jD1E4CjCgPytNnwew"><strong data-page-node-id="wSPrd16tmBQO3Fk0pMGRwY">代码编辑与智能提示</strong>：提供专业 IDE 级编辑体验，包含文本语法高亮、主题、快捷键；通过语言服务器协议桥接 Java 与 Scala 语言服务，提供悬停提示、定义跳转（含依赖源码）、补全、诊断。</li>
+<li data-page-node-id="aqgeH0tIRUmDZchdRUzLau"><strong data-page-node-id="mZYEVw58JHEPsI0nDrp9jl">编译与校验</strong>：本地提供 Java / Scala 的 Maven 编译服务与 SQL 语法校验能力，供 AI 助手与编辑器调用；编译前自动生成 Maven 工程配置。</li>
+<li data-page-node-id="qija8XuRV24gn36HlHqqkH"><strong data-page-node-id="6fO4TlNDhZn3pSWVQ8C633">程序参数声明与提交调度</strong>：程序文件头部以结构化字段声明程序参数、资源参数与任务参数；运行前必须确认参数；提交调度时把声明参数落地到调度任务节点，支持文件夹级批量提交与环境标识（默认 test）。</li>
+<li data-page-node-id="k78tJ2bZSEW61H741a8TyP"><strong data-page-node-id="EZBcimKlXyC7ohToVRFPJS">文件与版本管理</strong>：工作区文件浏览与多选操作；Git 仓库自动同步；文件历史与回滚；删除走回收站机制，并按保留期与容量上限自动清理。</li>
+</ul>
+<h4 data-page-node-id="XESmVNDfYPUoMcSTrmyMP5">2. 信息底座（dataforge-server）</h4>
+<ul class="plain-list" data-page-node-id="dpWXRqCFIYCnMGjoOkJPD0">
+<li data-page-node-id="KzXhEom6By4mJVXYoNvnXw"><strong data-page-node-id="ZMPe8oB5xbmrAaOCawuukl">库表与字段描述</strong>：库表元数据浏览、字段明细、元数据同步，沉淀"表/字段是什么"的权威描述。</li>
+<li data-page-node-id="7iiQHxKyZLdsQReDGNC969"><strong data-page-node-id="yre35G69IxNwMiysmWhr6Q">数据指标描述</strong>：指标体系维护（指标定义与计算口径），支持跳转血缘查看关联字段。</li>
+<li data-page-node-id="9xn3toLshdTDlFiY21U7ET"><strong data-page-node-id="cUXeEL6XmhtFqith79tYBc">统一认证与授权</strong>：无状态令牌认证、登录登出、当前用户信息获取；基于角色与租户的权限控制，权限可到行级与列级；操作审计日志。</li>
+<li data-page-node-id="10V5tBDxWiMqhJrvOqN9g8"><strong data-page-node-id="g4rDBcboicBVhI7C3GQcAu">数据源与存储管理</strong>：数据源配置的增删改查、连接测试（Kyuubi / Doris / ClickHouse / MySQL 等）；存储配置与分布式文件浏览（HDFS / JuiceFS / S3 / 本地）。</li>
+<li data-page-node-id="Fc5cozA23KuYbpPQgdj7KU"><strong data-page-node-id="feNYmVMSb6AsLvDaOehkbf">知识管理</strong>：企业知识文档的分类、检索与维护，作为智能体上下文来源之一。</li>
+</ul>
+<h4 data-page-node-id="BDsZvmFXff7lG9unu3tuEp">3. 血缘与任务依赖（Marquez / DolphinScheduler）</h4>
+<ul class="plain-list" data-page-node-id="Iu9wQb6oSASDAYUqSn2Wh0">
+<li data-page-node-id="2eUh6dWqXBm0sqKZD1fRRJ"><strong data-page-node-id="bN2SoCsW85mdWLYnOrlA2C">数据血缘</strong>：通过 OpenLineage 采集血缘信息，图谱化展示表级与字段级血缘，支持影响分析与溯源。</li>
+<li data-page-node-id="9LEjMWrwdJTmBcH7inCIQk"><strong data-page-node-id="6AQ2ZRA0Nlt4jfTGnhIIke">任务依赖</strong>：管理工作流定义（含 DAG 画布）、任务配置、调度配置、任务实例与运行实例，呈现数据"何时、依赖什么产出"。</li>
+</ul>
+<h4 data-page-node-id="lYVP3DG5DJDnBikelaF51H">4. 运维与治理类能力（规划中）</h4>
+<p style="text-indent:18pt" data-page-node-id="MmUF3XSfbiKkvgNOd4UM9i">前 3 类需求构成"让智能体正确理解业务数据"的基础，本期优先交付；以下 3 项决定平台在业务侧能否长期被用起来，列入规划并各自给出就绪判据：</p>
+<ul class="plain-list" data-page-node-id="2lRWH3wglFd3hbLFzMre65">
+<li data-page-node-id="KQamDSWvGk4JsEZazegVBA"><strong data-page-node-id="QgRcoGVcrSIeJueAsGfTpU">自动化问题排障</strong>：任务失败时，依据集群部署信息与任务依赖关系自动定位到受影响的上游任务或资源瓶颈，输出根因候选与影响范围。就绪判据：对给定失败实例，能给出至少一条可验证的根因线索（上游任务未产出 / 资源不足 / 配置错误），且在平台内可追溯到对应任务节点。</li>
+<li data-page-node-id="I43Z4tgiJJ6AlHsncmBMq7"><strong data-page-node-id="aFQbyRSZWKJ0C5L1B0T0FD">知识检索增强</strong>：把知识库检索从当前的关键字匹配（标题与正文的模糊匹配）升级为向量检索，提升智能体生成代码前检索业务知识的命中率。就绪判据：同一组业务问题上，向量检索的相关文档命中率高于关键字检索；检索接口与现有知识库接口兼容，智能体侧工具签名无需变更。</li>
+<li data-page-node-id="0XGEVfXHyElHOMgxUGX3UV"><strong data-page-node-id="yAU00Sp2goL0SAfc1KY9N0">数据价值评估</strong>：以数据资产清单、其处理所消耗的计算资源、以及使用情况（访问频次、下游引用）三个输入评估数据使用价值，识别高价值资产与长期闲置的低效资产。就绪判据：可输出资产级价值排序，且"资源消耗"与"使用情况"两项输入均有可核查来源。</li>
+</ul>
+<p class="callout-info" data-page-node-id="J3B8xylUsNW1vvkM4QCWeW">&nbsp;&nbsp;<strong data-page-node-id="Yu0VBtiuCrJLIfuRHMbDHv">说明</strong>：以上 3 项为规划中能力，不纳入本期功能验收；其需求条目、对应模块与就绪判据的对应关系见 7.5。</p>
+<h3 data-page-node-id="Hu1KDr27yJlbtjDHEGIDYO">（三）非功能需求</h3>
+<table class="data-table" data-page-node-id="263XaNrcoTzehvCPNRzTDf">
+<thead data-page-node-id="oqgUfA1HXIAS1mj1PSYuvH"><tr data-page-node-id="W1VSM0PqmeNjejHJWX3E7E">
+<th data-page-node-id="eNF36RQbquz4RYvBuZiguy">类别</th>
+<th data-page-node-id="scPtGeaeUCBXsZnAhTaWEA">要求</th>
+</tr></thead><tbody data-page-node-id="WeYrtI7CXtnCvdRTaviOGz">
+<tr data-page-node-id="MJlWcV0yyiHRKrPwuMmqCI">
+<td data-page-node-id="GUG4H6VT6ST6LNWll94g51">性能</td>
+<td data-page-node-id="3lxEfyadOsbjuCbg0JBRIX">桌面端流式输出不阻塞界面交互；长列表采用虚拟滚动；语法高亮与语言服务不得在冷启动时造成可感知的卡顿</td>
+</tr>
+<tr data-page-node-id="4CxQNFy3o6hd3Lcy20cwLW">
+<td data-page-node-id="AjmnAFVdPiAhbglpZCUuKa">安全</td>
+<td data-page-node-id="N84yZ0qpCfjK8kZmki74sr">敏感凭据不得存于前端本地持久化存储；凭据落盘须经系统钥匙串加密（旧明文文件读时兼容、写时自动升级）；导出配置须剥离凭据字段；非本机后端地址强制加密传输；AI 助手默认以沙箱模式运行</td>
+</tr>
+<tr data-page-node-id="H6F80EpbAzg7VEpJN9J5sp">
+<td data-page-node-id="OhoAaAyBGqtYcLaGvqdIOl">兼容</td>
+<td data-page-node-id="BCNnGDZGvC2gQY8jS9BeNi">桌面端支持 macOS / Windows / Linux 三平台打包；服务端支持主流 Linux 与多架构容器环境</td>
+</tr>
+<tr data-page-node-id="VPTUaSdQtJDrvwpPhMj0NX">
+<td data-page-node-id="C82C5DQAgVlbqkIUoGsN0V">可靠</td>
+<td data-page-node-id="c9wVR4L4Xt95gpmCRpzQA1">服务生命周期由客户端托管，退出时优雅清理进程与锁文件；状态恢复失败时不得误判为成功</td>
+</tr>
+<tr data-page-node-id="AyGV1CQ99VEUIAW7Wy6oYJ">
+<td data-page-node-id="G79IMxaOsRau3teZFb7G6p">可维护</td>
+<td data-page-node-id="AmjjzZp4veAT6UPopllkwB">前后端分层清晰；纯逻辑抽为可单测的纯函数；关键安全闸门逻辑必须有单元测试覆盖</td>
+</tr>
+<tr data-page-node-id="ItCkXPAHl6aDyGEC3EwTtJ">
+<td data-page-node-id="Pw3RwkQmIdUK1TIsQG6tAC">可观测</td>
+<td data-page-node-id="c1YKVbPvdlDzeYsDG054DZ">关键链路具备结构化日志；服务启停、语言服务状态、编译结果可在客户端内可视</td>
+</tr>
+</tbody></table>
+
+  <h2 id="section-3" data-page-node-id="nq2ASV7lpb4vP33aJxUaaU">三、总体架构</h2>
+<p style="text-indent:18pt" data-page-node-id="4AuRZERKBC29f3WFpvAHJd">本章给出平台的总体架构、核心设计原则（五类信息与需求驱动的开发闭环）与四项关键设计决策及其取舍依据。</p>
+<h3 data-page-node-id="ofkIIl7l2FBv06XtEvBEdZ">（一）架构总览</h3>
+<p style="text-indent:18pt" data-page-node-id="vyIVkjBV249E7OJbZKmEA6">平台由四大核心组件（dataforge、dataforge-server、Marquez、DolphinScheduler）构成，组件之间边界清晰：桌面端承载交互与本地计算，服务端承载信息底座，Marquez 与 DolphinScheduler 承载血缘与任务依赖。</p>
+<table class="data-table" data-page-node-id="Xlmmmn1CYxs5e7oZNdi4DZ">
+<thead data-page-node-id="D99iB7fAsdP0fDFruvTiFv"><tr data-page-node-id="kdyFv8cT1aa5FmJvmOywlL">
+<th data-page-node-id="tBCn1xoqWo6rsA39F1COiX">组件</th>
+<th data-page-node-id="5SkqJqCuHByEVziQRZ1gsO">承载能力</th>
+<th data-page-node-id="1yQnNxtOfdU2BNeJpCgGnK">对智能体理解业务数据的贡献</th>
+</tr></thead><tbody data-page-node-id="RZPqCXUKHGg6P5YVAnXYZB">
+<tr data-page-node-id="CF9GyN1BujZuVrigfU3dTf">
+<td data-page-node-id="NKAW4xIo5CPHEsY5YePEi9">dataforge（桌面端）</td>
+<td data-page-node-id="bFUjlhh3wRaqaiJXbrdBo6">规范开发环境：编辑器、语言服务、编译校验、代码头参数声明、AI 助手运行时（沙箱）</td>
+<td data-page-node-id="qkOjUGcrHm6C0TvmMnTqdd">保证开发产生的信息规范且前后相互关联</td>
+</tr>
+<tr data-page-node-id="CCLfpk6FKT4YtWhHxsSzeS">
+<td data-page-node-id="Enj1SZwE9nRIYPHz7rUdgd">dataforge-server</td>
+<td data-page-node-id="E4TuKdxgafUv8IgOgBv2xM">库表描述、字段描述、指标描述、统一身份与多级权限、数据源与存储、审计</td>
+<td data-page-node-id="0S5II0nmKcDDxEF5Qj53WN">提供"表/字段是什么、指标口径是什么"</td>
+</tr>
+<tr data-page-node-id="C0WlsvrJFBBjC38JAoNDSB">
+<td data-page-node-id="x8uCxephGqIN2WRkYrya5u">Marquez</td>
+<td data-page-node-id="Ckszv2kOfBvpC26YoPMLet">数据血缘信息（OpenLineage 采集与图谱展示）</td>
+<td data-page-node-id="PrVufwDPMRgHoL7kvtzsk2">提供"数据从哪来、流向哪、影响谁"</td>
+</tr>
+<tr data-page-node-id="ntZioQlhMDgkyExgFVJFgS">
+<td data-page-node-id="0RjxkZ3dJqGK8LOKAqqP9D">DolphinScheduler</td>
+<td data-page-node-id="n1MVC7537E0aP791fEluzl">任务依赖信息（工作流 / DAG / 调度 / 实例）</td>
+<td data-page-node-id="4ZJA5gLblGaTcUeQFovzDM">提供"数据由什么任务、在何时产出"</td>
+</tr>
+</tbody></table>
+<h3 data-page-node-id="zUk6Kd6UDe4Ek7m9tUGHrQ">（二）核心设计：智能体理解业务数据的五类信息</h3>
+<p style="text-indent:18pt" data-page-node-id="vf6zTnAoP7xEexEbE2TzdF">本平台把"让智能体正确理解业务数据"作为第一设计原则。智能体在生成或修改数据代码前，需要五类输入才能做到不凭空推断：</p>
+<table class="data-table" data-page-node-id="P22e8JULF9nLzZxXXETxbs">
+<thead data-page-node-id="Ir2iMovBXQCAvHgHYvvVaE"><tr data-page-node-id="CfxcGg1dYrMfx0uA9NZgEE">
+<th data-page-node-id="1Cbz8tDRzrNa7wLuFFGcDd">信息</th>
+<th data-page-node-id="affjQWbFl7pleTE0Kz2yYi">来源组件</th>
+<th data-page-node-id="UHSZY40hpHELLHTiVfUGa9">回答的问题</th>
+</tr></thead><tbody data-page-node-id="1uAa8reLO0jltBZFbyEw2F">
+<tr data-page-node-id="I71mpcdpuPK8R0i5hNEXS2">
+<td data-page-node-id="yxsccCEWqcyFsfpx93o0ZL">规范开发环境</td>
+<td data-page-node-id="HYe6cFPwHRKgYrQXfQ8F5B">dataforge</td>
+<td data-page-node-id="6QGG9T0c4r3ECZCPTyYGLR">代码结构、参数声明、命名与口径是否规范、是否前后关联</td>
+</tr>
+<tr data-page-node-id="CFowPkE8VA46jFHAMJAHhf">
+<td data-page-node-id="vABCeoFVB8bpEj2guCicPB">库表描述信息</td>
+<td data-page-node-id="ABtR8It6fovOCUr6LYjrV6">dataforge-server</td>
+<td data-page-node-id="V5tCdNdm521JZrCPkkdxzz">表与字段是什么、业务含义与约束</td>
+</tr>
+<tr data-page-node-id="0DZb0JoyvJxl5TZzTgW754">
+<td data-page-node-id="6rdcxvUJkAWCHqjgwV07Pv">数据指标描述信息</td>
+<td data-page-node-id="PmsHF4kW27USClrW3CoOhc">dataforge-server</td>
+<td data-page-node-id="IaVh54h6jkNLOgpRR1AZQG">指标的计算口径与数据来源</td>
+</tr>
+<tr data-page-node-id="KHr3QoUo3golDbgXUFCh9e">
+<td data-page-node-id="XLUeuCW30BNvpK6g4Akkiv">数据血缘信息</td>
+<td data-page-node-id="HCFxcbyKsZtcS5C82lSHwZ">Marquez</td>
+<td data-page-node-id="py4VX7HIXHC0IWvZPRoETG">数据从哪来、流向哪、影响谁</td>
+</tr>
+<tr data-page-node-id="c8W3qtNFSA8nAglfL9EhSy">
+<td data-page-node-id="SAhq2XATxvLSb8SH075D4f">任务依赖信息</td>
+<td data-page-node-id="EyTSogOLl3WyJRd3RcQLIk">DolphinScheduler</td>
+<td data-page-node-id="wwtDRRSqRTlwMT2slTlE8a">数据由什么任务、在何时、依赖什么产出</td>
+</tr>
+</tbody></table>
+<p style="text-indent:18pt" data-page-node-id="TgmCoyJRsyo9ZCVGJFjibr">这五类信息共同构成智能体的上下文供给层：规范开发环境决定信息<strong data-page-node-id="wBvARx35IuR5fiIK9UlCGm">源头是否规范、前后是否关联</strong>，库表与指标描述决定<strong data-page-node-id="6KMFLIiBzdHgmVeuJZziVz">语义是否权威</strong>，血缘与任务依赖决定<strong data-page-node-id="xQyCnwhXPQRyjpm2nJvHgE">来龙去脉是否可追溯</strong>。平台的建设顺序与优先级，均以"这五类信息是否就绪"为依据。</p>
+<h3 data-page-node-id="QCL7FDwioi2IBEdjYqj8oD">（三）需求驱动的开发闭环：业务方 → 需求 → 智能体编码</h3>
+<p style="text-indent:18pt" data-page-node-id="s8CKoh12YVfFKUryiOiFp7"><strong data-page-node-id="RH9CXYsfWcNw7nCCa0LLts">设计思路</strong>。AI 编程助手（opencode、WorkBuddy 等）已经验证了"人提需求、智能体编码、人做确认"这一范式，但它们默认<strong data-page-node-id="6KFvFWSrtOVo4R4N1uwo77">提需求的人就是写代码的人</strong>：需求以技术语言给出，从业务诉求到技术指令的翻译由开发者自己在脑中完成。<strong data-page-node-id="ItXgtWcm2ivaUwc21Dhwje">DataForge 把提需求的人换成业务方</strong>，于是必须额外解决三件事：① 业务语言到技术语言的翻译由谁做；② 口径如何保证只有一个版本；③ 不懂技术的业务方进入同一个开发平台后，安全边界如何划。前两件由"三段接力 + 指标唯一主线"解决，第三件由角色—资源三级授权与 SQL 下发前的行 / 列改写解决（见 4.2）。</p>
+<p style="text-indent:18pt" data-page-node-id="7kGwnBCiyA4S9uZT1s0Z77">数据开发最常见的失败不是"写不出 SQL"，而是需求在传递中走形——业务方口头讲一版、需求文档写一版、数仓设计再翻译一版、开发按各自理解落地一版，四版之间没有强制对齐，等发现口径不一致时已经投产。本平台的思路是：<strong data-page-node-id="oB0MNMEjv7eN4rpavnMQ2u">把业务方、需求与编码放进同一个平台、同一份上下文，用"指标"作为唯一主线贯穿三段产物，让智能体承担从需求到代码的翻译，人只负责提出需求与确认。</strong> 业务需求方因此不是"平台外的提需求的人"，而是平台内的一级角色。</p>
+<p style="text-indent:18pt" data-page-node-id="DyRiH04U9ILh3uQuzYw1mQ"><strong data-page-node-id="4y0IidorKss82n9DvJCrEt">三个角色、三份产物</strong>。平台的服务端角色体系与开发链路一一对应，开发助手内的任务类型即角色：</p>
+<table class="data-table" data-page-node-id="XFtnS0zaAZPGW7nKd0hHss">
+<thead data-page-node-id="pnqxHGloemx2XRrrBnRbcm"><tr data-page-node-id="ArPo2l1aKlJ0gM7pwCm5u8">
+<th data-page-node-id="8X7CYgFS7sCBajMgHTj8Np">环节</th>
+<th data-page-node-id="7LKbaJ4k4Xa5mOPpFDOHQT">角色（任务类型）</th>
+<th data-page-node-id="YHKDfY7TPEdjG2OIMe8cLJ">产出物</th>
+<th data-page-node-id="w74iBZGwmDHbcGGZaWmEBk">对下游的作用</th>
+</tr></thead><tbody data-page-node-id="dDLblgLqzyzAxXmuSOzGLe">
+<tr data-page-node-id="XiMTVP0aMhOuAjoU39ExQF">
+<td data-page-node-id="oJu9GGlhQ4rLRTwkFgifaJ">需求</td>
+<td data-page-node-id="Vpni574R9ylbhoC2Rsfa6L">业务需求方（需求编写）</td>
+<td data-page-node-id="7awhNnKjDOOuXzpDpNXHv1">docs/{业务名称}_开发需求.md</td>
+<td data-page-node-id="ac3lVRVGJVMJ6QiNFJYxDt">用业务语言定义"要算什么"：指标口径、数据范围、时效要求、质量要求与敏感数据范围</td>
+</tr>
+<tr data-page-node-id="9IjZBDzACOCf8QA83cGuBs">
+<td data-page-node-id="KNXrZjytSkJIKj0CDIuOGq">设计</td>
+<td data-page-node-id="kWxuGBkY2VJYciEPW4K2zH">数据架构师（数仓设计）</td>
+<td data-page-node-id="4qg9G1TaAogKYOgT6S0WMi">docs/{业务名称}_数仓设计.md、ddls/{分层}_ddl.sql</td>
+<td data-page-node-id="8T5Wwk6fHlJtyC5khM7HD5">把需求翻译为数仓设计：分层与表结构、为指标分配编码并绑定字段、定义质量规则与脱敏建议</td>
+</tr>
+<tr data-page-node-id="kcI37ZuTpQFzm7pbFpCwmH">
+<td data-page-node-id="CLKZDFrKaE8ZsKdHHtyR4y">开发</td>
+<td data-page-node-id="zeg1eX1hcumLRsyydHSEjZ">数据开发工程师（数据开发）</td>
+<td data-page-node-id="5H7MZ8wkjsxpgk6OtuOVz1">{语言}/{分层}/{程序文件}、调度任务</td>
+<td data-page-node-id="f4KaZWyA8mFyb2URO5sTVo">按指标编码实现程序、声明代码头参数与依赖、编译校验、一键提交调度上线</td>
+</tr>
+</tbody></table>
+<p style="text-indent:18pt" data-page-node-id="G9F9QkAKuwmsxD2PE38T3r"><strong data-page-node-id="4WcUaqLUSvT7GUGVqYN9KP">衔接关系：一套契约、四条同源线</strong>。三段产物不是三份各说各话的文档，而是共享同一份契约：</p>
+<ul class="plain-list" data-page-node-id="oA6j4uIwMopdnSmItLsuBc">
+<li data-page-node-id="fETV9AtH6OrOiZ6yXWcrNj"><strong data-page-node-id="HkXkSez6UiK6uaTw2bWxMl">同一业务名称贯穿三份产物</strong>，不得各自另起名——这是"同一条链路能被检索到一起"的前提。</li>
+<li data-page-node-id="LevhJ941GNvhZrUBygDfvb"><strong data-page-node-id="6RgKHYUhPQVS0nK198G21Z">指标是唯一主线</strong>：业务需求方定义"要算什么"，数据架构师分配指标编码并绑定字段，数据开发工程师按编码实现；口径要改只改一处，三段自动对齐。</li>
+<li data-page-node-id="wnvQu5IzhARItUUSGR9uBO"><strong data-page-node-id="Giazr2WV4xDmtsDntEwy9p">四条信息线端到端同源</strong>：① <strong data-page-node-id="oaOjMb1YlatD4bK7KI8E94">数据时效</strong>——需求写明的更新频率与最晚可用时间，必须落到设计的表名刷新周期后缀与更新策略，再到开发的程序名执行周期后缀与调度周期；出现降级（需求要小时级、落地成日级）必须显式说明原因并列入待确认问题。② <strong data-page-node-id="CFAzWGHPjQk5Xdvt51rxCP">数据源名称</strong>——三处同名。③ <strong data-page-node-id="fwOHecOE6a2vsyVErpVrUp">数据质量</strong>——需求用业务语言提要求，设计定义规则名、校验对象、阈值与处置方式，开发实现为独立的质量校验任务挂在处理任务下游。④ <strong data-page-node-id="4xqz2eIJPrE7ihUs3C2vFH">敏感数据</strong>——需求识别范围，设计分类分级并给出脱敏建议，开发实现脱敏，全链路不得明文落库。</li>
+</ul>
+<p style="text-indent:18pt" data-page-node-id="dSYBzQZEltih7BSSKmHeFH"><strong data-page-node-id="GdtsV2w4yNwzdw6uSspq6P">从需求提出到编码完成的流转</strong>：</p>
+<ol class="plain-list" data-page-node-id="GwTt6sKvMkLVrPdBq7mJ5o">
+<li data-page-node-id="caHGq4cn7rCILCcrWVR72S">业务方在开发助手中以「需求编写」角色提出诉求。智能体先做需求澄清：确认业务背景、目标、使用对象与决策场景；信息不足时一次性列出全部待确认问题，避免多轮追问。</li>
+<li data-page-node-id="GddpKrsVLqQzHYHfllYSix">澄清完成后产出需求文档 docs/{业务名称}_开发需求.md，并标注本需求涉及的敏感数据范围。</li>
+<li data-page-node-id="uS1XXXaBWZCUwvPDyENVUV">切换到「数仓设计」角色。智能体读取该需求文档，产出数仓设计文档与分层 DDL，为指标分配编码并绑定字段。</li>
+<li data-page-node-id="dPy8IXSR6D0GK6QCDrb4gZ">切换到「数据开发」角色。智能体依据设计文档与指标编码实现程序（Java / Scala / Python / SQL / Shell 任选），在代码头声明程序参数、资源参数、任务参数与依赖，经编译与 SQL 校验后一键提交调度。</li>
+<li data-page-node-id="9TZalyEeGOKGE0MVc0fzus">全过程可以在同一会话内完成：<strong data-page-node-id="qAvlACnKHBPDJFhmRziMM3">切换角色不新建会话</strong>——任务类型的系统指令按轮下发，新角色从下一轮生效，之前的对话与工具调用结果全部保留，智能体始终知道"前面做了什么"。</li>
+<li data-page-node-id="jRsKBK5H4UCwoJ8t9h37LS">产出物落在同一工作区，受 Git 版本管理与文件权限约束，删除与回滚走安全评估闸门与回收站；指标定义与编码沉淀在服务端，成为可检索、可复用的资产。</li>
+</ol>
+<p style="text-indent:18pt" data-page-node-id="9altb481X4wZjilUkR6zpC"><strong data-page-node-id="5Lfqd9X2VHBsp4YzNP7Bou">价值</strong>：</p>
+<ul class="plain-list" data-page-node-id="61WvfakNezmSZhuNUvol0P">
+<li data-page-node-id="Ej7VmE3FlrxT1zzLCS9WQs"><strong data-page-node-id="WyyCT4G4vPFCcufJGN4Rm7">需求不再靠口头传递</strong>。需求是平台内可检索、可追溯的一等产物，与设计、代码同源命名，一条链路一眼可查。</li>
+<li data-page-node-id="CK3FXoqITdIfV8ebd4G3Ha"><strong data-page-node-id="GzqmmZuVGkeS8knAT1u9Nd">口径只在一处定义</strong>。指标编码是唯一主线，业务方用业务语言提、架构师编码绑定字段、开发按编码实现，避免"同一个指标四种算法"。</li>
+<li data-page-node-id="bBSL9P4jI5DW6r5nyURHFl"><strong data-page-node-id="pF2fd4QCBMejv44LWn2tue">人力从翻译变成确认</strong>。需求到代码的翻译由智能体承担，人只提出需求、澄清疑问与验收结果。</li>
+<li data-page-node-id="9USH9jdeMoZIac0XhD5rOT"><strong data-page-node-id="BaqoEFYm69DqUPLR2v47dc">四类约束不会被漏掉</strong>。时效、数据源、质量、敏感数据在需求阶段就写清并逐段传递，降级必须显式说明，不会在传递中静静消失。</li>
+<li data-page-node-id="bLklzSNAhFV9t0LDdxl6BE"><strong data-page-node-id="OLg31A5CQkpu32XviASNXE">业务方能安全地进入同一个平台</strong>。业务需求方是平台一级角色，受角色—资源三级授权约束；行 / 列级权限在 SQL 下发前改写生效——共平台不等于共数据。</li>
+</ul>
+<h3 data-page-node-id="yN4WB3gwADFeGh5UHnIMMK">（四）关键技术设计决策</h3>
+<p style="text-indent:18pt" data-page-node-id="DDRRdNE6sP5e3N9K522PZV"><strong data-page-node-id="s9Dyho5Fjbs3TBceSY9KAY">决策一：信息底座先行。</strong></p>
+<p style="text-indent:18pt" data-page-node-id="YBbZQdXDyqxhh57RLMVUbK">智能体能力的上限不由模型决定，而由它能否读到规范、无歧义的业务信息决定。因此平台的投入优先级是先建规范开发环境与四类信息底座，再逐步扩展运维与治理类能力。</p>
+<p style="text-indent:18pt" data-page-node-id="fQE6FXnftfcgkanGRf9Nab"><strong data-page-node-id="0trQqcD3wwiBAxaw9jh8qi">决策二：从源头约束，而不是事后清洗。</strong></p>
+<p style="text-indent:18pt" data-page-node-id="NGyg8dq4HL3B08AVrlldeQ">库表描述、指标口径这些信息若靠事后人工补录，必然残缺且滞后。平台在开发环境侧就通过代码头参数声明、编译校验、命名与口径约束，让"规范"发生在信息产生的时刻，而不是在信息流转之后的补救阶段。同步地，代码头参数声明把程序入参与调度任务的参数显式对齐，使开发阶段产生的信息与上下游环节可以直接衔接——规范解决的是同一件事有没有唯一说法，关联解决的是这件事与上下游能否对上。</p>
+<p style="text-indent:18pt" data-page-node-id="LvuWrQhkFP5YGjsEp8yQdQ"><strong data-page-node-id="wFCRlGvRVnePmMqzeHnTOO">决策三：血缘与任务依赖直接集成成熟开源系统，不自研。</strong></p>
+<p style="text-indent:18pt" data-page-node-id="DWFQkCPQj0wPwvDSHDHClQ">数据血缘与任务调度是通用基础设施，Marquez（OpenLineage）与 DolphinScheduler 生态成熟。平台以集成代替自研，把工程投入集中在"如何把这些信息汇聚成智能体可用的上下文"这一差异化能力上。</p>
+<p style="text-indent:18pt" data-page-node-id="4o3DJFEr4P7QbsAPywSBpD"><strong data-page-node-id="uhqF7C0N6MrKeO99o4BMFP">决策四：AI 助手以内置运行时 + 沙箱方式提供，而非云端调用。</strong></p>
+<p style="text-indent:18pt" data-page-node-id="juGkAsy5kYru3Vnt6XYKc7">AI 助手需要执行命令、读写工作区文件、调用本地编译服务，这些能力要求它运行在用户本机且受控。因此助手以本地进程形式由客户端托管，固定监听本机端口，并在 macOS 与 Linux 上以系统级沙箱包装执行。</p>
+
+  <h2 id="section-4" data-page-node-id="2xstCwGPY3MCF7GXHqMdqP">四、组件设计</h2>
+<p style="text-indent:18pt" data-page-node-id="lpkpVnBDbEjMeCVH4auhL5">本章逐一说明四大核心组件与治理组件的设计，突出各自对智能体理解业务数据的贡献。</p>
+<h3 data-page-node-id="xAX9fK7Wi8LPfqx3vrgO87">（一）DataForge 桌面端（规范开发环境）</h3>
+<p style="text-indent:18pt" data-page-node-id="JZ8rdA6HwzXy5nqoK3Mmt2"><strong data-page-node-id="E5fm7QgYfe1jvqQTAEMwec">技术形态</strong>：基于 Electron 44 的跨平台桌面应用，渲染层采用 React 19 + Vite 8 + TypeScript 7。当前工程规模为 336 个 TypeScript / TSX / CSS 文件、约 7.99 万行代码。</p>
+<p style="text-indent:18pt" data-page-node-id="Nf1f0t93C9wu5VX78KmmRa"><strong data-page-node-id="5gqWK72v0Ni2jrD3hM3wBX">主进程能力</strong>：</p>
+<table class="data-table" data-page-node-id="VrjVAvcnYSaoinp4zvpUxO">
+<thead data-page-node-id="u2gVtpUuauV2KKGHUKUvQn"><tr data-page-node-id="hI7ISo3vocKMfRQA6ply1B">
+<th data-page-node-id="mjHdYiLTn9vDJHUIQ4jxM8">模块</th>
+<th data-page-node-id="KRRQDtgbuQ3cFzJm33ne8v">职责</th>
+</tr></thead><tbody data-page-node-id="iwkDGbSrAkvE3PAqGU3A3A">
+<tr data-page-node-id="feHUlnrZNftCQ9ELrWjZ26">
+<td data-page-node-id="PJ0BAE4JtXPA5fBtTovvny">AI 助手运行时管理</td>
+<td data-page-node-id="krAGWji1w2vNHWwnZ6IJBE">启动、监督、终止本地助手进程，固定监听本机端口；macOS 以系统沙箱、Linux 以容器沙箱包装；退出时优雅清理进程与数据库锁文件</td>
+</tr>
+<tr data-page-node-id="UFikHePvNi1CWEmu7P0DLM">
+<td data-page-node-id="f7HHLI6GDGRMfjD8prqCoK">编译服务</td>
+<td data-page-node-id="POiotkPT6Oq66nOtfEbDM3">本地编译 HTTP 服务，随机端口 + 令牌鉴权，端点通过环境变量注入 AI 助手进程</td>
+</tr>
+<tr data-page-node-id="Ejs0iChcyLBfPzZwzwvCjS">
+<td data-page-node-id="IbBp0BaDXaolqXk6CwSNyD">语言服务桥</td>
+<td data-page-node-id="nxazy86XfzKiGgzaugmXky">把 Java / Scala 语言服务器的标准输入输出流转换为 WebSocket，供前端语言客户端使用</td>
+</tr>
+<tr data-page-node-id="A31WI4QJWhyShQNNDcirwJ">
+<td data-page-node-id="yqtQjlyVVNPyq4cB2XEsAG">工程生成与编译</td>
+<td data-page-node-id="AdihDEKMBKtSCO7P5nuIXX">Maven 工程生成与 Java / Scala 编译、本地运行</td>
+</tr>
+<tr data-page-node-id="UvNLhGibLbkmf7DbgGduPg">
+<td data-page-node-id="y9gdbabABz5G9MoAiOv4vj">配置与凭据存储</td>
+<td data-page-node-id="BBhVZEDsodHfjmH3TteCh1">应用配置与安全凭据的分层存储，敏感项不落前端可读位置</td>
+</tr>
+<tr data-page-node-id="sHPGgWKlTyOVnkAUdxbsXh">
+<td data-page-node-id="k5psKN6gRAhho1CoQiNCpe">平台适配</td>
+<td data-page-node-id="BuRJga6hgmxVW9w0e99qkH">三平台路径、二进制命名与沙箱策略的差异化处理</td>
+</tr>
+</tbody></table>
+<p style="text-indent:18pt" data-page-node-id="qn7c5fMKFTA3CGfyNzeExy"><strong data-page-node-id="6iUEjMIXu4rDWQ5PEdIMaV">规范开发环境的关键机制</strong>：</p>
+<ul class="plain-list" data-page-node-id="I3EYyWeHeGq48qUBjkUtLc">
+<li data-page-node-id="0sEWQxWZgiPkeHmcJcW1xP"><strong data-page-node-id="YCEDyGYRxihyAaQ7ALQ5Y9">代码头参数三段式</strong>：程序文件头部以结构化字段声明程序参数（业务入参）、资源参数（资源诉求）、任务参数（提交与引擎侧参数），取值为真实值。它有统一消费面：运行程序时取参数名预填，提交调度时取真实值写入调度任务节点。</li>
+<li data-page-node-id="2NmkJZMPA1A9y5EmTRZfm2"><strong data-page-node-id="2LAraQ6nRqZa0Y8zFMkuk7">运行程序必须确认参数</strong>：任何程序运行前弹出参数确认窗口，参数以键值对逐行编辑，语义为"所见即所发"。</li>
+<li data-page-node-id="075wkSgoPUieL4D0A0LHg6"><strong data-page-node-id="6aH97urwvGgqjX1VGYxuDh">编译与 SQL 校验前置</strong>：Java / Scala 提交调度必经本地编译（主 Jar 包由编译结果回填，未通过则无法提交）；SQL 语法校验作为编辑器与 AI 助手的能力提供，当前覆盖 MySQL / Doris / ClickHouse，用于把语法与结构问题拦在开发阶段。</li>
+<li data-page-node-id="AjQrWPFMIUsdLwetcLVAl1"><strong data-page-node-id="fyCHxsJMjn8OBkTtF3TH2e">删除与回滚安全闸门</strong>：所有删除与回滚操作先经过纯函数化的安全评估，快照根节点为空一律中止；删除走回收站目录并生成清单，且回收站目录对版本控制隐身。回收站另有保留策略——默认保留 30 天 / 50 个批次 / 2 GiB，最新 2 个批次永不清理，目录名解析不出批次时间的一律不清理；清理延迟合并执行（一次回滚连续移入上百个文件只统计一次），删除目标必须是回收站目录的直接子项，越界即拦截。回收站定位为误删缓冲而非备份，超期版本的保障由 Git 承担。</li>
+<li data-page-node-id="8bO52rGMQeeD0S1o4cej4C"><strong data-page-node-id="Fh8tUJEvxs1Gm5Bg5KJfD1">沙箱化执行</strong>：AI 助手的命令执行默认运行在系统沙箱内。</li>
+</ul>
+<p style="text-indent:18pt" data-page-node-id="si4yUcFp3usYQ9nmkJqUTT">渲染层功能模块包括：开发助手、编辑器、AI 面板、数据探索、指标管理、知识库、文件浏览器、调度管理、数据血缘、系统管理、设置。</p>
+<h3 data-page-node-id="ov4z1b2s1sSTUIzdkABZVc">（二）dataforge-server（库表描述 + 指标描述）</h3>
+<p style="text-indent:18pt" data-page-node-id="5bwwQjGRR1MrM8hK5ILOH5"><strong data-page-node-id="Bw49F5HulDj9rmMqgPFdbH">技术形态</strong>：基于 SpringBoot 3.2.1 + Java 17 的单体服务，采用"通用层 + 业务模块层"分层结构，共 6 个业务模块、20 个控制器、28 张表。</p>
+<table class="data-table" data-page-node-id="CCJ3AfESrP8ktEiRWVli6R">
+<thead data-page-node-id="QkuaPUtkds4QWlcQf8sdbD"><tr data-page-node-id="Qg8lsQlyxZ3cePsTV1pJfV">
+<th data-page-node-id="K0ouNSNMjWUnu4JNQE2ReE">层次</th>
+<th data-page-node-id="qq37GrG0MQsN4HxhqqdrEP">内容</th>
+</tr></thead><tbody data-page-node-id="S9KdXTFkrHnFIEaDdIkhSn">
+<tr data-page-node-id="njpKqAurrgmEMZnyxI51aX">
+<td data-page-node-id="O0TvugZ2YCmqkSTPBiK2jf">技术底座</td>
+<td data-page-node-id="mAVhJr9PcAvWhH1NRGdgnG">Spring Security 6 + JWT（jjwt 0.12.3）、MyBatis-Plus 3.5.5、MySQL / PostgreSQL / MariaDB / H2、Knife4j 4.4.0（OpenAPI 3）、Hutool 5.8.24</td>
+</tr>
+<tr data-page-node-id="INPml8vpURjeCNF9f5l6HG">
+<td data-page-node-id="WPaoFkNvBI0cMOpSlGj4k5">元数据模块</td>
+<td data-page-node-id="c82PGaEQLdqGQENRvV1zey">库表与字段元数据、元数据同步、元数据代理（供智能体使用）、指标与指标字段、未标注表 / 字段清单、元数据同步失败告警</td>
+</tr>
+<tr data-page-node-id="5GiJl6Xw0l9RA2795nI16H">
+<td data-page-node-id="RPUT5hCZKEFTpEGX6h6fgn">系统管理模块</td>
+<td data-page-node-id="7vEiLUyQD0CBXjR2ttA8wH">认证登录与令牌、用户、角色、权限与菜单权限、租户、项目权限、操作审计日志</td>
+</tr>
+<tr data-page-node-id="3SJfDzCdnmprhdIrMgpOyD">
+<td data-page-node-id="oRoGp0tkCoTlknl4sJ14ID">运维管理模块</td>
+<td data-page-node-id="JzuWSAoJt5Hc0lGRTcuCTs">数据源配置、存储配置、分布式文件浏览、执行引擎管理</td>
+</tr>
+<tr data-page-node-id="ZcHwTtt5YmMqiYq3WCwJEW">
+<td data-page-node-id="iegxNQ64UHYMCSZjKmBJs1">数据开发模块</td>
+<td data-page-node-id="XIeCKazf3k8bg3dAfHWP98">开发工程、程序参数、代码执行（多引擎策略，含执行结果 / 日志 / 取消 / 校验）、Jar 依赖管理</td>
+</tr>
+<tr data-page-node-id="ijOz2qdyu5j1vQaVM3eKuB">
+<td data-page-node-id="SaguMfXoNGbvP55lkwCdcM">知识库模块</td>
+<td data-page-node-id="egc565h5PzQVLkoJ7OEOW7">企业知识文档管理</td>
+</tr>
+<tr data-page-node-id="GOhEGs6BIHFfuwA2SuwRAm">
+<td data-page-node-id="I7oBBxYBeVjPv3vnINX90H">数据质量模块</td>
+<td data-page-node-id="oUMVzUduBVeAIrrzjzARFl">数据质量校验结果管理</td>
+</tr>
+</tbody></table>
+<p style="text-indent:18pt" data-page-node-id="ItPkbhGUVsrK2lEKGGyoRa"><strong data-page-node-id="2HLZcbXiBe4Vi7B6PkiFrH">对智能体理解业务数据的贡献</strong>：通过元数据同步沉淀库表与字段描述，通过指标体系沉淀指标口径，通过元数据代理接口（/metadata/agent）把这些信息以结构化方式提供给智能体，回答"表/字段是什么、指标怎么算"。</p>
+<p style="text-indent:18pt" data-page-node-id="Q0Qk2Pk8nXSrbWfEgwW42l"><strong data-page-node-id="4EgCxxhivwylbzSl9wUFoo">权限模型</strong>：支持到行级与列级（sys_table_permission_row / sys_table_permission_column），文件权限按路径 + 存储配置维度控制；行 / 列约束在 SQL 下发前改写生效（行条件并入 WHERE、投影列裁剪为白名单），覆盖 JDBC / Kyuubi 与 Spark / Flink / HBase 路径，命中约束但无法安全改写时一律拒绝执行。</p>
+<h3 data-page-node-id="NXn3CdydXkDGhVdB5W5O25">（三）Marquez（数据血缘）</h3>
+<p style="text-indent:18pt" data-page-node-id="peRAC6ReoPLKkCrqwkwVnh">Marquez 是开源的元数据与血缘服务，本平台通过 OpenLineage 标准采集作业级与数据集级血缘事件，并由桌面端的血缘视图图谱化展示。</p>
+<table class="data-table" data-page-node-id="Hy4KY9KjQcRVjcA8IsiqbC">
+<thead data-page-node-id="ZwWLRuQEaEA1q3DxbgxiN8"><tr data-page-node-id="Oei6M3tVNv0PoT4VAjG8JP">
+<th data-page-node-id="ooOUSExLmnJ8hzAXeTJMaq">能力</th>
+<th data-page-node-id="HmAMTqih9BABFBeF4Nqpxh">说明</th>
+</tr></thead><tbody data-page-node-id="AeBRmahcwNsA6aR12EIC7J">
+<tr data-page-node-id="zbX40gCo3BFUrXr5sCHz0z">
+<td data-page-node-id="NynQ1V0AEPtSvMBE1rHyPU">血缘采集</td>
+<td data-page-node-id="7KVAzx4wu6gVwhBZq6yQlT">通过 OpenLineage 传输端点采集作业运行时的输入 / 输出数据集事件</td>
+</tr>
+<tr data-page-node-id="MFWEmM2Kqri4vwESRzgFLF">
+<td data-page-node-id="GgUDnj3Q56aQWoPtK5rj3p">血缘展示</td>
+<td data-page-node-id="AtUFE1O3qo4BVGP53VQKA0">桌面端基于图可视化组件呈现表级与字段级血缘关系</td>
+</tr>
+<tr data-page-node-id="r9VEVAsO7nMyK4USviW6pU">
+<td data-page-node-id="qEPdnHPXaDFiclkRGaWsEB">影响分析与溯源</td>
+<td data-page-node-id="3H7Kmw7IK9sj9YMTAVBYgi">上游变更时识别受影响的下游表，指标异常时沿血缘上溯定位来源</td>
+</tr>
+</tbody></table>
+<p style="text-indent:18pt" data-page-node-id="KijBC81B57FbKKng8m7Eo2"><strong data-page-node-id="rBlIEtBvMIIn5y6UjGv181">对智能体理解业务数据的贡献</strong>：血缘信息回答"数据从哪来、流向哪、影响谁"，是智能体判断"改动这张表会影响什么""这个指标的数据源头在哪"的依据。</p>
+<h3 data-page-node-id="Ml3FoVV6FOGCaVGAq3tsBB">（四）DolphinScheduler（任务依赖）</h3>
+<p style="text-indent:18pt" data-page-node-id="ox6mc3mDurc5d4fWCcesHZ">DolphinScheduler 是开源的工作流调度系统，本平台集成其项目管理、工作流定义、任务编排与实例监控能力，并把开发环境声明的参数落地为任务节点参数。</p>
+<table class="data-table" data-page-node-id="nvC6OPaQeA1GbmoJob6Xsu">
+<thead data-page-node-id="PwMfNMKgDv2MHsJB6WhveO"><tr data-page-node-id="IdsV29m5yaYBn5ZBqePb3s">
+<th data-page-node-id="27upx4DKiMFaP0PNSNEmHV">能力</th>
+<th data-page-node-id="qKt0S5UEEECSIuH3xZNBUv">说明</th>
+</tr></thead><tbody data-page-node-id="vdCwbRUtk8aoYm2ZMv4CfO">
+<tr data-page-node-id="NSR13a4pMYHmKdHLNURvqp">
+<td data-page-node-id="cjJS4LGM6ZxmX1IXRLySad">工作流定义</td>
+<td data-page-node-id="RDo3NqZgAFUr7N9Gzr08jH">桌面端提供工作流定义编辑器与 DAG 画布，可视化编排任务依赖</td>
+</tr>
+<tr data-page-node-id="QueUCGINdc7RXs6UMPLb7B">
+<td data-page-node-id="sDQOCYcCN5FdroBhj1bPfH">任务配置</td>
+<td data-page-node-id="ytnQL7YCBiGxmADHTE0vHQ">任务节点配置（程序参数、资源参数、任务参数、环境标识）</td>
+</tr>
+<tr data-page-node-id="tgINZF1QDBGSCmCslW3b5Z">
+<td data-page-node-id="22RWkGVhCy4G9ZE4cHBOCP">调度与实例</td>
+<td data-page-node-id="VX43hBs5siNjy1mDG4CshS">调度配置、任务实例与运行实例监控</td>
+</tr>
+</tbody></table>
+<p style="text-indent:18pt" data-page-node-id="ef2XXTeEqHyX7Mhq9FtdrF"><strong data-page-node-id="SVZKJ7m1YIee5Skx0ywl7b">对智能体理解业务数据的贡献</strong>：任务依赖信息回答"数据由什么任务、在何时、依赖什么产出"，是智能体判断数据时效性与下游可用性的依据。</p>
+
+  <h2 id="section-5" data-page-node-id="SCJiyZycXxiANiPCwjfunR">五、功能模块规划与优先级</h2>
+<p style="text-indent:18pt" data-page-node-id="j1iMNcnlxSH5mmKWBFYUXA">按"是否构成智能体理解业务数据的基础"划分优先级：规范开发环境与信息底座优先，运维与治理类能力次之。</p>
+<table class="data-table" data-page-node-id="LLs6YBXFmFSKNYtj9WGfRc">
+<thead data-page-node-id="U9SnfhCbWZB0aJEo83Y0iy"><tr data-page-node-id="UmcknrRtJkJvNjCt6ucp62">
+<th data-page-node-id="6S3Z22sDvTQzC9NddTM2TN">优先级</th>
+<th data-page-node-id="eCxI19jmoKqHkY0BHTawUW">模块</th>
+<th data-page-node-id="LnmWxgoVBYH0jeknAjOA46">交付状态</th>
+</tr></thead><tbody data-page-node-id="k5NoQDGLAxyCzUR9LLKT5M">
+<tr data-page-node-id="2LOprCButuZsuwN1WgX0Vo">
+<td data-page-node-id="SK8jPQClo9OFcefXuUSnj0">P0</td>
+<td data-page-node-id="qTVbtBenIAKK5evfQbwcbg">dataforge 规范开发环境（编辑器 / 编译校验 / 代码头参数声明）</td>
+<td data-page-node-id="fRwu0fyCLUOaxAprPy9mGh">已落地，持续迭代</td>
+</tr>
+<tr data-page-node-id="KJRAfWFMdywqK2wlVAsMoz">
+<td data-page-node-id="uYhNERe3bvhZeCe67qbQ0p">P0</td>
+<td data-page-node-id="LatVAKSwW5HNvLWVCLpINs">dataforge-server 库表与字段描述、元数据同步</td>
+<td data-page-node-id="XGRFhDtFa874pCjlasrlgM">已落地，待深化</td>
+</tr>
+<tr data-page-node-id="arnNc0jWtb4dwYX9hp5L1D">
+<td data-page-node-id="Sa9DkFEnImMV3wdsi7gH3T">P0</td>
+<td data-page-node-id="wPu3Zo2HQSOSpVkWsg8ptG">元数据标注缺口清单（未标注表 / 字段）与同步失败告警</td>
+<td data-page-node-id="olmmrATEHg2FI7sJPZOCMS">已落地</td>
+</tr>
+<tr data-page-node-id="jJf76DkcNvSey9aaBmbnFQ">
+<td data-page-node-id="6bL6aJzX8LtZanejKrdS7K">P0</td>
+<td data-page-node-id="3Gfcn0TV4Tj38ElEd4oDup">dataforge-server 指标描述与口径</td>
+<td data-page-node-id="HGRR7pyHhrhXpWWkJZzfUP">已落地，待深化</td>
+</tr>
+<tr data-page-node-id="lJ6QwjiHcPplOuO4ddJzR5">
+<td data-page-node-id="1jz8zNZDl2wTSCUWCxWDVx">P0</td>
+<td data-page-node-id="gEF4E05O0J2n5taoFzWiIF">统一认证授权与多级权限（含 SQL 下发前的行 / 列权限改写）</td>
+<td data-page-node-id="cA7wzHPl5SxYNSHjoflimj">已落地</td>
+</tr>
+<tr data-page-node-id="CSy7Z6A2ZwslTAQcTWxyOx">
+<td data-page-node-id="p6jCMExNlJI1BQwZtyOk6V">P0</td>
+<td data-page-node-id="ISO06WpzdgB4cz3EofXLxc">Marquez 血缘集成与图谱展示</td>
+<td data-page-node-id="KrBG6LKm2B37AOF0ilLV9G">已落地，待深化字段级追溯</td>
+</tr>
+<tr data-page-node-id="7TZoVQCKZZfEBfSUjmOXvB">
+<td data-page-node-id="EgUNHXvvpqYEozn5098B4b">P0</td>
+<td data-page-node-id="F6Ss2QTpsvJeAbCxm8UXG8">DolphinScheduler 调度与任务依赖</td>
+<td data-page-node-id="Q9dEWESpf42H3TNLXnK2Pr">已落地</td>
+</tr>
+<tr data-page-node-id="2FtrA3b7xfKIpbZykPUU9b">
+<td data-page-node-id="vaMlhxEVQowro7mGZxsHqu">P0</td>
+<td data-page-node-id="gp9NFc5FiSe1zJKHVTrFcT">提交环境单选（生产 / 灰度 / 测试）与环境后缀隔离</td>
+<td data-page-node-id="OS5HuCL6uCov6sKxmtn3UI">已落地</td>
+</tr>
+<tr data-page-node-id="IuA5D1nI2eduK0ffIfUtKZ">
+<td data-page-node-id="m4WBDr6JhC5la8cZZMkdSl">P1</td>
+<td data-page-node-id="lpkqgyYDDhDPiHCBpmELAd">数据探索、文件浏览、知识库、库表管理、任务监控</td>
+<td data-page-node-id="iom2f23FYaySVnuJaYwbkt">已落地 / 待扩展</td>
+</tr>
+<tr data-page-node-id="mp6Ld2QwbBMHexqAYvURu3">
+<td data-page-node-id="XUrc7N3RRKu1b5xpZJzQXw">P1</td>
+<td data-page-node-id="qBymanCESuzVD63Ux9GQNS">AI 开发助手全功能（会话、工具、审批）</td>
+<td data-page-node-id="FlJmuGjRfKj5L9Hanzuu8I">已落地</td>
+</tr>
+<tr data-page-node-id="5fyIQa9PyBXwAbXDQ4TQnd">
+<td data-page-node-id="S6A5HnSmnZOxkffQROb8LM">P1</td>
+<td data-page-node-id="TPGndm4yBjms2MZ8WdVsFJ">智能体业务工具组（编译 / 指标查询 / 知识文档 / 血缘 / 元数据代理 / SQL 校验）</td>
+<td data-page-node-id="ijbBcWEzmoV0lbPMn8KkIG">已落地</td>
+</tr>
+<tr data-page-node-id="nC8JsFHtv0lnPofTijt16I">
+<td data-page-node-id="MAOt5ujqouhj8jzBzCWeKY">P1</td>
+<td data-page-node-id="SgHvXqJbQlqEG0rFBNNWca">元数据代理接口（供智能体取库表与指标上下文）</td>
+<td data-page-node-id="1PA7lt08uC2kBrG0xoo4Rz">已落地</td>
+</tr>
+<tr data-page-node-id="UEmoQLgbeSWxiPZHrtTBj4">
+<td data-page-node-id="yXVrvI709YJHWFX0idHlnA">P1</td>
+<td data-page-node-id="fIHT8ix4nbH1esB4fFTM1p">一键上线调度（SQL / Scala / Java 提交调度，代码头参数落地任务节点）</td>
+<td data-page-node-id="HpS5yAf7eKBsXsoA5yqJGO">已具备</td>
+</tr>
+<tr data-page-node-id="ZrKZwVdqcS81OfGxA77Q5D">
+<td data-page-node-id="fYR7gsR2H3jCSIjiykvrlv">P1</td>
+<td data-page-node-id="04NhMi65hCQ1PGRnXLmxEN">自动化问题排障（基于集群部署信息与任务依赖关系的根因定位）</td>
+<td data-page-node-id="unkYvLGF0QCOYqlPfFAPvr">规划中</td>
+</tr>
+<tr data-page-node-id="w6SVFmqL7YmeqJ7KjWXkGG">
+<td data-page-node-id="6RdkFCxsGLgAkSC95ERxHq">P2</td>
+<td data-page-node-id="gjNN1afwnGTWzIGtv7FalO">知识检索增强（当前知识库为关键字匹配，拟引入向量检索）</td>
+<td data-page-node-id="U1vaQyzMLGUWU1CsxBCnfg">规划中</td>
+</tr>
+<tr data-page-node-id="vwNp8ttY5VCoB16C7ATcEt">
+<td data-page-node-id="8dKERg9EucwRHZqOqHBjgA">P2</td>
+<td data-page-node-id="Xbf2Ss09nOjRf520G7Cxyt">数据价值评估（数据资产 × 资源消耗 × 使用热度 → 价值评估）</td>
+<td data-page-node-id="BLkO3Nrm1LZz10VE4PHrGy">规划中</td>
+</tr>
+</tbody></table>
+<p class="callout-info" data-page-node-id="0l2Zwp0DKW5opvJLnJtiWC">&nbsp;&nbsp;关于 AI 能力的落点：智能体能力以"本地 sidecar + 工具 + 平台上下文接口"的形态落地——推理在桌面端本地进程执行（模型与密钥由用户自配），业务能力以 6 个工具组形式注册给智能体，并通过元数据代理等接口从平台取上下文。规划中的知识检索增强，指把知识库检索从当前的关键字匹配升级为向量检索（当前无向量库与嵌入模型），以提升智能体生成代码前检索业务知识的准确率。</p>
+
+  <h2 id="section-6" data-page-node-id="smWHJOJNnBPhtJh8ev9b5p">六、推广计划与公开活动时间计划</h2>
+<p style="text-indent:18pt" data-page-node-id="zLtTh5VkJdb42liBCVNHP9">本章给出推广目标、推广渠道与公开活动 / 比赛参与计划，并明确各阶段的时间节点与产出。</p>
+<h3 data-page-node-id="thpaEbai6Upn8AK70oErje">（一）推广目标</h3>
+<table class="data-table" data-page-node-id="yU0ixRa14DInlaJQpQpi1g">
+<thead data-page-node-id="3WUlaePhWvRERE3MNQaQoe"><tr data-page-node-id="GmF0ZmWw2jFqHu8BRGIf7p">
+<th data-page-node-id="wvDetLwvolpL3LeFsND7du">目标维度</th>
+<th data-page-node-id="kPUbQmw37srJTXU12VCOD1">具体目标</th>
+</tr></thead><tbody data-page-node-id="NAwIK7ZC84Du5RMtAE7E5B">
+<tr data-page-node-id="Z2hiX5F08d9Puga6Hl0DFW">
+<td data-page-node-id="gr8O4AHMG2O2JqozG3vHYs">品牌认知</td>
+<td data-page-node-id="GKqSqCxosRAnAV59tPUvAx">统一对外定位为「<strong data-page-node-id="vDB9VJGvUR8FI0AX0gDv2Z">面向业务方的 AI 数据开发平台</strong>——业务方提需求、智能体做开发」；进入数据开发与数据智能体细分赛道的可见名单，形成可被检索的公开案例与赛事履历</td>
+</tr>
+<tr data-page-node-id="bT4EXrQJZtaZbAwPaSdh0Z">
+<td data-page-node-id="nZ75Et5nn8Bi7uIjAC7lBS">客户转化</td>
+<td data-page-node-id="3TmLh6SlOlQPpjYkrr2869">支撑收入测算中的客户规模目标（保守 5 家、中性 10 家、乐观 30 家，口径见 1.6 预估收入）</td>
+</tr>
+<tr data-page-node-id="q6kn5ykHJCmp4GawzXXJnF">
+<td data-page-node-id="zOFRCEngwhds3bIvayu1Tc">生态背书</td>
+<td data-page-node-id="rKEM4zKlYOAZvaUENPLQCV">通过官方赛事获奖、行业协会与信通院类评选获得第三方背书，降低客户决策成本</td>
+</tr>
+<tr data-page-node-id="huhkN32XGJ5EMwzErbKcJl">
+<td data-page-node-id="ZFoyNhYJFDkPZe5zyMn8Tx">内容资产</td>
+<td data-page-node-id="qKja6rM8qGV5Uy3nVwHrTG">沉淀行业案例集、演示环境与赛事申报材料，可复用于销售与投标</td>
+</tr>
+</tbody></table>
+<h3 data-page-node-id="ekyTxzIXWCWMHDUiuKsJak">（二）推广渠道与方式</h3>
+<table class="data-table" data-page-node-id="e9APW1F5kVAFfqsyZSEWrn">
+<thead data-page-node-id="6Xr8cXNXU76gUVI8YmlnKD"><tr data-page-node-id="e843Bq55c4mqswjpi2yD7w">
+<th data-page-node-id="eBAUwWitPxAJduwFyhtWni">渠道</th>
+<th data-page-node-id="rNCb5kqfuJbIGHNJbl82P6">形式</th>
+<th data-page-node-id="GxMCX2iuPAAjhdZFIGFnZ5">目标</th>
+</tr></thead><tbody data-page-node-id="85ddIumgzuaJnDcU6YoCn6">
+<tr data-page-node-id="5gyYAbTPcy7C14iAIv1Nvi">
+<td data-page-node-id="fUFITMKKJEkv83Ty82O3T5">官方赛事</td>
+<td data-page-node-id="YvfqOTHUpjbLHruMPN5MTi">「数据要素×」大赛、创客中国、中国创新创业大赛等</td>
+<td data-page-node-id="Vzd6LwfXpVMfIGeLTN470r">获取权威背书与政策资源</td>
+</tr>
+<tr data-page-node-id="ZMdCmaXWCN2Dcb6htCaSnP">
+<td data-page-node-id="uZwAljFGuYmVv7lUVOQ1KL">行业会议</td>
+<td data-page-node-id="FaEQkHGVa9aTXZnGTRDeha">大数据 / 数据库 / 数据要素类大会的分享或展位</td>
+<td data-page-node-id="uUFAfCpQAHz9oQJgQRlMga">触达企业数据团队与决策者</td>
+</tr>
+<tr data-page-node-id="onzEWQ9XsGl80u7zYKrxBm">
+<td data-page-node-id="iSoIFB9Bimvi8inp9XKBzB">产学研合作</td>
+<td data-page-node-id="FgTTTQUz2xG1bDJWNOxVVT">高校宣讲、联合课题、实习基地</td>
+<td data-page-node-id="nH2YyZ70JSMvsLNRpphlQr">人才储备与技术影响力</td>
+</tr>
+<tr data-page-node-id="D8jKmMnwRlWHWEYy0uarvw">
+<td data-page-node-id="PnWEd7pATMflETntPFLfGB">客户现场</td>
+<td data-page-node-id="WO09itJlFlNEGey9XMSCBZ">案例分享会、POC 试点、行业沙龙</td>
+<td data-page-node-id="d2ZKz4LxNEgDbACYBxkBs2">直接转化商机</td>
+</tr>
+<tr data-page-node-id="BsCmkNfFFDxVgPPYCknyAU">
+<td data-page-node-id="LCSQbnrzxDHIChChZrbqTq">线上内容</td>
+<td data-page-node-id="roIbqM0axmLUpvcT6AnoS9">官网案例页、技术社区文章、公众号</td>
+<td data-page-node-id="SWLTMqI96uXPXhDSQeJUip">长尾获客与品牌沉淀</td>
+</tr>
+</tbody></table>
+<h3 data-page-node-id="vkBRjXsIMAJDve5h1nV5JC">（三）公开活动与比赛参与计划</h3>
+<p style="text-indent:18pt" data-page-node-id="HNEbnEnWav4uGhPdcKrrqD"><strong data-page-node-id="05K9IwTBMCr49TIatuci6b">（1）眼前窗口（2026 年 9—12 月，可立即报名）</strong></p>
+<p style="text-indent:18pt" data-page-node-id="sui9jInBvCp3ps6z7oN7jv">以下窗口经核实当前仍可报名，是本期冲刺的重点，优先级高于次年赛季。</p>
+<table class="data-table" data-page-node-id="p39swgDravPdseVRWzuhDD">
+<thead data-page-node-id="kSTPdqMq0faUcRcjVlE0uT"><tr data-page-node-id="oWjEejep1l3FxcQJe2HFBQ">
+<th data-page-node-id="kbFcOFDNUREs7U1DCFYbE8">赛事 / 活动</th>
+<th data-page-node-id="5MMu8ufCjgN1RV3R2c7Rjo">主办方</th>
+<th data-page-node-id="RmqVtT7dl8vcSHD2Wuq0yb">报名窗口</th>
+<th data-page-node-id="kdgLnWzOXMgkCNxHD4oGBL">参与形式</th>
+<th data-page-node-id="GIkusLbD3XQ2iSpRnKBXd6">目标产出</th>
+</tr></thead><tbody data-page-node-id="r6QffHrBOiHAscauiUHBWE">
+<tr data-page-node-id="B4sGjalIJmuhVHJypvF8Ig">
+<td data-page-node-id="9zJoJx44MLBWNHV5IUlyxF">2026 联合国数据马拉松中国赛</td>
+<td data-page-node-id="SJOXhBS8GwRpk5RQEMNpDb">联合国统计司、联合国统计大数据和数据科学全球中心、之江实验室</td>
+<td data-page-node-id="jVPuGtw5EOdzfnbG97QY3Y">报名截止 10 月 10 日</td>
+<td data-page-node-id="CKDe41v5glGdt2rBwfJFZk">以"AI 智能体赋能业务数据理解"场景参赛，提交 PPT、10 分钟以内讲解视频与可访问的智能体链接</td>
+<td data-page-node-id="ykyNved0w2beoGrGgGqGkj">首个国际性赛事履历与作品展示</td>
+</tr>
+<tr data-page-node-id="Weuj1SHea8KGwRlFuxDZzL">
+<td data-page-node-id="EznReXAtlwET3h5X3DKn3v">「数智杯」数据管理创新应用大赛</td>
+<td data-page-node-id="LpW9BD47ffy1NjVKsp8n9W">中国电子信息行业联合会（DCMM 贯标）</td>
+<td data-page-node-id="njnwrooMFtxxfNkelyallC">项目征集至 10 月 31 日；初赛 11 月 1—14 日；决赛 11 月 15—17 日</td>
+<td data-page-node-id="XFkAqc3HVnD8uOBdcQEYCm">报"数据管理 AI 应用"赛道，以平台的元数据与指标治理能力参赛</td>
+<td data-page-node-id="zCiAoDqECYcE82dhMvEwoR">决赛答辩与奖项，争取 DCMM 生态资源</td>
+</tr>
+<tr data-page-node-id="akr0sU4LxkRN1zK04o6L3L">
+<td data-page-node-id="7zml1pM8nLNHlFRxwEu6wI">2026 第五届数据治理年会暨博览会</td>
+<td data-page-node-id="Pb8p6NGANSECEjBwfFqpuN">中国电子信息行业联合会</td>
+<td data-page-node-id="vD9XNmDUhjpeF6aCcYDgJU">11 月中下旬（含颁奖）</td>
+<td data-page-node-id="GdZ5dAL9wNulSM4mnOBDBI">参会、参展或案例发布</td>
+<td data-page-node-id="sFg48nxvKbC1pexRoEfdog">行业曝光与客户触达</td>
+</tr>
+<tr data-page-node-id="bTOBekJItH7MrTkvpCeeo9">
+<td data-page-node-id="l1nvfHToBW60QEwYKUuZS6">2026 世界互联网大会乌镇峰会（含"互联网之光"博览会）</td>
+<td data-page-node-id="Zxw1UqopjUZhiIO0npmwVy">世界互联网大会</td>
+<td data-page-node-id="SGt9AAP7A75cHOvZJln8mK">11 月 1 日</td>
+<td data-page-node-id="iGkNcCs3joLpGeutxTaq50">参会或参展，重点对接 AI 智能体与数据要素方向</td>
+<td data-page-node-id="SeCMACNyKdUHW1676MIp1V">品牌曝光与生态对接</td>
+</tr>
+</tbody></table>
+<p style="text-indent:18pt" data-page-node-id="zWECUb2l9OOEJmjzQdDyov"><strong data-page-node-id="i20AZDqtgDA7GAZx9Y6VZi">（2）2027 赛季（按 2026 赛程规律排布）</strong></p>
+<p style="text-indent:18pt" data-page-node-id="Flu6YEAgJxBse0u9GQpHlY">2026 赛季的官方赛事集中在 5—9 月：数据要素×大赛全国于 5 月下旬启动、分赛 6 月报名、7—8 月评审、8 月下旬颁奖；创客中国报名截止 7 月 10 日、8 月分级选拔、9 月 10 日前推荐全国。2027 赛季按其规律排布，<strong data-page-node-id="KB95AtqRwP1qjGXeNbDtIF">具体时间以主办方官方公告为准</strong>。</p>
+<table class="data-table" data-page-node-id="lbaFCKDw5ipYWWuB7RafFu">
+<thead data-page-node-id="xGQfAhKto61t5B3nGBGSXn"><tr data-page-node-id="gmMPN8WO5VwqSkVg9fsQtW">
+<th data-page-node-id="Mv6gdWwTTLyjIFyHrzl8ZF">赛事 / 活动</th>
+<th data-page-node-id="n5iBiHEQavxz7sHCeBlLiV">主办方</th>
+<th data-page-node-id="xqABLXVDIZjR0STBApiIys">参考时间窗口</th>
+<th data-page-node-id="lpQiotfcQDOzUdyAZtG8Wo">参与形式</th>
+<th data-page-node-id="vJm7PAWIc0B5EFzElfHlI8">目标产出</th>
+</tr></thead><tbody data-page-node-id="a6hs6Ucniu26AgEs546cgv">
+<tr data-page-node-id="716h45EwwQv3XIemXGhHMQ">
+<td data-page-node-id="zFeHaQvJIdlMVXB108iY7P">「数据要素×」大赛（分赛）</td>
+<td data-page-node-id="xxKToUsFxjltg0m6NuIjxm">国家数据局指导、省级数据局主办</td>
+<td data-page-node-id="xD6fxFDxCwVzW6HH36sQoi">5 月下旬启动，6 月报名，7—8 月上旬评审</td>
+<td data-page-node-id="3lWunPXv6ONpZkYtKTFyHo">以"数据开发平台 + 数据要素治理"场景参赛</td>
+<td data-page-node-id="fYF8hYOIkdsNdodCfOm7fq">分赛获奖，进入全国总决赛推荐名单</td>
+</tr>
+<tr data-page-node-id="25755iiiZs87yt5SJSeAcR">
+<td data-page-node-id="sFPjxYNLOo2vOy2WHXtQ6b">「数据要素×」大赛（全国总决赛）</td>
+<td data-page-node-id="B4lux95IX3ZeN0WLJiINbM">国家数据局</td>
+<td data-page-node-id="mjpvMKLohGDgXJUPRXdtBE">8 月下旬—9 月</td>
+<td data-page-node-id="FaBBR2hKhUVJrGHT5q2FW1">由分赛推荐参赛</td>
+<td data-page-node-id="FXNWan4ntkfz6jFnyMBuS0">全国奖项或典型案例集入选</td>
+</tr>
+<tr data-page-node-id="nKK9xRCzt4DKJhqky6dGQn">
+<td data-page-node-id="eZk8xUqzXPwkUzb8kECIsX">「创客中国」中小企业创新创业大赛</td>
+<td data-page-node-id="MJB6exNt0W3zClW1jTnrxg">工信部（网络安全产业发展中心）</td>
+<td data-page-node-id="txhJtvRRywKCjdG1gJHo94">报名至 7 月 10 日；8 月市级与省级选拔；8 月下旬省级决赛；9 月 10 日前推荐全国</td>
+<td data-page-node-id="oEWsEwbsZIovUrfCdfZANI">企业组参赛</td>
+<td data-page-node-id="zVlz51PV9jHVKZEOjZxkWL">晋级全国 500 强，获取专精特新培育与产融对接资源</td>
+</tr>
+<tr data-page-node-id="YCW1loDEDJoc3LyxhusOaV">
+<td data-page-node-id="gB4UM1ks9JNwl65kkcirum">「创客中国」工业智能体专题赛</td>
+<td data-page-node-id="Nlnuvm4Pw0m9XMkyWDrWv1">工信部 + 地方经信部门</td>
+<td data-page-node-id="Xi5GGgTZdAAtfOaEUg7h2E">报名至 7 月 10 日；初赛 7 月下旬；复赛 8 月上旬；决赛 9 月初</td>
+<td data-page-node-id="okSCS18H9yBi7dWoVzdbLj">以数据开发智能体场景参赛</td>
+<td data-page-node-id="r8dzUZHHafcXryfhel7ZLQ">专题赛奖项，争取算力与攻关类政策支持</td>
+</tr>
+<tr data-page-node-id="FwrLpy9mRjj5cXHFdZo2JM">
+<td data-page-node-id="3RdkUe5MmF7AWDjWe9nbtZ">中国创新创业大赛</td>
+<td data-page-node-id="KbRLQJBIkz1YfAFPpj7uvX">科技部等</td>
+<td data-page-node-id="yUw1jqDYNwGSEEnxqAazYU">以官方公告为准</td>
+<td data-page-node-id="uRC8eNVjQ2BKza3HviplMx">企业组参赛</td>
+<td data-page-node-id="LCO3vbPcu2Os7M1CHydg5L">区域赛奖项，获取投融资对接</td>
+</tr>
+<tr data-page-node-id="W9JQUCk6YWirPuYDaQbWrD">
+<td data-page-node-id="kmY8n7Z7mNm3A0NL6H8MlQ">行业技术会议（大数据 / 数据库 / 数据要素类）</td>
+<td data-page-node-id="9Yk2uQ0p9WASi71iSpL1y6">行业协会与媒体</td>
+<td data-page-node-id="HA7SxigQgP33n85JkEWAdt">全年分散</td>
+<td data-page-node-id="OkFDZ0gzpVhqdaA1lAIg4b">技术分享、展位</td>
+<td data-page-node-id="jdDKCJXT3Cxo1rA4VWVU4P">触达潜在客户与合作伙伴</td>
+</tr>
+</tbody></table>
+<p class="callout-info" data-page-node-id="2xMQzZbx7sMknmQ89mGGNT">&nbsp;&nbsp;参赛资格提示：「创客中国」创业组要求企业注册不满 2 年、企业组要求项目已进入市场；「数据要素×」大赛要求项目已开展实际应用。建议在准备期先完成主体资质与知识产权梳理，避免临期受阻。</p>
+<h3 data-page-node-id="MN1AqAVFervcYHCACJqJoz">（四）时间计划（冲刺节奏）</h3>
+<p style="text-indent:18pt" data-page-node-id="vMADQyql3Io163bVT2OY97">以本计划书编制日为起点，按"先赶眼前窗口、并行准备次年赛季"安排：</p>
+<table class="data-table" data-page-node-id="ZGFTlT7eJGrCPyA2VTkCJO">
+<thead data-page-node-id="UXTrvdd2VzCnE1XblaWGI1"><tr data-page-node-id="vxuUagDrHGKAFvJw3zu8Ji">
+<th data-page-node-id="TpktMKAsWuUUZrig9tCEKK">时间</th>
+<th data-page-node-id="rPAKMdCUuVMHeApAShk29v">关键动作</th>
+<th data-page-node-id="67kFVBHsPb6aPdkHcApDHU">里程碑</th>
+</tr></thead><tbody data-page-node-id="caTtduZpp2eQ9ZVScBE3F3">
+<tr data-page-node-id="FZ5G0kPaA0a0jh1Eg7Rqtp">
+<td data-page-node-id="93jnJ1xOELJtEaP1iD81GR">2026 年 9 月下半月</td>
+<td data-page-node-id="2RThScOXR8PEKL5FxVW0XK">确定参赛主体与项目名称；搭建申报材料骨架（项目申报书、商业计划书、知识产权与应用案例证明）；确定冲刺目标清单</td>
+<td data-page-node-id="V3J5jgJs52hCYkVJkEj6mf">材料骨架成型，参赛清单与责任人确定</td>
+</tr>
+<tr data-page-node-id="BWRfzNEGmiwHtLFbOp56ag">
+<td data-page-node-id="WbNThNGcq9I47rvgfNGT6D">2026 年 9 月下旬—10 月 10 日</td>
+<td data-page-node-id="mx7h15gHUEAgE8Ex91KPCM">完成 2026 联合国数据马拉松中国赛报名与作品提交</td>
+<td data-page-node-id="xeOdjcwh3A9kPtdJRmcMoF">首个参赛作品提交完成</td>
+</tr>
+<tr data-page-node-id="czmT47Z3KluXDDdM7LFoFk">
+<td data-page-node-id="awsPsBT540AjHAle1mBwwH">2026 年 10 月</td>
+<td data-page-node-id="JR1eM23Gx7bZCHUNnCFLsg">打磨「数智杯」申报材料与演示环境，准备案例数据</td>
+<td data-page-node-id="cA0duHbG3T9knzGAeoFWuV">数智杯材料定稿</td>
+</tr>
+<tr data-page-node-id="Ft7XKTrbRAYy82F94h5DZQ">
+<td data-page-node-id="NMnr41DyJ1vj7ihaLUjdNj">2026 年 10 月 31 日前</td>
+<td data-page-node-id="9Qj5ZiljpVDncQkI1nMRn2">提交「数智杯」数据管理创新应用大赛项目征集</td>
+<td data-page-node-id="fEEU5sdF6sJbEAoYS7xJg7">报名完成</td>
+</tr>
+<tr data-page-node-id="QeiJiHzGTVfcanx7QfOkyz">
+<td data-page-node-id="G36fos7iKswqALaqU7sBbL">2026 年 11 月 1 日</td>
+<td data-page-node-id="pbRNnHx50HiRTnLdln4ELP">参加世界互联网大会乌镇峰会（含"互联网之光"博览会）</td>
+<td data-page-node-id="ZUYr7X0Ig9E8odr4TPc3pb">完成行业曝光与客户触达</td>
+</tr>
+<tr data-page-node-id="M9xDRuwo75Gb7UuMi4gvl8">
+<td data-page-node-id="YBJHbACS0rGXQTBhmfPzut">2026 年 11 月 1—17 日</td>
+<td data-page-node-id="tUhvPBVd5shT2eFQlDdr0U">「数智杯」初赛评审与决赛答辩</td>
+<td data-page-node-id="5WpFoLfJwWiZ4MxC6DRpyG">争取决赛奖项</td>
+</tr>
+<tr data-page-node-id="vYMOQk5lGcrxbECFK7v8I1">
+<td data-page-node-id="zCJAL7X1IhLgV2zihyxleD">2026 年 11 月中下旬</td>
+<td data-page-node-id="kKBQQjscEZMt0jnW8TWAZA">参加 2026 第五届数据治理年会暨博览会（含颁奖）</td>
+<td data-page-node-id="nLTSkc7LAh3Ebt4Eun5bgV">获取奖项与行业背书</td>
+</tr>
+<tr data-page-node-id="FFgcMnj6a1aaSa9M8omNsK">
+<td data-page-node-id="bZtVxWddhRwGNW29zJzSSH">2026 年 12 月</td>
+<td data-page-node-id="pDYJfNWfEWr4LzGOABVykm">复盘赛事成果，沉淀案例与商机；启动 2027 赛季申报准备（数据要素×、创客中国）</td>
+<td data-page-node-id="8sPAebQvBR9iknjWOrJxBh">案例入库，次年参赛清单确定</td>
+</tr>
+</tbody></table>
+<p class="callout-info" data-page-node-id="qHr8lTuMbD5jPqXTAW0Pbp">&nbsp;&nbsp;说明：眼前窗口的报名截止时间以主办方官方页面为准；2027 赛季时间窗口按 2026 赛季实际赛程推算。</p>
+
+  <h2 id="section-7" data-page-node-id="kdrLVbyHtd6wAkrpZAGw16">七、验收标准与质量保障</h2>
+<p style="text-indent:18pt" data-page-node-id="rawVfPKsP69OSHRqkFXDUi">本章列出交付物清单，并明确功能验收范围、质量保障标准与交付验收的组织方式。</p>
+<h3 data-page-node-id="fDdmpIBt91uUBwexunskDJ">（一）交付物清单</h3>
+<ul class="plain-list" data-page-node-id="EVLUn388Zxl3mfqq9Dwvoo">
+<li data-page-node-id="W0XsLmKFAJMDGV3OQqax9b">桌面端应用的三平台安装包与升级包。</li>
+<li data-page-node-id="4cG6QUV9lvV02ruOb7yY0R">平台服务端的容器镜像（多架构）与编排文件、初始化脚本、启停与清理脚本、端到端自检脚本。</li>
+<li data-page-node-id="Ue4LeD77FBAhDyanlhn3J4">用户手册、部署手册、验收测试报告。</li>
+</ul>
+<h3 data-page-node-id="Th2JunolFBvs1tObG0Kisq">（二）功能验收</h3>
+<ul class="plain-list" data-page-node-id="957khCHO3SSl7LMRCbNXEc">
+<li data-page-node-id="Z7xkcy7hea3kB6eAStAiHq">桌面端在 macOS / Windows / Linux 三平台可安装启动，核心链路（登录、开发、编译、参数声明、提交调度、数据探索、血缘查看）可用。</li>
+<li data-page-node-id="wsYOUHCrfvAI9pmetxEHBK">平台服务端全部已声明接口通过联调与自检脚本验证，权限控制按角色生效，库表描述与指标口径可检索。</li>
+<li data-page-node-id="ZcfTf2VQaiAoZANlDe4nz1">血缘与任务依赖在平台内可查询：表的字段血缘与任务依赖关系完整展示。</li>
+<li data-page-node-id="OCmhdOvwQoi7zJBmlKfiWW">规划中能力（自动化问题排障、知识检索增强、数据价值评估）不纳入本期功能验收，按 2.2 第 4 条的就绪判据逐项判定，对应关系见 7.5。</li>
+</ul>
+<h3 data-page-node-id="ji18NDqwMNAyP6WX6HgzBS">（三）质量保障</h3>
+<table class="data-table" data-page-node-id="H2ofzCtWxCYia4mWZI3suH">
+<thead data-page-node-id="zyz5E1D9m73W3DDFGAMbl6"><tr data-page-node-id="mEggt0Jfs9OOjeZAcvVG8z">
+<th data-page-node-id="MWcwXNM6PFzaUExsoZVUhb">维度</th>
+<th data-page-node-id="JDFKTqHGYPn13IEXI72c5z">标准</th>
+</tr></thead><tbody data-page-node-id="ri9uA5nAmvgwcJQQr0qWwQ">
+<tr data-page-node-id="PoAFf1hHi030YphhqCwPWu">
+<td data-page-node-id="7pLyDNykfvgoAev4zHJZI4">单元测试</td>
+<td data-page-node-id="MvaAHAqTGeTXFWv9wgqjBt">桌面端依赖自动化测试框架覆盖核心逻辑；纯函数必须有分支覆盖，测试全量通过作为回归基线</td>
+</tr>
+<tr data-page-node-id="tWlzDN1SHUUalFP0dM5jlS">
+<td data-page-node-id="5tD83bEcIpiUD4mS9X8EYo">类型检查</td>
+<td data-page-node-id="FDhDJya81p2AmahlPSxiaI">前端与主进程代码通过静态类型检查，无类型错误</td>
+</tr>
+<tr data-page-node-id="tpyCdruhqPFXK0KTgEnaEj">
+<td data-page-node-id="mhzg2bKNNs6EcBNiaq6DcQ">兼容性</td>
+<td data-page-node-id="dWNMwOdqCIjQOju4uGNPtm">交付前在目标平台与依赖版本矩阵上逐版本执行最小用例</td>
+</tr>
+<tr data-page-node-id="wNEBv9V3XyaDcXrkKnUAdD">
+<td data-page-node-id="XD2Iv8ADdzBEYGdGKC1F13">专项验证</td>
+<td data-page-node-id="xnDAYF98BbSUv4Q0750u2I">涉及安全闸门、参数语义、权限判定的改动必须配套自动化测试</td>
+</tr>
+<tr data-page-node-id="tPqk8Wdrjzdh5lTwlzKL9O">
+<td data-page-node-id="9MkZ4qrXYHWhv65EUnrG2E">性能</td>
+<td data-page-node-id="uzRF4dTaSqp3jVXgx684dh">建立性能基线并保留对比数据；关键路径有可量化的优化前后对比</td>
+</tr>
+</tbody></table>
+<h3 data-page-node-id="iekrbeQFpSyDQqfYc2njqV">（四）交付验收方式</h3>
+<p style="text-indent:18pt" data-page-node-id="H4IWLGnLMzcq3X5S5lyCtO">由项目负责人组织，交付方提供测试报告、兼容性验证记录与部署手册；验收方按功能清单逐项验证。</p>
+<h3 data-page-node-id="SP6shhK7F452JNuI3Tcumh">（五）需求—模块—验收对应关系</h3>
+<p style="text-indent:18pt" data-page-node-id="FTeFZNmDBnecyNbzCfNQOc">为保证需求、交付模块与验收标准三者可追溯，按下表逐条对应：</p>
+<table class="data-table" data-page-node-id="GmZBw6OByYaFQblxpeBnAY">
+<thead data-page-node-id="dxN1bjWCcL8vBSzg8LX0XN"><tr data-page-node-id="81D7kBTGJdX8ny9pQ0aLrr">
+<th data-page-node-id="TCPwmb43AEF67lPCmwxDNv">需求类别（第二章）</th>
+<th data-page-node-id="BUJRK297oqGoRejnnrw30G">对应模块（第五章）</th>
+<th data-page-node-id="eakze5ujCuwHsesrzzOt6S">交付状态</th>
+<th data-page-node-id="z4UPhcq89NY2OUscXNEIQx">验收方式（第七章）</th>
+</tr></thead><tbody data-page-node-id="9PyhtVw7fTYW62gA416RGj">
+<tr data-page-node-id="do4LIXNHhHEkXmYcr78qGq">
+<td data-page-node-id="1BXyUukxUxzWLHc3CXyz6y">1. 规范开发环境（dataforge）</td>
+<td data-page-node-id="tnf7uvyNGBuZ7OtOsk73oV">P0 编辑器与语言服务、编译校验、代码头参数声明；P1 AI 开发助手、智能体业务工具组、一键上线调度</td>
+<td data-page-node-id="xlfRMVJlWqw8gPrkl1lymb">已落地</td>
+<td data-page-node-id="WrDSnKI8eopM3CDEXC3Mo8">7.2 核心链路可用性 + 7.3 质量保障（类型检查、单元测试、兼容性、性能基线）</td>
+</tr>
+<tr data-page-node-id="v7FASFC5nDZBfYBpfKHBtt">
+<td data-page-node-id="VxB3jhNgqzbD1CH8R2Vz5A">2. 信息底座（dataforge-server）</td>
+<td data-page-node-id="64B0MBBFOwVIM60i0SS7Hi">P0 库表与字段描述、元数据同步、指标描述与口径、统一认证授权与多级权限</td>
+<td data-page-node-id="2tWu7XmS5AY0sd69v9BI8F">已落地 / 待深化</td>
+<td data-page-node-id="gVyWlZABHwARRyJYmwEPPL">7.2 接口联调与自检脚本、权限按角色生效、库表描述与指标口径可检索</td>
+</tr>
+<tr data-page-node-id="x1ZNZomvHwDRv5iQlykubW">
+<td data-page-node-id="KR9PggGeAEcZk9ZDpL2EFB">3. 血缘与任务依赖（Marquez / DolphinScheduler）</td>
+<td data-page-node-id="h0iLvBC8tGAaU0zBmkaA2y">P0 血缘集成与图谱展示、调度与任务依赖</td>
+<td data-page-node-id="wYOTbZM8QtkGB7I77tGeEJ">已落地（字段级追溯待深化）</td>
+<td data-page-node-id="0iwT6JEQkSi2VeY0tNi3b6">7.2 字段血缘与任务依赖关系在平台内完整展示</td>
+</tr>
+<tr data-page-node-id="hFSRQ1RLEs0aqaGsXBcEsr">
+<td data-page-node-id="m5bHmPr2YxNtyYYTW6Ebis">4. 运维与治理类能力（规划中）</td>
+<td data-page-node-id="dK23gjyUt6NLh8cvFEYTBJ">P1 自动化问题排障；P2 知识检索增强、数据价值评估</td>
+<td data-page-node-id="B5AwhtL7HPHbB1SY5XXgwu">规划中</td>
+<td data-page-node-id="RxHaNA2NynWzDxAEkeo1tl">按 2.2 第 4 条的就绪判据逐项判定，不纳入本期功能验收</td>
+</tr>
+</tbody></table>
+<p class="callout-info" data-page-node-id="O4zGSEoyHQsbLWAcVMzoi9">&nbsp;&nbsp;<strong data-page-node-id="JmrvPAnF20XlBoDbMFYWDm">追溯规则</strong>：第二章新增需求必须在本表登记、并在第五章落到模块；第五章新增的 P1 / P2 模块必须在第二章有需求条目、在本表有验收方式，否则不予排期。</p>
+
+  <h2 id="section-8" data-page-node-id="inkShxZBUEyuWpiy9z5BHE">八、预期效益</h2>
+<p style="text-indent:18pt" data-page-node-id="0HaFWXV7X54Hu6F86WKOWU"><strong data-page-node-id="OR0U2APrqIJHV35ANDH14U">智能体正确理解业务数据</strong>。这是本平台的首要效益：把散落在代码、文档、口头经验中的业务信息，收敛为规范无歧义的库表描述、指标描述、血缘与任务依赖，让智能体在生成代码前就能读到权威上下文，从根上降低"AI 生成代码是否正确"的不确定性。</p>
+<p style="text-indent:18pt" data-page-node-id="b5wNAK4tmrfUqqJs8seClF"><strong data-page-node-id="VtFGamOjTgGKuXTilrvB1I">开发效率效益</strong>。规范开发环境把数据开发收敛到一个受约束的入口，消除跨工具切换与手工配置的重复劳动；一键上线调度进一步把编译、参数声明、提交与依赖编排收敛为一次操作。作为方向参照，行业同类实践给出的量化结果是指标开发类工作由 6 至 8 小时压缩到 5 至 10 分钟、代码规范合规率提升至 98%——<strong data-page-node-id="IBYODnJSnO7B0OCv3WWkba">该组数字为外部参照，不构成本项目的承诺值</strong>，本项目的效益一律按 8.1 的本项目口径度量。</p>
+<p style="text-indent:18pt" data-page-node-id="sXQsDCOe83AOhnGUOga8Nt"><strong data-page-node-id="vptMzDwDSPp8tgiHrBjTfp">服务可规模化效益</strong>。"业务方在平台内直接提需求、智能体承担需求到代码的翻译"这一机制（见 1.3），使数据代开发服务的边际人力投入不再随指标数线性增长：人的角色从"编写"转为"确认与把关"，服务得以按指标计量、按周期续费。同时，需求文档、数仓设计、程序与调度任务四份产物同名同源且都在平台内可检索，交付与交接不依赖个人记忆——<strong data-page-node-id="bwaS6777bceMKnTh8uhWwK">这决定了代开发与代运维能否长期维持，而不只是一次性项目</strong>。详见 1.6。</p>
+<p style="text-indent:18pt" data-page-node-id="5PJACK9zr156Zp1jx18nq5"><strong data-page-node-id="BVHZTFMwqZCZyB42AvUDQP">数据质量效益</strong>。规范开发环境把参数声明与口径约束前置，编译与 SQL 校验在开发阶段拦截语法与结构问题，减少因口径误读或结构错误引发的数据污染，把修复成本从下游回洗前移到编码当下。</p>
+<p style="text-indent:18pt" data-page-node-id="iLgprPjHinCodIBtD9ZmGN"><strong data-page-node-id="CRP9Tn6VTSRxC8A0Hgx2xy">资产沉淀效益</strong>。库表描述、指标口径、血缘与任务依赖沉淀在平台侧，成为可复用的组织资产，同时构成智能体的上下文供给层，形成"信息越规范、智能体越准确、开发越快"的正向循环。</p>
+<h3 data-page-node-id="UyIFWeP336CcERgyhlDjp9">（一）效益指标与度量基线</h3>
+<p style="text-indent:18pt" data-page-node-id="NjpmJ5OJ5NmznTa4t8X04R">为避免效益停留在定性描述，本节把各项效益落到本平台<strong data-page-node-id="AmxMlcM1Bra5celFtCjiCb">当前可核查的基线</strong>上。表中"当前值"取自第九章附录与已落地能力，可直接复核；"目标口径"尽量取机制性约束——机制成立的即为必然结果，不做估算性承诺。</p>
+<table class="data-table" data-page-node-id="xfAeqK3Fv0aWemHt0JGGVA">
+<thead data-page-node-id="7BiSN3pCB2ytTXa6eJoolm"><tr data-page-node-id="GrAb7H866ch0TWYfQOkZrK">
+<th data-page-node-id="m5r24qvPkVV61rLPcwHuPg">效益维度</th>
+<th data-page-node-id="s7pf8MUmtPccFQfC7ROS8P">本项目基线（当前值）</th>
+<th data-page-node-id="xpW3sV4Tl2bU406R6KZFz7">目标口径 / 判断方式</th>
+<th data-page-node-id="4313AC4syIb9h36c3fkn30">度量方式</th>
+</tr></thead><tbody data-page-node-id="0Xd1kTiW0209y7N0S8QoRq">
+<tr data-page-node-id="sUygVbB4qaRcf9C8TKJcem">
+<td data-page-node-id="NbYe332uacZ5GzRPcGxpps">智能体上下文可用性</td>
+<td data-page-node-id="eBAfIfhuBfm8Yx1Y2nhCZN">5 类信息均有承载组件；元数据代理接口已落地，业务能力以 6 个工具组注册给智能体，通过平台接口取上下文</td>
+<td data-page-node-id="aOB6mhJLwAVDhnEe5EdHCA">智能体取业务上下文一律走平台接口，不再依赖会话内临时粘贴</td>
+<td data-page-node-id="2He183l56C6FOT53fG2Xwo">智能体工具调用中"平台接口类"调用的占比（桌面端 AI 助手会话日志 + 服务端接口日志）</td>
+</tr>
+<tr data-page-node-id="NJI7oljLVi5aJN2hKiDnD8">
+<td data-page-node-id="Dusgbba9dctmQMN2PC5xcW">指标开发效率</td>
+<td data-page-node-id="1UU95MXUYTGqrHhm0HFByW">一键上线调度已具备：编译、参数声明、提交与依赖编排收敛为一次操作；运行程序前强制弹出参数确认窗口</td>
+<td data-page-node-id="ze2Hhi9CSRqVvRfxia8LUQ">单指标从需求到上线的人工介入环节收敛为「确认参数 → 提交调度」两步</td>
+<td data-page-node-id="rn2CX36U4QrSxyABQADLNF">调度系统任务实例时间戳（首次提交 → 上线成功的耗时）</td>
+</tr>
+<tr data-page-node-id="Rz8gpkotAsQaVYDm8AOlnF">
+<td data-page-node-id="8PUwor1NJRkHyEOpygft55">服务可承接性</td>
+<td data-page-node-id="RM0YAK3ikDBLUEudPXHNXW">需求文档 / 数仓设计 / 分层 DDL / 程序 / 调度任务五类产物同名同源，且均在平台内可检索；指标口径、血缘与任务依赖可查（见 3.3）</td>
+<td data-page-node-id="VBC2SN8tkBTqo3AVDe80i5">任一指标可在不询问原开发者的前提下，仅凭平台内信息还原其口径与产出链路——代开发与代运维的交接不依赖个人记忆</td>
+<td data-page-node-id="fyrBu4hmXhVcUqA3pfWe2C">抽样已交付指标，由非原开发者仅凭平台信息还原口径与上游链路的成功率</td>
+</tr>
+<tr data-page-node-id="2cnJT3YZGycUoOyr6KXG5W">
+<td data-page-node-id="4FAwHcGGIKFWE2KitKkFKr">代码规范合规</td>
+<td data-page-node-id="bo90CSfAOoUibsbzCsk0YC">代码头以 @程序参数 / @资源参数 / @任务参数 三个字段声明业务入参、资源诉求与引擎侧参数，提交调度时取值落地到任务节点；编译与 SQL 校验位于提交链路上</td>
+<td data-page-node-id="3I7jKchxhPxyFCkF0cU4rd">经平台提交调度的程序均以编译产物或校验通过的 SQL 为输入；指标口径描述不含"相关""大概"等模糊表述</td>
+<td data-page-node-id="RzYBG98DQQCDOee2mMBEYc">校验拦截次数与放行数；指标口径描述的模糊词检查结果</td>
+</tr>
+<tr data-page-node-id="ilXaGiisLz9o5EDLmS7v2A">
+<td data-page-node-id="eEBVIxYw483M7Fgyc4Qycn">数据质量修复成本</td>
+<td data-page-node-id="rVzsG9sWVZ0nIhqyVXXaIH">语法与结构类问题在编译 / SQL 校验阶段被拦截，修复发生在编码当下而非下游回洗</td>
+<td data-page-node-id="FGNM7AArDukPJb7qkXWmnp">该类问题不流入下游生产（下游回洗次数趋近于 0，属机制约束而非估算）</td>
+<td data-page-node-id="R40Ue9KF1U5W1lWsVkOgTG">开发阶段拦截数 与 生产环境故障登记数 的对比</td>
+</tr>
+<tr data-page-node-id="5HCQdPrg4wa0J5EA19YFRj">
+<td data-page-node-id="CqKgsN5G2hZgtEfjaphtVg">回归质量基线</td>
+<td data-page-node-id="vcehtodhMglQBBmdZpBBk1">59 个测试文件、1001 个测试用例；关键安全闸门（删除与回滚的安全评估、回收站保留策略、凭据信封）有纯函数单测覆盖；前端与主进程通过静态类型检查</td>
+<td data-page-node-id="sV7i3y3rVYmCidANs7dDl4">每次交付保持全量通过（并发执行时的偶发超时须单独复跑确认后方可放行）；新增纯函数分支覆盖 100%</td>
+<td data-page-node-id="KoJrqRqpACr8C2t8cLCSh6">回归测试报告（通过数 / 用例数）与静态类型检查结果</td>
+</tr>
+<tr data-page-node-id="6uuDINaiAUROU6uUOgWmYU">
+<td data-page-node-id="ByUILeyAuzFok2zp4BEveY">平台承载规模</td>
+<td data-page-node-id="OBb1xx18NF6AI6vbBZKTiv">桌面端 336 个 TS / TSX / CSS 文件、约 7.99 万行代码；服务端 6 个业务模块、20 个控制器、28 张表、13 种数据源类型</td>
+<td data-page-node-id="FD9JGGTHGYHUwF8voyb9gK">本期不以规模增长为目标，以"已落地能力全部可验收"为目标</td>
+<td data-page-node-id="Fsqq3cZc1ZdXSC3LbNrHn7">第九章附录基线与验收报告逐项比对</td>
+</tr>
+<tr data-page-node-id="bGBp2fUR2LBJDLlgMyMwqO">
+<td data-page-node-id="pzn6NKxoqZW8aEUvOLXFW7">资产沉淀</td>
+<td data-page-node-id="fkuNp0zGiuopqoiokmBcEW">Marquez 血缘与 DolphinScheduler 任务依赖已集成，表级与字段级血缘可在平台内查询</td>
+<td data-page-node-id="XDdCStWsihy56cXLi7PesM">血缘覆盖率（有血缘声明的表 / 关键表总数）与任务依赖完整率可统计</td>
+<td data-page-node-id="RnBXWdGHyokomhZw5KU932">Marquez 血缘节点数；调度系统工作流与任务数</td>
+</tr>
+</tbody></table>
+<p class="callout-info" data-page-node-id="LQ20DrUXkKoilCZGTBseM0">&nbsp;&nbsp;<strong data-page-node-id="eAsRVJWNG5a7mAH3qBGA3T">口径说明</strong>：本表不使用估算值。正文提到的"指标开发 6—8 小时压缩至 5—10 分钟""规范合规率 98%"来自行业同类实践的公开结果，属<strong data-page-node-id="lgWaldW49qany85ATpRSDP">外部参照</strong>，只用于说明该方向的行业上限；本项目的实际收益以本表口径度量。</p>
+
+  <h2 id="section-9" data-page-node-id="a8rO4QNrNCSrjZDXSbuSdo">九、附录：现状基线</h2>
+<table class="metric-table" data-page-node-id="r2HsceOgCkC5c0BaBTisCp"><thead data-page-node-id="HhLDTetlmqf6Yq47Va2sIk"><tr data-page-node-id="EmkFtmyBwvhuv4ssPH1Uuc"><th colspan="5" data-page-node-id="3AyH4HUTCgrPPp0pEluL3E">平台核心一览</th></tr></thead><tbody data-page-node-id="SYR0ZuM5XGJAhR98gB8Ios"><tr data-page-node-id="MtyVpttN2nsGIUnNEdz1eo"><td data-page-node-id="vF4Leusu9h9sIYUjytYXCi"><p class="metric-value" data-page-node-id="Z0hn4dDUvF4Z1noUVEuaQO">4</p><p class="metric-label" data-page-node-id="ImtqjgfDpCIWBxz3wGiHwo">核心组件</p></td><td data-page-node-id="DGILvJO8KCj45gXl4kRDnb"><p class="metric-value" data-page-node-id="ZymoMFCFnMfOFdnKdzUQeA">5</p><p class="metric-label" data-page-node-id="SF7L0TtYU5OxxVGC35DWdq">类上下文信息</p></td><td data-page-node-id="sKqVlDKBKyK0q5f0sYOQLg"><p class="metric-value" data-page-node-id="Ryzb5icLmpnTTMfRfMd3IC">28</p><p class="metric-label" data-page-node-id="FMyiYJ3pP8cjTbux8utJIL">张服务端表</p></td><td data-page-node-id="YArgdAInCZh3N14HN5Oc2z"><p class="metric-value" data-page-node-id="aP51oZJSW9dG7n1WIUCLoq">1001</p><p class="metric-label" data-page-node-id="H9S96V6B91WB0w7TXqEASV">自动化测试用例</p></td><td data-page-node-id="dGeKRBn7yVCvYWP0KyjtL1"><p class="metric-value" data-page-node-id="Ywb0YPVM8cmfItDHSz1Sk8">13</p><p class="metric-label" data-page-node-id="KfwVRccFcr4H6nyT0pgPnl">种数据源类型</p></td></tr></tbody></table>
+<p style="text-indent:18pt" data-page-node-id="NNXoPbGWFacXj4E8OMAGDd">本附录汇总各子系统的现状规模与关键配置项，作为计划书的事实依据与后续变更的比对基线。</p>
+<h3 data-page-node-id="CTMu0oOOpgtEFu4GSs0piC">工程规模基线</h3>
+<table class="data-table" data-page-node-id="STQu0gru57QlgjIgC7SuuZ">
+<thead data-page-node-id="aisf5iJcZlZE6oOl2HVWvb"><tr data-page-node-id="2PuGGdgJkPPYHMrfuE9L1W">
+<th data-page-node-id="TVRE1fmqgArpcZCczuIMhD">子系统</th>
+<th data-page-node-id="AKgsIdYJwSOPMTQl2zyPzA">规模</th>
+</tr></thead><tbody data-page-node-id="EzLq0QGHNqBDEPnBEXUWJz">
+<tr data-page-node-id="JPfHr8rGGqaDOILqkDolZO">
+<td data-page-node-id="VXBpJDxk1cN7OBaLrHYy0X">dataforge 桌面端</td>
+<td data-page-node-id="8CjdslngAGbvhVHSbUTp1I">336 个 TypeScript / TSX / CSS 文件，约 7.99 万行代码</td>
+</tr>
+<tr data-page-node-id="5qBLRzcMdEPwcVeiWTGmUU">
+<td data-page-node-id="7HCaGyhlMZQnkihBofU4Yr">自动化测试</td>
+<td data-page-node-id="0FhH2hEBYF8nynv1wKRLE7">59 个测试文件、1001 个测试用例，全量通过作为回归基线（并发执行时个别文件存在偶发超时，须单独复跑确认）</td>
+</tr>
+<tr data-page-node-id="MhAjAmcvvfLtkuVw1LIpMf">
+<td data-page-node-id="b7dT7ge9AO8mdYhbr3oBhH">dataforge-server</td>
+<td data-page-node-id="U6greAgElVRjEFzTJgq9jd">六个业务模块（system / devops / development / metadata / knowledge / quality）、20 个控制器、28 张表，支持 MySQL / PostgreSQL / MariaDB / H2，初始化预置 1 个超级管理员角色</td>
+</tr>
+</tbody></table>
+<h3 data-page-node-id="wqVNbRXGoM2ugRCDjHP32g">关键配置项索引</h3>
+<table class="data-table" data-page-node-id="lz11zOsRR5q4MoLIQGUw36">
+<thead data-page-node-id="DMT0U9sCXoe8IGDhbCj93o"><tr data-page-node-id="AsY7tnkUXYOIEtdQRqtXHO">
+<th data-page-node-id="cNUqiIhc3fTqIgcpZd86gN">子系统</th>
+<th data-page-node-id="C8gUGo5Nu02KpmgBP8y7RA">配置内容</th>
+</tr></thead><tbody data-page-node-id="C0ejLZPCzGA2CgoOR9rdys">
+<tr data-page-node-id="icZJYSuOAhjp3pnG1oIWZF">
+<td data-page-node-id="g1HcaGuCl0aXWF9Ax3edbd">桌面端</td>
+<td data-page-node-id="mVsFbHC4x9XIs4Y6Du60zu">后端服务地址、模型与密钥、Java / Scala / Maven 环境路径、工作目录、Git 仓库与密钥、工具权限模式、调度系统地址与令牌、血缘服务地址、Maven 工程模板与坐标、最大轮次、沙箱开关</td>
+</tr>
+<tr data-page-node-id="dtCSkSW8bAp9FqRXU71kWi">
+<td data-page-node-id="2G3M1j7x6XSeFVlprNau4V">dataforge-server</td>
+<td data-page-node-id="wePxmj0qxVedHQrJZBXEuQ">数据库连接、令牌密钥、接口文档路径、跨域配置</td>
+</tr>
+</tbody></table>
+<p style="text-indent:18pt" data-page-node-id="1Qi4FNmR3E59qzL6UfR7Xm"><strong data-page-node-id="aK21FtTAmpRlCcl3oAlCsw">编制单位</strong>：DataForge 项目组</p>
+<p style="text-indent:18pt" data-page-node-id="uDWq5aaSrLwJXlZDliRgbX"><strong data-page-node-id="n1HBNWVNN0sCa77GEA6Hbs">文档版本</strong>：V1.0</p>
+<p style="text-indent:18pt" data-page-node-id="2o50raN2KgE4eKHy7SKJaH"><strong data-page-node-id="i3yREMDs4nVC3Pset0W1sw">编制日期</strong>：2026 年 9 月</p>
+
+  <p class="doc-footnote" data-page-node-id="EiBz1eEuJ4ofdpcBEIZshb">编制单位：DataForge 项目组　|　文档版本：V1.0　|　编制日期：2026 年 9 月</p>
+
+</section>
+
+</body>
+</html>

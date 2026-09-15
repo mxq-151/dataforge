@@ -1,7 +1,7 @@
 schema_version: 1
 request_id: 45d4b135-45a3-447c-86ab-8a2d7ff7a55e
 created_at: 2026-09-14T11:43:35+08:00
-updated_at: 2026-09-14T12:50:00+08:00
+updated_at: 2026-09-15T21:35:00+08:00
 
 entry_type: full_pipeline
 stage_chain: [1, 2, 3]
@@ -204,6 +204,44 @@ revisions:
     sources_updated: ["stage1/final_draft.md"]
     regenerated_via: df_gen_stage2.py → df_make_web.py
 
+  - at: 2026-09-15T18:10:00+08:00
+    reason: 用户要求调整定位叙事——强调 DataForge 类似 workbuddy / opencode 这类 AI 编程助手，区别在于「谁提需求」：编程助手是开发者提需求，DataForge 是业务方提需求；这既不同于编程助手，也不同于 DataWorks 等云产品（业务方在平台外提、由开发者转述），且是数据代开发服务（企业方提需求、我方完成程序开发与上线维护）成立的重要基础
+    root_cause: 原脚本不在本机（df_gen_stage2.py / df_make_web.py 原在 Mac 上，Windows 侧缺失）⇒ 先按既有交付件反推渲染规则重建，再改内容
+    changed:
+      - "1.1 新增「AI 编程助手范式」段：编程助手前提是提需求的人就是写代码的人，数据开发恰恰不满足（懂业务的人不会写 SQL），本项目落点是把该范式往业务方前移一格"
+      - "1.2 新增引用块「强调一：谁使用本平台」——业务需求方是平台一级角色，无需懂 SQL、无需转述；原「强调」改为「强调二」"
+      - "新增 1.3「与 AI 编程助手、云数据平台的差异：谁提出需求」：6 维度对照表（谁提需求 / 表述方式 / 智能体上下文 / 谁翻译 / 交付终点 / 是否需要懂技术）+ 一句话概括 + 三点重要性（损耗在语义翻译那一跳、决定上下文从哪来、是代开发服务的技术基础）"
+      - "原 1.3—1.6 顺延为 1.4—1.7；交叉引用同步（见 1.6 → 见 1.7，2 处）"
+      - "1.4 对比表新增「需求由谁提出」行；优势第 1 条改写为「业务方直接提需求、智能体负责编码——分水岭」；客观说明补一句：AI 编程助手不是竞品而是所继承的范式"
+      - "1.5 建设目标新增第 5 条「业务方直提需求目标」（原 5 / 6 顺延为 6 / 7）"
+      - "1.7 导语补「业务方能在平台内提需求是服务模式成立的技术基础——企业出需求，我方出开发与运维」；新增「1. 数据代开发服务的交付路径」小节（传统 vs 基于 DataForge 五环节对照表 + 三个服务特征），原 1./2. 顺延为 2./3."
+      - "2.1 业务需求方行补「直接提出（无需懂 SQL、无需经开发者转述）」"
+      - "3.3 设计思路开头补：把提需求的人换成业务方后必须额外解决的三件事（翻译由谁做 / 口径唯一 / 业务方进平台的安全边界）"
+      - "6.1 品牌认知统一对外定位为「面向业务方的 AI 数据开发平台——业务方提需求、智能体做开发」"
+      - "八、预期效益新增「服务可规模化效益」段；8.1 新增「服务可承接性」度量行"
+    evidence:
+      - "对外叙事均为定位表述，不新增未落地能力；业务方角色 BUSINESS_REQUESTER 与三段产物契约已在 16:50 版核实过（RoleType / opencodeInstructions.ts）"
+    tooling:
+      - "重建 tools/df_md.py（解析器 + stage2 / stage3 渲染器）、tools/df_gen_stage2.py、tools/df_make_web.py；样式抽自既有交付件存 tools/stage2.css / web.css"
+      - "渲染规则反推自旧产物：h2 id=section-N；h3 标题转（一）…、id=section-N-{章内块序号}（h2 为 0）；章导语 LEADIN={1,2,3,4,7}；小节导语 H3_LEADIN={'2.2'}；第五 / 六章导语在正文里不重复注入；第九章注入「平台核心一览」指标卡"
+    verify: "与改前逐块文本 diff：delete 操作数 0（无内容丢失）；目录 id 在未改动章节（2/4/6/7/9）与旧版完全一致，3-20 与 8-6 的差异来自新增段落；h2 9 / h3 30（+1）/ h4 7（+1）/ 表格 27（+2）；strong 142 对 142"
+    sources_updated: ["stage1/final_draft.md", "stage2/formatted-DataForge项目计划书.html", "stage3/DataForge数据开发平台-项目计划书.html"]
+    regenerated_via: df_gen_stage2.py → df_make_web.py（按用户既有要求，仍不产出 docx；stage3 下 10:55 的旧 docx 为停更前的历史件）
+    caveats: "涉及 opencode / WorkBuddy / Cursor / DataWorks Copilot 的对照表述为公开资料整理，与 1.4 表同样建议在对外发布前由用户复核一遍友商表述"
+
+  - at: 2026-09-15T18:30:00+08:00
+    reason: 用户指出 1.3「与 AI 编程助手、云数据平台的差异：谁提出需求」与 1.4「同类平台对比与差异定位」内容重复，要求合并为一节
+    changed:
+      - "两节合并为 1.3「差异定位：与 AI 编程助手、云数据平台的分界在'谁提需求'」：导语改为一次列全三类参照物（AI 编程助手 / 云平台 / 开源门户 + 自建脚本），原 1.4 导语不再单独存在"
+      - "原 1.4 的 13 行能力对照表降为本节第二张表，用「再按产品能力逐项对照」一句接在三点重要性之后；删掉与表一重复的「需求由谁提出」行，「需求与角色」行加（对照见上表）"
+      - "「本平台的优势」第 1 条去掉与表一重复的对照叙述，压缩为结论式"
+      - "客观说明去掉已在「一句话概括」说过一次的「AI 编程助手不是竞品」表述，只保留「额外复杂度来自'提需求的人是业务方'这一前提」"
+      - "章内小节重编号：1.5/1.6/1.7 → 1.4/1.5/1.6；交叉引用 5 处（表一交付终点、三点之三、客观说明、1.4 建设目标第 5 条、6.1 客户转化、八章服务可规模化）同步为 1.6"
+      - "1.4 建设目标「具体目标分为六个方面」→「七个方面」（上一轮新增第 5 条后未同步）"
+    verify: "与合并前逐块 diff：delete 仅 1 处（被删的「需求由谁提出」行），其余为改写与重编号；章节目录 h3 由 30 减为 29；h2 9 / h4 7 / 表格 27（网页版）不变；strong 141 对 141"
+    sources_updated: ["stage1/final_draft.md", "stage2/formatted-DataForge项目计划书.html", "stage3/DataForge数据开发平台-项目计划书.html"]
+    regenerated_via: df_gen_stage2.py → df_make_web.py（仍不产出 docx）
+
   - at: 2026-09-15T16:50:00+08:00
     reason: 用户指出本项目一大优势是「把业务方及其需求一并纳入统一管理，实现人提需求、智能体依需求自动编码的闭环」，要求展开说明
     changed:
@@ -220,4 +258,35 @@ revisions:
     verify: "三章小节渲染为（一）架构总览 /（二）五类信息 /（三）需求驱动的开发闭环 /（四）关键技术设计决策；3.3 内三角色表 4 行；全文中文 13,724 字"
     sources_updated: ["stage1/final_draft.md"]
     regenerated_via: df_gen_stage2.py → df_make_web.py
+
+  - at: 2026-09-15T21:35:00+08:00
+    reason: 用户指出 1.3「再按产品能力逐项对照」的维度项太凌乱，要求按数据集成 / 数据治理 / 开发环境 / 作业调度 / 数据血缘 / 权限管理 / 任务管理 / 指标管理 / 知识管理等产品能力角度重述
+    root_cause: "原表 13 行把不同粒度的东西混在一张表里——既有能力项（血缘与任务依赖、库表与指标描述等，且常两件事合并成一行），也有非能力项（形态与部署、优化对象、AI 落点、收费模式），行名粒度不一（「参数与约束」「编译与一键上调度」语义模糊）"
+    changed:
+      - "表二重写为「能力维度」表：10 行 × 5 列，一项能力一行，顺序 = 数据集成 / 数据治理 / 开发环境 / 作业调度 / 数据血缘 / 权限管理 / 任务管理 / 指标管理 / 知识管理 / AI 能力落点"
+      - "非能力项拆出为第三张表「比较坐标」：需求与角色模型 / 设计取向（原「优化对象」）/ 形态与部署 / 引擎与集群兼容 / 收费模式"
+      - "原合并行拆开归位：「血缘与任务依赖」→ 数据血缘 + 作业调度 + 任务管理；「库表与指标描述」→ 数据治理（库表与字段描述）+ 指标管理（口径目录）；「编译与一键上调度」→ 开发环境（编译校验）+ 作业调度（一键提交）；「权限粒度 + 引擎侧写入合规」并入权限管理；「开发语言」「参数与约束」并入开发环境"
+      - "新增维度内容均取自 docs/治理模块对比-DataForge-vs-DataWorks.html 的源码核实结论：数据集成（无自研同步引擎、DS 任务类型承接、写程序同步为主动路径）、数据治理（治理动作前移三段、质量规则 7 类、DDL 增量沉淀、未标注清单与同步告警、成本字段已采集）、知识管理（关键字匹配、向量检索列入规划）"
+      - "客观说明同步：数据集成 / 数据质量 / 资产目录 → 数据集成 / 数据治理，并补边界句（取舍是不自研同步引擎与规则引擎，缺的是统一视图而非能力本身）"
+      - "优势第 1 条「对照见前文两表」→「对照见上文各表」"
+    evidence:
+      - "src/types/dolphinscheduler.ts TASK_CATEGORIES 的 dataIntegration 分类（DATAX/SEATUNNEL/SQOOP/CHUNJUN/DATASYNC）；服务端 src/main 检索 datax/seatunnel 零命中"
+      - "opencodeInstructions.ts QUALITY_RULE_SPEC（7 类规则）；modules/quality 仅结果实体 DataQualityCheckResult"
+      - "MetadataSyncService.syncSingleTableMetadata（DDL 增量）；/metadata/annotation-gaps；TableMetadata 含 rowCount/sizeBytes/hotDays/coldDays/keepDays"
+      - "Indicator + IndicatorField（编码 / 业务定义 / 计算表达式 / 责任人 / 刷新周期 + 字段绑定）"
+    verify: "与改前逐块文本 diff：delete 50 项全部落在被重写的旧表单元格内，表外内容零删除；replace 仅 2 处（表二导语、客观说明所在块）与 优势第1条；结构 h2 9 / h3 29 / h4 7 不变，表格 27 → 28、tr 172 → 175（14 → 17 行）；目录锚点 40 个全部命中，无悬空引用；中文 17,229 → 18,300 字"
+    sources_updated: ["stage1/final_draft.md", "stage2/formatted-DataForge项目计划书.html", "stage3/DataForge数据开发平台-项目计划书.html"]
+    regenerated_via: df_gen_stage2.py → df_make_web.py（仍不产出 docx）
+
+  - at: 2026-09-15T21:42:00+08:00
+    reason: 用户指出 1.3 的表头太宽
+    root_cause: "web.css / stage2.css 的 thead th 带 white-space:nowrap ⇒ 长表头不折行，min-content 直接支配列宽，把整张表撑到卡片宽度之外（横向滚动）。三处超长表头：AI 编程助手（opencode / WorkBuddy / Cursor 等）44 字、云数据开发平台（DataWorks / WeData 等，含其 Copilot）、其他云平台（DataArts / WeData / Dataphin）、Hue（Cloudera Data Explorer）"
+    changed:
+      - "表一表头：维度 / AI 编程助手 / 云数据开发平台 / DataForge（原带括注共 44 字）"
+      - "表二、表三表头：能力维度（比较坐标）/ DataForge / Hue / 阿里云 DataWorks / 其他云平台"
+      - "1.3 导语末尾补一句列名说明：AI 编程助手 = opencode / WorkBuddy / Cursor / Claude Code 等；云数据开发平台 = DataWorks / DataArts Studio / WeData / Dataphin 等（含各自 Copilot）；Hue = Cloudera Data Explorer（开源 Hue 亦可独立部署）；其他云平台 = 未单列的 DataArts / WeData / Dataphin"
+      - "CSS 未动（nowrap 是有意为之），改的是内容——全文扫描确认仅这 3 张表存在超长表头"
+    verify: "全文 28 张表的 thead 逐个对比：仅 1.3 的 3 张表表头变化，其余 25 张逐字相同（表序位移 1 由新增表三引起）；最长表头由 44 字降到 13 字（阿里云 DataWorks）；旧长表头零残留；锚点 40 个仍全部命中；表一表头 min-content 估算 ≈ 340px < 卡片可用宽 ≈ 790px"
+    sources_updated: ["stage1/final_draft.md", "stage2/formatted-DataForge项目计划书.html", "stage3/DataForge数据开发平台-项目计划书.html"]
+    regenerated_via: df_gen_stage2.py → df_make_web.py（仍不产出 docx）
 
