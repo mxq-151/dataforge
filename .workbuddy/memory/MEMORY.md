@@ -84,18 +84,46 @@
 - **租户不是数据隔离边界**：`sys_tenant_user` 对 `tenant_id` 与 `user_id` 各加了单列唯一约束
   （租户 ↔ 用户 1:1）；`datasource_config` / `storage_config` / `dev_project` / 各权限表**都没有 tenant_id**，
   租户只影响角色绑定与审计日志。写"多租户隔离"前先想清楚这句话站不站得住。
-- **权限校验的三处软肋**：① DML 权限检查**解析失败即放行**（`AbstractBaseExecutionStrategy` catch 里
-  "放行执行"）；② 行/列权限合并是**取并集放宽**——任一命中权限未对该表限制即整体放宽
-  （`getMergedRowFilterSql` / `getAllowedColumns` 注释明写）；③ 行/列后过滤只覆盖 Kyuubi 与 JDBC
-  （MySQL/PgSQL/Doris），`Spark/Flink/HBase` 三个策略直接实现 `ExecutionStrategy`、**不生效**；
-  且是结果集后过滤 ⇒ `count(*)` 等聚合值不受行级权限影响。`ROLE_SUPER_ADMIN` 短路所有检查。
+- **权限校验（2026-09-15 下午已加固，勿再照抄上午的旧描述）**：DML 权限检查改为 **fail-close**
+  （解析失败 / 判定异常一律拒绝，不再"放行执行"）；行/列权限合并由"取并集放宽"改为**取交集收紧**；
+  行/列约束改在 **SQL 下发前改写**（行条件并入 WHERE、投影列裁剪，`SqlPermissionRewriter`），
+  Spark/Flink/HBase 三条策略已 `extends AbstractBaseExecutionStrategy`，与 JDBC/Kyuubi 一致。
+  **仍是真实边界**：① 租户不是数据隔离边界（见上条）；② 权限约束**只覆盖 SQL 代码类型**，
+  Scala/Python/Jar 等任意代码访问数据源的不享有行/列约束；③ `ROLE_SUPER_ADMIN` 仍短路所有检查。
+- **列级脱敏是真实机制（2026-09-15 核实，此前记忆漏记）**：脱敏档位 `full / idcard / phone / email /
+  partial`，多角色命中时按列**取更严格者合并**（`DataAccessPermissionService.mergeDataMaskingRule`）；
+  `MetadataAgentController` 会把 `maskingType` 交给智能体，`full` 字段不可读、有脱敏规则的字段不可写
+  ⇒ **脱敏对智能体同样生效**。但**无敏感数据自动识别与分级分类**，规则全靠人工在权限里指定。
 - **凭据落盘已加密（2026-09-15 起，此前是明文）**：`userData/df-stores/*.json` 的敏感字段经
   Electron `safeStorage` 包成 `{"$dfenc":"v1","v":"…"}` 信封，咽喉只有 `electron/backend/store.ts`
   一处；旧明文文件读时兼容、写时自动升级。**别再把「凭据明文落盘」写成现状**。
   残留真实缺口：密钥在设置页需明文回填（截图可带走）；无 keyring 的 Linux 降级为明文；
   换机器/重置钥匙串后信封解不开、按「未配置」处理。导出配置走 `df:store:export`，
   在主进程侧剥离凭据（值 `***`）。服务端的数据源与租户密码仍是 AES。
-- **元数据同步失败只 warn 不阻断**（DDL 后同步异常仅记日志）⇒ 元数据会静默滞后。
+- **元数据缺失已可观测（2026-09-15 起）**：`MetadataAnnotationGapService` + `GET /metadata/annotation-gaps`
+  输出未标注表 / 字段清单；`MetadataSyncAlertService` 把同步失败写成审计日志
+  （`module=metadata`、`operation=METADATA_SYNC_FAILED`）并打 `[METADATA-SYNC-ALERT]` ERROR 日志。
+  ⇒「同步失败只 warn、元数据静默滞后」已不成立，勿再照抄。
+- **提交有环境维度（2026-09-15 起）**：三档 `prod / gray / test`（默认 test、不记忆），环境后缀拼进
+  工作流名（`withDeployEnvSuffix`）；**血缘只在 prod 注入**，是硬闸门
+  （`deployEnv.ts::shouldInjectLineage`），非生产环境即使文件写 `lineage.enabled=true` 也不翻盘；
+  OpenLineage 参数唯一拼装处 `src/utils/lineageParams.ts`（单文件 / 文件夹两个提交入口共用——
+  此前文件夹入口整条漏注入，生产批量提交出来的 Spark 任务没有血缘，已修）。
+
+## 需求驱动的开发闭环（对外叙事，用户认定的核心优势）
+
+- **业务需求方是平台一级角色**：服务端 `RoleType` 六角色 = 超级管理员 / 运维工程师 / 数据开发工程师 /
+  **业务需求方** / 数据分析师 / **数据架构师**；开发助手的任务类型即角色：
+  **需求编写（BUSINESS_REQUESTER）→ 数仓设计（DATA_ARCHITECT）→ 数据开发（DATA_DEV_ENGINEER）**
+  （数据探索模块是另一套：数据分析 / 运维管理）。
+- **三段产物同名贯穿**：`docs/{业务名称}_开发需求.md` → `docs/{业务名称}_数仓设计.md` +
+  `ddls/{分层}_ddl.sql` → `{语言}/{分层}/{程序文件}` + 调度任务。
+- **契约唯一来源**：`src/hooks/opencode/opencodeInstructions.ts`（S1/S2/S3 三方共享契约常量）。
+  **指标是唯一主线**（S1 定义"要算什么" → S2 分配编码并绑定字段 → S3 按编码实现）；
+  另有四条端到端同源线：**数据时效 / 数据源名称 / 数据质量 / 敏感数据**（降级必须显式说明）。
+- **开发助手内切换任务类型不新建会话**（system 逐轮下发，新角色下一轮生效、上下文与工具结果保留）；
+  **数据探索例外**——该模块的 `newSession()` 同时承担"新建时间戳工作目录"，不能去掉。
+  ⇒ 写文档时别把两者混为一谈。
 
 ## 交付偏好
 
@@ -105,6 +133,11 @@
 - **计划书类交付不再出 Word（2026-09-15 用户明确）**：`output/<request_id>/` 的最终交付物是
   `stage3/…html`（网页版）；不再跑 html-to-docx，也不再走 editor_sdk 改 docx。
   内容源仍维护 `stage1/final_draft.md`，`stage2/…html` 保留（网页版由它生成），只是不转 docx。
+- **计划书不再设「风险识别与应对」章节（2026-09-15 用户明确）**：用户判断其中多数条目属"如此设计"
+  （设计选择而非待处理风险）。现行结构 = 一 概述 / 二 需求 / 三 架构 / 四 组件 / 五 模块优先级 /
+  六 推广与时间 / **七 验收与质量保障** / **八 预期效益** / **九 附录：现状基线**。
+  重生成前确认 `df_gen_stage2.py` 的 LEADIN 键是「七 / 九」、附录判定是 `startswith("九、附录")`。
+  真正的残留边界（权限、血缘、凭据）留在本文件「事实核查基线」里，不要重新写回文档。
 
 ## 平台定位（对外叙事，写文档/计划书时必守）
 

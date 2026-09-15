@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>治理模块差异分析 — DataForge 与主流数据开发平台</title>
+<style>
+  :root{
+    --primary:#1565C0; --secondary:#0288D1; --accent:#00897B;
+    --heading:#1A237E; --text:#212121; --text2:#616161;
+    --divider:#E0E0E0; --bg:#FFFFFF; --surface:#F5F7FA;
+    --warn:#E53935; --gap:#F9A825; --pos:#00897B;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; padding:0 0 80px; background:#EDF1F5; color:var(--text);
+    font-family:"微软雅黑","Microsoft YaHei","PingFang SC",sans-serif;
+    font-size:10.5pt; line-height:1.75;
+  }
+  .page{max-width:1000px; margin:0 auto; background:var(--bg); padding:56px 64px 72px;
+    box-shadow:0 2px 14px rgba(0,0,0,.07);}
+  header.doc{border-bottom:3px solid var(--primary); padding-bottom:22px; margin-bottom:34px;}
+  .eyebrow{font-size:9pt; letter-spacing:.14em; color:var(--secondary); font-weight:600; margin:0 0 10px;}
+  h1{font-size:22pt; color:var(--heading); margin:0 0 10px; font-weight:600; line-height:1.35;}
+  .sub{font-size:10.5pt; color:var(--text2); margin:0;}
+  .meta{margin-top:14px; font-size:8.5pt; color:var(--text2);}
+  h2{font-size:14pt; color:var(--heading); margin:44px 0 16px; padding-left:12px;
+    border-left:4px solid var(--primary); line-height:1.4;}
+  h3{font-size:11.5pt; color:var(--primary); margin:26px 0 10px; font-weight:600;}
+  h4{font-size:10pt; color:var(--heading); margin:18px 0 8px; font-weight:600;}
+  p{margin:0 0 12px;}
+  ul,ol{margin:0 0 12px; padding-left:22px;}
+  li{margin-bottom:5px;}
+  table{width:100%; border-collapse:collapse; margin:14px 0 18px; font-size:9pt;}
+  th,td{border:1px solid var(--divider); padding:8px 10px; text-align:left; vertical-align:top;}
+  th{background:var(--surface); color:var(--heading); font-weight:600;}
+  tbody tr:nth-child(even){background:#FAFBFD;}
+  code{font-family:Consolas,"Source Code Pro",monospace; font-size:8.5pt;
+    background:#F0F3F7; padding:1px 5px; border-radius:3px; color:#0D47A1;}
+  .lede{background:var(--surface); border-left:4px solid var(--accent); padding:16px 20px;
+    margin:0 0 26px; font-size:10pt;}
+  .lede p:last-child{margin-bottom:0;}
+  .card{background:var(--surface); border:1px solid var(--divider); border-radius:6px;
+    padding:16px 20px; margin:16px 0;}
+  .card h4{margin-top:0;}
+  .tag{display:inline-block; font-size:8pt; font-weight:600; padding:2px 8px; border-radius:10px;
+    color:#fff; margin-right:6px; white-space:nowrap;}
+  .t-choice{background:#546E7A;}      /* 取舍 */
+  .t-form{background:#0288D1;}        /* 形态不同 */
+  .t-gap{background:#E53935;}         /* 真实缺口 */
+  .t-adv{background:#00897B;}         /* 独有优势 */
+  .num{font-family:"DIN Next",Arial,sans-serif;}
+  .kpi{display:flex; gap:14px; flex-wrap:wrap; margin:18px 0 24px;}
+  .kpi div{flex:1 1 180px; background:var(--surface); border:1px solid var(--divider);
+    border-radius:6px; padding:12px 14px;}
+  .kpi b{display:block; font-size:9pt; color:var(--text2); font-weight:400; margin-bottom:4px;}
+  .kpi span{font-size:12pt; color:var(--primary); font-weight:600;}
+  footer.doc{margin-top:48px; padding-top:18px; border-top:1px solid var(--divider);
+    font-size:8.5pt; color:var(--text2);}
+  .note{font-size:8.5pt; color:var(--text2); margin-top:-8px;}
+</style>
+</head>
+<body>
+<div class="page">
+
+<header class="doc">
+  <p class="eyebrow">差异分析 · 数据治理</p>
+  <h1>DataForge 与主流数据开发平台在治理模块上的差异</h1>
+  <p class="sub">数据集成 · 数据质量 · 资产目录，及相邻治理面（权限 / 敏感数据 / 成本 / 写入合规）</p>
+  <p class="meta">对标对象：阿里云 DataWorks（DQC / 数据集成 / 数据地图）为主要参照，腾讯云 WeData、火山引擎 DataLeap、华为云 DataArts Studio 作横向补证 · 本项目结论均基于两个仓库源码核实（证据见附录）· 对标平台能力按公开资料整理，具体版本与功能以厂商文档为准</p>
+</header>
+
+<div class="lede">
+  <p><strong>结论先行：</strong>三个治理模块上的差异，本质不是「功能多少」，而是<strong>治理动作发生的位置不同</strong>。</p>
+  <p>主流平台把治理收敛在<strong>平台侧</strong>一件事上——在平台里配置规则、绑定任务、由平台触发与判定、在平台里看大盘；DataForge 把治理拆到<strong>生成期 / 提交期 / 引擎执行期</strong>三段，平台自身只做「约束 + 校验 + 沉淀描述」，不内置规则引擎与同步引擎。由此形成三类性质完全不同的差异：<strong>取舍</strong>（有意不做）、<strong>形态不同</strong>（目标不同故形态不同）、<strong>真实缺口</strong>（该补且成本可控）。三类必须分开陈述，不能笼统说成「本平台治理能力较弱」。</p>
+</div>
+
+<h2>一、分析框架：治理动作可以发生在四个位置</h2>
+
+<p>同样叫「数据质量治理」，落在不同位置，产品的形态、依赖与效果完全不同。先用这个框架对齐口径，后面的模块差异都能归位。</p>
+
+<table>
+  <thead><tr><th style="width:14%">位置</th><th style="width:20%">代表做法</th><th style="width:22%">治理对象</th><th style="width:20%">生效时刻</th><th>依赖条件</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>生成期</strong></td>
+      <td>DataForge 的三阶段提示词约束 + 编译与 SQL 校验 + 代码头参数声明</td>
+      <td>代码与设计文档（规则、口径、依赖、命名）</td>
+      <td>代码被写出来的当下</td>
+      <td>智能体必须先拿到准确的业务上下文（库表/指标/血缘/依赖）</td>
+    </tr>
+    <tr>
+      <td><strong>提交期</strong></td>
+      <td>DataForge 的一键上调度（环境单选、生产才注入血缘、编译不通过不得提交、参数落地任务节点）</td>
+      <td>提交物（Jar / SQL / 工作流定义）</td>
+      <td>上线动作的闸门处</td>
+      <td>本地编译闭环 + 平台侧参数与环境的统一约定</td>
+    </tr>
+    <tr>
+      <td><strong>引擎执行期</strong></td>
+      <td>DataForge 的 spark / flink-listener（分析期规则命中即抛异常，写入前阻断）</td>
+      <td>物理写入动作（表 / 路径）</td>
+      <td>写入发生之直前</td>
+      <td>规则以 SparkConf / Flink 配置下发，跨引擎版本适配</td>
+    </tr>
+    <tr>
+      <td><strong>平台侧</strong></td>
+      <td>DataWorks / WeData / DataLeap：规则配置、任务绑定、平台触发、平台判定、大盘、审批、权限</td>
+      <td>平台内的实体（表、字段、任务、规则、资产条目）</td>
+      <td>任务运行成功后 / 准入时 / 检索时</td>
+      <td>数据与作业必须跑在该平台内，元数据由平台采集器纳管</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>主流平台把上面四行里最重的一块——<strong>规则引擎 + 触发 + 判定 + 呈现</strong>——做成了产品；DataForge 选择了后三行（生成期/提交期/引擎期）加一个结果台账。这是后面所有差异的总开关。</p>
+
+<h2>二、数据集成</h2>
+
+<h3>2.1 主流平台：一个完整的「数据同步平台」</h3>
+
+<p>DataWorks 的数据集成不是「能跑同步任务」，而是一整套连接器 + 资源 + 向导 + 运维的产品。<strong>数据集成属于 DataWorks 的核心能力之一</strong>，官方口径是 50+ 异构数据源，并提供 DataX 不具备的实时同步能力。</p>
+
+<table>
+  <thead><tr><th style="width:16%">能力维度</th><th>DataWorks 做法</th></tr></thead>
+  <tbody>
+    <tr><td>连接器</td><td>关系型数据库、大数据存储、NoSQL、消息队列、文件存储、SaaS 应用；通过 Reader / Writer 插件抽象，是 DataX 的超集</td></tr>
+    <tr><td>同步时效</td><td>离线（周期性，小时/天级）；实时（捕获 CDC，秒级延迟）</td></tr>
+    <tr><td>同步范围</td><td>单表 / 整库（自动建表、单任务多表）/ 分库分表（多表合并写入单表）</td></tr>
+    <tr><td>数据策略</td><td>全量 / 增量 / 全增量一体化（离线场景「一次全量 + 周期增量」；实时场景「一次全量 + 实时增量」；准实时场景 Base 表 + Log 表，T+1 合并）</td></tr>
+    <tr><td>执行资源</td><td>Serverless 资源组弹性伸缩、按量付费；并发数、限速、脏数据阈值容忍；分布式处理</td></tr>
+    <tr><td>开发方式</td><td>可视化向导模式（点选完成配置）+ 脚本模式（JSON 高级配置）+ DI Agent（自然语言对话建任务、智能诊断、周期巡检）</td></tr>
+    <tr><td>运维</td><td>离线同步融入 DAG 工作流，复用调度与运维；监控与告警；WeData 另在实时链路提供<strong>数据对账</strong>（入库即比对源表与目标表差异）</td></tr>
+    <tr><td>网络</td><td>公网 / VPC / 高速通道 / CEN，支持混合云与本地 IDC；白名单配置</td></tr>
+    <tr><td>语义保证</td><td><strong>仅 at-least-once</strong>，不提供 exactly-once；批量异常时回滚取决于目标端是否支持事务，数据集成本身不提供事务</td></tr>
+    <tr><td>计费</td><td>资源组费用 + 调度费用 + 公网流量费用</td></tr>
+  </tbody>
+</table>
+
+<h3>2.2 DataForge：不自研同步引擎，把同步交回集群既有组件</h3>
+
+<p>本项目<strong>没有</strong>数据集成模块。服务端 Java 全仓检索 <code>datax</code> / <code>seatunnel</code> 零命中，桌面端也只在<strong>调度任务类型清单</strong>里出现「数据集成」这个分类：</p>
+
+<div class="card">
+  <p><code>src/types/dolphinscheduler.ts</code> — <code>TASK_CATEGORIES</code> 中 <code>{ id: 'dataIntegration', label: '数据集成', tasks: ['DATAX','SEATUNNEL','SQOOP','CHUNJUN','DATASYNC'] }</code></p>
+  <p style="margin-bottom:0">含义很清楚：这些同步任务的<strong>定义与执行是 DolphinScheduler 及其底层工具的事</strong>，DataForge 提供的是「能在 DAG 里编排它们」以及「一键把开发环境写好的东西提交成这些节点」。</p>
+</div>
+
+<p>本项目在数据接入上实际有两条路径：</p>
+<ul>
+  <li><strong>编排路径（配置化，但不是本平台的配置）</strong>：在调度管理里编排 DATAX / SEATUNNEL / SQOOP 等同步任务节点，连接器、字段映射、脏数据策略全部由 DS 与底层工具承担。</li>
+  <li><strong>编码路径（本平台的主路径）</strong>：用开发环境写 SQL / Spark / Flink 程序做同步（服务端 13 种数据源、JDBC / Kyuubi / Spark / Flink / HBase / Doris 多执行策略），即「写程序同步」而非「配向导同步」。</li>
+</ul>
+
+<p>值得单独指出的一点：<strong>同步链路的血缘是被接上的</strong>——生产环境提交的任务由唯一拼装处注入 OpenLineage 参数，同步/计算作业的血缘事件自动进 Marquez。这与主流平台「整库同步自动建血缘」机制不同，但达到的效果可比。</p>
+
+<h3>2.3 逐项对照</h3>
+
+<table>
+  <thead><tr><th style="width:20%">能力项</th><th style="width:32%">主流平台（DataWorks / WeData）</th><th style="width:30%">DataForge</th><th>差异性质</th></tr></thead>
+  <tbody>
+    <tr><td>连接器广度</td><td>50+ 数据源内置读写插件，官方持续维护</td><td>取决于集群既有 DataX / SeaTunnel 等工具已装哪些插件</td><td><span class="tag t-choice">取舍</span>不自研连接器生态</td></tr>
+    <tr><td>配置化同步</td><td>可视化向导 + JSON 脚本，字段映射/过滤/常量赋值</td><td>无本平台的同步任务配置界面（借 DS 原生配置）</td><td><span class="tag t-choice">取舍</span></td></tr>
+    <tr><td>CDC 实时同步</td><td>向导化，MySQL/Oracle 等 Binlog 接入，秒级</td><td>需自行在 DS 侧配置相应任务类型，平台不提供向导</td><td><span class="tag t-gap">缺口</span>可用但工程师体验落差大</td></tr>
+    <tr><td>整库 / 分库分表</td><td>一键整库（自动建表）、分库分表合并写入</td><td>无</td><td><span class="tag t-gap">缺口</span></td></tr>
+    <tr><td>资源弹性</td><td>Serverless 资源组，按需伸缩按量付费</td><td>使用既有集群资源，无弹性抽象层</td><td><span class="tag t-choice">取舍</span></td></tr>
+    <tr><td>数据对账</td><td>WeData 在实时链路提供源/目标差异监控</td><td>无</td><td><span class="tag t-gap">缺口</span></td></tr>
+    <tr><td>脏数据策略</td><td>阈值化脏数据容忍，超阈任务失败</td><td>无统一策略（写入失败即任务失败）</td><td><span class="tag t-choice">取舍</span></td></tr>
+    <tr><td>同步血缘</td><td>平台内自动生成</td><td>生产环境注入 OpenLineage，进 Marquez 图谱</td><td><span class="tag t-form">形态不同</span>效果可比</td></tr>
+  </tbody>
+</table>
+
+<p><strong>判定：</strong>数据集成在 DataForge 的定位里不是「治理模块」，而是「被编排的资源」。平台不承接数据搬运动作本身，只承接编排、提交与血缘。因此拿「数据集成完整度」来评价本项目，评价对象本身就错位了——真正受影响的是<strong>首次接入的工程量</strong>（每个源都要工程师去 DS 里手工配置），不是日常治理能力的缺失。</p>
+
+<h2>三、数据质量</h2>
+
+<h3>3.1 主流平台：规则模板 → 监控规则 → 质量监控 → 强弱规则 四件套</h3>
+
+<p>DataWorks 数据质量（DQC）的实体链是闭合的，每一环都是平台内的一个配置对象：</p>
+
+<table>
+  <thead><tr><th style="width:16%">环节</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td>规则模板</td><td>定义「如何检查」。内置丰富模板（表行数、字段唯一值个数等），并支持自建模板库统一管理</td></tr>
+    <tr><td>监控规则</td><td>模板的具体应用：为某张表的某个字段应用模板并配置阈值。校验器覆盖固定值比较、1/7/30 天平均值波动、周期比较、方差波动、与固定值比较等，并可指定趋势（上升 up / 下降 down / 绝对值 abs）</td></tr>
+    <tr><td>质量监控</td><td>执行计划：把一个或多个监控规则与一个<strong>调度任务</strong>关联，该任务运行成功后自动触发校验。需指定监控数据范围（分区表达式，如 <code>dt=$[yyyymmdd-1]</code>）</td></tr>
+    <tr><td>强 / 弱规则</td><td><strong>强规则</strong>校验失败触发告警并把任务实例置为失败，<strong>阻塞下游</strong>；<strong>弱规则</strong>仅告警，不影响任务继续执行。强规则会在下游任务运行前执行并计入基线运行时间</td></tr>
+    <tr><td>自定义规则</td><td>用对应引擎 SQL 写（离线 MaxCompute SQL、Hologres 用 PostgreSQL、EMR 用 Hive SQL、实时用 Flink SQL），只接受查询语句且限制单行单列输出</td></tr>
+    <tr><td>呈现</td><td><strong>数据质量大盘</strong>（总览指标、校验状态趋势与分布、TOP 质量问题表及责任人、规则覆盖保障情况）+ 质量资产（规则列表、规则模板库）</td></tr>
+    <tr><td>配置效率</td><td>按表（单表）配置与<strong>按模板批量配置</strong>（对符合条件的多张表批量下规则）</td></tr>
+    <tr><td>计费</td><td>按质量规则实例运行数量计费；动态阈值、自定义质量报告、规则模板库等需企业版及以上</td></tr>
+  </tbody>
+</table>
+
+<p>横向补证：腾讯云 WeData 内置 <strong>200 余种</strong>质量规则模板，支持表级与字段级配置，并在实时链路做数据对账；火山引擎 DataLeap 提供 <strong>80 余个</strong>治理规则覆盖存储/计算/质量/安全，并以历史运行数据建立动态基线检测异常波动。可见这一模块的行业竞争点已经落在「模板数量 + 自动推荐 + 大盘 + 归因」上。</p>
+
+<h3>3.2 DataForge：规则的载体是代码，不是平台里的配置行</h3>
+
+<p>本项目没有 DQC 式的规则引擎。质量治理分三层，且三层都不在平台侧：</p>
+
+<table>
+  <thead><tr><th style="width:14%">层次</th><th style="width:32%">载体</th><th>实际形态</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>规则知识层</strong></td>
+      <td><code>src/hooks/opencode/opencodeInstructions.ts</code> 中的 <code>QUALITY_RULE_SPEC</code></td>
+      <td>把规则类型<strong>硬规定为 7 类</strong>（主键唯一性 / 非空 / … / 口径一致性），要求三阶段使用同一套名称、禁止自造同义词。并明确三阶段分工：<br>
+      <strong>S1 业务需求</strong>——用业务语言说明需覆盖的规则类型与可接受偏差；<br>
+      <strong>S2 数仓设计</strong>——为每张新建表选择规则类型，定义规则名、校验对象、阈值与处置方式；<br>
+      <strong>S3 数据开发</strong>——把设计定义的规则实现为独立的质量校验任务，挂在处理任务下游</td>
+    </tr>
+    <tr>
+      <td><strong>执行层</strong></td>
+      <td>AI 生成的校验程序</td>
+      <td>「质量校验任务与数据处理任务分离，单独成文件并挂在处理任务的下游」，校验输出须可定位（规则名、校验对象、阈值、实际值、是否通过），不通过时阻断下游或告警并输出异常明细。<strong>没有强/弱规则配置项</strong>——阻断下游靠 DAG 位置实现</td>
+    </tr>
+    <tr>
+      <td><strong>结果层</strong></td>
+      <td>dataforge-server <code>quality</code> 模块</td>
+      <td>只有一个实体：<code>data_quality_check_result</code>（数据源 / 库 / 表 / 检查项 checkItem / 检查时间 / 检查记录数 / 未通过记录数 / 未通过明细 JSON）。接口为 <code>/quality/check-result</code> 的分页查询、详情、增删改，以及 <code>/statistics/fail</code>（按表 + 日期 + 检查项聚合未通过记录数）</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="card">
+  <h4>已核实的现状缺口（写文档时按此陈述，勿凭印象）</h4>
+  <ul style="margin-bottom:0">
+    <li>服务端 quality 模块<strong>没有规则定义表</strong>、没有规则与调度任务的绑定关系、没有质量大盘——它是一本<strong>结果台账</strong>，不是规则引擎。</li>
+    <li>桌面端前端<strong>没有任何界面消费该接口</strong>（全量检索 <code>src/</code>，仅 <code>opencodeInstructions.ts</code> 命中「数据质量」，无 <code>check-result</code> 调用）。</li>
+    <li>智能体侧 6 个工具组（compile / indicator-query / knowledge-document / lineage / metadata-agent / sql-validate）中<strong>没有质量结果上报工具</strong>。</li>
+    <li>⇒ 结论：这本台账在当前两个仓库里<strong>既没有写入方，也没有读取方</strong>（接口齐备，通路未接）。这是三个模块中最容易补、收益最直接的一处。</li>
+  </ul>
+</div>
+
+<h3>3.3 差异与含义</h3>
+
+<table>
+  <thead><tr><th style="width:18%">对比项</th><th style="width:30%">主流平台</th><th style="width:30%">DataForge</th><th>含义</th></tr></thead>
+  <tbody>
+    <tr><td>规则的表达载体</td><td>平台里的配置行（模板 + 阈值 + 分区表达式）</td><td>代码仓库里的程序（校验任务独立成文件）</td><td><span class="tag t-form">形态不同</span>代码可 review、可版本化、可随表一同演进，能表达平台 SQL 规则表达不了的东西（如跨表口径一致性）；代价是没有统一台账</td></tr>
+    <tr><td>触发方式</td><td>任务运行成功后平台自动触发其关联规则</td><td>校验任务作为 DAG 节点被调度</td><td>效果相近；差别在于主流平台能对<strong>未接入调度的表</strong>做周期巡检，本平台不能</td></tr>
+    <tr><td>判定与阻断</td><td>强规则置任务失败并阻塞下游；弱规则仅告警</td><td>校验任务失败 → DAG 下游不跑（等价于强规则）；<strong>无弱规则档位</strong></td><td><span class="tag t-form">形态不同</span>缺少「只告警不阻断」的中间档</td></tr>
+    <tr><td>规则覆盖度</td><td>大盘给出规则覆盖保障情况、TOP 问题表与责任人</td><td><strong>无覆盖度统计、无大盘</strong></td><td><span class="tag t-gap">真实缺口</span></td></tr>
+    <tr><td>规则模板复用</td><td>模板库 + 按模板批量下规则</td><td>靠提示词的「7 类规则类型」保证术语一致，靠 AI 复用同构实现</td><td><span class="tag t-form">形态不同</span>一致性由规范而非模板库保证</td></tr>
+  </tbody>
+</table>
+
+<p><strong>判定：表达力不弱，可观测性弱。</strong>本项目缺的不是「能不能定义规则」，而是「规则定义在哪、覆盖了哪些表、最近跑得怎么样」。最省的补法是补<strong>规则台账 + 覆盖度 + 结果看板</strong>，而<strong>不应该</strong>去补一个规则引擎——那会与「代码即规则」的模式直接打架，并制造两套并存的规则来源。</p>
+
+<h2>四、资产目录</h2>
+
+<h3>4.1 主流平台：数据地图（面向人的找数入口）</h3>
+
+<table>
+  <thead><tr><th style="width:16%">能力</th><th>DataWorks 数据地图做法</th></tr></thead>
+  <tbody>
+    <tr><td>元数据采集</td><td>MaxCompute / DLF 有内置采集器自动获取；其余通过自定义元数据采集导入统一管理，支持 Hologres、EMR Hive、CDH Hive、StarRocks、AnalyticDB（MySQL/PG）、MySQL、PostgreSQL、Oracle、SQL Server、ClickHouse、ElasticSearch、OTS(Tablestore)、Lindorm、OSS 等</td></tr>
+    <tr><td>数据总览</td><td>Region 下项目总数、总表数、存储量、总 API 数、存储趋势图、项目/表存储 Top、热门表</td></tr>
+    <tr><td>检索</td><td>汇集表、代码、索引、API、数据集、AI 模型、算法任务、模型服务、工作空间等对象，支持按类型 / 工作空间 / 负责人 / 环境 / <strong>标签</strong> / <strong>类目</strong>组合筛选</td></tr>
+    <tr><td>详情</td><td>基础元模型与 Schema、表和字段的上下游血缘、<strong>产出信息、热度信息、使用记录</strong>、注解 / 业务描述 / 使用说明</td></tr>
+    <tr><td>组织方式</td><td><strong>数据类目</strong>（分门别类管理，按类目导航检索与过滤）+ <strong>数据专辑</strong>（常用表作为官方专辑下发全员）；搜索时会推荐信息更加完善的表</td></tr>
+    <tr><td>预览探查</td><td>少量样本数据预览</td></tr>
+    <tr><td>变更影响</td><td>数据变更的影响分析与通知</td></tr>
+    <tr><td>打通建模</td><td>模型检索、指标检索，消除指标二义性、避免指标重复算</td></tr>
+    <tr><td>版本门槛</td><td>代码搜索与数据血缘分析需标准版及以上；数据专辑需专业版及以上</td></tr>
+  </tbody>
+</table>
+
+<h3>4.2 DataForge：元数据随 DDL 增量沉淀，先喂智能体，后给人看</h3>
+
+<p><strong>（1）元数据入口是 DDL 驱动，不是定时采集器。</strong><code>MetadataSyncService.syncSingleTableMetadata</code> 在代码执行产生建表/改表动作时增量同步单张表元数据，<code>DROP</code> 操作直接删除本地元数据；另有 <code>/metadata/annotation-gaps</code> 输出未标注表 / 字段清单，同步失败写审计日志并打 <code>[METADATA-SYNC-ALERT]</code> ERROR 日志。</p>
+
+<p>这条路径的治理含义与主流平台不同：<strong>平台纳管的范围等于「本平台跑过的 DDL」</strong>，而不是「集群里存在的一切对象」。既有的历史表需要另行纳入。</p>
+
+<p><strong>（2）元数据模型已经是「可治理」的粒度，不只是名字和注释。</strong></p>
+
+<table>
+  <thead><tr><th style="width:20%">实体</th><th>已沉淀字段（节选）</th></tr></thead>
+  <tbody>
+    <tr><td><code>table_metadata</code></td><td>数据源 / 存储引擎 / catalog / 库 / 表 / 表类型 / 表注释 / 建表与最后修改时间 / 分区列 / <strong>存储格式 / 压缩 / location</strong> / <strong>行数 rowCount / 大小 sizeBytes</strong> / <strong>冷热保留天数 hotDays·coldDays·keepDays</strong> / 表与字段双指纹 / 同步时间</td></tr>
+    <tr><td><code>column_metadata</code></td><td>字段名 / 类型 / 注释 / 是否分区 / 是否主键 / 序号 / 可空 / 默认值</td></tr>
+    <tr><td><code>indicator</code> + <code>indicator_field</code></td><td>主题域 topic / 编码 code / 名称 / <strong>业务定义 businessDefinition</strong> / <strong>计算表达式 calcExpr</strong> / 默认过滤 / 业务与<strong>技术责任人</strong> / 刷新周期 / 可见性；字段级绑定到 数据源 · 库 · 表 · 字段 —— 实际构成一份「指标口径目录」</td></tr>
+  </tbody>
+</table>
+
+<p><strong>（3）有两条消费通道，优先服务智能体。</strong></p>
+<ul>
+  <li><strong>对人</strong>：桌面端「数据探索」的库表浏览（数据源 → 库 → 表树，支持按<strong>表名或注释</strong>关键字过滤）+ 表详情（字段结构、描述编辑）；血缘在独立的血缘视图（Marquez）中呈现，与目录分离。</li>
+  <li><strong>对智能体</strong>：<code>/metadata/agent/{tables, table-detail, search, indicators}</code>。注意 <code>search</code> 的实现是 <code>tableName</code> 与 <code>tableComment</code> 的 <code>LIKE</code> 匹配（非向量检索）；<code>table-detail</code> 会带上字段的<strong>脱敏标记 maskingType</strong>——脱敏字段对智能体同样不可读。这让「智能体能读到什么」与「人能读到什么」遵循同一套权限。</li>
+</ul>
+
+<div class="card">
+  <h4>已核实的缺口清单</h4>
+  <p style="margin-bottom:0">无类目 / 标签体系 · 无专辑 · 无热度（访问次数、最近访问、读取次数）· 无样本数据预览 · 无存储量总览与趋势 · 无变更影响通知 · <strong>表级没有业务责任人字段</strong>（<code>table_metadata</code> 只有 <code>createBy</code>，owner 只存在于 indicator 上）</p>
+</div>
+
+<h3>4.3 差异与含义</h3>
+
+<p>主流数据地图与 DataForge 目录的差别，<strong>不是能力项的多少，而是价值函数不同</strong>：</p>
+
+<table>
+  <thead><tr><th style="width:22%">对比项</th><th style="width:33%">主流平台：面向人的找数入口</th><th>DataForge：面向智能体的上下文供给</th></tr></thead>
+  <tbody>
+    <tr><td>要解决的问题</td><td>「我要的那个数在哪张表里」——缩短找数时间</td><td>「智能体生成代码前，是否拿到了准确的表/字段/指标定义」——提高生成准确率</td></tr>
+    <tr><td>因此必需</td><td>检索强、类目清、热度排序、专辑推荐、样本预览</td><td>描述准确、口径唯一、<strong>缺口可见</strong>（未标注清单）、结构化可被程序消费</td></tr>
+    <tr><td>因此不必需</td><td>—</td><td>热度与推荐排序、专辑、样本预览（智能体不需要「猜你会用」）</td></tr>
+    <tr><td>共同必需</td><td colspan="2">描述完整度、血缘、责任人、权限可见性</td></tr>
+  </tbody>
+</table>
+
+<p><strong>判定：这是目标不同导致的形态不同，不是能力落后。</strong>但要说清两点：一是<strong>热度、类目、预览这类「给人用」的体验对新人上手确实是缺口</strong>，不能因为「智能体不需要」就一概否认；二是<strong>表级责任人缺失是共同必需项里的缺项</strong>，主流平台把 owner 作为目录的一等属性（用于筛选与问题归因），本项目目前只在指标上有，这一条建议补。</p>
+
+<h2>五、相邻治理面（「等」的部分）</h2>
+
+<table>
+  <thead><tr><th style="width:16%">维度</th><th style="width:32%">主流平台</th><th style="width:32%">DataForge</th><th>性质</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>权限与脱敏</strong></td>
+      <td>云侧 RAM 访问控制 + 角色认证 + 数据脱敏；配套敏感数据识别与分级分类（数据保护伞体系）</td>
+      <td>角色—资源三级授权；行 / 列级权限在 <strong>SQL 下发前改写</strong>（行条件并入 WHERE、投影列裁剪为白名单），命中约束但无法安全改写时<strong>一律拒绝</strong>；列级脱敏支持 full / 身份证 / 手机 / 邮箱 / 部分等档位，多角色命中时<strong>按列取更严格的规则合并</strong>（full 完全不可读，有脱敏规则的字段不允许写入），并且<strong>对智能体同样遮蔽</strong></td>
+      <td><span class="tag t-adv">位置更靠前</span>「下发前改写 + fail-close」比多数平台的「查询后过滤」更靠前；脱敏对智能体一并生效也是少见的</td>
+    </tr>
+    <tr>
+      <td><strong>敏感数据识别</strong></td>
+      <td>规则 / 模型自动识别 + 分级分类标签，识别结果驱动脱敏与权限策略</td>
+      <td><strong>无自动识别引擎、无分级分类标签</strong>；脱敏规则由人工在权限配置中指定</td>
+      <td><span class="tag t-gap">真实缺口</span>人工配即意味着「不知道的地方不会被保护」</td>
+    </tr>
+    <tr>
+      <td><strong>成本与生命周期</strong></td>
+      <td>存储总览、趋势、Top 表；DataLeap 以 80+ 治理规则覆盖存储/计算/质量/安全并做基线异常检测</td>
+      <td>元数据里<strong>已经采集</strong> rowCount / sizeBytes / hotDays / coldDays / keepDays，但只服务「数据价值评估」（规划中），<strong>没有治理规则引擎、没有展示面</strong></td>
+      <td><span class="tag t-gap">真实缺口</span>数据已在手，只差规则与呈现——投入产出比高</td>
+    </tr>
+    <tr>
+      <td><strong>写入合规</strong></td>
+      <td>平台侧权限 + 审批 + 编码期 AI 深度检查（DataWorks 已在 SQL 节点做事前检查）</td>
+      <td>可选装 <strong>spark / flink-listener</strong>：解析执行计划提取写入的库表或路径，按正则/模式规则判定，命中禁止规则时在<strong>分析（Analysis）阶段抛异常、写入发生前阻断</strong>；跨 Spark 2.4 / 3.1 / 4.1 适配，规则经 SparkConf 下发</td>
+      <td><span class="tag t-adv">独有位置</span>主流平台无对应物；且它<strong>不依赖平台</strong>，能覆盖绕过平台直接提交到集群的作业</td>
+    </tr>
+    <tr>
+      <td><strong>元数据缺口可见性</strong></td>
+      <td>一般靠「待完善表」类筛选能力</td>
+      <td><code>/metadata/annotation-gaps</code> 直接输出未标注表 / 字段清单；同步失败写入审计日志（<code>METADATA_SYNC_FAILED</code>）并打 ERROR 日志</td>
+      <td><span class="tag t-form">形态不同</span>相当，且本平台把「缺口」做成了可被智能体读取的接口</td>
+    </tr>
+    <tr>
+      <td><strong>知识检索</strong></td>
+      <td>普遍叠加语义层 / 向量检索（WeData 的 Unity Semantics 通过 MCP 做自然语言查询转换）</td>
+      <td>知识库为关键字匹配（title/content 的 <code>LIKE</code>），<strong>无向量库、无 embedding、无 rerank</strong>；已列为规划项</td>
+      <td><span class="tag t-gap">真实缺口</span>已明确规划</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>六、汇总矩阵与三条本质差异</h2>
+
+<h3>6.1 三个模块的差异性质一览</h3>
+
+<table>
+  <thead><tr><th style="width:13%">模块</th><th style="width:26%">主流平台范式</th><th style="width:28%">DataForge 范式</th><th>性质归类</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>数据集成</strong></td>
+      <td>自建同步平台：连接器 + 资源组 + 向导 + 运维 + 计费</td>
+      <td>不自研；由 DolphinScheduler 任务类型承接，平台负责编排、提交与血缘</td>
+      <td><span class="tag t-choice">取舍</span>连接器广度与托管弹性不做<br><span class="tag t-gap">缺口</span>CDC 向导、整库 / 分库分表、数据对账</td>
+    </tr>
+    <tr>
+      <td><strong>数据质量</strong></td>
+      <td>规则引擎：模板库 → 监控规则 → 与任务绑定 → 强弱规则判定 → 大盘</td>
+      <td>规则以提示词硬约束（7 类）+ 代码即规则（独立校验任务挂下游）+ 结果台账</td>
+      <td><span class="tag t-form">形态不同</span>载体与触发不同<br><span class="tag t-gap">缺口</span>规则台账 / 覆盖度 / 大盘 / 弱规则档位 / 结果通路的读写方</td>
+    </tr>
+    <tr>
+      <td><strong>资产目录</strong></td>
+      <td>面向人的找数入口：采集器 + 类目 + 专辑 + 热度 + 预览 + 变更通知</td>
+      <td>面向智能体的上下文供给：DDL 增量沉淀 + 元数据代理 + 缺口清单</td>
+      <td><span class="tag t-form">形态不同</span>价值函数不同<br><span class="tag t-gap">缺口</span>类目 / 热度 / 预览（对人的体验）、表级责任人</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>6.2 三条本质差异</h3>
+
+<ol>
+  <li><strong>治理位置前移，且分散到三段。</strong>主流平台把治理集中在平台侧一件事上；本项目把它拆成生成期（提示词约束 + 编译与 SQL 校验）、提交期（环境闸门、生产才注入血缘、参数落地任务节点）、引擎执行期（listener 分析期阻断）三段，事后只留一本结果台账。<strong>代价是缺少统一视图</strong>（没有大盘把三段的效果汇总起来），<strong>收益是治理不依赖平台</strong>——绕过平台提交到集群的作业同样被引擎侧规则约束。</li>
+  <li><strong>治理对象从「平台内的实体」变成「代码与提交物」。</strong>在主流平台里，表、字段、任务、规则都是平台中的配置对象；在本项目里，质量规则与同步逻辑首先是<strong>代码</strong>，平台只提供约束、校验与描述沉淀。这解释了为什么「规则台账」在本项目缺失得更明显——因为本项目的规则本来就不住在平台里。</li>
+  <li><strong>治理成果的第一消费者从「人」变成「智能体」。</strong>目录、口径、血缘、任务依赖在本项目里先保证<strong>机器可读</strong>（结构化 + 权限一致 + 缺口可见），再考虑人的浏览体验。这不是把「给人用」的模块做差了，而是把同一批信息的服务顺序调换了；因此凡是「只服务于人的发现效率」的能力（热度、专辑、类目、样本预览）在本项目里天然缺位，而「描述准确度」的比重被显著抬高。</li>
+</ol>
+
+<h2>七、边界声明（可直接引用到文档）</h2>
+
+<div class="card">
+  <h4><span class="tag t-choice">取舍</span>有意不做，不构成缺口</h4>
+  <p style="margin-bottom:0">连接器广度与同步引擎自研 · 托管弹性与资源组计费 · CDC 实时同步的可视化向导 · 整库 / 分库分表一键迁移 · 数据对账 · 脏数据阈值策略 · 质量规则的平台化引擎 · 资产类目与专辑 · 热度与推荐排序 · 样本数据预览。这些能力的替代承接方是<strong>集群既有组件 + 配套的数据开发与集群运维服务</strong>。</p>
+</div>
+
+<div class="card">
+  <h4><span class="tag t-form">形态不同</span>目标不同故形态不同，无需对齐</h4>
+  <p style="margin-bottom:0">质量的规则载体（代码 vs 配置行）· 质量的触发方式（DAG 节点 vs 平台自动触发）· 目录的第一消费者（智能体 vs 人）· 血缘的采集机制（OpenLineage 事件 vs 平台内解析）· 元数据纳管范围（本平台跑过的 DDL vs 采集器扫描全域）。</p>
+</div>
+
+<div class="card">
+  <h4><span class="tag t-gap">真实缺口</span>可补，且投入产出比从高到低</h4>
+  <ol style="margin-bottom:0">
+    <li><strong>质量结果通路未接通</strong>：结果表已建、接口齐备，但智能体侧没有上报工具、前端没有读取界面。补「一个上报工具 + 一个质量看板」即可闭环。</li>
+    <li><strong>质量规则台账与覆盖度</strong>：当前无法回答「哪些表配了规则、覆盖了哪几类」。建议在<strong>不引入规则引擎</strong>的前提下，把规则以元数据形式登记（表 + 字段 + 规则类型 + 阈值），覆盖度即可统计。</li>
+    <li><strong>表的业务责任人字段</strong>：目录与质量归因共同必需，目前只在指标上存在。</li>
+    <li><strong>敏感数据自动识别与分级分类</strong>：当前脱敏规则全靠人工指定，「未被识别的字段等于未被保护」。</li>
+    <li><strong>存储成本维度只采集未呈现</strong>：rowCount / sizeBytes / 冷热保留天数已在元数据中，补展示与规则即可支撑成本治理。</li>
+    <li><strong>知识检索增强（向量检索）</strong>：已列为规划项，现状为关键字匹配。</li>
+  </ol>
+</div>
+
+<h2>附录：证据索引</h2>
+
+<table>
+  <thead><tr><th style="width:34%">结论</th><th>证据（文件 / 接口）</th></tr></thead>
+  <tbody>
+    <tr><td>数据集成只是调度任务类型，没有自研同步引擎</td><td><code>src/types/dolphinscheduler.ts</code> <code>TASK_CATEGORIES</code> 的 <code>dataIntegration</code> 分类；服务端 <code>src/main</code> 检索 <code>datax</code> / <code>seatunnel</code> 零命中</td></tr>
+    <tr><td>质量规则类型被硬规定为 7 类，三阶段分工明确</td><td><code>src/hooks/opencode/opencodeInstructions.ts</code> 的 <code>QUALITY_RULE_SPEC</code> 与「数据质量校验规范」段</td></tr>
+    <tr><td>质量校验任务与处理任务分离、挂下游</td><td>同上，「大数据任务拆分原则」中的「质量校验独立」条目</td></tr>
+    <tr><td>服务端质量模块是结果台账，无规则定义</td><td><code>modules/quality/</code> 仅 7 个文件；实体 <code>DataQualityCheckResult</code>；<code>DataQualityCheckResultController</code> 的 <code>/quality/check-result</code> 与 <code>/statistics/fail</code></td></tr>
+    <tr><td>前端无质量结果消费界面</td><td>全量检索 <code>src/</code> 的 <code>quality</code> / <code>check-result</code> 仅命中 <code>opencodeInstructions.ts</code></td></tr>
+    <tr><td>智能体工具组中无质量上报工具</td><td>opencode 工具目录 <code>src/tool/</code>（compile · indicator-query · knowledge-document · lineage · metadata-agent · sql-validate 六组）</td></tr>
+    <tr><td>元数据随 DDL 增量同步，DROP 即删本地</td><td><code>MetadataSyncService.syncSingleTableMetadata</code></td></tr>
+    <tr><td>元数据字段含行数 / 大小 / 冷热保留天数</td><td><code>TableMetadata</code>（rowCount · sizeBytes · hotDays · coldDays · keepDays · 双指纹）</td></tr>
+    <tr><td>指标目录含业务定义、计算表达式、责任人</td><td><code>Indicator</code> + <code>IndicatorField</code></td></tr>
+    <tr><td>智能体上下文接口与脱敏可见性</td><td><code>MetadataAgentController</code> 的 <code>/metadata/agent/*</code>；<code>buildAgentTableDetailVO</code> 中的 <code>maskingType</code> 处理（full 不可读、有脱敏规则不可写）</td></tr>
+    <tr><td>脱敏规则按列取更严格者合并</td><td><code>DataAccessPermissionService.mergeDataMaskingRule</code>（full &gt; idcard/phone &gt; email &gt; partial）</td></tr>
+    <tr><td>未标注清单与同步失败告警</td><td><code>/metadata/annotation-gaps</code>；<code>MetadataAnnotationGapService</code> · <code>MetadataSyncAlertService</code></td></tr>
+    <tr><td>写入合规在分析期阻断、跨三版本适配</td><td><code>spark-listener/README.md</code>（Analysis 阶段注入 CheckRule、<code>write.compliance.*</code> 规则、Spark 2.4 / 3.1 / 4.1）</td></tr>
+  </tbody>
+</table>
+
+<p class="note">对标平台的模块能力（数据集成同步方式与计费、DQC 规则模板与强弱规则、数据地图采集与检索）均来自厂商公开文档整理，版本差异可能影响细节，正式引用前建议以对应版本官方文档再核一次。</p>
+
+<footer class="doc">
+  DataForge 治理模块差异分析 · 基于 dataforge 桌面端、dataforge-server、spark-listener / flink-listener 源码核实 · 生成时间 2026-09-15
+</footer>
+
+</div>
+</body>
+</html>

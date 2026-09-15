@@ -136,3 +136,88 @@ revisions:
     regenerated_via: df_gen_stage2.py → df_make_web.py（本轮起不再产出 docx）
     verify: "三份文本源与新表对齐；旧表述（客户端不直连 / 多租户与权限边界不严 / 血缘与任务依赖信息不全）零残留"
 
+  - at: 2026-09-15T13:15:00+08:00
+    reason: 用户要求核查第七章「有没有已解决的风险项，有则删除」
+    context: |
+      同日 10:30—12:57 期间，桌面端与服务端并行落了多项修复（server 16 个文件；desktop 26 个文件），
+      其中多处注释直接引用风险项编号（R1 / R4），即把本计划书的风险表当成了工作清单。
+      本轮按「当前代码实况」重新判定每一项是否闭环。
+    removed:
+      - "「库表与指标描述不完整、不新鲜」——已闭环：MetadataAnnotationGapService（/metadata/annotation-gaps 未标注表/字段清单）+ MetadataSyncAlertService（同步失败写审计日志 operation=METADATA_SYNC_FAILED 并打 ERROR 告警），两处均已接线"
+      - "「删除与回滚造成不可恢复的丢失」——已闭环：rollbackSafety 闸门 + 回收站 + trashRetention 保留策略（30 天 / 50 批 / 2 GiB，最新 2 批不清理），均有单测；细节移入 4.1"
+    rewritten:
+      - "R1 血缘覆盖：补两道闸门（仅生产环境注入、仅 Spark 任务）与文件夹入口漏注入已修复"
+      - "R2 AI 产出：改为「Java/Scala 编译是提交硬门禁；SQL 校验不是门禁且只覆盖 MySQL/Doris/ClickHouse」+ 环境单选已落地"
+      - "R3 权限：原四项软肋已闭合三项（fail-close、取交集收紧、SQL 下发前改写并覆盖 Spark/Flink/HBase），仅保留三处真实残留（租户非隔离边界、非 SQL 作业、超管旁路）"
+      - "R4 凭据：磁盘路径已闭合（钥匙串加密信封 + 导出剥离），仅保留三条人工/环境旁路"
+      - "R5 上游变更：编号顺延"
+    also_updated:
+      - "4.1 编译与 SQL 校验的描述改为准确口径；4.1 回收站补保留策略细节"
+      - "4.2 元数据模块补「未标注清单 / 同步告警」；权限模型补 SQL 下发前改写"
+      - "五章 P0 新增「元数据标注缺口清单与同步失败告警」「提交环境单选与环境后缀隔离」"
+      - "回归基线 56/969 → 59 文件 / 1001 用例（13:03 全量全绿）；df_gen_stage2.py 的 METRIC 同步 905 → 1001"
+    verify: "与他方 12:57 生成版的全文句子级 diff：删除 65 行全部落在七章重写 / 4.1 / 4.2 / 九章附录，无意外丢失"
+    sources_updated: ["stage1/final_draft.md"]
+    regenerated_via: df_gen_stage2.py → df_make_web.py（仍不产出 docx）
+
+  - at: 2026-09-15T15:30:00+08:00
+    reason: 用户要求整章删除「风险识别与应对」——理由：其中多数条目属于「如此设计」（设计选择而非待处理风险）
+    changed:
+      - "删除第七章「风险识别与应对」全章（5 条风险，含表头与导语）"
+      - "后续章节重编号：八、验收标准与质量保障 → 七；九、预期效益 → 八；十、附录 → 九"
+      - "小节号同步：8.1—8.5 → 7.1—7.5；9.1 → 8.1"
+      - "交叉引用同步：验收方式（第八章）→（第七章）；见 8.5 → 见 7.5（2 处）；8.2/8.3 引用 → 7.2/7.3；第十章附录 → 第九章附录（2 处）；按 9.1 口径 → 按 8.1 口径"
+      - "df_gen_stage2.py 的 LEADIN 键 八→七、十→九；附录指标表的判定 startswith('十、附录') → startswith('九、附录')"
+    risk_content_preserved_at: ".workbuddy/memory/MEMORY.md「写计划书/方案前的事实核查基线」——权限/血缘/凭据的残留边界仍留在项目记忆里，未随章节删除而丢失"
+    verify: "章节列表 一…六、七（验收）、八（效益）、九（附录）；h3 渲染为（一）～（五）与（一）；全文无「风险识别与应对」、无 R 编号、无 8.x / 第十章 悬空引用；附录指标卡正常注入"
+    sources_updated: ["stage1/final_draft.md"]
+    regenerated_via: df_gen_stage2.py → df_make_web.py
+
+  - at: 2026-09-15T15:40:00+08:00
+    reason: 用户问「是否可以增加与现有可视化开发平台对比（如 hue / dataworks 等）」——已新增该小节
+    changed:
+      - "第一章新增 1.3「同类平台对比与差异定位」：10 个维度的对照表（形态与部署 / 优化对象 / AI 落点 / 规范开发环境 / 库表与指标描述 / 血缘与任务依赖 / 权限粒度 / 引擎侧写入合规 / 引擎与集群兼容 / 收费模式），列 = DataForge、Hue（Cloudera Data Explorer）、阿里云 DataWorks、其他云平台（DataArts / WeData / Dataphin）"
+      - "表后给三点差异定位（优化对象、上下文供给方式、落地形态）与一段「客观说明」（托管运维与连接器丰富度上云平台领先、Hue 即开即用成熟），避免只夸自家"
+      - "原 1.3 建设目标 / 1.4 建设范围与边界 / 1.5 产品与商业模式 顺延为 1.4 / 1.5 / 1.6；交叉引用「口径见 1.5 预估收入」→「1.6」"
+      - "df_gen_stage2.py 的 LEADIN['一'] 补「与同类平台的差异」"
+    evidence:
+      - "DataWorks Copilot / 数据开发 Agent（2025-09 发布，对接 Qwen 与 DeepSeek-R1）——阿里云官方产品动态与帮助中心"
+      - "Hue SQL AI Assistant（生成/编辑/解释/优化/修复 SQL，模型由客户自选，RAG 用表结构 + 每表 3 行样本；Cloudera Runtime 7.3.2 起改名 Cloudera Data Explorer 并暴露 REST API）——Cloudera 官方文档"
+      - "DataArts 盘古大模型、WeData AI Ops、Dataphin 数据资产智能体——公开资料（二手来源，文档内已标注「以厂商文档为准」）"
+    caveats: "对手能力为公开资料整理，已在小节内显式声明口径；若对外发布，建议由用户复核一遍友商表述"
+    verify: "对比表 11 行 × 5 列 = 55 单元格渲染正常；第一章小节渲染为（一）…（六）；章节仍 9 章、h2 9 / h3 28 / 表格 25"
+    sources_updated: ["stage1/final_draft.md"]
+    regenerated_via: df_gen_stage2.py → df_make_web.py
+
+  - at: 2026-09-15T15:50:00+08:00
+    reason: 用户反馈「竞品对比没有突出描述本项目的优点」（点名：支持 Java / Scala / Python 等开发后一键调度，其他不支持）
+    changed:
+      - "对比表新增两行并前移：①「开发语言」——五类语言（Java / Scala / Python / SQL / Shell）同一开发环境；②「编译与一键上调度」——Java / Scala 本地 Maven 编译产出主 Jar 包、Python / SQL / Shell 免编译，五类程序一并一键提交调度，代码头参数自动落地任务节点；对手列相应写明「以 SQL / Python / Shell 为主」「Java / Scala 需自行编译打包后以资源或 UDF 引用，无本地编译闭环」"
+      - "原「规范开发环境」行改名为「参数与约束」，避免与新增的编译行重复"
+      - "「差异定位」改为「本平台的四点优势」，并把「开发到上线是一条闭环，且不限 SQL」提到第一条；原有三点降为二三四条"
+      - "客观说明补「云平台在数据集成 / 数据质量 / 资产目录等治理模块完整度更成熟」，保持不偏袒自家"
+    evidence:
+      - "CodeType 枚举：SCALA / PYTHON / SQL / JAVA / SHELL 五类（服务端）"
+      - "schedulerMapping.ts：ext→任务类型 sql→SQL、py→PYTHON、sh/bash→SHELL；ENGINE_REQUIRED_EXTS = {java, scala}"
+      - "SubmitToSchedulerModal：isCompilableTask = 扩展名 java/scala 且任务类型属 SPARK / FLINK / FLINK_STREAM / MR / JAVA；主 Jar 包由编译结果回填，未通过则无法提交"
+    verify: "对比表 13 行 × 5 列（表头 + 12 维度）渲染正常；「本平台的四点优势」与四条要点均在页面可见"
+    sources_updated: ["stage1/final_draft.md"]
+    regenerated_via: df_gen_stage2.py → df_make_web.py
+
+  - at: 2026-09-15T16:50:00+08:00
+    reason: 用户指出本项目一大优势是「把业务方及其需求一并纳入统一管理，实现人提需求、智能体依需求自动编码的闭环」，要求展开说明
+    changed:
+      - "三章新增 3.3「需求驱动的开发闭环：业务方 → 需求 → 智能体编码」——设计思路 / 三角色三产物表 / 一套契约与四条同源线 / 六步流转 / 五条价值"
+      - "原 3.3 关键技术设计决策顺延为 3.4"
+      - "1.3 优势块标题改「本平台的优势」，该闭环提为第 1 条（原四条降为 2—5）；对比表新增「需求与角色」行"
+      - "2.1 角色表补「业务需求方」「数据架构师」两行，导语补六类内置角色说明（此前 2.1 无业务方，与 3.3 矛盾）"
+      - "df_gen_stage2.py 的 LEADIN['三'] 补「需求驱动的开发闭环」"
+    evidence:
+      - "RoleType：SUPER_ADMIN / OPS_ENGINEER / DATA_DEV_ENGINEER / BUSINESS_REQUESTER / DATA_ANALYST / DATA_ARCHITECT"
+      - "ChatInput.tsx 任务类型下拉：需求编写(BUSINESS_REQUESTER) / 数仓设计(DATA_ARCHITECT) / 数据开发(DATA_DEV_ENGINEER)；数据探索为数据分析 / 运维管理"
+      - "opencodeInstructions.ts：S1→S2→S3 三段产物路径、指标唯一主线、时效/数据源/质量/敏感数据四条同源线"
+      - "AIPanel.tsx：开发助手切换任务类型不新建会话（system 逐轮下发），数据探索仍 newSession"
+    verify: "三章小节渲染为（一）架构总览 /（二）五类信息 /（三）需求驱动的开发闭环 /（四）关键技术设计决策；3.3 内三角色表 4 行；全文中文 13,724 字"
+    sources_updated: ["stage1/final_draft.md"]
+    regenerated_via: df_gen_stage2.py → df_make_web.py
+
