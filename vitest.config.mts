@@ -21,7 +21,9 @@ export default defineConfig({
     // 例如 textmateFix.test.ts 断言 warmUpTextmate 会用隐藏编辑器 attach 模型，
     // 而源码里该分支要求 document 存在，node 环境下走不到；tools.test.tsx 也需要真实 DOM。
     environment: 'jsdom',
-    include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    // electron/ 下的用例是主进程代码（凭据信封等纯逻辑），不需要 DOM，
+    // 文件内用 `// @vitest-environment node` 单独声明环境。
+    include: ['src/**/*.{test,spec}.{ts,tsx}', 'electron/**/*.{test,spec}.{ts,tsx}'],
     // react-file-navigator 的产物是 ESM，但内部用了无扩展名的相对导入（'./App'），
     // 被外部化交给 Node 加载时会解析失败，这里让 Vite 内联转换它。
     server: {
@@ -29,7 +31,7 @@ export default defineConfig({
         inline: ['react-file-navigator'],
       },
     },
-    exclude: ['node_modules/**', 'dist/**', 'dist-electron/**', 'electron/**', 'release/**'],
+    exclude: ['node_modules/**', 'dist/**', 'dist-electron/**', 'release/**'],
     // 测试文件已被 tsconfig.json exclude，tsc 不做类型检查，这里也只跑运行时断言
     typecheck: { enabled: false },
     // 注册 @testing-library/react 的 DOM 清理（未开 globals，自动清理不会生效）

@@ -15,7 +15,7 @@ import {
   stopScalaLspWs,
 } from './backend/lspBridge';
 import { autoStartOpencode, startOpencodeAfterLogin, stopOpencode } from './backend/opencode';
-import { readStoreJSON, writeStoreJSON } from './backend/store';
+import { exportSanitizedStores, readStoreJSON, writeStoreJSON } from './backend/store';
 import { detectWsl, runtimeId, type RuntimeId } from './backend/platform';
 
 // 事件桥（主进程 → 渲染层）统一迁至 eventBus.ts，此处仅转发导出
@@ -133,6 +133,45 @@ async function handleFs(req: FsRequest): Promise<unknown> {
         isFile: d.isFile(),
         isSymlink: d.isSymbolicLink(),
       }));
+    }
+    case 'du': {
+      // 递归统计目录占用（供回收站按容量上限清理）。
+      // 上限 maxEntries 是防御性的：回收站理论上可能被塞进一个巨大的目录，
+      // 统计本身不该变成一次无界遍历 —— 超限即返回 truncated，调用方按已统计值决策。
+      const root = String(args.path);
+      const maxEntries = Number(args.maxEntries ?? 20000);
+      let bytes = 0;
+      let files = 0;
+      let truncated = false;
+      const stack: string[] = [root];
+      while (stack.length > 0 && !truncated) {
+        const dir = stack.pop() as string;
+        let entries: import('node:fs').Dirent[];
+        try {
+          entries = await fsp.readdir(dir, { withFileTypes: true });
+        } catch {
+          continue; // 目录在统计过程中被并发删除：跳过
+        }
+        for (const d of entries) {
+          if (files >= maxEntries) {
+            truncated = true;
+            break;
+          }
+          const full = path.join(dir, d.name);
+          if (d.isDirectory()) {
+            stack.push(full);
+            continue;
+          }
+          if (!d.isFile()) continue; // 软链不跟随，避免穿透到工作区外
+          try {
+            bytes += (await fsp.stat(full)).size;
+            files += 1;
+          } catch {
+            // 单文件读不到不影响整体估算
+          }
+        }
+      }
+      return { bytes, files, truncated };
     }
     case 'readFile': {
       const buf = await fsp.readFile(String(args.path));
@@ -351,6 +390,9 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('df:store:write', (_e, payload: { file: string; data: unknown }) =>
     writeStoreJSON(payload.file, payload.data),
   );
+
+  // 导出诊断配置：主进程侧剥离凭据后返回，明文凭据不经过渲染层
+  ipcMain.handle('df:store:export', () => exportSanitizedStores());
 
   // 数据上报所需的环境信息：操作系统类型+版本 + 应用版本（应用版本以打包时 package.json version 为准）
   ipcMain.handle('df:report:meta', (): { os_version: string; platform: RuntimeId; wsl: boolean; dataforge_version: string } => {

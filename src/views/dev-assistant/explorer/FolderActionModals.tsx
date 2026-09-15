@@ -90,6 +90,7 @@ const FolderActionModals: React.FC<FolderActionModalsProps> = ({
       isRealApi={isRealApi}
       compileConfig={compileConfig ?? null}
       devProjectId={projectId}
+      openlineageTransportUrl={openlineageTransportUrl}
       onClose={onClose}
     />
   );

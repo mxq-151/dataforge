@@ -6,6 +6,7 @@ import { notifyWatchedFilesChanges, WatchChangeType, pathToUri } from '../servic
 import { getBaseName, getDirName, isPathUnder, joinPath, toRelativePath } from '../utils/pathUtils';
 import { TRASH_DIR_NAME, formatTrashStamp, uniqueTrashName } from '../utils/rollbackSafety';
 import { ensureTrashIgnored } from '../utils/workspaceTrash';
+import { scheduleTrashRetention } from '../utils/trashCleanup';
 
 // 纯函数实现已迁至 utils/workspacePath，此处 re-export 保持既有引用可用
 export { getPlatformDefaultWorkspace } from '../utils/workspacePath';
@@ -687,6 +688,8 @@ const useFileSystem = (initialPath?: string) => {
       // 通知 JDT.LS / Metals：文件/目录已从原位置消失
       notifyWatchedFilesChanges([{ uri: pathToUri(nodePath), type: WatchChangeType.Deleted }]);
       console.log(`🗑️ [trash] ${nodeType} ${nodePath} → ${target}`);
+      // 回收站按保留期与容量上限自清理；同一批操作合并执行，失败不影响删除本身
+      scheduleTrashRetention(rootPath);
       return target;
     } catch (error) {
       console.error('移入回收站失败:', error);

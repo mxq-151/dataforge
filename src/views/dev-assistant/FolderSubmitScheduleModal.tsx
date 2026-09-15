@@ -16,8 +16,10 @@ import { toRelativePath, splitPath } from '../../utils/pathUtils';
 import { unifiedCompile, type CompileConfig } from '../../services/unifiedCompile';
 import { readFile } from '../../bridge/fs';
 import { useToast } from '../../components/Toast';
+import useDevProjectConfig from '../../hooks/useDevProjectConfig';
 import DeployEnvRadio from './DeployEnvRadio';
-import { DEFAULT_DEPLOY_ENV, withDeployEnvSuffix, type DeployEnv } from '../../utils/deployEnv';
+import { DEFAULT_DEPLOY_ENV, shouldInjectLineage, withDeployEnvSuffix, type DeployEnv } from '../../utils/deployEnv';
+import { buildOpenLineageArgs, extractLineageParams } from '../../utils/lineageParams';
 import { applyAppNameToNodes } from '../../utils/appName';
 // 内嵌的是调度模块的工作流定义编辑器，它复用了该模块的 sm-* 基础样式
 // （保存工作流弹窗 sm-modal / 按钮 sm-btn 等，定义在 ScheduleManagementPanel.css 中）。
@@ -55,8 +57,11 @@ export interface FolderSubmitScheduleModalProps {
   isRealApi?: boolean;
   /** 编译环境配置：保存前对 Java/Scala 代码文件编译生成主 Jar 包（与单文件提交调度一致） */
   compileConfig?: CompileConfig | null;
-  /** 开发项目 ID：编译时用于按文件拉取依赖配置（unifiedCompile.projectId） */
+  /** 开发项目 ID：编译时用于按文件拉取依赖配置（unifiedCompile.projectId），
+   *  生产环境提交时也用它按文件读取血缘配置（lineage.*） */
   devProjectId?: number;
+  /** 全局 OpenLineage Transport URL（来自设置页）：生产环境提交时注入 spark.openlineage.transport.url */
+  openlineageTransportUrl?: string;
   /** 提交成功后的回调（携带工作流名称），供父组件刷新等 */
   onSuccess?: (workflowName: string) => void;
   onClose: () => void;
@@ -214,10 +219,13 @@ const FolderSubmitScheduleModal: React.FC<FolderSubmitScheduleModalProps> = ({
   isRealApi,
   compileConfig,
   devProjectId,
+  openlineageTransportUrl,
   onSuccess,
   onClose,
 }) => {
   const toast = useToast();
+  // 按文件读取已保存的血缘配置（lineage.*）：仅在「本次确实要注入」时才会调用，见 applyLineageParamsToSparkNodes
+  const { fetchByFilePath } = useDevProjectConfig();
 
   const [phase, setPhase] = useState<DraftPhase>('loading');
   const [error, setError] = useState<string | null>(null);
@@ -592,6 +600,55 @@ const FolderSubmitScheduleModal: React.FC<FolderSubmitScheduleModalProps> = ({
     return { nodes: result, errors };
   }, [dsApi, filePathByTaskName, compileConfig, devProjectId, projectCode, rootPath, readFileContent]);
 
+  // ---------- 保存前：为 SPARK 节点注入数据血缘参数（仅生产环境） ----------
+  /**
+   * 血缘参数（`spark.openlineage.*`）的拼装与两道闸门都在 `utils/lineageParams.ts`，
+   * 与单文件提交调度**共用同一份实现**。文件夹入口的差别只在配置来源：
+   * 这里没有逐文件配置的内存态，所以只在「本环境确实要注入」（生产）时，
+   * 才按文件去后端查一次 `lineage.*`；查不到（未配置 / 后端不可用）按「未显式关闭」处理，
+   * 用设置页的全局值注入 —— 与单文件入口的兜底口径一致。
+   *
+   * 非生产环境直接原样返回：一个请求都不发，也不改写任何节点的「其他参数」。
+   */
+  const applyLineageParamsToSparkNodes = useCallback(async (
+    nodes: DSWorkflowTaskNode[],
+  ): Promise<DSWorkflowTaskNode[]> => {
+    if (!shouldInjectLineage(deployEnv)) return nodes;
+
+    const result = nodes.map(n => ({ ...n }));
+    for (const node of result) {
+      if (node.taskType !== 'SPARK') continue;
+
+      const filePath = filePathByTaskName.get(sanitizeDsName(node.name));
+      let fileLineage: Record<string, string> = {};
+      if (filePath && devProjectId) {
+        // 后端按 (project_id, 项目内相对路径) 联合键存储，路径口径与「配置参数」弹窗一致
+        const loaded = await fetchByFilePath(devProjectId, toRelativePath(filePath, rootPath));
+        fileLineage = extractLineageParams(loaded?.taskParams);
+      }
+
+      const args = buildOpenLineageArgs({
+        env: deployEnv,
+        projectCode,
+        globalTransportUrl: openlineageTransportUrl,
+        fileLineage,
+      });
+      // 空数组 = 本次不注入（文件级 lineage.enabled=false）：此时不碰 others，
+      // 免得把用户的「其他参数」覆盖成空串
+      if (args.length === 0) continue;
+
+      // 与单文件提交调度同口径：拼成单行追加在「其他参数」末尾，用户已有命令保持不变
+      const params = safeParseTaskParams(node.taskParams);
+      const existing = ((params.others as string) || '').replace(/\r?\n/g, ' ').trim();
+      params.others = existing ? `${existing} ${args.join(' ')}` : args.join(' ');
+      node.taskParams = JSON.stringify(params);
+    }
+    return result;
+  }, [
+    deployEnv, filePathByTaskName, devProjectId, rootPath, projectCode,
+    openlineageTransportUrl, fetchByFilePath,
+  ]);
+
   // ---------- 保存（创建或更新调度工作流） ----------
   const handleSave = useCallback(async (data: WorkflowSavePayload) => {
     if (!dsApi) {
@@ -615,12 +672,15 @@ const FolderSubmitScheduleModal: React.FC<FolderSubmitScheduleModalProps> = ({
         return;
       }
 
-      // 2. 依赖重建：解析代码头 @依赖，同工作流依赖直接连边，
+      // 2. 为 SPARK 节点注入数据血缘参数（仅生产环境；非生产一个请求都不发）
+      const lineageNodes = await applyLineageParamsToSparkNodes(compiledNodes);
+
+      // 3. 依赖重建：解析代码头 @依赖，同工作流依赖直接连边，
       //    跨文件夹/跨项目依赖自动生成专属「前置依赖」DEPENDENT 节点（与单文件提交调度一致）
       const headerDeps = draft?.headerDeps ?? new Map<string, HeaderDependency[]>();
       const alloc = makeReconcileAllocators(compiledNodes);
       const recon = await reconcileWorkflowDependencies({
-        nodes: compiledNodes,
+        nodes: lineageNodes,
         edges: data.edges,
         localHeaderDeps: headerDeps,
         // 文件夹场景没有单一「主任务」，传空即可（reconcile 仅用它给重建目标排序）
@@ -662,7 +722,7 @@ const FolderSubmitScheduleModal: React.FC<FolderSubmitScheduleModalProps> = ({
       // 提交前按依赖关系分层布局：前置节点（含 DEPENDENT 前置依赖节点）总在依赖节点左侧
       layoutWorkflowByDependency(finalNodes, recon.edges);
 
-      // 3. 用回填了 mainJar 且重建了依赖的节点/边提交
+      // 4. 用回填了 mainJar、注入了血缘参数且重建了依赖的节点/边提交
       setSavingLabel('正在提交到调度系统…');
       const payload = { ...data, nodes: finalNodes, edges: recon.edges };
       const { release, ...rest } = payload;
@@ -702,7 +762,7 @@ const FolderSubmitScheduleModal: React.FC<FolderSubmitScheduleModalProps> = ({
       setSaving(false);
       setSavingLabel('正在提交到调度系统…');
     }
-  }, [dsApi, project, projectError, toast, onSuccess, onClose, compileAndFillMainJars, draft, resolveExternalDeps]);
+  }, [dsApi, project, projectError, toast, onSuccess, onClose, compileAndFillMainJars, applyLineageParamsToSparkNodes, draft, resolveExternalDeps]);
 
   if (!visible) return null;
 
@@ -744,7 +804,11 @@ const FolderSubmitScheduleModal: React.FC<FolderSubmitScheduleModalProps> = ({
             <DeployEnvRadio
               value={deployEnv}
               onChange={setDeployEnv}
-              hint={`工作流名称将以 _${deployEnv} 结尾`}
+              hint={
+                shouldInjectLineage(deployEnv)
+                  ? `工作流名称将以 _${deployEnv} 结尾，提交时注入数据血缘参数`
+                  : `工作流名称将以 _${deployEnv} 结尾，不注入数据血缘参数`
+              }
             />
             {nodeCount > 0 && (
               <span className="folder-submit-schedule__count">{nodeCount} 个任务节点</span>

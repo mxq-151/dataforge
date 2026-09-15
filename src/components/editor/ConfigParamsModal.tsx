@@ -5,6 +5,9 @@ import type { DependencyRecord } from '../../api/dependency';
 import useDevProjectConfig from '../../hooks/useDevProjectConfig';
 import { parseFileHeader, validateFileHeader } from '../../utils/fileHeader';
 import { getEngineDefaultTaskParams } from '../../utils/programArgs';
+// 血缘保留参数的 key 前缀 / 开关名 / 判别函数唯一定义在这里，与提交侧（注入 spark.openlineage.*）
+// 共用同一份，避免两边各写一份写法走岔
+import { LINEAGE_ENABLED_KEY, isLineageParamKey as isLineageKey } from '../../utils/lineageParams';
 import { useToast } from '../Toast';
 import './ConfigParamsModal.css';
 
@@ -30,14 +33,9 @@ interface ParamItem {
   value: string;
 }
 
-/** 血缘管理保留的任务参数 key（存于 computeResources，提交调度时注入 spark.openlineage.*） */
-const LINEAGE_ENABLED_KEY = 'lineage.enabled';
-
 interface LineageConfig {
   enabled: boolean;
 }
-
-const isLineageKey = (key: string) => key.startsWith('lineage.');
 
 const extractLineageFromParams = (params: ParamItem[]): LineageConfig => {
   const item = params.find(p => p.key === LINEAGE_ENABLED_KEY);
@@ -819,7 +817,7 @@ const ConfigParamsModal: React.FC<ConfigParamsModalProps> = ({
                     onChange={e => setLineage(prev => ({ ...prev, enabled: e.target.checked }))}
                   />
                   <span className="config-params__lineage-hint">
-                    启用 OpenLineage 血缘采集（提交 Spark 调度任务时注入 spark.openlineage.* 参数）
+                    启用 OpenLineage 血缘采集（仅生产环境提交 Spark 调度任务时注入 spark.openlineage.* 参数；灰度 / 测试环境不注入）
                   </span>
                 </label>
                 <div className="config-params__lineage-row">

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
-  DEPLOY_ENV_OPTIONS, DEFAULT_DEPLOY_ENV, deployEnvLabel, isDeployEnv, withDeployEnvSuffix,
+  DEPLOY_ENV_OPTIONS, DEFAULT_DEPLOY_ENV, deployEnvLabel, isDeployEnv, shouldInjectLineage,
+  withDeployEnvSuffix,
 } from './deployEnv';
 
 /**
@@ -57,5 +58,28 @@ describe('deployEnv — 提交调度环境单选', () => {
   it('基础名为空时退化为纯环境后缀（不产生前导下划线）', () => {
     expect(withDeployEnvSuffix('', 'test')).toBe('test');
     expect(withDeployEnvSuffix('   ', 'prod')).toBe('prod');
+  });
+});
+
+/**
+ * 环境同时决定**是否注入数据血缘参数**：只有生产环境注入。
+ *
+ * 需求：用户选择非生产环境（灰度 / 测试）提交调度时，提交的任务不带数据血缘相关参数，
+ * 避免验证性任务在正式血缘图上留下只在测试跑过的临时节点。
+ */
+describe('deployEnv — 只有生产环境注入数据血缘参数', () => {
+  it('生产环境注入，灰度 / 测试不注入', () => {
+    expect(shouldInjectLineage('prod')).toBe(true);
+    expect(shouldInjectLineage('gray')).toBe(false);
+    expect(shouldInjectLineage('test')).toBe(false);
+  });
+
+  it('默认环境（测试）即不注入 —— 打开弹窗不动环境就是安全默认', () => {
+    expect(shouldInjectLineage(DEFAULT_DEPLOY_ENV)).toBe(false);
+  });
+
+  it('三个环境的判定与选项定义一一对应，不留未覆盖取值', () => {
+    const injectEnvs = DEPLOY_ENV_OPTIONS.filter(o => shouldInjectLineage(o.value)).map(o => o.value);
+    expect(injectEnvs).toEqual(['prod']);
   });
 });

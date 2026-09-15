@@ -8,12 +8,22 @@
 
 - **跑 vitest / tsc / vite 一律 `env -u NODE_OPTIONS`**（agent shell 的 broker fs shim 会让 jsdom 导入从
   0.5s 变 96s，指纹是 CPU ~1% 纯等待）。用户自己的 Terminal 无此注入。
+- **git 写操作不要在本 agent shell 里跑**：本 shell 对 `.git` 的写入会部分丢弃 —— `git update-ref` / `git fetch`
+  报成功（退出码 0、输出正常）但 `refs/` 下文件不落地，新建的 `refs/` 子目录也会消失；仅直写
+  `echo <sha> > .git/refs/...` 能落地。2026-09-15 11:43 由此写坏过仓库（`refs/` 与 `objects/pack/*.pack`
+  消失、残留 16 个空对象目录）。只读命令安全（建议加 `-c maintenance.auto=false -c gc.auto=0`）；
+  写操作交用户 Terminal。诊断与恢复过程见 `memory/2026-09-15.md`。
 - **同一文件的多处编辑必须串行**：并行两个 `Edit` 各基于旧快照写回全文件，后写者静默抹掉先写者。
   查并发写者 `find src -mmin -8`。
 - macOS 陷阱：`grep "a\|b"` 会静默失败，须 `grep -E`。
-- 回归基线（2026-09-14 全量）：**54 文件 / 905 例**（load<5 全绿；load>12 时 `FolderSubmitScheduleModal` 超时误报）。
-- 测试大面积失败先看 load：load≈7~10 时 `FolderSubmitScheduleModal` 的 `waitFor` 会超时误报，
-  **load 回落即过**。
+- 回归基线（2026-09-15 全量）：**59 文件 / 1001 例**（当日演进 54/905 → 56/969 → 57/978 → 59/1001）。
+  已含 `electron/**` 用例，用 `// @vitest-environment node` 声明环境（vitest `include` 已覆盖，
+  `tsconfig.node.json` 已 exclude 测试文件）。
+  已知负载误报只剩 `textmateFix` 的 J)（单独复跑即过）；`FolderSubmitScheduleModal` 的「外部 @依赖」超时
+  **已定位并修掉**（编辑器 key 含节点数，依赖节点到达会 remount，测试点到已卸载按钮 —— 见 skill 第 6 节）。
+- 测试大面积失败先看 load：load≈7~10 时 `waitFor` 会超时误报，**load 回落即过**。
+- **`git` 在 agent shell 里可能整段不可用**（`fatal: not a git repository`，指纹是第一条命令能用、
+  之后的就报错）：别用 `git stash` 做对照实验，改用「临时改回代码 + 复跑」。
 
 ## 模型上下文窗口
 
@@ -59,6 +69,10 @@
 - 一切删除/回滚必须先过纯函数 `rollbackSafety.ts::assessRollbackSafety`；`root=null` 的快照一律中止。
 - 删除**走回收站**（`.dataforge-trash/` + `_manifest.json`），禁止 `fs.remove` 直删；
   回收站**必须对 git 隐身**（否则自动同步静默失效）。
+- 回收站有保留策略（默认 30 天 / 50 批 / 2 GiB，最新 2 批永不清理；决策在纯函数
+  `src/utils/trashRetention.ts`，执行在 `trashCleanup.ts`，5s 合并窗口）。
+  **新增「移入回收站」的入口必须接上 `scheduleTrashRetention`**，否则回收站无限增长。
+  回收站是误删缓冲、不是备份 —— 对外叙事别混。
 - **快照结构新增字段必须同步单测。**
 
 ## 写计划书/方案前的事实核查基线（2026-09-15 实测，勿凭印象写）
@@ -75,8 +89,12 @@
   （`getMergedRowFilterSql` / `getAllowedColumns` 注释明写）；③ 行/列后过滤只覆盖 Kyuubi 与 JDBC
   （MySQL/PgSQL/Doris），`Spark/Flink/HBase` 三个策略直接实现 `ExecutionStrategy`、**不生效**；
   且是结果集后过滤 ⇒ `count(*)` 等聚合值不受行级权限影响。`ROLE_SUPER_ADMIN` 短路所有检查。
-- **凭据落盘是明文**：主进程 `userData/df-stores/<file>.json`（`JSON.stringify` 直写），
-  **无 safeStorage / keytar**；只有服务端的数据源与租户密码是 AES。
+- **凭据落盘已加密（2026-09-15 起，此前是明文）**：`userData/df-stores/*.json` 的敏感字段经
+  Electron `safeStorage` 包成 `{"$dfenc":"v1","v":"…"}` 信封，咽喉只有 `electron/backend/store.ts`
+  一处；旧明文文件读时兼容、写时自动升级。**别再把「凭据明文落盘」写成现状**。
+  残留真实缺口：密钥在设置页需明文回填（截图可带走）；无 keyring 的 Linux 降级为明文；
+  换机器/重置钥匙串后信封解不开、按「未配置」处理。导出配置走 `df:store:export`，
+  在主进程侧剥离凭据（值 `***`）。服务端的数据源与租户密码仍是 AES。
 - **元数据同步失败只 warn 不阻断**（DDL 后同步异常仅记日志）⇒ 元数据会静默滞后。
 
 ## 交付偏好

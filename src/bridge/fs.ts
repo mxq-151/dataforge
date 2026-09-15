@@ -30,6 +30,25 @@ export async function readDir(path: string): Promise<DirEntry[]> {
   return window.dataforge.fs('readDir', { path }) as Promise<DirEntry[]>;
 }
 
+/** 目录占用统计结果；`truncated` 为真表示达到 maxEntries 上限，结果为下界 */
+export interface DirUsage {
+  bytes: number;
+  files: number;
+  truncated: boolean;
+}
+
+/**
+ * 递归统计目录占用（软链不跟随）。
+ * 用于回收站按容量上限清理；统计失败或目录消失返回全 0，不抛错。
+ */
+export async function dirUsage(path: string, maxEntries = 20000): Promise<DirUsage> {
+  try {
+    return (await window.dataforge.fs('du', { path, maxEntries })) as DirUsage;
+  } catch {
+    return { bytes: 0, files: 0, truncated: false };
+  }
+}
+
 export async function readFile(path: string): Promise<Uint8Array> {
   const b64 = (await window.dataforge.fs('readFile', { path })) as string;
   return base64ToU8(b64);

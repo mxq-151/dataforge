@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Settings, RotateCcw, Server, Sliders, Wifi, Loader2, Bot, Cpu, FileText, Trash2, Clock, Calendar, Info, Pencil, Check, X, Plug, CheckCircle, XCircle, Coffee, GitBranch, Plus, Boxes, AlertCircle } from 'lucide-react';
+import { Settings, RotateCcw, Server, Sliders, Wifi, Loader2, Bot, Cpu, FileText, Trash2, Clock, Calendar, Info, Pencil, Check, X, Plug, CheckCircle, XCircle, Coffee, GitBranch, Plus, Boxes, AlertCircle, Download } from 'lucide-react';
 import { type OpenCodeConfig, type LogEntry, type LLMModelConfig, isResponsesApiSupported, DEFAULT_POM_TEMPLATE } from '../../types/opencode-backend';
 import { testDolphinSchedulerConnection } from '../../api/dolphinscheduler';
 import { testMarquezConnection } from '../../api/marquez';
+import { canExportConfig, exportDiagnosticConfig } from '../../utils/configExport';
 import './SettingsView.css';
 
 interface SettingsViewProps {
@@ -62,6 +63,10 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   const [testMessage, setTestMessage] = useState('');
   const [marquezTestState, setMarquezTestState] = useState<TestConnectionState>('idle');
   const [marquezTestMessage, setMarquezTestMessage] = useState('');
+
+  // ── 诊断配置导出（凭据剥离在主进程完成） ──
+  const [exportingConfig, setExportingConfig] = useState(false);
+  const [exportResult, setExportResult] = useState<{ ok: boolean; text: string } | null>(null);
 
   // ── LLM 模型管理模态框 ──
   const [llmModalOpen, setLlmModalOpen] = useState(false);
@@ -201,6 +206,20 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   const deleteLLMModel = (id: string) => {
     const current = config.llmModels ?? [];
     onUpdateConfig({ llmModels: current.filter(m => m.id !== id) });
+  };
+
+  /** 导出诊断配置：凭据已在主进程侧替换为 ***，失败必须显式提示，不能静默 */
+  const handleExportConfig = async () => {
+    setExportingConfig(true);
+    setExportResult(null);
+    try {
+      const { filename, storeCount } = await exportDiagnosticConfig();
+      setExportResult({ ok: true, text: `已导出 ${storeCount} 个配置文件：${filename}（凭据已剥离）` });
+    } catch (err) {
+      setExportResult({ ok: false, text: err instanceof Error ? `导出失败：${err.message}` : '导出失败' });
+    } finally {
+      setExportingConfig(false);
+    }
   };
 
   return (
@@ -479,6 +498,38 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                     <span className="settings-field__test-result settings-field__test-result--error">
                       <XCircle size={12} />
                       {testMessage}
+                    </span>
+                  )}
+                </div>
+              )}
+            </section>
+
+            <section className="settings-section">
+              <div className="settings-section__header">
+                <Download size={14} />
+                <span>诊断配置导出</span>
+              </div>
+              <div className="settings-field">
+                <span className="settings-field__hint">
+                  把本机全部配置文件（userData/df-stores）打包成一个 JSON，用于排查问题或留档。
+                  导出前会在主进程侧把 API Key、令牌、口令等凭据字段替换为 ***，可直接发给他人；
+                  凭据本身在磁盘上也已由系统钥匙串加密，不再以明文存储。
+                </span>
+              </div>
+              {canExportConfig() && (
+                <div className="settings-field settings-field--test-connection">
+                  <button
+                    className="settings-view__btn settings-view__btn--test"
+                    onClick={handleExportConfig}
+                    disabled={exportingConfig}
+                  >
+                    {exportingConfig ? <Loader2 size={12} className="settings-section__spinner" /> : <Download size={12} />}
+                    {exportingConfig ? '导出中...' : '导出诊断配置'}
+                  </button>
+                  {exportResult && (
+                    <span className={`settings-field__test-result ${exportResult.ok ? 'settings-field__test-result--success' : 'settings-field__test-result--error'}`}>
+                      {exportResult.ok ? <CheckCircle size={12} /> : <XCircle size={12} />}
+                      {exportResult.text}
                     </span>
                   )}
                 </div>

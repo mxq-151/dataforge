@@ -53,3 +53,17 @@ export function withDeployEnvSuffix(baseName: string, env: DeployEnv): string {
   const base = (baseName || '').trim().replace(/[\\/]+$/, '').replace(/_+$/, '');
   return base ? `${base}_${env}` : env;
 }
+
+/**
+ * 本次提交是否允许注入数据血缘（OpenLineage）参数。
+ *
+ * **只有生产环境注入**：血缘采集会把 Spark 任务的运行时元数据推进 OpenLineage 服务，
+ * 灰度 / 测试环境的任务是验证性质，推进去会在正式血缘图上留下只在测试跑过的临时节点，
+ * 让血缘与真实生产链路对不上。所以环境是**硬闸门**——代码头 / 文件级
+ * `lineage.enabled=true` 也不能在非生产环境把它打开（否则「测试环境部署」这件事就没有边界了）。
+ *
+ * 文件级 `lineage.enabled=false` 仍然有效，用于**生产环境**下按任务单独关闭采集。
+ */
+export function shouldInjectLineage(env: DeployEnv): boolean {
+  return env === 'prod';
+}

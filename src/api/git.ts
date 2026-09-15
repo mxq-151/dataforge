@@ -2,6 +2,7 @@ import { isWindows as checkIsWindows, joinPath, normalizePath, isPathUnder, toRe
 import { Command } from '../bridge/shell';
 import { TRASH_DIR_NAME, formatTrashStamp, uniqueTrashName, isMassFileLoss } from '../utils/rollbackSafety';
 import { ensureTrashIgnored } from '../utils/workspaceTrash';
+import { scheduleTrashRetention } from '../utils/trashCleanup';
 
 export interface GitFileStatus {
   path: string;
@@ -791,6 +792,9 @@ export const gitDiscardFiles = async (
       await mkdir(getDirName(target), { recursive: true });
       await rename(abs, target);
     }
+
+    // 回收站按保留期与容量上限自清理；同批操作合并执行，失败不影响撤销本身
+    scheduleTrashRetention(rootPath);
   }
 };
 

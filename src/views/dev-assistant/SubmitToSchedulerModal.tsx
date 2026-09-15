@@ -10,7 +10,8 @@ import { validateFileHeader, parseFileHeader } from '../../utils/fileHeader';
 import { splitPath, getBaseName } from '../../utils/pathUtils';
 import { useToast } from '../../components/Toast';
 import DeployEnvRadio from './DeployEnvRadio';
-import { DEFAULT_DEPLOY_ENV, withDeployEnvSuffix, type DeployEnv } from '../../utils/deployEnv';
+import { DEFAULT_DEPLOY_ENV, withDeployEnvSuffix, shouldInjectLineage, type DeployEnv } from '../../utils/deployEnv';
+import { buildOpenLineageArgs, extractLineageParams } from '../../utils/lineageParams';
 import { buildTaskAppName, taskTypeHasAppName } from '../../utils/appName';
 import './SubmitToSchedulerModal.css';
 
@@ -1279,42 +1280,35 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
       mappingWithDatasource.taskParams = updatedParams;
     }
 
-    // 为 Spark 任务注入 OpenLineage 固定参数（支持文件级血缘管理配置覆盖/关闭全局设置）
+    // 拼装 Spark 提交命令的「其他参数(others)」：--jars（依赖） + 用户手填命令 +（仅生产）OpenLineage 参数。
+    // 注意 --jars 与血缘参数同处一个字段，所以环境闸门**只掐血缘那一段**，
+    // 不能把整块跳过 —— 否则非生产环境提交会连自定义 jar 一起丢掉。
     if (mappingWithDatasource.taskType === 'SPARK') {
-      // 从文件配置（savedConfig.taskParams）读取血缘管理保留参数 lineage.*
-      const lineageCfg: Record<string, string> = {};
-      (savedConfig?.taskParams || []).forEach(p => {
-        if (p.key && p.key.startsWith('lineage.')) lineageCfg[p.key] = p.value;
+      const updatedParams = { ...mappingWithDatasource.taskParams };
+      const existingOthers = ((updatedParams.others as string) || '').replace(/\r?\n/g, ' ').trim();
+      // 自定义 jar 通过 --jars 跟随提交（仅 SPARK）：路径为 {basePath}/{jarPath}。
+      // 在提交时动态拼接，避免 --jars 污染弹窗「其他参数」输入框（该输入框仅承载用户手填命令）
+      const jarsArg = buildJarsArg((savedConfig?.dependencies || []).filter(d => d.source === 'custom'));
+      const segments: string[] = [];
+      if (jarsArg) segments.push(`--jars ${jarsArg}`);
+      if (existingOthers) segments.push(existingOthers);
+
+      // OpenLineage 血缘参数：拼装与两道闸门（环境硬闸门 + 文件级 lineage.enabled）都在
+      // utils/lineageParams.ts 里，与文件夹批量提交共用同一份实现。
+      // 返回空数组即本次不注入 —— 此时不改写 others，用户原有内容原样保留。
+      const openlineageConfs = buildOpenLineageArgs({
+        env: deployEnv,
+        projectCode,
+        globalTransportUrl: openlineageTransportUrl,
+        fileLineage: extractLineageParams(savedConfig?.taskParams),
       });
-      const lineageConfigured = Object.prototype.hasOwnProperty.call(lineageCfg, 'lineage.enabled');
-      const lineageEnabled = lineageCfg['lineage.enabled'] !== 'false';
-      // 未显式配置血缘时保持默认注入行为（向后兼容）；显式关闭则跳过注入
-      if (!lineageConfigured || lineageEnabled) {
-        const updatedParams = { ...mappingWithDatasource.taskParams };
-        const openlineageConfs: string[] = [
-          '--conf spark.extraListeners=io.openlineage.spark.agent.OpenLineageSparkListener',
-          '--conf spark.openlineage.transport.type=http',
-        ];
-        const transportUrl = lineageCfg['lineage.transportUrl'] || openlineageTransportUrl;
-        if (transportUrl) {
-          openlineageConfs.push(`--conf spark.openlineage.transport.url=${transportUrl}`);
-        }
-        const namespace = lineageCfg['lineage.namespace'] || projectCode;
-        if (namespace) {
-          openlineageConfs.push(`--conf spark.openlineage.namespace=${namespace}`);
-        }
-        const existingOthers = ((updatedParams.others as string) || '').replace(/\r?\n/g, ' ').trim();
-        // 自定义 jar 通过 --jars 跟随提交（仅 SPARK）：路径为 {basePath}/{jarPath}。
-        // 在提交时动态拼接，避免 --jars 污染弹窗「其他参数」输入框（该输入框仅承载用户手填命令）
-        const jarsArg = buildJarsArg((savedConfig?.dependencies || []).filter(d => d.source === 'custom'));
-        const segments: string[] = [];
-        if (jarsArg) segments.push(`--jars ${jarsArg}`);
-        if (existingOthers) segments.push(existingOthers);
+      if (openlineageConfs.length > 0) {
         segments.push(openlineageConfs.join(' '));
-        // 所有 spark-submit 执行命令拼成单行（用空格连接，不做换行），避免提交后执行命令被拆成多行
-        updatedParams.others = segments.join(' ');
-        mappingWithDatasource.taskParams = updatedParams;
       }
+
+      // 所有 spark-submit 执行命令拼成单行（用空格连接，不做换行），避免提交后执行命令被拆成多行
+      updatedParams.others = segments.join(' ');
+      mappingWithDatasource.taskParams = updatedParams;
     }
 
     let uploadedJarResourcePath: string | null = null;
@@ -1600,6 +1594,7 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
     projects, workflowDesc, workflowName, autoTrigger, dsApi, onSuccess,
     compiledJarPath, needsDatasource, selectedDatasourceId, dsDataSources,
     selectedWorkerGroup, selectedEnvironmentCode, openlineageTransportUrl, projectCode,
+    deployEnv,
     currentMapping, scanHeaderDependencyTasks, persistRememberNow,
     resolveExternalDeps, scanLocalHeaderDependencies,
   ]);
@@ -1844,7 +1839,11 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
                   <DeployEnvRadio
                     value={deployEnv}
                     onChange={setDeployEnv}
-                    hint={`工作流名称将以 _${deployEnv} 结尾`}
+                    hint={
+                      shouldInjectLineage(deployEnv)
+                        ? `工作流名称将以 _${deployEnv} 结尾，提交时注入数据血缘参数`
+                        : `工作流名称将以 _${deployEnv} 结尾，不注入数据血缘参数`
+                    }
                   />
                 </div>
 

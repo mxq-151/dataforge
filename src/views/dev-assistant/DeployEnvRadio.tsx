@@ -15,8 +15,10 @@ export interface DeployEnvRadioProps {
 /**
  * 提交调度的「环境」单选（生产 / 灰度 / 测试，默认测试）。
  *
- * 两个提交入口（单文件 / 文件夹）共用；选中的值只影响**工作流名称的后缀**
- * （见 `utils/deployEnv.ts`），不改变提交目标项目、worker 组等运行参数。
+ * 两个提交入口（单文件 / 文件夹）共用；选中的值影响两处：
+ * ① **工作流名称的后缀**（见 `utils/deployEnv.ts::withDeployEnvSuffix`）；
+ * ② **是否注入数据血缘参数**——只有生产环境注入（`shouldInjectLineage`）。
+ * 不改变提交目标项目、worker 组等运行参数。
  */
 const DeployEnvRadio: React.FC<DeployEnvRadioProps> = ({
   value = DEFAULT_DEPLOY_ENV,

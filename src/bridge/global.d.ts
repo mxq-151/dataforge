@@ -26,6 +26,8 @@ interface DataforgeBridge {
   storeRead(file: string): Promise<unknown>;
   /** 持久化 Store 文件 */
   storeWrite(file: string, data: unknown): Promise<void>;
+  /** 导出诊断配置（全部 Store，凭据字段已在主进程侧剥离为 ***） */
+  storeExport(): Promise<Record<string, unknown>>;
   /** 读取数据上报所需的环境信息（OS 版本 + 应用版本） */
   systemInfo(): Promise<{ os_version: string; dataforge_version: string }>;
   /** 退出应用（用户拒绝安装协议时调用） */

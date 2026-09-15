@@ -1,21 +1,35 @@
 ---
 name: dataforge-project-conventions
-description: DataForge（Tauri + React 数仓开发平台）项目的实现细节与踩坑约定。当任务涉及提交调度、**定时调度/Schedule/Quartz crontab**、**角色准入（超级管理员/运维人员）**、配置参数、程序参数提取、工作流保存闸门、x6 画布测试、AI 对话面板、回滚/删除安全闸门、opencode sidecar 或模型上下文窗口判定时加载本 skill 获取准确的函数名、文件行号与既有约定。
+description: DataForge（Electron + React 数仓开发平台）项目的实现细节与踩坑约定。当任务涉及提交调度、**定时调度/Schedule/Quartz crontab**、**角色准入（超级管理员/运维人员）**、配置参数、程序参数提取、工作流保存闸门、x6 画布测试、AI 对话面板、回滚/删除安全闸门、**凭据落盘加密（safeStorage / df-stores 信封）**、**回收站保留期与容量上限**、**导出配置剥离凭据**、opencode sidecar 或模型上下文窗口判定时加载本 skill 获取准确的函数名、文件行号与既有约定。
 agent_created: true
 ---
 
 # DataForge 项目实现约定
 
 配套 `memory/MEMORY.md`（只放必须记住的硬规则）。本文件放「具体怎么做、为什么这么做」的细节。
-路径均相对仓库根 `/Users/mxq/Desktop/dataforge`。
+路径均相对仓库根（下文记为 `<repo>`）。工作区随机器变化：macOS 上曾是
+`/Users/mxq/Desktop/dataforge`，当前为 Windows 的 `C:\Users\57803\Desktop\dataforge`。
 
 ## 1. 环境与命令
 
+- **git 的「写」操作不要在 agent shell 里跑**（2026-09-15 事故，仓库真被写坏过）：本 shell 对 `.git`
+  的写入会**部分丢弃** —— `git update-ref` / `git fetch` 退出码 0、输出正常（`f90a456..d725e66 master -> origin/master`），
+  但 `refs/` 下文件根本不落地，**连新建的 `refs/` 子目录都会消失**；只有直写 `echo <sha> > .git/refs/...`
+  能落地。**不要信退出码，用「跨命令复读」验证。** 只读命令安全（`status` / `log` / `diff` / `rev-parse` /
+  `fsck` / `ls-remote`），但 git 可能在只读命令后触发自动维护，故只读也建议带
+  `-c maintenance.auto=false -c gc.auto=0`；`commit` / `pull` / `push` / `fetch` / `stash` / `checkout` /
+  `reset` / `update-ref` / `gc` 一律交用户在**自己的 Terminal** 执行。
 - **跑 vitest / tsc / vite 一律 `env -u NODE_OPTIONS`**。agent shell 注入的 broker fs shim 让每次
   `readFileSync` 变一次同步 IPC，jsdom 788 个文件 ⇒ `import 'jsdom'` 从 0.5s 变 96s。
   指纹：CPU 占用 ~1%（纯等待）。用户自己的 Terminal 无此注入。
   详见 skill `node-run-slowdown-diagnosis`。
-- 回归基线（2026-09-13 15:50 全量复跑）：**52 文件 / 861 例**（48 文件 / 797 例为 12:00 的旧基线）。
+- 回归基线（2026-09-15 全量）：**56 文件 / 969 例**（含 `electron/**` 用例；旧基线 54/905、52/861）。
+  已知负载敏感误报两个：`textmateFix.test.ts` 的 `J)` 与 `FolderSubmitScheduleModal.test.tsx` 的
+  「外部 @依赖」，全量并发跑时超时、**单独复跑即过**，不要当成回归。
+- **`electron/**` 也可写单测**：`vitest.config.mts` 的 `include` 已覆盖 `electron/**/*.test.ts`，
+  文件内用 `// @vitest-environment node` 声明环境（其余文件仍是 jsdom）；同时
+  `tsconfig.node.json` 已 `exclude: ["electron/**/*.test.ts"]`，避免把用例编进 `dist-electron`。
+  主进程纯逻辑（如凭据信封）因此可以穷举测试。
   其中 `src/views/dev-assistant/FolderSubmitScheduleModal.test.tsx` 的「外部 @依赖」例在
   **load 9.86**（落在下面那条 7~10 误报区）时也复现超时；已用 `git stash push -u` 在**原始状态**
   复跑确认同样失败 ⇒ 是 load 误报，不是回归。**下结论前先 `uptime` 看 load。**
@@ -198,6 +212,26 @@ agent_created: true
   对象）；`{workflow}` 用**带环境后缀的最终名**；**只有两个提交入口生效**，调度管理传空 → 保持历史值可编辑。
 - `mainJar` 是编译产物派生值（编译→上传→回填），**不要加必填校验**（会让文件夹路径无法保存）。
 
+### 数据血缘参数（OpenLineage）的注入闸门（2026-09-15）
+
+- 拼装与 key 常量**唯一定义在 `src/utils/lineageParams.ts`**（`buildOpenLineageArgs` /
+  `extractLineageParams` / `isLineageParamKey` / `LINEAGE_ENABLED_KEY`）：单文件 `SubmitToSchedulerModal`
+  与文件夹 `FolderSubmitScheduleModal` **共用同一份**，`ConfigParamsModal` 也从这里取 key 常量。
+  此前逻辑内联在单文件入口 ⇒ 文件夹入口整条漏掉（生产环境批量提交的 Spark 任务没有血缘）。
+- **两道闸门，顺序固定**：① 环境硬闸门 `deployEnv.ts::shouldInjectLineage(env)` —— 只有 `prod` 注入，
+  非生产下**文件级 `lineage.enabled=true` 也打不开**；② 文件级 `lineage.enabled=false` 在生产下关闭，
+  未配置视为开启（向后兼容）。`buildOpenLineageArgs` 返回**空数组即不注入**，调用方不要拿空串覆盖 `others`。
+- **血缘参数与 `--jars`、用户手填命令同处 `taskParams.others`** ⇒ 加闸门只能掐血缘那一段：
+  非生产环境仍要拼出 `--jars`（把整个 `if` 跳过会静默丢掉自定义依赖）。
+- 配置来源**两个入口不同**：单文件读内存态 `savedConfig.taskParams`；文件夹入口没有逐文件配置的内存态，
+  只在**确实要注入**（prod）时才按文件查
+  `useDevProjectConfig().fetchByFilePath(devProjectId, toRelativePath(filePath, rootPath))`
+  （后端键为项目内相对路径），查不到（未配置 / 后端不可用）按「未显式关闭」用设置页全局值注入。
+  非生产环境**一个请求都不发**。
+- 全局 `openlineageTransportUrl` 由 `DevAssistantView` → `ExplorerPanel` → `FolderActionModals` → 文件夹弹窗透传。
+- 界面口径：两个入口的环境单选 hint 均按环境分化（「提交时注入数据血缘参数」/「不注入数据血缘参数」）；
+  `ConfigParamsModal` 血缘区块说明写明「仅生产环境注入」。
+
 ## 5. 工作流保存闸门
 
 - 纯函数 `src/utils/workflowNodeValidation.ts::validateWorkflowNodes(nodes)` 是 `task-forms.tsx` 里
@@ -217,6 +251,10 @@ agent_created: true
   `WorkflowDefinitionEditor` 必须显式 `import`，否则保存弹窗失样式。
 - 单文件弹窗 `SubmitToSchedulerModal`：底部按钮事件挂在 **onMouseDown**（`fireEvent.click` 不触发）；
   任一选择项变化会清空校验结果且项目列表异步回填 ⇒ 断言可用性要**反复点校验**。
+- **文件夹弹窗的编辑器 `key` 含节点数**（`${filesKey}-${draft.nodes.length}`）：跨工作流 `@依赖` 自动生成的
+  「前置依赖_x」节点到达时 key 变化 ⇒ React **卸载旧编辑器再挂新的**。测试若在解析完成前点保存，点到的是
+  **已卸载的按钮**（点击无效果）⇒ 表现为「偶发 20s 超时」的假失败（2026-09-15 定位）。
+  测保存前必须先等 `data-node-names` 里出现 `前置依赖_*`（`FolderSubmitScheduleModal.test.tsx` 已如此）。
 
 ## 7. AI 对话性能架构
 
@@ -328,3 +366,45 @@ defaultScheduleRange / validateScheduleRange / formatScheduleDateTime / zonedPar
   `warningGroupId` 置 null。默认区间「立即生效 + `2099-12-31 23:59:59`」。
 - 样式：基础类在 `ScheduleManagementPanel.css`（要显式 import），定时专有的在
   `components/ScheduleModal.css`。该弹窗**不用 `useToast`**，测试无需 `ToastProvider`。
+
+## 10. 安全：凭据落盘加密 / 导出剥离 / 回收站保留策略（2026-09-15）
+
+计划书风险 R5 / R6 的待补项已闭合，实现落在下面这几处。**改动这些地方要先读本节**。
+
+### 凭据落盘加密（R6）
+
+- **唯一咽喉**：`<repo>/electron/backend/store.ts::readStoreJSON | writeStoreJSON`。渲染层、
+  sidecar 配置、编译服务读配置全部经它（走 `df:store:read` / `df:store:write`），
+  所以信封加在这里 = 一次覆盖全部写入路径。**不要另开直读 df-stores 的路径。**
+- 纯逻辑在 `<repo>/electron/backend/credentialVault.ts`（零 Electron 依赖，可测）：
+  敏感键判定 `isSensitiveKey`、写入前 `encryptSensitiveValues`、读出后 `decryptSensitiveValues`、
+  导出用 `stripCredentials`。加解密由注入的 `CipherPort` 提供，主进程用 Electron `safeStorage`
+  （macOS Keychain / Windows DPAPI / Linux libsecret·kwallet），测试注入假实现。
+- 落盘形态：敏感值 `"<明文>"` → `{ "$dfenc": "v1", "v": "<base64 密文>" }`（自描述、保留 JSON 结构）。
+- **三条硬规则**：① 旧明文文件读时原样兼容、**下次写入自动升级**（无迁移脚本）；
+  ② 钥匙串不可用（无 keyring 的 Linux）→ 保持明文 + 一次告警，**不写假密文**；
+  ③ 钥匙串可用但加密失败 → **fail-close 置空**，绝不明文回写。解不开的信封一律置空并告警
+  （换机器/钥匙串重置后表现为「未配置」，不会让应用起不来）。
+- **敏感键名按模式匹配，不按文件名白名单**（白名单会随新增 provider 静默失效）：
+  `apiKey / accessKey / secret / password / passwd / token / credential`。
+  `gitSshKeyPath`（指向密钥的**路径**）刻意不匹配 —— 误加密会让用户找不到文件。
+  新增凭据字段只要命名合规就自动覆盖；命名不合规（如 `xxxCode`）必须补 `SENSITIVE_PATTERNS` + 单测。
+- **导出剥离**：`df:store:export` → `store.ts::exportSanitizedStores()` 在**主进程**侧
+  读→解密→`stripCredentials`（值替换 `***`，键保留，便于诊断「缺哪一项」）。
+  渲染层入口 `<repo>/src/utils/configExport.ts` + 设置页「导出诊断配置」按钮。
+  明文凭据不经过渲染层，也不进导出物。
+
+### 回收站保留期与容量上限（R5）
+
+- 纯决策在 `<repo>/src/utils/trashRetention.ts::selectTrashPurgeCandidates`：默认
+  **30 天 / 50 批次 / 2 GiB / 最新 2 批永不清理**；名字解析不出 `YYYYMMDD-HHmmss` 的目录**不碰**
+  （无法判断新旧就不删）；上限是**软约束**——单批次自己就超限时只清到「最小保留数」为止。
+- 执行器 `<repo>/src/utils/trashCleanup.ts::enforceTrashRetention`；接入用 `scheduleTrashRetention`
+  （**5s 合并窗口**：一次回滚可能连续移入上百个文件，否则每个文件统计一次整站体积）。
+  调用点是三处写入路径的末尾：`useFileSystem.trashNode`、`api/git.ts::gitDiscardFiles`、
+  回滚走 `trashNode` 自动覆盖。**新增写回收站的地方也要接上，否则回收站会无限增长。**
+- 执行器额外校验「删除目标必须是回收站目录的直接子项」（`isDirectChild`）——决策与执行分属两个模块，
+  任何一方改动都不该让另一方越界。删除失败只记日志，不影响删除主流程。
+- 容量统计走新加的 fs op **`du`**（`src/bridge/fs.ts::dirUsage`，主进程 `handleFs` 的 `case 'du'`）：
+  递归统计、软链不跟随、`maxEntries` 默认 20000 封顶防无界遍历。
+- 定位说明：回收站是**误删缓冲不是备份**，超期清理后的版本保障由 Git 承担 —— 对外叙事别混。

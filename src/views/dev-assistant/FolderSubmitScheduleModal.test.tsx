@@ -538,6 +538,15 @@ describe('FolderSubmitScheduleModal', () => {
       readFileContent: vi.fn(async (p: string) => extFiles[p] ?? ''),
     });
 
+    // 必须等「前置依赖_h」出现再点保存：编辑器的 key 含节点数
+    // （`${filesKey}-${draft.nodes.length}`），自动生成的依赖节点到达时 key 变化 →
+    // React 会卸载旧编辑器再挂新的，此时点的是**已卸载的按钮**，点击不会触发保存。
+    // 不等这一步就会变成「偶发超时 20s」的假失败（异步解析完成的早晚取决于机器负载）。
+    const editorOf = () => document.querySelector('[data-testid="wf-editor"]')!;
+    await waitFor(() =>
+      expect(editorOf().getAttribute('data-node-names')).toContain('前置依赖_h')
+    );
+
     fireEvent.click(await findByTestId('wf-save'));
     // 机器负载高时 jsdom 下异步链路会被显著拖慢，放宽等待
     await waitFor(() => expect(dsApi.workflowDefinition.createWithTasks).toHaveBeenCalledTimes(1), { timeout: 20000 });
