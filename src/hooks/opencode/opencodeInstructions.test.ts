@@ -23,6 +23,7 @@ import {
   DATA_DEV_ENGINEER_INSTRUCTIONS,
   BUSINESS_REQUESTER_INSTRUCTIONS,
 } from './opencodeInstructions';
+import { parseQualityRulesFromDesignDoc } from '../../utils/qualityRuleImport';
 
 /** 三阶段提示词，顺序即链路顺序 */
 const STAGES = [
@@ -161,6 +162,63 @@ describe('机器解析表头 — 在提示词中的位置', () => {
     expect(line).toContain('业务定义');
     expect(line).toContain('下钻维度');
     expect(line).toContain('应用场景');
+  });
+});
+
+describe('质检链路闭环 — S2 规则清单可被平台解析、S3 结果可回传平台', () => {
+  /** 提示词里声明的规则清单表头，也是平台解析器的识别依据，两处必须逐字一致 */
+  const RULE_TABLE_HEADER = '| 规则名 | 规则类型 | 校验对象（库.表.字段） | 阈值 | 处置方式 |';
+
+  it('S2 声明了机器可解析的规则清单表头（5 列，顺序固定）', () => {
+    expect(DATA_ARCHITECT_INSTRUCTIONS).toContain('## 稽核规则清单表格规范');
+    expect(DATA_ARCHITECT_INSTRUCTIONS).toContain(RULE_TABLE_HEADER);
+  });
+
+  it('按提示词表头写出的规则清单能被平台解析器识别（表头契约不漂移）', () => {
+    const doc = [
+      '## 6. 数据质量稽核设计',
+      '',
+      RULE_TABLE_HEADER,
+      '|--------|----------|------------------------|------|----------|',
+      '| R_AD_001 事件主键唯一 | 主键唯一性 | test_db.dwd_event_f.event_id | 重复=0 | 阻断下游+告警 |',
+    ].join('\n');
+
+    const { rules, warnings } = parseQualityRulesFromDesignDoc(doc);
+    expect(warnings).toEqual([]);
+    expect(rules).toHaveLength(1);
+    expect(rules[0]).toMatchObject({
+      ruleName: 'R_AD_001 事件主键唯一',
+      ruleType: 'PRIMARY_KEY_UNIQUE',
+      databaseName: 'test_db',
+      tableName: 'dwd_event_f',
+      columnName: 'event_id',
+      compareMode: 'EQ',
+      expectedValue: '0',
+      disposeMode: 'BLOCK',
+    });
+    expect(rules[0].warnings).toEqual([]);
+  });
+
+  it('S3 声明了结果回传协议：接口、凭据注入方式与全部必填字段', () => {
+    expect(DATA_DEV_ENGINEER_INSTRUCTIONS).toContain('## 质检结果回传规范');
+    expect(DATA_DEV_ENGINEER_INSTRUCTIONS).toContain('/api/quality/run/report');
+    expect(DATA_DEV_ENGINEER_INSTRUCTIONS).toContain('DATAFORGE_QUALITY_REPORT_URL');
+    expect(DATA_DEV_ENGINEER_INSTRUCTIONS).toContain('DATAFORGE_QUALITY_REPORT_TOKEN');
+    for (const field of ['datasourceName', 'databaseName', 'tableName', 'batchNo', 'ruleName', 'ruleType', 'passed']) {
+      expect(DATA_DEV_ENGINEER_INSTRUCTIONS, `回传协议缺少字段: ${field}`).toContain(field);
+    }
+    // 回传失败不得改变校验任务本身的成败判定（阻断语义仍由调度 DAG 承载）
+    expect(DATA_DEV_ENGINEER_INSTRUCTIONS).toContain('回传失败不得改变校验任务本身的成败判定');
+  });
+
+  it('规则名唯一键契约在 S2/S3 同时存在（改名即断链）', () => {
+    for (const prompt of [DATA_ARCHITECT_INSTRUCTIONS, DATA_DEV_ENGINEER_INSTRUCTIONS]) {
+      expect(prompt).toContain('规则名是全链路唯一键');
+    }
+  });
+
+  it('S1 不参与校验实现，因此不下发回传协议', () => {
+    expect(BUSINESS_REQUESTER_INSTRUCTIONS).not.toContain('/api/quality/run/report');
   });
 });
 

@@ -1,0 +1,891 @@
+/**
+ * 数据质量面板样式
+ *
+ * 视觉基准与既有面板保持一致（暗色）：页面 #1e1e1e / 面板 #252526 /
+ * 分隔线 #3c3c3c / 正文 #cccccc / 次要 #858585 /强调 #007acc。
+ */
+
+.dq-panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background-color: #1e1e1e;
+  color: #cccccc;
+  font-size: 13px;
+  overflow: hidden;
+}
+
+/* ── 头部 ── */
+.dq-panel__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid #3c3c3c;
+  flex-shrink: 0;
+}
+
+.dq-panel__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.dq-panel__subtitle {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #858585;
+  line-height: 1.5;
+}
+
+.dq-iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  background-color: transparent;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  color: #858585;
+  cursor: pointer;
+}
+
+.dq-iconbtn:hover {
+  color: #ffffff;
+  border-color: #4c4c4c;
+  background-color: #2a2d2e;
+}
+
+/* ── 页签 ── */
+.dq-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 12px;
+  border-bottom: 1px solid #3c3c3c;
+  flex-shrink: 0;
+  overflow-x: auto;
+}
+
+.dq-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 12px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #858585;
+  font-size: 12.5px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.dq-tab:hover {
+  color: #e0e0e0;
+}
+
+.dq-tab--active {
+  color: #ffffff;
+  border-bottom-color: #007acc;
+}
+
+/* ── 主体 ── */
+.dq-panel__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px 20px 24px;
+}
+
+.dq-loading {
+  padding: 24px 0;
+  color: #858585;
+}
+
+.dq-muted {
+  margin: 8px 0 0;
+  color: #858585;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+/* ── 占位空态 ── */
+.dq-placeholder {
+  max-width: 760px;
+  padding: 16px 18px;
+  background-color: #252526;
+  border: 1px solid #3c3c3c;
+  border-left: 3px solid #007acc;
+  border-radius: 6px;
+}
+
+.dq-placeholder__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #d7ba7d;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.dq-placeholder__lead {
+  margin: 14px 0 8px;
+  font-size: 12.5px;
+  color: #cccccc;
+}
+
+.dq-placeholder__list {
+  margin: 0;
+  padding-left: 18px;
+  color: #a9a9a9;
+  font-size: 12.5px;
+  line-height: 1.8;
+}
+
+.dq-placeholder__list li {
+  margin: 0 0 2px;
+}
+
+/* ── 指标卡 ── */
+.dq-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.dq-stat {
+  padding: 12px;
+  background-color: #252526;
+  border: 1px solid #3c3c3c;
+  border-radius: 6px;
+  text-align: center;
+}
+
+.dq-stat__value {
+  display: block;
+  font-size: 20px;
+  font-weight: 600;
+  color: #4dabf7;
+  line-height: 1.25;
+}
+
+.dq-stat__label {
+  display: block;
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: #858585;
+}
+
+/* ── 区块 ── */
+.dq-section {
+  margin-bottom: 18px;
+}
+
+.dq-section__title {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+/* ── 表格 ── */
+.dq-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  background-color: #252526;
+  border: 1px solid #3c3c3c;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.dq-table th {
+  padding: 8px 10px;
+  text-align: left;
+  font-weight: 600;
+  color: #a9a9a9;
+  background-color: #2d2d2d;
+  border-bottom: 1px solid #3c3c3c;
+  white-space: nowrap;
+}
+
+.dq-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #333333;
+  color: #cccccc;
+  vertical-align: top;
+  line-height: 1.6;
+}
+
+.dq-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.dq-table tbody tr:hover td {
+  background-color: #2a2d2e;
+}
+
+.dq-table__strong {
+  color: #ffffff;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.dq-table__row--active td {
+  background-color: #094771;
+}
+
+.dq-runs .dq-table tbody tr {
+  cursor: pointer;
+}
+
+/* ── 提示条与标记 ── */
+.dq-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  background-color: #262d3a;
+  border: 1px solid #35506e;
+  border-radius: 6px;
+  color: #a8c7e8;
+  font-size: 12.5px;
+  line-height: 1.65;
+}
+
+.dq-notice svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.dq-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dq-chip {
+  display: inline-block;
+  padding: 3px 9px;
+  background-color: #2d2d2d;
+  border: 1px solid #3c3c3c;
+  border-radius: 10px;
+  color: #cccccc;
+  font-size: 12px;
+}
+
+/* ── 工具条与控件 ── */
+.dq-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.dq-toolbar__lead {
+  margin: 0;
+  max-width: 720px;
+}
+
+.dq-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.dq-input,
+.dq-select,
+.dq-textarea {
+  padding: 5px 8px;
+  background-color: #2d2d2d;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  color: #cccccc;
+  font-size: 12.5px;
+  font-family: inherit;
+  outline: none;
+}
+
+.dq-input:focus,
+.dq-select:focus,
+.dq-textarea:focus {
+  border-color: #007acc;
+}
+
+.dq-input::placeholder,
+.dq-textarea::placeholder {
+  color: #6b6b6b;
+}
+
+.dq-select {
+  min-width: 120px;
+}
+
+.dq-select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.dq-textarea {
+  resize: vertical;
+  min-height: 60px;
+}
+
+.dq-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  background-color: #2d2d2d;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  color: #cccccc;
+  font-size: 12.5px;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.dq-btn:hover {
+  background-color: #37373d;
+  color: #ffffff;
+}
+
+.dq-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.dq-btn--primary {
+  background-color: #0e639c;
+  border-color: #0e639c;
+  color: #ffffff;
+}
+
+.dq-btn--primary:hover {
+  background-color: #1177bb;
+}
+
+.dq-btn--danger {
+  background-color: #a1260d;
+  border-color: #a1260d;
+  color: #ffffff;
+}
+
+.dq-btn--danger:hover {
+  background-color: #c42b1c;
+}
+
+.dq-btn-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 8px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: #4dabf7;
+  font-size: 12.5px;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.dq-btn-link:hover {
+  color: #75beff;
+  text-decoration: underline;
+}
+
+.dq-btn-link--danger {
+  color: #f48771;
+}
+
+.dq-btn-link--danger:hover {
+  color: #ff9d8a;
+}
+
+.dq-tag {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 9px;
+  background-color: #2d2d2d;
+  border: 1px solid #3c3c3c;
+  color: #cccccc;
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+
+.dq-tag--default {
+  color: #a9a9a9;
+}
+
+.dq-tag--success {
+  color: #89d185;
+  border-color: #3a5c3a;
+}
+
+.dq-tag--danger {
+  color: #f48771;
+  border-color: #5c3a3a;
+}
+
+.dq-tag--warn {
+  color: #d1a855;
+  border-color: #5c503a;
+}
+
+.dq-tag--info {
+  color: #4dabf7;
+  border-color: #35506e;
+}
+
+.dq-table-empty {
+  padding: 20px 0;
+  text-align: center;
+  color: #858585;
+}
+
+.dq-th-actions,
+.dq-td-actions {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.dq-td-ellipsis {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 单元格内的次要说明行（负责人 / 库表 / 工作流节点） */
+.dq-table__sub {
+  display: block;
+  margin-top: 2px;
+  color: #858585;
+  font-size: 11.5px;
+  font-weight: 400;
+}
+
+.dq-table--nested {
+  margin: 4px 0 6px;
+}
+
+.dq-pagination {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  color: #858585;
+  font-size: 12.5px;
+}
+
+.dq-hint {
+  margin: 6px 0 0;
+  color: #858585;
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+
+/* ── 开关与多选 ── */
+.dq-switch {
+  display: inline-flex;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.dq-switch-btn {
+  padding: 4px 12px;
+  background-color: #2d2d2d;
+  border: none;
+  color: #858585;
+  font-size: 12.5px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.dq-switch-btn:hover {
+  color: #e0e0e0;
+}
+
+.dq-switch-btn--active {
+  background-color: #0e639c;
+  color: #ffffff;
+}
+
+.dq-check-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dq-check {
+  padding: 4px 10px;
+  background-color: #2d2d2d;
+  border: 1px solid #3c3c3c;
+  border-radius: 12px;
+  color: #a9a9a9;
+  font-size: 12.5px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.dq-check:hover {
+  color: #e0e0e0;
+}
+
+.dq-check--on {
+  background-color: #0e639c;
+  border-color: #0e639c;
+  color: #ffffff;
+}
+
+/* ── 弹窗与表单 ── */
+.dq-modal-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.55);
+  z-index: 1000;
+}
+
+.dq-modal {
+  display: flex;
+  flex-direction: column;
+  width: 720px;
+  max-width: calc(100vw - 48px);
+  max-height: calc(100vh - 80px);
+  background-color: #252526;
+  border: 1px solid #3c3c3c;
+  border-radius: 6px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+}
+
+.dq-modal--sm {
+  width: 460px;
+}
+
+/* 导入预览需同时容纳规则清单表格与告警列表 */
+.dq-modal--wide {
+  width: 960px;
+}
+
+.dq-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid #3c3c3c;
+}
+
+.dq-modal-header h3 {
+  margin: 0;
+  font-size: 14px;
+  color: #ffffff;
+}
+
+.dq-modal-close {
+  background: none;
+  border: none;
+  color: #858585;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.dq-modal-close:hover {
+  color: #ffffff;
+}
+
+.dq-modal-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 14px 16px;
+}
+
+.dq-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid #3c3c3c;
+}
+
+.dq-form-group {
+  margin-bottom: 12px;
+}
+
+.dq-form-group > label {
+  display: block;
+  margin-bottom: 6px;
+  color: #a9a9a9;
+  font-size: 12.5px;
+}
+
+.dq-form-group .dq-input,
+.dq-form-group .dq-select,
+.dq-form-group .dq-textarea {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.dq-form-row {
+  display: flex;
+  gap: 12px;
+}
+
+.dq-form-row .dq-form-group {
+  flex: 1;
+  min-width: 0;
+}
+
+.dq-required {
+  color: #f48771;
+}
+
+.dq-confirm-dialog {
+  width: 380px;
+  max-width: calc(100vw - 48px);
+  padding: 18px;
+  background-color: #252526;
+  border: 1px solid #3c3c3c;
+  border-radius: 6px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+}
+
+.dq-confirm-dialog h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+  color: #ffffff;
+}
+
+.dq-confirm-dialog p {
+  margin: 0 0 16px;
+  color: #cccccc;
+  font-size: 12.5px;
+  line-height: 1.7;
+}
+
+.dq-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* ── 规则配置：左树 + 右清单 ── */
+.dq-rule-layout {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.dq-tree {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 280px;
+  max-height: calc(100vh - 220px);
+  background-color: #252526;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+}
+
+.dq-tree__search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  border-bottom: 1px solid #3c3c3c;
+  color: #858585;
+}
+
+.dq-tree__search-input {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 6px;
+  background-color: #2d2d2d;
+  border: 1px solid #3c3c3c;
+  border-radius: 3px;
+  color: #cccccc;
+  font-size: 12.5px;
+  font-family: inherit;
+  outline: none;
+}
+
+.dq-tree__search-input:focus {
+  border-color: #007acc;
+}
+
+.dq-tree__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 0 8px;
+}
+
+.dq-tree__hint {
+  padding: 8px 10px;
+}
+
+.dq-tree__node {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px 3px 0;
+  color: #cccccc;
+  font-size: 12.5px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.dq-tree__node:hover {
+  background-color: #2a2d2e;
+}
+
+.dq-tree__node--active,
+.dq-tree__node--active:hover {
+  background-color: #094771;
+  color: #ffffff;
+}
+
+.dq-tree__chevron {
+  display: inline-flex;
+  align-items: center;
+  width: 12px;
+  color: #858585;
+}
+
+.dq-tree__icon {
+  display: inline-flex;
+  align-items: center;
+  color: #858585;
+}
+
+.dq-tree__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dq-tree__count {
+  color: #858585;
+  font-size: 11px;
+}
+
+.dq-iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px;
+  background: none;
+  border: none;
+  border-radius: 3px;
+  color: #858585;
+  cursor: pointer;
+}
+
+.dq-iconbtn:hover {
+  background-color: #37373d;
+  color: #ffffff;
+}
+
+.dq-rule-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.dq-rule-title {
+  margin: 0;
+  font-size: 14px;
+  color: #ffffff;
+}
+
+.dq-rule-subtitle {
+  margin: 4px 0 0;
+}
+
+.dq-search-bar--tight {
+  margin-bottom: 8px;
+}
+
+/* ── 试跑结果 ── */
+.dq-testresult {
+  margin-top: 12px;
+  padding: 10px;
+  background-color: #1e1e1e;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+}
+
+.dq-testresult__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.dq-testresult__error {
+  margin: 8px 0 0;
+  color: #f48771;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.dq-testresult__sql {
+  margin: 8px 0 0;
+  max-height: 160px;
+  overflow: auto;
+  color: #a9a9a9;
+  font-size: 11.5px;
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.dq-modal-footer__spacer {
+  flex: 1;
+}
+
+/* ── 批量配置的目标表勾选 ── */
+.dq-picklist {
+  max-height: 200px;
+  overflow: auto;
+  padding: 6px;
+  background-color: #1e1e1e;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+}
+
+.dq-picklist__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  border-radius: 3px;
+  color: #cccccc;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.dq-picklist__item:hover {
+  background-color: #2a2d2e;
+}
+
+.dq-picklist__item--on {
+  color: #ffffff;
+}

@@ -288,6 +288,10 @@ body,
   max-width: 36px;
 }
 
+.app__workspace--indicator-management {
+  background-color: #1e1e1e;
+}
+
 .app__workspace--knowledge-base {
   background-color: #1e1e1e;
 }
@@ -301,6 +305,18 @@ body,
 }
 
 .app__workspace--data-lineage {
+  background-color: #1e1e1e;
+}
+
+.app__workspace--data-quality {
+  background-color: #1e1e1e;
+}
+
+.app__workspace--asset-catalog {
+  background-color: #1e1e1e;
+}
+
+.app__workspace--system-management {
   background-color: #1e1e1e;
 }
 

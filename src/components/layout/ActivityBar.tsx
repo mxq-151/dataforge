@@ -1,5 +1,5 @@
 import React, { useMemo, useEffect, useState, useRef } from 'react';
-import { MessageSquare, Settings, User, Database, BookOpen, FolderOpen, Calendar, Shield, LogOut, X, GitBranch, Check, BarChart3 } from 'lucide-react';
+import { MessageSquare, Settings, User, Database, BookOpen, FolderOpen, Calendar, Shield, ShieldCheck, Library, LogOut, X, GitBranch, Check, BarChart3 } from 'lucide-react';
 import { ActiveTab, MENU_CODE_MAP, FIRST_LEVEL_MENU_CODES } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
 import './ActivityBar.css';
@@ -57,6 +57,8 @@ const ActivityBar: React.FC<ActivityBarProps> = ({ activeTab, onTabChange }) => 
     { id: 'fileBrowser', icon: <FolderOpen size={20} />, title: '文件浏览器' },
     { id: 'scheduleManagement', icon: <Calendar size={20} />, title: '调度管理' },
     { id: 'dataLineage', icon: <GitBranch size={20} />, title: '数据血缘' },
+    { id: 'dataQuality', icon: <ShieldCheck size={20} />, title: '数据质量' },
+    { id: 'assetCatalog', icon: <Library size={20} />, title: '资产目录' },
     { id: 'systemManagement', icon: <Shield size={20} />, title: '系统管理' },
     { id: 'settings', icon: <Settings size={20} />, title: '设置' },
   ];

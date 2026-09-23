@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import ActivityBar from './components/layout/ActivityBar';
 import TitleBar from './components/layout/TitleBar';
-import { MENU_CODE_MAP, FIRST_LEVEL_MENU_CODES } from './types';
+import { MENU_CODE_MAP, FIRST_LEVEL_MENU_CODES, FIRST_LEVEL_TAB_IDS } from './types';
 import DevAssistantView from './views/dev-assistant/DevAssistantView';
 import ProjectList from './views/dev-assistant/ProjectList';
 import DataExploreView from './views/data-explore/DataExploreView';
@@ -12,6 +12,8 @@ import ScheduleManagementPanel from './views/schedule-management/ScheduleManagem
 import DataLineagePanel, { type LineageJumpTarget } from './views/data-lineage/DataLineagePanel';
 import SystemManagementPanel from './views/system-management/SystemManagementPanel';
 import IndicatorManagementPanel from './views/indicator-management/IndicatorManagementPanel';
+import DataQualityPanel from './views/data-quality/DataQualityPanel';
+import AssetCatalogPanel from './views/asset-catalog/AssetCatalogPanel';
 import { DolphinSchedulerProvider } from './contexts/DolphinSchedulerContext';
 import useOpencodeConfig from './hooks/useOpencodeConfig';
 import { OpencodeBackendProvider } from './hooks/opencode/useOpencodeBackend';
@@ -43,17 +45,9 @@ const CONFIG_STORE_FILE = 'opencode-config.json';
 /** 本地默认 Git 仓库名：未配置远程地址时初始化为该目录名 */
 const LOCAL_GIT_DIR = 'warehouse';
 
-const FIRST_LEVEL_TAB_IDS: ActiveTab[] = [
-  'devAssist',
-  'dataExplore',
-  'indicatorManagement',
-  'knowledgeBase',
-  'fileBrowser',
-  'scheduleManagement',
-  'dataLineage',
-  'systemManagement',
-  'settings',
-];
+// FIRST_LEVEL_TAB_IDS 已下沉到 src/types/index.ts 并由 MENU_CODE_MAP 派生——
+// 原先是本文件里的一份字面量数组，与 MENU_CODE_MAP 重复描述同一件事，
+// 漏改一处会让新入口因取不到菜单码而被静默过滤。此处改为 import 使用。
 
 const workspaceClassMap: Record<string, string> = {
   devAssist: 'app__workspace--dev-assistant',
@@ -63,6 +57,8 @@ const workspaceClassMap: Record<string, string> = {
   fileBrowser: 'app__workspace--file-browser',
   scheduleManagement: 'app__workspace--schedule-management',
   dataLineage: 'app__workspace--data-lineage',
+  dataQuality: 'app__workspace--data-quality',
+  assetCatalog: 'app__workspace--asset-catalog',
   systemManagement: 'app__workspace--system-management',
   settings: 'app__workspace--settings',
 };
@@ -745,6 +741,19 @@ const AppContent: React.FC = () => {
         </div>
         <div className={`app__view-container ${activeTab === 'dataLineage' ? 'app__view-container--active' : ''}`}>
           {isTabVisible('dataLineage') && visitedTabs.has('dataLineage') && <DataLineagePanel marquezApiUrl={config.marquezApiUrl} jumpTarget={lineageJumpTarget} />}
+        </div>
+        <div className={`app__view-container ${activeTab === 'dataQuality' ? 'app__view-container--active' : ''}`}>
+          {isTabVisible('dataQuality') && visitedTabs.has('dataQuality') && (
+            // 质检任务的「调度触发」要选调度项目/工作流/节点，需与调度管理同源注入 DS 客户端
+            <DolphinSchedulerProvider apiUrl={config.dolphinSchedulerApiUrl} token={config.dolphinSchedulerToken}>
+              <DataQualityPanel />
+            </DolphinSchedulerProvider>
+          )}
+        </div>
+        <div className={`app__view-container ${activeTab === 'assetCatalog' ? 'app__view-container--active' : ''}`}>
+          {isTabVisible('assetCatalog') && visitedTabs.has('assetCatalog') && (
+            <AssetCatalogPanel onNavigateToLineage={handleNavigateToLineage} />
+          )}
         </div>
         <div className={`app__view-container ${activeTab === 'systemManagement' ? 'app__view-container--active' : ''}`}>
           {isTabVisible('systemManagement') && visitedTabs.has('systemManagement') && <SystemManagementPanel />}

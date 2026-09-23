@@ -15,7 +15,7 @@ export interface FileNode {
   path: string;
 }
 
-export type ActiveTab = 'devAssist' | 'dataExplore' | 'indicatorManagement' | 'knowledgeBase' | 'fileBrowser' | 'scheduleManagement' | 'dataLineage' | 'systemManagement' | 'settings';
+export type ActiveTab = 'devAssist' | 'dataExplore' | 'indicatorManagement' | 'knowledgeBase' | 'fileBrowser' | 'scheduleManagement' | 'dataLineage' | 'dataQuality' | 'assetCatalog' | 'systemManagement' | 'settings';
 
 /**
  * 一级菜单 TabId → 后端权限码 的映射。
@@ -33,12 +33,25 @@ export const MENU_CODE_MAP: Record<string, string> = {
   fileBrowser: 'file_browser',
   scheduleManagement: 'schedule_management',
   dataLineage: 'data_lineage',
+  dataQuality: 'data_quality',
+  assetCatalog: 'asset_catalog',
   systemManagement: 'system_management',
   settings: 'settings',
 };
 
 /** 全部一级菜单权限码（由 MENU_CODE_MAP 派生，避免两处各写一份字符串） */
 export const FIRST_LEVEL_MENU_CODES: string[] = Object.values(MENU_CODE_MAP);
+
+/**
+ * 一级菜单 Tab 的挂载与展示顺序。
+ *
+ * 由 MENU_CODE_MAP 的键派生，而不是另写一份字面量数组 —— 原先 App.tsx 里有一份
+ * FIRST_LEVEL_TAB_IDS 字面量，与 MENU_CODE_MAP 是「两个列表描述同一件事」：
+ * 新增 tab 时只要漏改其中一处，就会走到 `MENU_CODE_MAP[tab.id] === undefined`
+ * 的分支，入口被静默过滤掉（界面无报错、代码看起来也对）。
+ * 派生后这个失效模式在结构上不再可能发生，顺序即 MENU_CODE_MAP 的键书写顺序。
+ */
+export const FIRST_LEVEL_TAB_IDS: ActiveTab[] = Object.keys(MENU_CODE_MAP) as ActiveTab[];
 
 export interface StatusBarInfo {
   line: number;

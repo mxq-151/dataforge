@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DataWorks 对标评估与两个新模块建设方案 · 数据质量 · 资产目录</title>
+<style>
+:root{
+  --page:#eef1f5; --surface:#ffffff; --surface-2:#f6f8fb;
+  --text:#1f2328; --text-2:#5b6470; --text-3:#8b939e;
+  --border:#e2e6ec; --border-2:#cfd6df;
+  --primary:#1565c0; --primary-d:#0f2a54; --accent:#00897b;
+  --danger:#c62828; --warn-bg:#fff7f6; --info-bg:#f2f7fd;
+  --radius:12px; --radius-s:8px;
+  --sans:system-ui,-apple-system,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--page);color:var(--text);font-family:var(--sans);
+  font-size:15.5px;line-height:1.78;-webkit-font-smoothing:antialiased}
+a{color:var(--primary);text-decoration:none}
+a:hover{text-decoration:underline}
+.skip{position:absolute;left:-9999px}
+.skip:focus{left:12px;top:12px;z-index:99;background:var(--surface);padding:8px 14px;border-radius:var(--radius-s)}
+
+.hero{background:var(--primary-d);color:#fff;padding:56px 24px 44px}
+.hero-inner{max-width:1180px;margin:0 auto}
+.hero-cat{margin:0 0 14px;font-size:13px;letter-spacing:.16em;color:#8fb4e8;font-weight:600}
+.hero-title{margin:0 0 14px;font-size:clamp(24px,3.4vw,38px);line-height:1.28;font-weight:600;letter-spacing:.01em}
+.hero-sub{margin:0 0 30px;font-size:clamp(14px,1.5vw,17px);color:#c2d4ee;line-height:1.6}
+.hero-meta{display:flex;flex-wrap:wrap;gap:10px 28px;margin:0;padding:18px 0 0;border-top:1px solid rgba(255,255,255,.16)}
+.hero-meta div{font-size:13px;color:#a9c2e4}
+.hero-meta b{color:#e6eefb;font-weight:600;margin-right:6px}
+
+.layout{max-width:1180px;margin:0 auto;padding:28px 24px 72px;display:grid;
+  grid-template-columns:250px minmax(0,1fr);gap:34px;align-items:start}
+.sidebar{position:sticky;top:24px;max-height:calc(100vh - 48px);overflow:auto}
+.toc-head{margin:0 0 10px;font-size:12px;letter-spacing:.14em;color:var(--text-3);
+  font-weight:600;text-transform:uppercase}
+.toc ol{list-style:none;margin:0;padding:0}
+.toc li{margin:0}
+.toc a{display:block;padding:6px 10px 6px 12px;font-size:13.5px;color:var(--text-2);
+  border-left:2px solid transparent;border-radius:0 var(--radius-s) var(--radius-s) 0;line-height:1.5}
+.toc a:hover{background:var(--surface);color:var(--primary);text-decoration:none}
+.toc a.active{color:var(--primary);border-left-color:var(--primary);background:var(--surface);font-weight:600}
+.toc .lvl-3 a{padding-left:26px;font-size:12.5px;color:var(--text-3)}
+.toc-toggle{display:none}
+
+main{min-width:0}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  padding:26px 30px;margin:0 0 22px}
+.chapter{scroll-margin-top:20px}
+.chapter>h2{margin:-26px -30px 20px;padding:16px 30px;font-size:20px;font-weight:600;
+  color:var(--primary-d);background:var(--surface-2);border-bottom:3px solid var(--primary);
+  border-radius:var(--radius) var(--radius) 0 0;line-height:1.45}
+h3{margin:30px 0 12px;padding-left:12px;font-size:16.5px;font-weight:600;color:var(--primary);
+  border-left:3px solid var(--accent);line-height:1.5;scroll-margin-top:20px}
+h3:first-of-type{margin-top:6px}
+h4{margin:20px 0 8px;font-size:15px;font-weight:600;color:var(--text)}
+p{margin:0 0 14px;text-align:justify;word-break:break-word;text-indent:2em}
+.hero-cat,.hero-sub,.hero-title,.toc-head,.stats-title,.doc-end,.stat .v,.stat .l{text-indent:0}
+main ul,main ol{margin:0 0 16px;padding-left:22px}
+main li{margin:0 0 8px;text-align:justify}
+strong{font-weight:600;color:#111}
+.data-emphasis{color:var(--danger);font-weight:600}
+code{font-family:var(--mono);font-size:12.5px;background:var(--surface-2);
+  border:1px solid var(--border);border-radius:4px;padding:1px 5px;color:#0f2a54;word-break:break-all}
+
+.table-wrap{overflow-x:auto;margin:0 0 18px;border:1px solid var(--border);border-radius:var(--radius-s)}
+table{border-collapse:collapse;width:100%;min-width:520px;font-size:13.5px}
+th,td{padding:9px 12px;text-align:left;vertical-align:top;border-bottom:1px solid var(--border);
+  line-height:1.6;border-right:1px solid var(--border)}
+th:last-child,td:last-child{border-right:none}
+thead th{background:var(--primary);color:#fff;font-weight:600;border-color:var(--primary);
+  white-space:nowrap}
+tbody tr:nth-child(even) td{background:var(--surface-2)}
+tbody tr:last-child td{border-bottom:none}
+td.k{white-space:nowrap;font-weight:600;color:var(--primary-d)}
+
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin:0 0 18px}
+.stat{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-s);
+  padding:14px 12px;text-align:center}
+.stat .v{display:block;font-size:22px;font-weight:600;color:var(--primary);line-height:1.25}
+.stat .l{display:block;margin-top:4px;font-size:12px;color:var(--text-2);line-height:1.4}
+.stats-title{margin:0 0 10px;font-size:12.5px;font-weight:600;color:var(--text-2)}
+
+.summary{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--primary);
+  border-radius:var(--radius);padding:24px 30px;margin:0 0 22px}
+.summary h2{margin:0 0 6px;font-size:19px;font-weight:600;color:var(--primary-d)}
+.summary .en{font-size:12px;color:var(--text-3);letter-spacing:.06em;font-weight:400}
+.summary p{margin:0 0 12px}
+.summary p:last-child{margin-bottom:0}
+
+.callout{margin:0 0 16px;padding:13px 16px;border-radius:var(--radius-s);border-left:4px solid;
+  background:var(--info-bg);border-left-color:var(--primary);text-indent:0}
+.callout.warn{background:var(--warn-bg);border-left-color:var(--danger)}
+.callout p{text-indent:0;margin:0 0 8px}
+.callout p:last-child{margin-bottom:0}
+
+.doc-end{margin:6px 0 0;padding:18px 0 0;border-top:1px solid var(--border);
+  font-size:13px;color:var(--text-3);text-align:center;text-indent:0}
+.totop{position:fixed;right:22px;bottom:22px;width:40px;height:40px;border-radius:50%;
+  background:var(--surface);border:1px solid var(--border-2);color:var(--text-2);
+  display:flex;align-items:center;justify-content:center;font-size:16px;
+  box-shadow:0 2px 10px rgba(15,42,84,.10)}
+.totop:hover{color:var(--primary);text-decoration:none;border-color:var(--primary)}
+
+@media (max-width:960px){
+  .layout{grid-template-columns:minmax(0,1fr);gap:18px;padding-top:18px}
+  .sidebar{position:static;max-height:none}
+  .toc-toggle{display:flex;width:100%;align-items:center;justify-content:space-between;
+    padding:11px 14px;background:var(--surface);border:1px solid var(--border);
+    border-radius:var(--radius-s);font:inherit;font-size:14px;font-weight:600;
+    color:var(--primary-d);cursor:pointer}
+  .toc{display:none;margin-top:8px;background:var(--surface);border:1px solid var(--border);
+    border-radius:var(--radius-s);padding:8px}
+  .toc.open{display:block}
+  .card,.summary{padding:20px 18px}
+  .chapter>h2{margin:-20px -18px 16px;padding:14px 18px;font-size:18px}
+}
+@media print{
+  @page{margin:16mm 14mm}
+  body{background:#fff;font-size:10.5pt;line-height:1.65}
+  .hero{background:#fff;color:#000;padding:0 0 18px;border-bottom:2px solid var(--primary-d)}
+  .hero-cat{color:var(--primary)}
+  .hero-title{color:var(--primary-d);font-size:20pt}
+  .hero-sub{color:#333}
+  .hero-meta{border-top:1px solid #bbb}
+  .hero-meta div{color:#333}
+  .hero-meta b{color:#000}
+  .layout{display:block;max-width:none;padding:12px 0 0}
+  .sidebar,.totop,.skip{display:none}
+  .card,.summary{border:none;border-radius:0;padding:0;margin:0 0 14pt;break-inside:auto}
+  .chapter>h2{margin:0 0 10pt;padding:0 0 4pt;background:none;border-bottom:1.5pt solid var(--primary-d);
+    border-radius:0;font-size:14pt;break-after:avoid}
+  h3{font-size:11.5pt;margin:14pt 0 6pt;break-after:avoid}
+  table{min-width:0;font-size:9pt}
+  thead th{background:#e8edf5!important;color:#000;border-color:#9aa8b8}
+  tbody tr:nth-child(even) td{background:#f7f9fc}
+  .stats{grid-template-columns:repeat(5,1fr)}
+  .callout,.summary{break-inside:avoid}
+  .doc-end{break-before:avoid}
+  a{color:inherit;text-decoration:none}
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">跳到正文</a>
+
+<header class="hero">
+  <div class="hero-inner">
+    <p class="hero-cat">DATAFORGE · 对标评估与建设方案</p>
+    <h1 class="hero-title">DataWorks 对标评估与两个新模块建设方案<br>数据质量（DQC）· 数据资产目录</h1>
+    <p class="hero-sub">对标阿里云 DataWorks 的数据质量与数据地图能力，评估 DataForge 的差距，给出两个 activity bar 入口的模块设计、桌面端改动清单，以及 dataforge-server 的服务端工作内容。</p>
+    <div class="hero-meta">
+      <div><b>评估依据</b>DataForge 项目计划书 + 两端代码核对</div>
+      <div><b>核对范围</b>桌面端 329 文件 / 服务端 6 模块 20 控制器 28 表</div>
+      <div><b>日期</b>2026-09-17</div>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+    <button class="toc-toggle" id="tocToggle" aria-expanded="false">目录 <span>▾</span></button>
+    <p class="toc-head">目录</p>
+    <nav class="toc" id="toc">
+      <ol>
+        <li class="lvl-2"><a href="#c1">一、评估前提与现状基线</a></li>
+        <li class="lvl-3"><a href="#c1-1">1.1 核对方法与结论口径</a></li>
+        <li class="lvl-3"><a href="#c1-2">1.2 三个改变方案性质的发现</a></li>
+        <li class="lvl-3"><a href="#c1-3">1.3 数据质量差距</a></li>
+        <li class="lvl-3"><a href="#c1-4">1.4 资产目录差距</a></li>
+        <li class="lvl-2"><a href="#c2">二、数据质量模块设计</a></li>
+        <li class="lvl-3"><a href="#c2-1">2.1 实体模型与对标映射</a></li>
+        <li class="lvl-3"><a href="#c2-2">2.2 硬约束：规则类型同源</a></li>
+        <li class="lvl-3"><a href="#c2-3">2.3 页面结构</a></li>
+        <li class="lvl-3"><a href="#c2-4">2.4 关键设计决策</a></li>
+        <li class="lvl-2"><a href="#c3">三、资产目录模块设计</a></li>
+        <li class="lvl-3"><a href="#c3-1">3.1 与既有模块的边界</a></li>
+        <li class="lvl-3"><a href="#c3-2">3.2 能力对标</a></li>
+        <li class="lvl-3"><a href="#c3-3">3.3 规范驱动的分类体系</a></li>
+        <li class="lvl-3"><a href="#c3-4">3.4 页面结构</a></li>
+        <li class="lvl-3"><a href="#c3-5">3.5 关键设计决策</a></li>
+        <li class="lvl-2"><a href="#c4">四、桌面端改动清单</a></li>
+        <li class="lvl-3"><a href="#c4-1">4.1 改动点逐条</a></li>
+        <li class="lvl-3"><a href="#c4-2">4.2 耦合与升级兼容</a></li>
+        <li class="lvl-3"><a href="#c4-3">4.3 菜单码与角色授予</a></li>
+        <li class="lvl-2"><a href="#c5">五、dataforge-server 工作内容</a></li>
+        <li class="lvl-3"><a href="#c5-1">5.1 数据模型</a></li>
+        <li class="lvl-3"><a href="#c5-2">5.2 接口清单</a></li>
+        <li class="lvl-3"><a href="#c5-3">5.3 模块与代码组织</a></li>
+        <li class="lvl-3"><a href="#c5-4">5.4 横切工作</a></li>
+        <li class="lvl-3"><a href="#c5-5">5.5 批次与依赖</a></li>
+        <li class="lvl-2"><a href="#c6">六、外部组件集成工作</a></li>
+        <li class="lvl-2"><a href="#c7">七、验收判据与不做的事</a></li>
+        <li class="lvl-2"><a href="#c8">八、计划书需同步更新的位置</a></li>
+        <li class="lvl-2"><a href="#c9">九、附录：现状证据索引</a></li>
+      </ol>
+    </nav>
+  </aside>
+
+  <main id="main">
+
+  <section class="summary">
+    <h2>结论先行</h2>
+    <p>这两个模块都<strong>不是从零新增的能力</strong>，而是补齐平台既有契约的两端——这一判断直接改变了工作量结构与实现优先级。</p>
+    <p><strong>数据质量</strong>：规则的「契约」已经完整写在智能体提示词里（<code>opencodeInstructions.ts</code> 定义 7 类规则类型、S1/S2/S3 三阶段分工、<code>DQC 质量层</code>、<code>dqc_</code> 前缀、以及「校验输出须可定位：规则名/校验对象/阈值/实际值/是否通过」）；结果的「落点」也已经存在（<code>data_quality_check_result</code> 表 + 写入接口）。缺的是中间的<strong>规则定义、执行计划与消费界面</strong>。所以它是「把文档约定升级为平台能力」，不是「新建一个治理平台」。</p>
+    <p><strong>资产目录</strong>：分类体系天然存在于命名规范（<code>{分层}_{业务域}_{实体描述}_{刷新周期}</code>），资产属性也已有大量存量（生命周期、存储量、血缘、行/列权限、关联指标）。所以它<strong>不需要新建一套人工维护的分类元数据</strong>，而是「规范驱动的资产目录」——这正是 DataForge 区别于 DataWorks 的地方。</p>
+    <p><strong>定位表述建议</strong>：数据质量是第 6 类智能体上下文（<em>数据该满足什么约束</em>）；资产目录<strong>不产生新的上下文类别</strong>，它是「库表描述 + 指标描述 + 血缘 + 任务依赖」四类的聚合消费面，是<em>「人」侧的元数据调研入口</em>，与智能体侧的元数据代理接口 <code>/metadata/agent</code> 对位。</p>
+    <p><strong>工作量概览</strong>：桌面端 12 处改动（其中 2 个 key 必须同批改，否则入口不可见）；服务端新增 15 张表、改造 3 张表、约 46 个接口，分三批次交付；集成侧 3 项调度工作、1 项血缘复用。</p>
+  </section>
+
+  <!-- ══════════════ 一 ══════════════ -->
+  <section class="card chapter" id="c1">
+    <h2>一、评估前提与现状基线</h2>
+
+    <h3 id="c1-1">1.1 核对方法与结论口径</h3>
+    <p>本次评估不采信计划书的「已落地」标注作为唯一依据，而是对两端代码逐项核对：桌面端核对 <code>ActivityBar</code> 入口表、<code>ActiveTab</code> 与菜单码映射、<code>App.tsx</code> 视图挂载、各面板目录；服务端核对 <code>modules/</code> 包结构、20 个控制器、<code>sql/init</code> 四方言建表脚本与 <code>sql/testdata</code> 种子数据。凡本方案给出的接口路径、表名、字段名，均为代码中实际存在的对象或明确标注为「新增」。</p>
+    <p>「差距」的判定口径为三项：DataWorks 有而本项目<strong>完全没有</strong>（新建）；DataWorks 有而本项目<strong>只完成一半</strong>（补齐，工作量显著更小）；DataWorks 有而本项目<strong>形态不同、不应照搬</strong>（改造或明确不做）。第三类是本方案的主要决策点。</p>
+
+    <h3 id="c1-2">1.2 三个改变方案性质的发现</h3>
+
+    <h4>发现一：质量规则的契约已经存在，而且写在提示词里</h4>
+    <p><code>src/hooks/opencode/opencodeInstructions.ts</code> 是三角色系统指令的唯一契约来源，其中与质量相关的约定已经相当完整：</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>契约</th><th>现存内容</th><th>平台侧状态</th></tr></thead>
+        <tbody>
+          <tr><td class="k">规则类型</td><td>固定 7 类且三阶段同名词：主键唯一性、非空、值域、行数波动、行数环比、上下游对账、口径一致性；明令「禁止自造同义词」</td><td>无枚举、无存储</td></tr>
+          <tr><td class="k">S1 需求</td><td>第 7 条：用业务语言说明需覆盖的规则类型与可接受偏差</td><td>只落 markdown</td></tr>
+          <tr><td class="k">S2 设计</td><td>第 6 条：稽核规则清单，含规则名、所属表/字段、规则类型、阈值、处置方式</td><td>只落 markdown</td></tr>
+          <tr><td class="k">S3 开发</td><td>校验任务与处理任务分离、单独成文件挂下游；输出须可定位；不通过时阻断下游或告警</td><td>只落代码文件</td></tr>
+          <tr><td class="k">分层归属</td><td><code>DQC 质量层</code>＝质量规则定义与稽核结果存储；表名前缀 <code>dqc_</code>；DDL 文件 <code>dqc_ddl.sql</code></td><td>无 DDL 模板</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>结论：契约完备、<strong>落点缺失</strong>。当前的断点是——智能体在设计阶段产出的「稽核规则清单」没有地方落库，在开发阶段写完的校验任务也没有地方回传结果与统一判定。数据质量模块的第一职责就是消除这个契约断裂，因此<strong>规则类型必须与提示词的 7 类一一对齐，不得自造</strong>（详见 2.2）。</p>
+
+    <h4>发现二：质量结果的落点已经存在，是「半条链路」</h4>
+    <p>服务端 <code>modules/quality</code> 模块共 7 个文件、671 行，提供实体 <code>DataQualityCheckResult</code>、CRUD 与失败统计；表 <code>data_quality_check_result</code> 字段为数据源/库/表/检查项/检查时间/检查记录数/未通过记录数/未通过明细。这张表的形态是<strong>「接收结果」</strong>而非「管理规则」——说明其设计初衷就是接收 S3 产出的校验任务上报的结果。已有通路：</p>
+    <ul>
+      <li><code>POST /quality/check-result</code>（写入）、<code>GET /quality/check-result/list</code>（分页，支持表与检查项过滤）、<code>GET /quality/check-result/statistics/fail</code>（按表+日期+检查项聚合失败数）。</li>
+    </ul>
+    <p>同时「检查项」是自由文本 <code>varchar(200)</code>，没有与 7 类规则类型枚举绑定。因此精确的缺口是：<strong>有结果写入、无规则定义；有原始记录、无可执行计划；有接口、无界面</strong>。桌面端全仓库检索「数据质量」，只有提示词文件命中，<span class="data-emphasis">没有任何质量相关的 UI</span>。</p>
+
+    <h4>发现三：资产目录的分类与属性，大半已经存在</h4>
+    <p>「分层规范」与「表名命名规范」已经规定了 <code>{分层}_{业务域}_{实体描述}_{刷新周期}</code> 的强制格式与 ODS/DWD/DWS/ADS/DIM/DQC/TMP 七层枚举。这意味着资产目录的<strong>一级分类（分层）与二级分类（业务域）可以从表名解析得到</strong>，不需要像 DataWorks 那样由人工维护业务分类树。</p>
+    <p>资产属性侧的存量比预期更多。<code>table_metadata</code> 已有 <code>row_count</code>、<code>size_bytes</code>、<code>hot_days</code>/<code>cold_days</code>/<code>keep_days</code>（生命周期）、<code>partition_columns</code>、<code>storage_format</code>、<code>location</code>、<code>last_modify_time</code>、<code>sync_time</code> 与表/字段双结构指纹；<code>column_metadata</code> 已有 <code>column_comment</code>、<code>is_partition</code>、<code>is_primary_key</code>、<code>nullable</code>；指标表 <code>indicators</code> 已有 <code>topic</code>（主题域）、<code>business_owner</code>/<code>tech_owner</code>、<code>visibility</code>、<code>code</code>（指标编码唯一）、刷新周期字段，且 <code>indicators_fields</code> 建立了<strong>指标 → 数据源/库/表/字段</strong>的关联，可直接反查出「这张表产出哪些指标」。</p>
+    <div class="callout">
+      <p><strong>由此得出一条设计原则</strong>：<code>table_metadata</code> 的资产属性改造应<strong>对齐 <code>indicators</code> 的既有字段命名与语义</strong>（<code>business_owner</code> / <code>tech_owner</code> / <code>topic</code> / <code>visibility</code>），而不是另发明一套。同平台内两套 owner 语义会在权限与责任判定上打架。</p>
+    </div>
+
+    <h3 id="c1-3">1.3 数据质量：能力差距</h3>
+    <p>按「一项能力一行」组织。状态含义：<em>已有</em>＝可直接复用；<em>半成</em>＝已有落点但缺一半；<em>新建</em>＝完全缺失。</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>能力</th><th>本项目现状</th><th>状态</th></tr></thead>
+        <tbody>
+          <tr><td>规则模板库</td><td>无。提示词有 7 类规则类型，但只是文本约定，无模板实体、无 SQL 模板、无参数定义</td><td class="k">新建</td></tr>
+          <tr><td>监控规则</td><td>无。无「表/字段 + 阈值 + 强弱」的规则实体</td><td class="k">新建</td></tr>
+          <tr><td>质检任务</td><td>无。无规则集与触发方式的执行计划</td><td class="k">新建</td></tr>
+          <tr><td>触发方式</td><td>无。手动触发与调度触发均缺；S3 目前只能把校验写在程序里随任务跑</td><td class="k">新建</td></tr>
+          <tr><td>强弱与阻断</td><td>无。提示词的「处置方式」无处落地</td><td class="k">新建</td></tr>
+          <tr><td>告警订阅</td><td>无。服务端无告警通道；但有 <code>MetadataSyncAlertService</code> 的告警落审计日志先例</td><td class="k">新建</td></tr>
+          <tr><td>运行记录</td><td>半成。有结果表与写入接口，但粒度只有「表+检查项」，无规则、任务、批次、状态、阈值、实际值维度</td><td class="k">半成</td></tr>
+          <tr><td>质量大盘</td><td>半成。仅有按表/日期/检查项的失败数聚合，无规则覆盖率、趋势、责任人与 TOP 问题表</td><td class="k">半成</td></tr>
+          <tr><td>校验结果表</td><td>已有 <code>data_quality_check_result</code>，可迁移复用</td><td class="k">已有</td></tr>
+          <tr><td>校验执行</td><td>已有 <code>CodeExecutionController</code> 多引擎执行策略（Kyuubi/Doris/ClickHouse 等）与连接管理，可承载校验 SQL 下发</td><td class="k">已有</td></tr>
+          <tr><td>自定义校验</td><td>无。缺自定义 SQL 规则与试跑能力</td><td class="k">新建</td></tr>
+          <tr><td>报告订阅</td><td>无</td><td class="k">新建</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="stats">
+      <div class="stat"><span class="v">12</span><span class="l">能力项总数</span></div>
+      <div class="stat"><span class="v">2</span><span class="l">已有可直接复用</span></div>
+      <div class="stat"><span class="v">2</span><span class="l">半成需补齐</span></div>
+      <div class="stat"><span class="v">8</span><span class="l">完全缺失需新建</span></div>
+    </div>
+
+    <h3 id="c1-4">1.4 资产目录：能力差距</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>能力</th><th>本项目现状</th><th>状态</th></tr></thead>
+        <tbody>
+          <tr><td>目录树</td><td>半成。数据探索内有 <code>DBTableBrowser</code>（数据源→库→表），但是引擎视角、挂在数据探索里、无治理属性</td><td class="k">半成</td></tr>
+          <tr><td>资产检索</td><td>半成。有 <code>GET /metadata/tables</code>（按数据源/库/表名精确过滤）与指标过滤接口，无跨类型模糊检索、无字段级检索、无结果聚合</td><td class="k">半成</td></tr>
+          <tr><td>目录视角</td><td>无。缺「规范视角」（分层→业务域→表）</td><td class="k">新建</td></tr>
+          <tr><td>资产详情</td><td>半成。字段明细在 <code>TableDetail</code>，血缘在独立面板，指标在指标管理，权限在系统管理，四处分散、无聚合页</td><td class="k">半成</td></tr>
+          <tr><td>字段明细</td><td>已有 <code>column_metadata</code> 与 <code>GET /metadata/table/columns</code></td><td class="k">已有</td></tr>
+          <tr><td>存储与生命周期</td><td>已有。热/冷/总保留天数、行数、大小、存储格式、位置 —— 比 DataWorks 更易展示存储治理</td><td class="k">已有</td></tr>
+          <tr><td>血缘</td><td>已有。Marquez 表级+字段级，桌面端 <code>DataLineagePanel</code> 直连上游</td><td class="k">已有</td></tr>
+          <tr><td>表权限</td><td>已有。<code>sys_table_permission</code> 含行级/列级，可展示「谁能看、列约束是什么」</td><td class="k">已有</td></tr>
+          <tr><td>关联指标</td><td>半成。<code>indicators_fields</code> 可反查，但无「按表/字段查指标」的接口</td><td class="k">半成</td></tr>
+          <tr><td>负责人</td><td>无。<code>table_metadata</code> 只有 <code>create_by</code>，无 owner</td><td class="k">新建</td></tr>
+          <tr><td>分类标签</td><td>无。表名已含分层与业务域，但未解析为可浏览的分类</td><td class="k">新建</td></tr>
+          <tr><td>收藏与专辑</td><td>无</td><td class="k">新建</td></tr>
+          <tr><td>使用热度</td><td>无。无埋点、无统计表</td><td class="k">新建</td></tr>
+          <tr><td>使用说明</td><td>无。<code>table_comment</code> 是单字段，无 markdown、无版本</td><td class="k">新建</td></tr>
+          <tr><td>产出任务</td><td>无。表与调度工作流的对应关系未在平台内建立</td><td class="k">新建</td></tr>
+          <tr><td>数据预览</td><td>半成。数据探索可跑 SQL，但无「表详情内预览 N 行」入口</td><td class="k">半成</td></tr>
+          <tr><td>治理健康度</td><td>半成。已有元数据标注缺口清单与同步失败告警，可作为治理项计数，但无表级健康分</td><td class="k">半成</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="stats">
+      <div class="stat"><span class="v">17</span><span class="l">能力项总数</span></div>
+      <div class="stat"><span class="v">4</span><span class="l">已有可直接复用</span></div>
+      <div class="stat"><span class="v">6</span><span class="l">半成需补齐</span></div>
+      <div class="stat"><span class="v">7</span><span class="l">完全缺失需新建</span></div>
+    </div>
+  </section>
+
+  <!-- ══════════════ 二 ══════════════ -->
+  <section class="card chapter" id="c2">
+    <h2>二、数据质量模块设计</h2>
+
+    <h3 id="c2-1">2.1 实体模型与对标映射</h3>
+    <p>DataWorks 数据质量由五个核心实体构成：规则模板（定义「如何检查」）→ 监控规则（模板的具体应用，含阈值与强弱）→ 质量监控（把一组规则与一个调度任务关联的执行计划）→ 运行实例 → 规则级校验结果，另加告警订阅与大盘。本方案的实体模型与之同构，但每个实体的落点按本项目形态改造。</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>DataWorks</th><th>本项目落点</th><th>差异</th></tr></thead>
+        <tbody>
+          <tr><td class="k">规则模板</td><td>新增 <code>dq_rule_template</code>；内置模板＝提示词 7 类规则类型，自定义模板＝校验 SQL</td><td>内置模板与提示词契约同源，不自造类型</td></tr>
+          <tr><td class="k">监控规则</td><td>新增 <code>dq_rule</code>，含表/字段、分区表达式、比较方式、期望值、橙红阈值、处置方式</td><td>「强弱」沿用提示词术语「处置方式」，取值为阻断/告警</td></tr>
+          <tr><td class="k">质量监控</td><td>新增 <code>dq_task</code> + <code>dq_task_rule_rel</code>；触发方式＝调度触发/手动触发</td><td>「关联调度节点」改为「关联工作流与节点」</td></tr>
+          <tr><td class="k">运行实例</td><td>新增 <code>dq_run_instance</code>，记录批次、触发来源、统计与调度实例号</td><td>与 DolphinScheduler 工作流实例号对齐</td></tr>
+          <tr><td class="k">规则结果</td><td>新增 <code>dq_rule_result</code>；老表 <code>data_quality_check_result</code> 保留兼容</td><td>把自由文本「检查项」收敛为规则类型枚举 + 规则名</td></tr>
+          <tr><td class="k">告警订阅</td><td>新增 <code>dq_alert_log</code>；渠道先做站内记录，后接 Webhook/邮件</td><td>本项目无钉钉/飞书，第一期不铺渠道</td></tr>
+          <tr><td class="k">校验执行</td><td>复用 <code>CodeExecutionController</code> 的多引擎策略与数据源连接</td><td>不新建计算引擎</td></tr>
+          <tr><td class="k">大盘</td><td>扩展已有 <code>/quality/check-result/statistics/fail</code>，新增覆盖率与趋势</td><td>复用已有聚合逻辑</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 id="c2-2">2.2 硬约束：规则类型必须与提示词契约同源</h3>
+    <p>7 类规则类型已在提示词中定义为「全链路统一术语」，禁止自造同义词。因此规则模板库的内置部分<strong>必须就是这 7 类</strong>，且三处（提示词、前端枚举、服务端枚举）必须一致。为防漂移，建议把枚举抽为单一常量并在提示词中引用，配套一个单测断言三处枚举集合相等——这与项目既有的「契约唯一来源」原则一致。</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>规则类型</th><th>校验对象</th><th>结果形态</th></tr></thead>
+        <tbody>
+          <tr><td class="k">主键唯一性</td><td>主键/唯一键字段组</td><td>重复行数，阈值 0</td></tr>
+          <tr><td class="k">非空</td><td>关键字段</td><td>空值或空串行数，阈值 0</td></tr>
+          <tr><td class="k">值域</td><td>枚举字段、数值字段</td><td>越界行数或越界比例</td></tr>
+          <tr><td class="k">行数波动</td><td>表级</td><td>相对历史基线的涨跌幅，橙/红双阈值</td></tr>
+          <tr><td class="k">行数环比</td><td>表级</td><td>当期与上期的涨跌幅</td></tr>
+          <tr><td class="k">上下游对账</td><td>上下游两张表</td><td>记录数或金额差额，容忍度可配</td></tr>
+          <tr><td class="k">口径一致性</td><td>同一指标的两处计算结果</td><td>差值与偏差率</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout">
+      <p><strong>实现要点</strong>：行数波动与行数环比需要「历史基线」。基线应<strong>取自平台自身的规则结果历史</strong>（<code>dq_rule_result</code> 中该规则近 N 次的 <code>actual_value</code>），而不是每次都重新查引擎算基线——这既省算力，也让基线的定义可解释、可回看。这是与 DataWorks 一致的做法。</p>
+    </div>
+
+    <h3 id="c2-3">2.3 页面结构</h3>
+    <p>一级入口「数据质量」，面板内六个页签，与 DataWorks 的模块划分对齐但做了收敛（第一期不做报告订阅）：</p>
+    <ul>
+      <li><strong>质量大盘</strong>：规则覆盖率（已配置规则的表 / 有产出任务的核心表）、校验通过率趋势、TOP 质量问题表、问题责任人、强规则阻断次数。</li>
+      <li><strong>规则配置（按表）</strong>：左侧复用数据源/库/表树（与资产目录共用组件），右侧为该表的规则清单与新建入口。这是主入口，对齐 DataWorks 的「配置规则：按表」。</li>
+      <li><strong>规则模板</strong>：内置 7 类模板（只读，与提示词同源）+ 自定义 SQL 模板（可维护）。</li>
+      <li><strong>质检任务</strong>：规则集、触发方式、关联工作流与节点、处置方式、告警订阅。</li>
+      <li><strong>运行记录</strong>：运行实例列表 → 规则级结果详情（规则名、校验对象、阈值、实际值、状态、执行 SQL、异常明细）。这与提示词「校验输出须可定位」逐项对应。</li>
+      <li><strong>告警订阅</strong>：订阅项与发送记录。</li>
+    </ul>
+    <p>跨模块联动沿用既有范式：规则配置页点表名 → 跳数据血缘；运行记录详情可跳调度实例；资产详情的「数据质量」页签反跳本模块规则列表（第 4.1 节的 <code>onNavigate</code> 模式已在指标管理中跑通）。</p>
+
+    <h3 id="c2-4">2.4 关键设计决策</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>编号</th><th>决策</th><th>理由</th></tr></thead>
+        <tbody>
+          <tr><td class="k">D1</td><td>校验 SQL 复用 <code>CodeExecutionController</code> 多引擎策略下发，不新建计算引擎</td><td>项目已支持 Kyuubi/Doris/ClickHouse 等引擎连接与执行，重复建设无收益</td></tr>
+          <tr><td class="k">D2</td><td>阻断下游采用「质检作为 DAG 节点」，不做「平台反向置调度节点失败」</td><td>提示词的 S3 规范已要求「校验任务独立挂在处理任务下游」，节点非零退出即天然阻塞，实现更简单可靠</td></tr>
+          <tr><td class="k">D3</td><td>校验 SQL 下发前必须过 <code>SqlPermissionRewriter</code> 行/列权限改写</td><td>否则质检成为绕过行/列权限通道——这是安全闸门，不是优化项</td></tr>
+          <tr><td class="k">D4</td><td>平台表为规则的唯一事实源；<code>dqc</code> 层结果表 DDL 由平台下发模板</td><td>提示词已声明 DQC 层职责但无 DDL 模板，S2 各自造表会导致全仓不一致；类比「编译前自动生成 Maven 工程配置」的既有做法</td></tr>
+          <tr><td class="k">D5</td><td>结果表扩维度，「检查项」收敛为规则类型枚举 + 规则名，老表保留兼容</td><td>自由文本无法与 7 类规则对齐，也无法做覆盖率达统计</td></tr>
+          <tr><td class="k">D6</td><td>新增第 7 个智能体工具组，把规则清单作为上下文供 AI 读取</td><td>质量规则是第 6 类上下文；AI 生成代码前知道目标表的非空/唯一/枚举约束，可直接避免违反既定口径</td></tr>
+          <tr><td class="k">D7</td><td>S2 产出的「稽核规则清单」支持一键落库为规则草稿</td><td>把设计文档与平台规则打通，避免人工二次录入；这是本项目相对 DataWorks 的差异化能力</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ══════════════ 三 ══════════════ -->
+  <section class="card chapter" id="c3">
+    <h2>三、数据资产目录模块设计</h2>
+
+    <h3 id="c3-1">3.1 与既有模块的边界</h3>
+    <p>这是本模块最容易做重的部分——平台已有数据探索（含库表浏览与表详情）、指标管理、数据血缘、系统管理（库表权限）。若不划清边界，会出现「四处各有一个表列表」的局面。</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>模块</th><th>回答的问题</th><th>入口形态</th></tr></thead>
+        <tbody>
+          <tr><td class="k">资产目录</td><td>这表是什么、谁负责、能不能用、质量如何、影响谁</td><td>找数认数（治理视角，含属性）</td></tr>
+          <tr><td class="k">数据探索</td><td>我要查数、我要写 SQL</td><td>取数即席查询（写操作视角）</td></tr>
+          <tr><td class="k">指标管理</td><td>这个指标怎么算、口径是什么</td><td>口径维护（不变）</td></tr>
+          <tr><td class="k">数据血缘</td><td>数据从哪来、流向哪</td><td>图谱分析（不变）</td></tr>
+          <tr><td class="k">系统管理</td><td>谁能看哪些表、行/列约束怎么配</td><td>权限配置（不变，资产详情只读展示）</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>三条落地规则：<strong>①</strong> 资产目录不重复做查询编辑器，需要查询时跳数据探索；<strong>②</strong> 不重复做血缘图，详情页的血缘页签复用现有 Marquez 客户端渲染，或直接跳数据血缘并带定位参数（已有 <code>lineageJumpTarget</code> 机制）；<strong>③</strong> 库表树抽为共享组件，数据探索保留引擎视角，资产目录在此基础上叠加治理属性与规范视角。</p>
+    <div class="callout">
+      <p><strong>定位表述（写文档时建议采用）</strong>：智能体通过元数据代理接口 <code>/metadata/agent</code> 完成「现状调研」；资产目录是同一份调研能力的<strong>人的入口</strong>。S1 与 S2 的系统指令都把「后端元数据服务」列为调研必经环节——业务需求方要能自己找数认数，才谈得上用业务语言提出准确需求。这使资产目录不是可选的治理装饰，而是「业务方提需求」这条主张的基础设施。</p>
+    </div>
+
+    <h3 id="c3-2">3.2 能力对标</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>DataWorks</th><th>本项目方案</th><th>取舍</th></tr></thead>
+        <tbody>
+          <tr><td class="k">数据目录树</td><td>双视角：引擎视角（数据源→库→表）与规范视角（分层→业务域→表）</td><td>规范视角为本项目独有，由表名解析生成</td></tr>
+          <tr><td class="k">元数据检索</td><td>表/字段/指标三类统一检索，返回聚合分组</td><td>第一期 SQL 模糊检索，不做向量</td></tr>
+          <tr><td class="k">元数据详情</td><td>统一资产详情页，页签：概览/字段/分区/血缘/指标/产出任务/数据质量/使用记录/权限/使用说明</td><td>聚合既有能力，不重复实现</td></tr>
+          <tr><td class="k">收藏</td><td>表级收藏，我的收藏视图</td><td>照搬</td></tr>
+          <tr><td class="k">数据专辑</td><td>专辑（资产集合），支持按主题打包</td><td>第二期，一期先做收藏</td></tr>
+          <tr><td class="k">使用热度</td><td>埋点 + 日汇总，展示浏览/读取/收藏趋势与字段热度</td><td>T+1 汇总，与 DataWorks 一致</td></tr>
+          <tr><td class="k">分类与标签</td><td>分层与业务域由表名解析；标签人工打</td><td>分类不人工维护，这是核心差异</td></tr>
+          <tr><td class="k">表负责人</td><td>业务负责人 + 技术负责人，字段语义对齐 <code>indicators</code></td><td>照搬但复用既有命名</td></tr>
+          <tr><td class="k">使用说明</td><td>markdown 说明 + 版本历史</td><td>复用知识库文档表能力</td></tr>
+          <tr><td class="k">产出信息</td><td>写入该表的调度工作流与节点列表</td><td>需向 DolphinScheduler 反查</td></tr>
+          <tr><td class="k">数据预览</td><td>详情页预览随机 N 行</td><td>必须过列权限与脱敏</td></tr>
+          <tr><td class="k">治理健康分</td><td>治理项计数（未标注字段、无负责人表、无质量规则的核心表、命名不合规表、超期未更新表）</td><td>不照搬五维评分，只做可核查计数</td></tr>
+          <tr><td class="k">资产盘点</td><td>按项目/分层/业务域的资产数量与存储量盘点</td><td>第三期</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 id="c3-3">3.3 规范驱动的分类体系</h3>
+    <p>命名规范已强制表名格式为 <code>{分层}_{业务域}_{实体描述}_{刷新周期}</code>，且「表名、库名一律使用小写字母与下划线」，分层前缀限定为 <code>ods_/dwd_/dws_/ads_/dim_/dqc_</code>（另有 <code>tmp_</code> 与视图 <code>v_</code>），刷新周期后缀限定为统一枚举（d/h/w/m/y/r/f）。据此可以建立一条确定性解析链：</p>
+    <ol>
+      <li>取首段匹配分层枚举 → 得到<strong>资产分层</strong>；</li>
+      <li>取末段匹配刷新周期枚举 → 得到<strong>刷新周期</strong>（不匹配则视为实体描述的一部分）；</li>
+      <li>剩余段的第二段 → 得到<strong>业务域</strong>；其余为实体描述；</li>
+      <li>解析失败的表（历史遗留、外部导入、视图）归入「未分类」，并<strong>自动成为一个治理项</strong>。</li>
+    </ol>
+    <p>这样做的收益有三：分类树零维护成本；分类与代码里实际遵循的规范始终一致；命名不合规的表会被自动暴露出来，成为可治理的清单。同时保留人工覆盖能力——<code>table_metadata</code> 增加 <code>category_code</code> 后，人工设置的分类优先于解析结果。</p>
+
+    <h3 id="c3-4">3.4 页面结构</h3>
+    <p>一级入口「资产目录」，采用左右分栏：</p>
+    <ul>
+      <li><strong>左栏</strong>：顶部搜索框，下方视角切换（引擎视角 / 规范视角），再下方为目录树。</li>
+      <li><strong>右栏</strong>：选中节点即展示对应内容——选中数据源或分层展示概况，选中库或业务域展示表清单，选中表直接进入资产详情。</li>
+      <li><strong>资产详情</strong>：页头为表名、分层与业务域标签、负责人、收藏按钮与操作组（加入专辑、跳数据探索查询、刷新元数据）；左侧基础信息面板（生命周期、存储量、行数、最近更新、健康度、表说明）；右侧页签为概览、字段、分区、血缘、指标、产出任务、数据质量、使用记录、权限、使用说明。</li>
+      <li><strong>我的收藏</strong>与<strong>资产盘点</strong>作为左栏底部的次级入口。</li>
+    </ul>
+
+    <h3 id="c3-5">3.5 关键设计决策</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>编号</th><th>决策</th><th>理由</th></tr></thead>
+        <tbody>
+          <tr><td class="k">E1</td><td>库表树抽为共享组件，数据探索与资产目录共用</td><td>避免两套树、两套展开状态与两套加载逻辑</td></tr>
+          <tr><td class="k">E2</td><td>目录与检索的权限过滤在服务端 fail-close 完成</td><td>行/列权限已是真实机制，若目录不过滤会泄露越权表名与字段名</td></tr>
+          <tr><td class="k">E3</td><td>浏览埋点走独立轻量表，不写 <code>operation_audit_log</code></td><td>浏览是高频行为，写入审计表会淹没真正的操作留痕</td></tr>
+          <tr><td class="k">E4</td><td>热度按日汇总（T+1），不实时计算</td><td>与 DataWorks 一致，避免详情页拖慢</td></tr>
+          <tr><td class="k">E5</td><td>使用说明复用知识库文档表的存储与版本能力</td><td>不重复建设 markdown 与版本历史</td></tr>
+          <tr><td class="k">E6</td><td>血缘与产出任务不做服务端存储，只做聚合代理</td><td>血缘权威在 Marquez、任务权威在 DolphinScheduler，服务端存副本必然产生一致性债务</td></tr>
+          <tr><td class="k">E7</td><td>健康度先做「可核查治理项计数」，不做加权评分</td><td>加权分数易变成不可解释的数字；计数每项都能追到具体对象</td></tr>
+          <tr><td class="k">E8</td><td>检索不引入向量库，与已规划的「知识检索增强」合并后再评估</td><td>避免为两个场景铺两套嵌入设施</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ══════════════ 四 ══════════════ -->
+  <section class="card chapter" id="c4">
+    <h2>四、桌面端改动清单</h2>
+
+    <h3 id="c4-1">4.1 改动点逐条</h3>
+    <p>新增两个 activity bar 入口在当前的代码结构下需要触碰 12 处。以下为逐条清单，路径与行号以 2026-09-17 工作区状态为准。</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>序号</th><th>文件</th><th>改动</th></tr></thead>
+        <tbody>
+          <tr><td class="k">1</td><td><code>src/types/index.ts</code></td><td><code>ActiveTab</code> 联合类型增加 <code>'dataQuality'</code> 与 <code>'assetCatalog'</code></td></tr>
+          <tr><td class="k">2</td><td><code>src/types/index.ts</code></td><td><code>MENU_CODE_MAP</code> 增加 <code>dataQuality: 'data_quality'</code>、<code>assetCatalog: 'asset_catalog'</code>。<strong>必须与第 1、4 项同批改</strong></td></tr>
+          <tr><td class="k">3</td><td><code>src/components/layout/ActivityBar.tsx</code></td><td><code>allTabs</code> 数组插入两项并引入图标（建议质量用 <code>ShieldCheck</code>、资产用 <code>Library</code>，与系统管理的 <code>Shield</code> 语义区分）</td></tr>
+          <tr><td class="k">4</td><td><code>src/App.tsx</code></td><td><code>FIRST_LEVEL_TAB_IDS</code> 数组插入两个 id</td></tr>
+          <tr><td class="k">5</td><td><code>src/App.tsx</code></td><td><code>workspaceClassMap</code> 增加 <code>app__workspace--data-quality</code> 与 <code>app__workspace--asset-catalog</code></td></tr>
+          <tr><td class="k">6</td><td><code>src/App.tsx</code></td><td>新增两个 <code>app__view-container</code> 容器，内按 <code>isTabVisible &amp;&amp; visitedTabs.has</code> 惰性挂载面板</td></tr>
+          <tr><td class="k">7</td><td><code>src/App.css</code></td><td>新增两条 <code>app__workspace--*</code> 布局规则（参考 <code>--data-lineage</code> 的写法）</td></tr>
+          <tr><td class="k">8</td><td><code>src/api/quality.ts</code></td><td>新建。规则模板、规则、质检任务、运行记录、大盘、告警的请求封装</td></tr>
+          <tr><td class="k">9</td><td><code>src/api/assetCatalog.ts</code></td><td>新建。目录树、检索、详情、收藏、标签、使用说明、埋点上报</td></tr>
+          <tr><td class="k">10</td><td><code>src/views/data-quality/</code></td><td>新建。面板六页签 + 规则编辑抽屉 + 运行结果详情</td></tr>
+          <tr><td class="k">11</td><td><code>src/views/asset-catalog/</code></td><td>新建。目录树 + 检索 + 资产详情（十页签）</td></tr>
+          <tr><td class="k">12</td><td>测试</td><td>新增菜单可见性与活跃页签回落的单测。当前仓库 58 个测试文件中没有覆盖 <code>MENU_CODE_MAP</code>/<code>ActivityBar</code> 的用例，本次应补上</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>改动 10 与 11 是主要工作量所在。其余 10 处是机械改动，但<strong>顺序与耦合有硬要求</strong>，见下节。</p>
+
+    <h3 id="c4-2">4.2 耦合与升级兼容</h3>
+    <div class="callout warn">
+      <p><strong>约束一：第 2 项与第 1、4 项必须同批提交。</strong>菜单可见性按 <code>MENU_CODE_MAP[tab.id]</code> 取码后再与用户 <code>menuTags</code> 比对；若 <code>ActiveTab</code> 与 <code>FIRST_LEVEL_TAB_IDS</code> 里已有新 id 但映射表没有对应码，取值 <code>undefined</code>，新入口会被静默过滤掉，表现为「代码写了但入口不出现」。</p>
+    </div>
+    <div class="callout warn">
+      <p><strong>约束二：新增一级菜单码会改变「拥有全部菜单」的兜底判定。</strong><code>FIRST_LEVEL_MENU_CODES</code> 由 <code>MENU_CODE_MAP</code> 的值派生，因此码从 9 个变为 11 个后，凡是靠「<code>menuTags</code> 覆盖全部一级码」这条捷径获得全部菜单可见性的非超管角色，都会因缺少新码而失去该捷径，回落为按码过滤。超管不受影响（其 <code>menuTags</code> 直接取 <code>FIRST_LEVEL_MENU_CODES</code>）。</p>
+      <p><strong>处理动作</strong>：升级前排查是否存在此类角色（<code>sys_role_menu_permission</code> 中授权数等于旧一级码总数的角色），若有则在迁移脚本中一并补授两个新菜单码；<code>sys_menu_permission</code> 需新增两条菜单记录。</p>
+    </div>
+    <div class="callout warn">
+      <p><strong>约束三：菜单种子数据只在测试数据脚本里，生产初始化脚本没有。</strong>四方言的 <code>sql/init</code> 脚本只初始化 admin 用户与 SUPER_ADMIN 角色，菜单与角色授权只存在于 <code>sql/testdata</code>。因此新增菜单码的迁移必须<strong>自带菜单与授权种子</strong>，不能假设生产库里已有 <code>sys_menu_permission</code> 数据（详见 5.4）。</p>
+    </div>
+
+    <h3 id="c4-3">4.3 菜单码与角色授予</h3>
+    <p>两个新菜单码建议按下列口径授予。注意「资产目录」对全部角色开放——业务需求方与数据分析师恰恰是最需要找数认数的人群，若只给治理角色，会直接违背「业务方提需求」的产品定位。</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>角色</th><th>数据质量</th><th>资产目录</th></tr></thead>
+        <tbody>
+          <tr><td class="k">超级管理员</td><td>是（自动）</td><td>是（自动）</td></tr>
+          <tr><td class="k">数据架构师</td><td>是（规则设计主责）</td><td>是</td></tr>
+          <tr><td class="k">数据开发工程师</td><td>是（规则实现与处置）</td><td>是</td></tr>
+          <tr><td class="k">运维工程师</td><td>是（告警与阻断处置）</td><td>是</td></tr>
+          <tr><td class="k">数据分析师</td><td>否（只读结果，无配置权）</td><td>是</td></tr>
+          <tr><td class="k">业务需求方</td><td>否（在需求文档中提要求即可）</td><td>是</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>面板内部的写权限沿用既有做法——用 <code>roleCode</code> 白名单在组件内判定（参考指标管理面板对删除权限的处理），不新增服务端细粒度权限点，避免权限模型在本期膨胀。</p>
+  </section>
+
+  <!-- ══════════════ 五 ══════════════ -->
+  <section class="card chapter" id="c5">
+    <h2>五、dataforge-server 工作内容</h2>
+    <p>本章为服务端工作清单。需要说明：两个模块都<strong>必须有服务端参与</strong>——数据质量的规则、任务、运行实例需要集中存储与判定；资产目录的负责人、分类、标签、收藏、热度需要持久化与权限过滤，二者都无法只靠桌面端完成。</p>
+
+    <h3 id="c5-1">5.1 数据模型</h3>
+    <ul>
+      <li>新增模块 <code>modules/quality</code> 扩展与新增模块 <code>modules/asset</code>；原有 <code>quality</code> 模块从「结果管理」升级为「规则 + 任务 + 运行 + 告警」。</li>
+    </ul>
+    <table>
+      <thead><tr><th>批次</th><th>表名</th><th>用途</th></tr></thead>
+      <tbody>
+        <tr><td class="k" rowspan="6">第一批</td><td><code>dq_rule_template</code></td><td>规则模板：模板编码、名称、规则类型、模板类别（内置/自定义）、SQL 模板、适用字段类型、参数定义 JSON</td></tr>
+        <tr><td><code>dq_rule</code></td><td>监控规则：规则名、模板、数据源/库/表/字段、分区表达式、比较方式、期望值、橙红阈值、处置方式（阻断/告警）、负责人、状态</td></tr>
+        <tr><td><code>dq_rule_result</code></td><td>规则级结果：运行实例、规则快照、实际值、期望值、状态、异常等级、执行 SQL、错误信息、耗时</td></tr>
+        <tr><td><code>asset_category</code></td><td>资产分类：编码、名称、父级、层级类型（分层/业务域）、排序</td></tr>
+        <tr><td><code>asset_bookmark</code></td><td>收藏：用户、资产类型、资产 ID</td></tr>
+        <tr><td><code>asset_access_log</code></td><td>访问埋点轻量表：用户、资产类型、资产 ID、访问类型、时间</td></tr>
+        <tr><td class="k" rowspan="5">第二批</td><td><code>dq_task</code></td><td>质检任务：名称、负责人、数据范围、触发方式、关联工作流与节点、处置策略、状态</td></tr>
+        <tr><td><code>dq_task_rule_rel</code></td><td>任务与规则关联</td></tr>
+        <tr><td><code>dq_run_instance</code></td><td>运行实例：任务、批次号、触发来源、调度实例号、起止时间、状态、四类计数</td></tr>
+        <tr><td><code>asset_tag</code> / <code>asset_tag_rel</code></td><td>标签定义与资产标签关联（支持表/字段/指标）</td></tr>
+        <tr><td><code>asset_usage_daily</code></td><td>热度日汇总：资产、统计日、浏览数、读取数、收藏数、关联数</td></tr>
+        <tr><td class="k" rowspan="3">第三批</td><td><code>dq_alert_log</code></td><td>告警发送记录：运行实例、规则、渠道、接收人、发送状态、失败原因</td></tr>
+        <tr><td><code>asset_album</code> / <code>asset_album_rel</code></td><td>数据专辑与专辑内容</td></tr>
+        <tr><td><code>asset_doc</code> / <code>asset_doc_history</code></td><td>资产使用说明与版本历史（可复用知识库能力，若复用则本项取消）</td></tr>
+      </tbody>
+    </table>
+    <p>改造既有表三张：</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>表名</th><th>改造内容</th></tr></thead>
+        <tbody>
+          <tr><td class="k">table_metadata</td><td>增加 <code>business_owner</code> / <code>tech_owner</code> / <code>topic</code>（主题域）/ <code>visibility</code>（对齐 <code>indicators</code> 既有语义）、<code>category_code</code>（人工覆盖分类）、<code>asset_level</code>（资产等级）、<code>description</code>（使用说明）、<code>last_access_time</code>、<code>read_cnt_30d</code>、<code>bookmark_cnt</code>、<code>health_score</code></td></tr>
+          <tr><td class="k">column_metadata</td><td>增加 <code>business_desc</code>（业务描述，区别于现有注释）、<code>security_level</code>（安全等级）、<code>hot_score</code>（字段热度）</td></tr>
+          <tr><td class="k">data_quality_check_result</td><td>保留为兼容表；新增 <code>rule_type</code>（7 类枚举 + 自定义）与 <code>rule_name</code> 两列，历史数据以「未分类」回填；新链路写入 <code>dq_rule_result</code>，老接口继续可用</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 id="c5-2">5.2 接口清单</h3>
+    <p>下表中「新」为新增接口，「改」为在既有接口上扩展，「复用」为不改动直接调用。</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>模块</th><th>路径</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td class="k" rowspan="7">规则模板</td><td>GET <code>/quality/template/builtin</code></td><td>新。返回内置 7 类模板（与提示词同源）</td></tr>
+          <tr><td>GET <code>/quality/template</code></td><td>新。自定义模板分页</td></tr>
+          <tr><td>POST / PUT / DELETE <code>/quality/template</code></td><td>新。自定义模板维护</td></tr>
+          <tr><td>POST <code>/quality/template/preview-sql</code></td><td>新。模板参数渲染为方言 SQL 预览</td></tr>
+          <tr><td>GET <code>/quality/rule</code></td><td>新。规则分页，支持按表/字段/类型/状态/负责人过滤</td></tr>
+          <tr><td>POST / PUT / DELETE <code>/quality/rule</code></td><td>新。规则维护</td></tr>
+          <tr><td>POST <code>/quality/rule/test-run</code></td><td>新。规则试跑（对齐 DataWorks 的测试运行）</td></tr>
+          <tr><td class="k" rowspan="5">批量与任务</td><td>POST <code>/quality/rule/batch-by-template</code></td><td>新。按模板批量建规则（对齐「按模板批量配置」）</td></tr>
+          <tr><td>GET / POST / PUT / DELETE <code>/quality/task</code></td><td>新。质检任务维护</td></tr>
+          <tr><td>GET <code>/quality/task/{id}/rules</code></td><td>新。任务下规则列表</td></tr>
+          <tr><td>POST <code>/quality/task/{id}/run</code></td><td>新。手动触发</td></tr>
+          <tr><td>POST <code>/quality/task/{id}/enable</code></td><td>新。启停</td></tr>
+          <tr><td class="k" rowspan="4">运行记录</td><td>GET <code>/quality/run</code></td><td>新。运行实例分页，按表/任务/时间/状态过滤</td></tr>
+          <tr><td>GET <code>/quality/run/{id}</code></td><td>新。实例详情与统计</td></tr>
+          <tr><td>GET <code>/quality/run/{id}/results</code></td><td>新。规则级结果（规则名、阈值、实际值、状态）</td></tr>
+          <tr><td>POST <code>/quality/run/report</code></td><td>新。程序侧结果上报入口（S3 校验任务回传）</td></tr>
+          <tr><td class="k" rowspan="3">大盘与告警</td><td>GET <code>/quality/overview</code></td><td>新。覆盖率、通过率趋势、TOP 问题表、阻断次数</td></tr>
+          <tr><td>GET <code>/quality/statistics/fail</code></td><td>改。增加按项目/分层的聚合维度</td></tr>
+          <tr><td>GET / POST <code>/quality/alert</code></td><td>新。订阅配置与发送记录</td></tr>
+          <tr><td class="k" rowspan="3">兼容</td><td>GET <code>/quality/check-result/list</code></td><td>改。优先读新表、回落老表</td></tr>
+          <tr><td>POST <code>/quality/check-result</code></td><td>改。写入时补规则类型与规则名</td></tr>
+          <tr><td>GET <code>/quality/check-result/{id}</code></td><td>改。同上</td></tr>
+          <tr><td class="k" rowspan="7">资产目录</td><td>GET <code>/asset/catalog/tree</code></td><td>新。目录树，参数决定引擎视角或规范视角</td></tr>
+          <tr><td>GET <code>/asset/search</code></td><td>新。表/字段/指标统一检索，返回分组结果</td></tr>
+          <tr><td>GET <code>/asset/table/{id}</code></td><td>新。资产详情聚合（基础信息 + 字段 + 分区 + 标签 + 分类）</td></tr>
+          <tr><td>GET <code>/asset/table/{id}/usage</code></td><td>新。使用记录（热度趋势、字段热度）</td></tr>
+          <tr><td>GET <code>/asset/table/{id}/producers</code></td><td>新。产出任务（代理查询 DolphinScheduler）</td></tr>
+          <tr><td>GET <code>/asset/table/{id}/indicators</code></td><td>新。按表/字段反查指标（基于 <code>indicators_fields</code>）</td></tr>
+          <tr><td>GET <code>/asset/table/{id}/quality</code></td><td>新。该表的质量规则与告警摘要（跨模块读 quality）</td></tr>
+          <tr><td class="k" rowspan="6">资产治理</td><td>PUT <code>/asset/table/{id}/owner</code></td><td>新。设置业务/技术负责人</td></tr>
+          <tr><td>PUT <code>/asset/table/{id}/category</code></td><td>新。人工覆盖分类</td></tr>
+          <tr><td>PUT <code>/asset/table/{id}/tags</code></td><td>新。标签设置</td></tr>
+          <tr><td>GET / POST / DELETE <code>/asset/bookmark</code></td><td>新。收藏</td></tr>
+          <tr><td>POST <code>/asset/access</code></td><td>新。埋点上报（异步批量）</td></tr>
+          <tr><td>GET / PUT <code>/asset/table/{id}/doc</code></td><td>新。使用说明与版本</td></tr>
+          <tr><td class="k" rowspan="3">盘点与元数据</td><td>GET <code>/asset/inventory/overview</code></td><td>新。资产盘点（数量、存储量、按分层/业务域分布）</td></tr>
+          <tr><td>GET <code>/asset/inventory/health</code></td><td>新。治理项计数清单</td></tr>
+          <tr><td>GET <code>/metadata/annotation-gaps</code></td><td>复用。作为治理项之一接入健康度</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 id="c5-3">5.3 模块与代码组织</h3>
+    <ul>
+      <li><strong>新增 <code>modules/asset</code></strong>：按现有模块的分层惯例建 <code>controller / service / mapper / entity / dto / vo / converter / enums</code>。检索与目录树是核心 service，权限过滤与分类解析抽为纯函数以便单测。</li>
+      <li><strong>扩展 <code>modules/quality</code></strong>：保留 <code>DataQualityCheckResult*</code> 系列不动以维持兼容，新增规则、模板、任务、运行、告警五组实体与服务。校验 SQL 生成器单独成类（<code>DqSqlBuilder</code>），按「规则类型 × 方言」做纯函数渲染。</li>
+      <li><strong>扩展 <code>modules/metadata</code></strong>：新增 owner、分类、标签、使用说明的读写，以及在既有 <code>TableMetadataService</code> 上扩展检索能力。表名解析器（分层/业务域/刷新周期）放在此处或 <code>common/utils</code>。</li>
+      <li><strong>热度汇总任务</strong>：置于既有 <code>common/task</code> 目录，每日定时把 <code>asset_access_log</code> 汇总进 <code>asset_usage_daily</code> 并回写 <code>table_metadata</code> 的 30 日读数与收藏数。</li>
+      <li><strong>产出任务反查</strong>：与桌面端一致采用直连 DolphinScheduler 的方式，服务端只做一次聚合请求转发，不落地副本。</li>
+    </ul>
+
+    <h3 id="c5-4">5.4 横切工作</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>项</th><th>工作内容</th></tr></thead>
+        <tbody>
+          <tr><td class="k">菜单与授权</td><td>四方言 <code>sql/init</code> 与 <code>sql/testdata</code> 增加两条菜单记录与角色授权；新增迁移脚本，<strong>幂等插入</strong>菜单（按 <code>menu_code</code> 冲突忽略）并对疑似「旧全量角色」补授</td></tr>
+          <tr><td class="k">建表与迁移</td><td>MySQL / PostgreSQL / MariaDB / H2 四套建表语句与三张表的 <code>ALTER</code> 语句；老 <code>data_quality_check_result</code> 数据按「未分类」回填不丢数据</td></tr>
+          <tr><td class="k">权限过滤</td><td>资产目录的树、检索、详情、导出全部复用 <code>sys_table_permission</code>（含行/列）做服务端过滤；命中约束但无法安全判定时拒绝返回（fail-close）</td></tr>
+          <tr><td class="k">SQL 安全</td><td>规则渲染出的校验 SQL 在下发前必须经过 <code>SqlPermissionRewriter</code>；自定义 SQL 模板需拒绝多语句与写操作</td></tr>
+          <tr><td class="k">审计</td><td>规则的增删改、任务启停、告警订阅变更、负责人与分类变更写 <code>operation_audit_log</code>；浏览埋点写独立轻量表</td></tr>
+          <tr><td class="k">枚举同源</td><td>7 类规则类型与处置方式枚举，须与桌面端枚举、提示词文案三处一致，配单测断言</td></tr>
+          <tr><td class="k">脱敏</td><td>数据预览与结果明细中的抽样值必须过既有列级脱敏机制</td></tr>
+          <tr><td class="k">测试</td><td>SQL 生成器按「规则类型 × 方言」矩阵做纯函数单测；分类解析器单测；权限过滤单测；检索 SQL 单测</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 id="c5-5">5.5 批次与依赖</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>批次</th><th>交付内容</th><th>依赖</th></tr></thead>
+        <tbody>
+          <tr><td class="k">第一批</td><td>规则模板与规则、手动触发校验、规则级结果、大盘首屏；资产目录树双视角、统一检索、资产详情聚合、收藏、负责人与分类</td><td>桌面端改动的 1–9 项；服务端可独立先行</td></tr>
+          <tr><td class="k">第二批</td><td>质检任务与调度触发、阻断链路、运行实例与批次；标签、热度埋点与日汇总、使用说明</td><td>依赖调度集成（见第六章）</td></tr>
+          <tr><td class="k">第三批</td><td>告警订阅多渠道、按模板批量配置、试跑、报告订阅；数据专辑、资产盘点与治理健康项、向量检索评估</td><td>依赖第一、二批稳定</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout">
+      <p><strong>建议的起步顺序</strong>：服务端第一批可与桌面端改动并行，桌面端先用占位面板打通入口（对应改动 1–7），待接口就绪再接真实数据。这样能最早暴露菜单权限与挂载链路的问题，而这类问题与业务逻辑无关，越晚发现越麻烦。</p>
+    </div>
+  </section>
+
+  <!-- ══════════════ 六 ══════════════ -->
+  <section class="card chapter" id="c6">
+    <h2>六、外部组件集成工作</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>组件</th><th>工作内容</th></tr></thead>
+        <tbody>
+          <tr><td class="k">调度</td><td>约定质检任务在工作流中的节点形态与命名（与 <code>dqc_</code> 前缀呼应）；打通「工作流实例成功 → 触发关联质检任务」的触发链路；约定阻断语义——质检节点非零退出即阻塞下游，平台不做反向置失败</td></tr>
+          <tr><td class="k">调度</td><td>建立「表 ← 产出工作流与节点」的对应关系来源：优先使用工作流节点参数中的输出表声明，缺失时回落到 OpenLineage 血缘的产出端</td></tr>
+          <tr><td class="k">调度</td><td>运行实例与调度实例号对齐，使质量运行记录可一键跳到调度实例详情</td></tr>
+          <tr><td class="k">血缘</td><td>无需新增服务端工作。资产详情的血缘页签复用桌面端既有 Marquez 客户端，或跳转数据血缘并带定位参数</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ══════════════ 七 ══════════════ -->
+  <section class="card chapter" id="c7">
+    <h2>七、验收判据与不做的事</h2>
+
+    <h3 id="c7-1">7.1 验收判据</h3>
+    <p>每项均可核查，不设无法验证的指标。</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>对象</th><th>判据</th></tr></thead>
+        <tbody>
+          <tr><td class="k">数据质量</td><td>对一张已配置规则的表，手动触发后运行记录中可看到规则级结果，且「规则名、校验对象、阈值、实际值、是否通过」五项齐全</td></tr>
+          <tr><td class="k">数据质量</td><td>行数波动规则的基线与历史结果一致，可回溯到具体哪几次历史值参与了基线计算</td></tr>
+          <tr><td class="k">数据质量</td><td>处置方式为「阻断」的规则校验失败时，下游任务确实未执行；且该次失败可在质量与调度两侧互相定位</td></tr>
+          <tr><td class="k">数据质量</td><td>大盘能给出规则覆盖率与失败趋势，且覆盖率分母口径可解释（有产出任务的核心表）</td></tr>
+          <tr><td class="k">数据质量</td><td>内置规则模板的类型集合与提示词中的 7 类完全一致，无多无少</td></tr>
+          <tr><td class="k">资产目录</td><td>输入关键词一次请求返回表/字段/指标三类结果并分组展示</td></tr>
+          <tr><td class="k">资产目录</td><td>按规范视角浏览时，分层与业务域与表名解析结果一致；解析失败的表出现在「未分类」并计入治理项</td></tr>
+          <tr><td class="k">资产目录</td><td>表详情页聚合展示字段、分区、生命周期、存储量、负责人、质量规则数、产出任务、关联指标</td></tr>
+          <tr><td class="k">资产目录</td><td>无权限用户在目录树与检索结果中<strong>看不到</strong>越权表名与字段名（含字段级校验）</td></tr>
+          <tr><td class="k">资产目录</td><td>收藏后出现在我的收藏；热度上报后 T+1 可在详情页看到趋势</td></tr>
+          <tr><td class="k">升级</td><td>从旧版本升级后，存量角色的可见菜单不减少（只增不减）</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 id="c7-2">7.2 明确不做的事</h3>
+    <ul>
+      <li><strong>不新建计算引擎与调度器</strong>：校验执行复用既有引擎策略，触发与阻断复用 DolphinScheduler。</li>
+      <li><strong>不做「平台反向置调度节点失败」</strong>：改用质检作为 DAG 节点的天然阻塞，第一期不引入反向写调度状态的能力。</li>
+      <li><strong>不重复做查询编辑器与血缘图</strong>：需要时跳数据探索与数据血缘。</li>
+      <li><strong>不做人工维护的业务分类树</strong>：分类由命名规范解析，人工仅做覆盖。</li>
+      <li><strong>不引入向量检索</strong>：与已规划的「知识检索增强」合并评估，避免两套嵌入设施。</li>
+      <li><strong>不做 AI 自动生成质量规则</strong>：第一期规则来自人工配置与架构师设计建议，AI 生成留待规则模型稳定后再评估。</li>
+      <li><strong>不做加权治理健康分</strong>：只做可核查的治理项计数，避免产生不可解释的分数。</li>
+      <li><strong>不做告警渠道的全量铺开</strong>：第一期先做站内订阅与发送记录，渠道对接看客户实际环境（本项目无钉钉/飞书依赖）。</li>
+    </ul>
+  </section>
+
+  <!-- ══════════════ 八 ══════════════ -->
+  <section class="card chapter" id="c8">
+    <h2>八、计划书需同步更新的位置</h2>
+    <p>本次评估结论落地后，项目计划书以下位置需要同步更新，否则会出现「文档说没有、代码已有了」的错位。</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>章节</th><th>更新内容</th></tr></thead>
+        <tbody>
+          <tr><td class="k">2.2 功能需求</td><td>在「信息底座」之后新增两小节：<strong>数据质量管理</strong>（规则模板、监控规则、质检任务、强弱处置、运行记录、质量大盘）与<strong>数据资产目录</strong>（目录双视角、统一检索、资产详情、负责人与分类、收藏与热度）。两者从「运维与治理类能力（规划中）」中独立出来</td></tr>
+          <tr><td class="k">三、总体架构</td><td>3.2「智能体理解业务数据的五类信息」需扩展为六类，新增<strong>数据约束</strong>（质量规则）；并说明资产目录是四类信息的聚合消费面，不新增类别</td></tr>
+          <tr><td class="k">4.1 桌面端</td><td>渲染层模块清单增加「数据质量」与「资产目录」</td></tr>
+          <tr><td class="k">4.2 服务端</td><td>「数据质量模块」一句从「数据质量校验结果管理」改为完整模块描述；新增「资产目录模块」一行；业务模块数由 6 增至 7</td></tr>
+          <tr><td class="k">五、模块优先级</td><td>新增模块行：数据质量管理（第一批）、资产目录（第一批）、质检任务与阻断（第二批）、热度与专辑（第三批）；相应调整「数据价值评估」的依赖描述（其输入之一「数据资产清单」由本模块提供）</td></tr>
+          <tr><td class="k">7.2 功能验收</td><td>按 7.1 的判据补入验收项</td></tr>
+          <tr><td class="k">7.5 对应关系</td><td>需求—模块—验收追溯链补入上述新条目，保持与原表结构一致</td></tr>
+          <tr><td class="k">九、附录基线</td><td>工程规模、表数量、接口数量按实际交付更新</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout">
+      <p><strong>一处需要特别说明的措辞调整</strong>：计划书 2.2 目前把「知识检索增强」与「数据价值评估」列为「运维与治理类能力（规划中）」，这是准确的。但新增的数据质量与资产目录<strong>不应放进这一小节</strong>——它们不是「决定平台能否长期被用起来」的增强项，而是「让智能体正确理解业务数据」这条主线的直接组成部分（数据约束是第 6 类上下文，资产目录是人侧调研入口）。放错位置会让读者误判优先级。</p>
+    </div>
+  </section>
+
+  <!-- ══════════════ 九 ══════════════ -->
+  <section class="card chapter" id="c9">
+    <h2>九、附录：现状证据索引</h2>
+    <p>以下为本次评估中直接核对到的对象，供复核。</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>对象</th><th>位置</th></tr></thead>
+        <tbody>
+          <tr><td class="k">菜单与页签</td><td>桌面端 <code>src/types/index.ts</code>（<code>ActiveTab</code>、<code>MENU_CODE_MAP</code>、<code>FIRST_LEVEL_MENU_CODES</code>）；<code>src/components/layout/ActivityBar.tsx</code>（9 个一级入口）；<code>src/App.tsx</code>（<code>FIRST_LEVEL_TAB_IDS</code>、<code>workspaceClassMap</code>、<code>visitedTabs</code>、各视图容器）</td></tr>
+          <tr><td class="k">质量契约</td><td>桌面端 <code>src/hooks/opencode/opencodeInstructions.ts</code>：7 类规则类型（禁止自造同义词）、S1/S2/S3 分工、DQC 质量层与 <code>dqc_</code> 前缀、<code>dqc_ddl.sql</code>、数据质量校验规范</td></tr>
+          <tr><td class="k">质量实现</td><td>服务端 <code>modules/quality/</code>（7 文件 671 行）、<code>DataQualityCheckResultController</code>（<code>/quality/check-result</code> 四接口）、表 <code>data_quality_check_result</code></td></tr>
+          <tr><td class="k">元数据</td><td>服务端 <code>modules/metadata/</code>：<code>MetadataController</code>（<code>/metadata/tables</code>、<code>/metadata/table/columns</code>、<code>/metadata/annotation-gaps</code>、<code>/metadata/table/{id}/permission</code>）；表 <code>table_metadata</code>、<code>column_metadata</code></td></tr>
+          <tr><td class="k">指标</td><td>表 <code>indicators</code>（topic / business_owner / tech_owner / visibility / code / refresh_*）、<code>indicators_fields</code>（指标→数据源/库/表/字段）；桌面端 <code>IndicatorManagementPanel</code></td></tr>
+          <tr><td class="k">库表浏览</td><td>桌面端 <code>src/views/data-explore/DBTableBrowser.tsx</code>、<code>TableDetail.tsx</code>；<code>src/api/datasource.ts</code> 中的元数据请求封装</td></tr>
+          <tr><td class="k">血缘与调度</td><td>桌面端 <code>src/api/marquez.ts</code>、<code>src/api/dolphinscheduler.ts</code>（均为直连上游）；<code>views/data-lineage/</code>、<code>views/schedule-management/</code></td></tr>
+          <tr><td class="k">权限</td><td>表 <code>sys_table_permission</code> / <code>_row</code> / <code>_column</code>；<code>sys_menu_permission</code> / <code>sys_role_menu_permission</code>；<code>SqlPermissionRewriter</code></td></tr>
+          <tr><td class="k">菜单种子</td><td>仅 <code>sql/testdata/dataforge-testdata-postgresql.sql</code> 含菜单与角色授权；<code>sql/init</code> 四方言仅初始化 admin 与 SUPER_ADMIN</td></tr>
+          <tr><td class="k">对标来源</td><td>阿里云 DataWorks 官方文档：数据质量（规则模板／监控规则／质量监控／强弱与阻塞／告警订阅／质量大盘／按表与按模板配置）、数据地图与元数据详情（数据目录／元数据检索／资产详情页签／收藏／使用记录／生产信息／产出信息）</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="doc-end">本方案为设计评估稿，未改动任何代码。桌面端 12 处改动与服务端工作清单均为建议方案，待确认后执行。</p>
+  </section>
+
+  </main>
+</div>
+
+<a class="totop" href="#" title="回到顶部">↑</a>
+
+<script>
+(function(){
+  var toggle = document.getElementById('tocToggle');
+  var toc = document.getElementById('toc');
+  if (toggle && toc) {
+    toggle.addEventListener('click', function(){
+      var open = toc.classList.toggle('open');
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+  }
+  var links = Array.prototype.slice.call(document.querySelectorAll('.toc a'));
+  var targets = links.map(function(a){ return document.querySelector(a.getAttribute('href')); });
+  function onScroll(){
+    var y = window.scrollY + 90;
+    var idx = -1;
+    for (var i = 0; i < targets.length; i++) {
+      if (targets[i] && targets[i].offsetTop <= y) idx = i;
+    }
+    links.forEach(function(a, i){ a.classList.toggle('active', i === idx); });
+  }
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+})();
+</script>
+</body>
+</html>

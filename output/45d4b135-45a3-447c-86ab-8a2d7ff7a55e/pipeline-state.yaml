@@ -290,3 +290,54 @@ revisions:
     sources_updated: ["stage1/final_draft.md", "stage2/formatted-DataForge项目计划书.html", "stage3/DataForge数据开发平台-项目计划书.html"]
     regenerated_via: df_gen_stage2.py → df_make_web.py（仍不产出 docx）
 
+  - at: 2026-09-15T22:13:00+08:00
+    reason: 用户要求按「dataforge 定位于做数据开发治理领域的 workbuddy/opencode」继续优化 1.3 差异定位与 1.4 建设目标——workbuddy/opencode 更多定位通用程序开发与日常办公，同时突出与竞品的差异化优势
+    changed:
+      - "1.3 标题改为「差异定位：数据开发治理领域的 workbuddy / opencode，分界在'谁提需求'」"
+      - "1.3 导语新增「领域垂直 vs 通用」分界轴：workbuddy/opencode 横向覆盖通用程序开发与日常办公、不懂业务数据；DataForge 纵向收进数据开发治理，上下文由'代码仓库+工程结构'换成'库表/指标/血缘/任务依赖'；原'谁提需求'降为第二条分界"
+      - "一句话概括改为：DataForge = 数据开发治理领域的 workbuddy/opencode，同源不同域；'AI 编程助手不是竞品而是继承的范式'改为'不是对手而是同源的范式'"
+      - "三点重要性标题改为「两条分界里，'谁提需求'这一条影响最深」"
+      - "本平台的优势由 5 条增为 6 条：新增第 1 条「领域垂直」，原 1—5 顺延 2—6；第 4 条「给智能体喂上下文」补'让缺口可见'"
+      - "1.4 总体目标改为「建成数据开发治理领域的智能体助手——数据开发治理领域的 workbuddy/opencode」"
+      - "1.1 收口句补「通用还是垂直」为第一条，与 1.3 两条分界保持一致"
+    sources_updated: ["stage1/final_draft.md", "stage2/formatted-DataForge项目计划书.html", "stage3/DataForge数据开发平台-项目计划书.html"]
+    regenerated_via: df_gen_stage2.py → df_make_web.py（仍不产出 docx）
+    verify: "仅改 1.1/1.3/1.4 文案，无块级元素增删（列表内 +1 项不影响块序号）；h2 9 / h3 29 / h4 7 不变，各 h3 id 与改前一致，无悬空锚点；旧表述（不是本项目的竞品 / 继承的范式 / 分界不在'用不用 AI'）零残留"
+
+  - at: 2026-09-15T22:20:00+08:00
+    reason: 用户反馈 1.3 差异定位「内容太多」，要求精简——去重合并，删除重复论述，保留三张对照表与差异化硬实力
+    changed:
+      - "1.3 导语大幅压缩：把「一句话定位 + 垂直 vs 通用 + 谁提需求两条分界 + 列名说明」合并为一段；列名说明（Hue / 其他云平台含义）下移到能力表导语"
+      - "删除独立的「一句话概括」段落块与「三点重要性」段落块+列表块，核心信息浓缩为表一后一句（业务语义→技术语义损耗 ／ 四类信息是前提（见3.2）／ 代开发服务产品化（见1.6）三点合一）"
+      - "「本平台的优势」由 6 条减为 4 条：删除与导语/表一重复的「领域垂直」「业务方直提需求」两条，改为引子句「两条分界落到能力上，是四点差异化优势」统领"
+      - "表二、表三导语各压为一句；客观说明压缩约四成"
+    sources_updated: ["stage1/final_draft.md", "stage2/formatted-DataForge项目计划书.html", "stage3/DataForge数据开发平台-项目计划书.html"]
+    regenerated_via: df_gen_stage2.py → df_make_web.py（仍不产出 docx）
+    verify: "删除 1.3 内 2 个段落块 + 1 个列表块，净减 2 个块级元素，1.3 自身及 1.4/1.5/1.6 的 h3 id 随之整体前移，重生成后 TOC 同步更新；h2 9 / h3 29 / h4 7 不变；stage3 内部锚点 40 个全部命中、dangling=0；三张对照表（6+10+5 行）与四点差异化优势全文保留"
+
+  - at: 2026-09-15T22:29:00+08:00
+    reason: 用户指出差异定位表格不应与 AI 编程助手对比——它面向通用编程，不参与数据开发领域的「谁提需求」分界
+    changed:
+      - "表一（谁提需求）删除「AI 编程助手」列，改为「云数据开发平台 vs DataForge」两列对照"
+      - "导语收尾引导句改为：'通用还是垂直'在上文与 AI 编程助手对照，下表沿第二条只在数据开发领域内对照云数据平台与 DataForge"
+    sources_updated: ["stage1/final_draft.md", "stage2/formatted-DataForge项目计划书.html", "stage3/DataForge数据开发平台-项目计划书.html"]
+    regenerated_via: df_gen_stage2.py → df_make_web.py（仍不产出 docx）
+    verify: "表一由 3 列改 2 列（去列不增减块级元素，h3 id 不变）；全文表格单元格中「AI 编程助手」出现 0 次（仅导语与 1.4 文字论述保留）；h2 9 / h3 29 / h4 7 不变，dangling=0"
+
+  - at: 2026-09-15T22:32:00+08:00
+    reason: 用户要求删除「部署形态、角色模型、设计取向与收费等坐标另列一表」（原表三），进一步精简 1.3
+    changed:
+      - "删除表三（比较坐标 5 行：需求与角色模型／设计取向／形态与部署／引擎与集群兼容／收费模式）及引导句；1.3 由三张表减为两张（谁提需求 + 能力维度）"
+      - "被删信息在别处已有覆盖：形态部署／引擎兼容见 1.5、3.x，收费模式见强调二与 1.6"
+    sources_updated: ["stage1/final_draft.md", "stage2/formatted-DataForge项目计划书.html", "stage3/DataForge数据开发平台-项目计划书.html"]
+    regenerated_via: df_gen_stage2.py → df_make_web.py（仍不产出 docx）
+    verify: "删除表三导语段落 + 表格共 2 个块级元素，1.3 自身及 1.4/1.5/1.6 的 h3 id 前移 2 位，重生成后 TOC 同步；h2 9 / h3 29 / h4 7 不变；全文表格数 stage2 29→28、stage3 28→27；旧表述（比较坐标／另列一表／需求与角色模型／形态与部署／引擎与集群兼容）零残留；dangling=0"
+
+  - at: 2026-09-15T22:38:00+08:00
+    reason: 用户要求删除「客观说明」段落，1.3 以四点差异化优势收尾
+    changed:
+      - "删除 1.3 末尾「客观说明」段落（含对云平台完整度领先、不自研同步/规则引擎取舍、主动承担复杂度的说明）；1.3 现结构：导语 → 表一谁提需求 → 一句浓缩 → 表二能力维度 → 四点优势"
+    sources_updated: ["stage1/final_draft.md", "stage2/formatted-DataForge项目计划书.html", "stage3/DataForge数据开发平台-项目计划书.html"]
+    regenerated_via: df_gen_stage2.py → df_make_web.py（仍不产出 docx）
+    verify: "删除 1 个段落块，1.3 自身及后续 h3 id 前移 1 位，重生成后 TOC 同步；h2 9 / h3 29 / h4 7 不变，表格数不变（stage2 28 / stage3 27）；「客观说明」零残留；dangling=0"
+

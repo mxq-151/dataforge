@@ -108,3 +108,52 @@
 - **规划中**：自动化问题排障、数据价值评估、知识检索增强（当前是 MyBatis-Plus `like`，无向量库）。
 - **不做的**：服务端统一推理入口（2026-09-14 已决策），勿再列为规划项。
 - 别整条一刀切标状态：一个目标常是「一半已落地 + 一半规划」。
+
+## 数据质量 / 资产目录（2026-09-17 评估，写文档必用）
+
+- **7 类规则类型是既有契约，不得自造同义词**：`opencodeInstructions.ts::QUALITY_RULE_SPEC`（L81-96）=
+  主键唯一性 / 非空 / 值域 / 行数波动 / 行数环比 / 上下游对账 / 口径一致性；S1 提要求、S2 定
+  规则名+校验对象+阈值+处置方式、S3 独立成文件挂处理任务下游（「校验输出须可定位：规则名/校验对象/
+  阈值/实际值/是否通过」）。**DQC 质量层 = 规则定义 + 稽核结果存储**（`LAYERING_SPEC`），前缀 `dqc_`，
+  DDL 文件 `ddls/dqc_ddl.sql`。
+- **「阻断下游」的既有约定是「独立质检任务挂下游」，不是 DataWorks 式「反向置调度节点失败」**。别再提后者。
+- **质量侧现状 = 半条链路**：只有结果表 `data_quality_check_result`（「检查项」是自由文本）+ `/quality/check-result`
+  四接口，**无规则/模板/任务/触发/告警，桌面端零 UI**。别再写「完全没有」。
+- **资产分类不人工维护**：表名规范 `{分层}_{业务域}_{实体描述}_{刷新周期}` ⇒ 分层与业务域可确定性解析，
+  解析失败即「未分类」且自动成为治理项。这是与 DataWorks（人工维护业务分类树）的核心差异。
+- **改一级菜单必查三连锁**：① `ActiveTab` / `MENU_CODE_MAP` / `App.tsx::FIRST_LEVEL_TAB_IDS` 同批改，
+  否则 `MENU_CODE_MAP[id]=undefined` ⇒ 入口静默消失；② `FIRST_LEVEL_MENU_CODES` 由 MENU_CODE_MAP 派生，
+  加码后「持有旧全量码」的非超管角色会失去 `every()` 兜底（超管不受影响）；③ **菜单种子只在
+  `sql/testdata/*.sql`**，四方言 `sql/init` 无菜单 ⇒ 迁移脚本必须自带幂等菜单与授权种子。
+- **服务端不存血缘与产出任务副本**：血缘权威在 Marquez、任务权威在 DolphinScheduler（桌面端直连）。
+- **两条安全闸门**：校验 SQL 下发前必须过 `SqlPermissionRewriter`；资产目录的树/检索/详情必须服务端
+  fail-close 过滤 `sys_table_permission`（含列级），否则泄露越权表名与字段名。
+- 相关评估稿：`output/2026-09-17-dataworks-gap/index.html`（含 12 处桌面端改动 + 服务端 15 新表 / 3 改造表 / ~46 接口清单）。
+
+## 数据库脚本与方言（2026-09-17 落地第一批，改 schema 必读）
+
+- schema **手写维护**在 `dataforge-server/src/main/resources/sql/`，**无 Flyway**。第一批后四方言 init 各 **35 表**。
+  改动顺序：`init/` 四方言 → `migrate/`（PG + MySQL）→ `testdata/`（仅当涉及菜单）。
+- **真目标只有两个**：PostgreSQL 14（docker 部署，`run-dataforge.sh` 用 `--spring.datasource.url` 覆盖）、
+  MySQL（本地开发，`application.yml` 默认 3306，实测本机是 MySQL 9.6）。
+  **MariaDB / H2 在 pom.xml 里连驱动都没有**，属"保持平行"的文档级脚本，别当成能跑的。
+- **新装 == 升级**（不变量）：`init/*.sql` 建出的 schema 必须与「老库 + migrate」**逐字一致**
+  —— 列集合/类型/可空/默认值/索引名。两边漂移会产生"新装能用、升级报错"这类最难查的问题。
+- **参考数据放 init，菜单放 testdata**：7 类规则模板与 7 个分层分类属平台级数据，必须进 `init/*.sql`；
+  菜单与授权只在 `testdata/dataforge-testdata-postgresql.sql`（init 只建菜单表结构）。
+  ⇒ **已上线库必须靠 migrate 自带菜单+授权种子**，否则新入口无权限码 ⇒ 入口静默消失。
+  部署脚本 `init-dataforge.sh` 用 `ON_ERROR_STOP=0`（**吞掉错误**），验证时务必改 `1`。
+- **InnoDB 索引键上限 3072 字节**（utf8mb4 每字符 4 字节）：`varchar(1024)` 建索引 = 4096 字节，
+  报 `Specified key was too long` 且**整张表建不出来**（不是只失败索引）。
+  `table_metadata.business_owner/tech_owner` 因此取 **varchar(255)**；`indicators` 同名列是 1024 且
+  **故意未建索引** —— 宽度差异是有意的，已在注释写明。
+- **MySQL 8/9 没有 `ADD COLUMN IF NOT EXISTS`，也没有 `CREATE INDEX IF NOT EXISTS`** ⇒ 迁移脚本用存储过程
+  查 `information_schema` 守卫，末尾自行 DROP；命名 `df_add_column_if_missing` / `df_add_index_if_missing`。
+- **`DELIMITER` 是 mysql CLI 的指令，JDBC 不需要**：`$$` 包起来的 `CREATE PROCEDURE` 整条发送即可。
+- **三方契约**（`df_sql_check.py` 会强制）：SQL 种子 ↔ `src/types/quality.ts::QUALITY_RULE_TYPES`
+  ↔ 提示词；`template_code` 必须与 `rule_type` 同名；`remark` 与前端 `desc` 逐字一致。
+- 验证三板斧见 skill **`dataforge-sql-dialect-verification`**：静态跨方言+契约检查 → PG 一次性容器 → MySQL JDBC。
+  **本机没有 `psql`/`mysql` 客户端**；docker CLI 在 `/Applications/Docker.app/Contents/Resources/bin/docker`；
+  JDBC 驱动 `/Users/mxq/Desktop/mysql-connector-j-8.0.33.jar`（Java 17 可用）。
+- **真实部署容器 `dataforge-allinone` 常驻运行**（PG 5432 / 服务 8082 / 前端 3000 / DS 12345）——
+  验证一律用一次性容器 + 一次性库，收尾必须清理，绝不指向它。
