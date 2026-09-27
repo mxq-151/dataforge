@@ -93,6 +93,12 @@ interface ExplorerPanelProps {
   projectRoot?: string | null;
   /** 编译环境配置：右键文件夹「提交调度」时，Java/Scala 代码文件编译生成主 Jar 包 */
   compileConfig?: CompileConfig | null;
+  /**
+   * 提交调度的角色准入能力位（口径见 `utils/roleAccess.ts`）：
+   * 灰度/测试需数据开发工程师或运维/超管，生产仅运维/超管。不传视为放行。
+   */
+  canSubmitSchedule?: boolean;
+  canSubmitProd?: boolean;
   onAISummarize?: (files: string[], diffs: string) => Promise<string>;
   onBeforeCommit?: () => { valid: boolean; message: string | null };
   /** Git 模态框撤销变更成功后的回调，入参为受影响文件的绝对路径 */
@@ -138,6 +144,8 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
   isRealApi,
   projectRoot,
   compileConfig,
+  canSubmitSchedule,
+  canSubmitProd,
   onAISummarize,
   onBeforeCommit,
   onDiscarded,
@@ -811,6 +819,8 @@ const ExplorerPanel: React.FC<ExplorerPanelProps> = ({
         dsApi={dsApi}
         isRealApi={isRealApi}
         compileConfig={compileConfig}
+        canSubmitSchedule={canSubmitSchedule}
+        canSubmitProd={canSubmitProd}
         onClose={closeFolderAction}
       />
 

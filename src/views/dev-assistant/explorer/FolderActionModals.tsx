@@ -28,6 +28,9 @@ export interface FolderActionContext {
   dsApi?: DolphinSchedulerApi | null;
   isRealApi?: boolean;
   compileConfig?: CompileConfig | null;
+  /** 提交调度的角色准入能力位（口径见 `utils/roleAccess.ts`）；不传视为放行 */
+  canSubmitSchedule?: boolean;
+  canSubmitProd?: boolean;
 }
 
 interface FolderActionModalsProps extends FolderActionContext {
@@ -52,6 +55,8 @@ const FolderActionModals: React.FC<FolderActionModalsProps> = ({
   dsApi,
   isRealApi,
   compileConfig,
+  canSubmitSchedule,
+  canSubmitProd,
   onClose,
 }) => {
   if (!action || action.files.length === 0) return null;
@@ -91,6 +96,9 @@ const FolderActionModals: React.FC<FolderActionModalsProps> = ({
       compileConfig={compileConfig ?? null}
       devProjectId={projectId}
       openlineageTransportUrl={openlineageTransportUrl}
+      // 角色准入：数据开发工程师可提交灰度/测试；生产仅运维工程师与超管可提交
+      canSubmitSchedule={canSubmitSchedule}
+      canSubmitProd={canSubmitProd}
       onClose={onClose}
     />
   );

@@ -82,6 +82,12 @@ export interface OpencodeClientBackend {
   modals: import('../../types/opencode-backend').ModalRequest[];
   logs: LogEntry[];
   currentSessionId: string | null;
+  /**
+   * 当前会话是否为子代理会话（opencode 会话树中带 parentID 的子会话）。
+   * 为 true 时，其首条用户消息是主会话注入的子代理任务 prompt，
+   * 时间线需把它标注为「子代理任务」而不是用户输入。
+   */
+  currentSessionIsSubagent: boolean;
   lastFileChangeSeq: number;
   lastFileChangePaths: string[];
   todos: Todo[];
@@ -315,10 +321,22 @@ function useOpencodeClientImpl(
   const {
     currentSessionId,
     setCurrentSessionId,
+    currentSessionParentID,
+    setCurrentSessionParentID,
     loadSession,
     listSessions,
     deleteSession,
   } = useOpencodeSessions();
+
+  /**
+   * 清空当前会话（同时清空「子代理会话」标记）。
+   * 断开连接/切换目录/新建会话/删除会话等场景统一走这里，
+   * 避免 parentID 残留导致新会话的首条用户消息被误标为「子代理任务」。
+   */
+  const clearCurrentSession = useCallback(() => {
+    setCurrentSessionId(null);
+    setCurrentSessionParentID(null);
+  }, [setCurrentSessionId, setCurrentSessionParentID]);
 
   // ── 记录"已发送的真实用户输入"（用于过滤 sub-agent 注入的内部 user 消息） ──
   const sentUserInputsRef = useRef<Set<string>>(new Set());
@@ -859,10 +877,10 @@ function useOpencodeClientImpl(
       unsubscribeRef.current?.();
       unsubscribeRef.current = null;
       resetState();
-      setCurrentSessionId(null);
+      clearCurrentSession();
       connectWithDirectory(directory ?? null);
     }
-  }, [directory, connected, currentDirectory, connectWithDirectory, resetState, setCurrentSessionId]);
+  }, [directory, connected, currentDirectory, connectWithDirectory, resetState, clearCurrentSession]);
 
   // 断开时重置状态
   const disconnect = useCallback(() => {
@@ -907,7 +925,7 @@ function useOpencodeClientImpl(
       unsubscribeRef.current = null;
       doDisconnect();
       resetState();
-      setCurrentSessionId(null);
+      clearCurrentSession();
 
       // 创建新客户端
       await connectWithDirectory(dir);
@@ -921,7 +939,7 @@ function useOpencodeClientImpl(
       startingRef.current = false;
       setStarting(false);
     }
-  }, [backend, directory, connected, currentDirectory, doDisconnect, resetState, setCurrentSessionId, connectWithDirectory]);
+  }, [backend, directory, connected, currentDirectory, doDisconnect, resetState, clearCurrentSession, connectWithDirectory]);
 
   /**
    * 切换 OpenCode 工作目录（重建客户端连接）。
@@ -946,7 +964,7 @@ function useOpencodeClientImpl(
     unsubscribeRef.current?.();
     unsubscribeRef.current = null;
     resetState();
-    setCurrentSessionId(null);
+    clearCurrentSession();
     doDisconnect();
 
     // 确保服务可用
@@ -955,7 +973,7 @@ function useOpencodeClientImpl(
     }
 
     await connectWithDirectory(newCwd);
-  }, [currentDirectory, addLog, resetState, setCurrentSessionId, doDisconnect, backend, connectWithDirectory]);
+  }, [currentDirectory, addLog, resetState, clearCurrentSession, doDisconnect, backend, connectWithDirectory]);
 
   // 包装 chat 方法，自动传入 client
   const sendMessage = useCallback(async (line: string) => {
@@ -988,8 +1006,10 @@ function useOpencodeClientImpl(
       const mappedDir = deDirMapRef.current[sessionId];
       if (mappedDir && mappedDir !== currentDirectory) {
         await setWorkingDirectory(mappedDir);
-        // setWorkingDirectory 内部会 setCurrentSessionId(null)，这里恢复为当前会话
+        // setWorkingDirectory 内部会清空当前会话（含子代理标记），这里恢复为当前会话。
+        // 数据探索会话均为根会话（无 parentID），因此 parentID 恢复为 null。
         setCurrentSessionId(sessionId);
+        setCurrentSessionParentID(null);
       }
     }
 
@@ -1176,7 +1196,7 @@ function useOpencodeClientImpl(
 
   const handleNewSession = useCallback(async () => {
     resetState();
-    setCurrentSessionId(null);
+    clearCurrentSession();
 
     // 数据探索：新建会话 = 新建独立时间戳工作目录并切过去（会话=标签页）
     if (isDataExplore && dataExploreService) {
@@ -1194,7 +1214,7 @@ function useOpencodeClientImpl(
         console.error('[useOpencodeClient] 新建数据探索会话失败:', err);
       }
     }
-  }, [resetState, setCurrentSessionId, isDataExplore, dataExploreService, setWorkingDirectory]);
+  }, [resetState, clearCurrentSession, isDataExplore, dataExploreService, setWorkingDirectory]);
 
   /**
    * 首次进入数据探索：不自动打开任何会话文件、不自动创建会话目录、
@@ -1224,7 +1244,7 @@ function useOpencodeClientImpl(
       delete deDirMapRef.current[sid];
       saveDeDirMap(deDirMapKeyRef.current, deDirMapRef.current);
     }
-    if (sid && sid === currentSessionId) setCurrentSessionId(null);
+    if (sid && sid === currentSessionId) clearCurrentSession();
     if (dataExploreService) {
       try {
         await dataExploreService.removeDir(dir);
@@ -1242,7 +1262,7 @@ function useOpencodeClientImpl(
         console.warn('[useOpencodeClient] 删除数据探索会话失败:', err);
       }
     }
-  }, [isDataExplore, dataExploreService, currentSessionId, setCurrentSessionId, deleteSession, sessionHistoryKey]);
+  }, [isDataExplore, dataExploreService, currentSessionId, clearCurrentSession, deleteSession, sessionHistoryKey]);
 
   /** 数据探索：打开/关闭指定目录的文件标签（仅操作编辑器标签，不动 AI 工作目录） */
   const setDeDirOpen = useCallback((dir: string, open: boolean) => {
@@ -1341,12 +1361,12 @@ function useOpencodeClientImpl(
         setDataExploreDirs(prev => (prev || []).filter(d => d.dir !== dir));
         bumpDeVersion();
       }
-      if (sessionId === currentSessionId) setCurrentSessionId(null);
+      if (sessionId === currentSessionId) clearCurrentSession();
     }
     await deleteSession(clientRef.current, sessionId);
     // 删除后从本地历史移除（乐观更新，同时持久化）
     setTasks(removeSessionHistoryEntry(sessionHistoryKey, sessionId));
-  }, [deleteSession, isDataExplore, dataExploreService, currentSessionId, setCurrentSessionId, sessionHistoryKey]);
+  }, [deleteSession, isDataExplore, dataExploreService, currentSessionId, clearCurrentSession, sessionHistoryKey]);
 
   /** 重命名任务（通过 SDK session.update 更新标题） */
   const renameTask = useCallback(async (sessionId: string, newTitle: string) => {
@@ -1383,6 +1403,7 @@ function useOpencodeClientImpl(
     modals,
     logs,
     currentSessionId,
+    currentSessionIsSubagent: currentSessionParentID !== null,
     lastFileChangeSeq,
     lastFileChangePaths,
     todos,
@@ -1432,7 +1453,7 @@ function useOpencodeClientImpl(
     subscribePartText,
   }), [
     messages, busy, busyLabel, retry, ready, connected, error, modals, logs,
-    currentSessionId, lastFileChangeSeq, lastFileChangePaths, todos, fileChanges, contextUsage, tasks,
+    currentSessionId, currentSessionParentID, lastFileChangeSeq, lastFileChangePaths, todos, fileChanges, contextUsage, tasks,
     sendMessage, sendInterrupt, sendRollback, sendPermissionResponse, sendQuestionReply, sendQuestionReject,
     handleCompressSession, compressing, clearLogs,
     handleNewSession, handleLoadSession, handleListSessions, handleDeleteSession, renameTask,

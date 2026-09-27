@@ -3470,6 +3470,12 @@
   color: rgba(255, 255, 255, 0.8);
 }
 
+/* 子代理会话注入的任务 prompt（非用户输入）：用琥珀色与「用户」徽标区分 */
+.ai-panel__type-badge--subagent-task {
+  background-color: rgba(240, 136, 62, 0.18);
+  color: #ffa657;
+}
+
 .ai-panel__type-badge--system {
   background-color: rgba(210, 168, 255, 0.15);
   color: #d2a8ff;

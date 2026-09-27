@@ -12,7 +12,7 @@ import {
   GRID_START_X, GRID_START_Y, GRID_GAP_X, GRID_GAP_Y,
   type BuildWorkflowFromFolderResult, type ResolvedDependency, type HeaderDependency,
 } from '../../utils/schedulerMapping';
-import { toRelativePath, splitPath } from '../../utils/pathUtils';
+import { toRelativePath, splitPath, getBaseName } from '../../utils/pathUtils';
 import { unifiedCompile, type CompileConfig } from '../../services/unifiedCompile';
 import { readFile } from '../../bridge/fs';
 import { useToast } from '../../components/Toast';
@@ -20,6 +20,8 @@ import useDevProjectConfig from '../../hooks/useDevProjectConfig';
 import DeployEnvRadio from './DeployEnvRadio';
 import { DEFAULT_DEPLOY_ENV, shouldInjectLineage, withDeployEnvSuffix, type DeployEnv } from '../../utils/deployEnv';
 import { buildOpenLineageArgs, extractLineageParams } from '../../utils/lineageParams';
+import { findNonProdDatabases, prodDatabaseViolationMessage } from '../../utils/prodDatabaseGuard';
+import { SCHEDULE_ROLE_DENIED_MESSAGE, PROD_SCHEDULE_ROLE_DENIED_MESSAGE } from '../../utils/roleAccess';
 import { applyAppNameToNodes } from '../../utils/appName';
 // 内嵌的是调度模块的工作流定义编辑器，它复用了该模块的 sm-* 基础样式
 // （保存工作流弹窗 sm-modal / 按钮 sm-btn 等，定义在 ScheduleManagementPanel.css 中）。
@@ -62,6 +64,13 @@ export interface FolderSubmitScheduleModalProps {
   devProjectId?: number;
   /** 全局 OpenLineage Transport URL（来自设置页）：生产环境提交时注入 spark.openlineage.transport.url */
   openlineageTransportUrl?: string;
+  /**
+   * 当前用户是否有提交调度权限（灰度 / 测试，见 `utils/roleAccess.ts::canSubmitSchedule`）。
+   * 不传视为放行，保持既有调用方行为不变。
+   */
+  canSubmitSchedule?: boolean;
+  /** 当前用户是否有生产环境提交调度权限（仅运维工程师 / 超管，`canSubmitProdSchedule`）。不传视为放行 */
+  canSubmitProd?: boolean;
   /** 提交成功后的回调（携带工作流名称），供父组件刷新等 */
   onSuccess?: (workflowName: string) => void;
   onClose: () => void;
@@ -220,6 +229,8 @@ const FolderSubmitScheduleModal: React.FC<FolderSubmitScheduleModalProps> = ({
   compileConfig,
   devProjectId,
   openlineageTransportUrl,
+  canSubmitSchedule = true,
+  canSubmitProd = true,
   onSuccess,
   onClose,
 }) => {
@@ -660,11 +671,38 @@ const FolderSubmitScheduleModal: React.FC<FolderSubmitScheduleModalProps> = ({
       return;
     }
 
+    // 角色准入闸门：灰度/测试需数据开发工程师及以上，生产仅运维/超管
+    // （环境选项已按角色置灰，这里再拦一道，避免越权调用提交）
+    if (!canSubmitSchedule) {
+      toast.error(SCHEDULE_ROLE_DENIED_MESSAGE);
+      return;
+    }
+    if (deployEnv === 'prod' && !canSubmitProd) {
+      toast.error(PROD_SCHEDULE_ROLE_DENIED_MESSAGE);
+      return;
+    }
+
     const name = sanitizeDsName(data.name);
     setSaving(true);
-    setSavingLabel('正在编译代码…');
+    setSavingLabel('正在校验代码中的库环境…');
     try {
+      // 0. 生产环境闸门：本文件夹代码里引用的库必须都是生产库（_prod 结尾），
+      //    判定口径与单文件提交调度共用 utils/prodDatabaseGuard.ts 同一实现
+      if (deployEnv === 'prod' && readFileContent && codeFilePaths.length > 0) {
+        const contents = await Promise.all(codeFilePaths.map(p => readFileContent(p)));
+        const violations = findNonProdDatabases(codeFilePaths.map((p, i) => ({
+          file: getBaseName(p),
+          content: contents[i] ?? '',
+        })));
+        if (violations.length > 0) {
+          violations.slice(0, 5).forEach(v => toast.error(prodDatabaseViolationMessage(v, true)));
+          if (violations.length > 5) toast.error(`另有 ${violations.length - 5} 处非生产库引用，请修正后重试`);
+          return;
+        }
+      }
+
       // 1. 编译可编译节点并回填主 Jar 包；有任一失败即阻止保存（与单文件提交调度一致）
+      setSavingLabel('正在编译代码…');
       const { nodes: compiledNodes, errors } = await compileAndFillMainJars(data.nodes);
       if (errors.length > 0) {
         errors.slice(0, 5).forEach(m => toast.error(m));
@@ -762,7 +800,7 @@ const FolderSubmitScheduleModal: React.FC<FolderSubmitScheduleModalProps> = ({
       setSaving(false);
       setSavingLabel('正在提交到调度系统…');
     }
-  }, [dsApi, project, projectError, toast, onSuccess, onClose, compileAndFillMainJars, applyLineageParamsToSparkNodes, draft, resolveExternalDeps]);
+  }, [dsApi, project, projectError, toast, onSuccess, onClose, compileAndFillMainJars, applyLineageParamsToSparkNodes, draft, resolveExternalDeps, deployEnv, readFileContent, codeFilePaths, canSubmitSchedule, canSubmitProd]);
 
   if (!visible) return null;
 
@@ -804,6 +842,7 @@ const FolderSubmitScheduleModal: React.FC<FolderSubmitScheduleModalProps> = ({
             <DeployEnvRadio
               value={deployEnv}
               onChange={setDeployEnv}
+              disabledValues={canSubmitProd ? [] : ['prod']}
               hint={
                 shouldInjectLineage(deployEnv)
                   ? `工作流名称将以 _${deployEnv} 结尾，提交时注入数据血缘参数`

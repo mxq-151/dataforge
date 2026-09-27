@@ -1,8 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import {
   PLATFORM_ADMIN_ROLE_NAMES,
+  DATA_DEV_ENGINEER_ROLE_NAMES,
   hasPlatformAdminRole,
+  hasDataDevEngineerRole,
   canManageSchedule,
+  canSubmitSchedule,
+  canSubmitProdSchedule,
+  SCHEDULE_ROLE_DENIED_MESSAGE,
+  PROD_SCHEDULE_ROLE_DENIED_MESSAGE,
 } from './roleAccess';
 
 /**
@@ -83,5 +89,87 @@ describe('canManageSchedule', () => {
 
   it('只有 isSuperAdmin 为假且角色缺失时才算拒绝', () => {
     expect(canManageSchedule({ isSuperAdmin: false })).toBe(false);
+  });
+});
+
+describe('hasDataDevEngineerRole', () => {
+  it('识别数据开发工程师的三种写法与大小写变体', () => {
+    for (const code of ['ROLE_DATA_DEV_ENGINEER', 'DATA_DEV_ENGINEER', '数据开发工程师', 'data_dev_engineer']) {
+      expect(hasDataDevEngineerRole([role(code)]), code).toBe(true);
+    }
+  });
+
+  it('运维 / 数据分析等其它角色不通过', () => {
+    for (const code of ['OPS_ENGINEER', 'DATA_ANALYST', 'VISITOR']) {
+      expect(hasDataDevEngineerRole([role(code)]), code).toBe(false);
+    }
+  });
+
+  it('空值一律不通过', () => {
+    expect(hasDataDevEngineerRole(null)).toBe(false);
+    expect(hasDataDevEngineerRole([])).toBe(false);
+    expect(hasDataDevEngineerRole([{ roleCode: null }])).toBe(false);
+  });
+
+  it('常量清单与提交调度灰度/测试准入共用同一份', () => {
+    expect(DATA_DEV_ENGINEER_ROLE_NAMES).toContain('ROLE_DATA_DEV_ENGINEER');
+  });
+});
+
+/**
+ * 提交调度的两档准入（用户口径）：
+ * · 灰度 / 测试 —— 数据开发工程师、运维工程师、超级管理员可发起；
+ * · 生产 —— 仅运维工程师与超级管理员可发起。
+ * 白名单之外的角色（如数据分析师）两档都进不去。
+ */
+describe('canSubmitSchedule（灰度 / 测试准入）', () => {
+  it('数据开发工程师可发起', () => {
+    expect(canSubmitSchedule({ isSuperAdmin: false, roles: [role('DATA_DEV_ENGINEER')] })).toBe(true);
+  });
+
+  it('运维工程师与超管同样可发起（准入口径含平台管理角色）', () => {
+    expect(canSubmitSchedule({ isSuperAdmin: false, roles: [role('OPS_ENGINEER')] })).toBe(true);
+    expect(canSubmitSchedule({ isSuperAdmin: true, roles: [] })).toBe(true);
+  });
+
+  it('白名单之外的角色一律被拒绝', () => {
+    for (const code of ['DATA_ANALYST', 'VISITOR', 'BUSINESS_OWNER']) {
+      expect(canSubmitSchedule({ isSuperAdmin: false, roles: [role(code)] }), code).toBe(false);
+    }
+  });
+
+  it('未登录 / 角色缺失被拒绝', () => {
+    expect(canSubmitSchedule(null)).toBe(false);
+    expect(canSubmitSchedule(undefined)).toBe(false);
+    expect(canSubmitSchedule({ isSuperAdmin: false })).toBe(false);
+    expect(canSubmitSchedule({ isSuperAdmin: false, roles: [] })).toBe(false);
+  });
+});
+
+describe('canSubmitProdSchedule（生产准入）', () => {
+  it('运维工程师可发起', () => {
+    expect(canSubmitProdSchedule({ isSuperAdmin: false, roles: [role('OPS_ENGINEER')] })).toBe(true);
+  });
+
+  it('超管一并放行', () => {
+    expect(canSubmitProdSchedule({ isSuperAdmin: true, roles: [] })).toBe(true);
+    expect(canSubmitProdSchedule({ isSuperAdmin: false, roles: [role('SUPER_ADMIN')] })).toBe(true);
+  });
+
+  it('数据开发工程师不能发起生产（这正是与灰度/测试的分界）', () => {
+    expect(canSubmitProdSchedule({ isSuperAdmin: false, roles: [role('DATA_DEV_ENGINEER')] })).toBe(false);
+  });
+
+  it('未登录 / 其它角色被拒绝', () => {
+    expect(canSubmitProdSchedule(null)).toBe(false);
+    expect(canSubmitProdSchedule({ isSuperAdmin: false, roles: [role('DATA_ANALYST')] })).toBe(false);
+  });
+});
+
+describe('角色准入提示文案', () => {
+  it('生产拦截文案点名运维工程师，且与灰度/测试文案区分开', () => {
+    expect(PROD_SCHEDULE_ROLE_DENIED_MESSAGE).toContain('运维工程师');
+    expect(SCHEDULE_ROLE_DENIED_MESSAGE).toContain('数据开发工程师');
+    expect(SCHEDULE_ROLE_DENIED_MESSAGE).not.toBe(PROD_SCHEDULE_ROLE_DENIED_MESSAGE);
   });
 });

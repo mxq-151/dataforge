@@ -13,6 +13,15 @@ import type { MessageEntry } from '../../types/opencode-backend';
 export interface UseOpencodeSessionsReturn {
   currentSessionId: string | null;
   setCurrentSessionId: (id: string | null) => void;
+  /**
+   * 当前加载会话是否为「子代理会话」（opencode 会话树里带 parentID 的子会话）。
+   *
+   * 子代理会话的首条 user 消息是主会话发起 task 时注入的任务 prompt，
+   * 并非用户输入；时间线据此把它标注为「子代理任务」而不是「用户」。
+   * 值由 loadSession 读取 session.get 的 parentID 得出，新建/断开/删除会话时重置。
+   */
+  currentSessionParentID: string | null;
+  setCurrentSessionParentID: (id: string | null) => void;
   newSession: (client: OpencodeClient | null) => Promise<string | null>;
   loadSession: (client: OpencodeClient | null, sessionId: string) => Promise<MessageEntry[]>;
   listSessions: (client: OpencodeClient | null) => Promise<Session[]>;
@@ -29,6 +38,7 @@ const MESSAGE_PAGE_SIZE = 200;
 
 export function useOpencodeSessions(): UseOpencodeSessionsReturn {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [currentSessionParentID, setCurrentSessionParentID] = useState<string | null>(null);
 
   const newSession = useCallback(async (client: OpencodeClient | null): Promise<string | null> => {
     if (!client) return null;
@@ -38,6 +48,7 @@ export function useOpencodeSessions(): UseOpencodeSessionsReturn {
       });
       if (result.data) {
         setCurrentSessionId(result.data.id);
+        setCurrentSessionParentID(null);
         return result.data.id;
       }
       return null;
@@ -63,9 +74,11 @@ export function useOpencodeSessions(): UseOpencodeSessionsReturn {
   ): Promise<MessageEntry[]> => {
     if (!client) return [];
     try {
-      // 获取 session 元信息
-      await client.session.get({ sessionID: sessionId });
+      // 获取 session 元信息（同时取出 parentID：带 parentID 表示这是子代理会话，
+      // 其首条 user 消息是主会话注入的任务 prompt，前端需改标展示）
+      const sessionResult = await client.session.get({ sessionID: sessionId });
       setCurrentSessionId(sessionId);
+      setCurrentSessionParentID(sessionResult.data?.parentID ?? null);
 
       const allEntries: MessageEntry[] = [];
       let cursor: string | undefined = undefined;
@@ -121,6 +134,7 @@ export function useOpencodeSessions(): UseOpencodeSessionsReturn {
       await client.session.delete({ sessionID: sessionId });
       if (currentSessionId === sessionId) {
         setCurrentSessionId(null);
+        setCurrentSessionParentID(null);
       }
     } catch (err) {
       console.error('[useOpencodeSessions] deleteSession error:', err);
@@ -151,6 +165,8 @@ export function useOpencodeSessions(): UseOpencodeSessionsReturn {
   return {
     currentSessionId,
     setCurrentSessionId,
+    currentSessionParentID,
+    setCurrentSessionParentID,
     newSession,
     loadSession,
     listSessions,

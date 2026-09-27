@@ -489,6 +489,88 @@ describe('FolderSubmitScheduleModal', () => {
     expect(dsApi.workflowDefinition.update).not.toHaveBeenCalled();
   });
 
+  it('生产环境：代码里引用了非生产库时阻止保存并逐条提示', async () => {
+    const dsApi = makeDsApi({ projects: [{ code: 11, name: 'demo' }], workflows: [] });
+    const prodFiles: Record<string, string> = {
+      [`${FOLDER}/a.sql`]: header({ 引擎: 'mysql' })
+        + 'insert overwrite table dwd_olist_test.dwd_olist_order_d select * from ods_olist_test.ods_olist_order_d;\n',
+    };
+    const { findByTestId, container } = renderModal({
+      dsApi,
+      codeFilePaths: Object.keys(prodFiles),
+      readFileContent: vi.fn(async (p: string) => prodFiles[p] ?? ''),
+    });
+
+    fireEvent.click(envRadio('prod'));
+    fireEvent.click(await findByTestId('wf-save'));
+
+    await waitFor(() => expect(container.textContent).toContain('非生产库「ods_olist_test」'));
+    // 行号是代码里的真实行号：代码头占 1-3 行，SQL 语句在第 4 行
+    expect(container.textContent).toContain('「a.sql」第 4 行');
+    expect(container.textContent).toContain('dwd_olist_test');
+    expect(dsApi.workflowDefinition.createWithTasks).not.toHaveBeenCalled();
+    expect(dsApi.workflowDefinition.update).not.toHaveBeenCalled();
+  });
+
+  it('生产环境：代码全部引用生产库时照常提交（闸门不误拦）', async () => {
+    const dsApi = makeDsApi({ projects: [{ code: 11, name: 'demo' }], workflows: [] });
+    const prodFiles: Record<string, string> = {
+      [`${FOLDER}/a.sql`]: header({ 引擎: 'mysql' })
+        + 'select * from ods_olist_prod.ods_olist_order_d;\n',
+    };
+    const { findByTestId } = renderModal({
+      dsApi,
+      codeFilePaths: Object.keys(prodFiles),
+      readFileContent: vi.fn(async (p: string) => prodFiles[p] ?? ''),
+    });
+
+    fireEvent.click(envRadio('prod'));
+    fireEvent.click(await findByTestId('wf-save'));
+
+    await waitFor(() => expect(dsApi.workflowDefinition.createWithTasks).toHaveBeenCalledTimes(1));
+    expect(dsApi.workflowDefinition.createWithTasks.mock.calls[0][1].name).toBe('demo_prod');
+  });
+
+  it('角色准入：数据开发工程师（无生产权限）用测试环境照常保存', async () => {
+    const dsApi = makeDsApi({ projects: [{ code: 11, name: 'demo' }], workflows: [] });
+    const files: Record<string, string> = {
+      [`${FOLDER}/a.sql`]: header({ 引擎: 'mysql' }) + 'select * from ods_olist_test.ods_olist_order_d;\n',
+    };
+    const { findByTestId } = renderModal({
+      dsApi,
+      canSubmitSchedule: true,
+      canSubmitProd: false,
+      codeFilePaths: Object.keys(files),
+      readFileContent: vi.fn(async (p: string) => files[p] ?? ''),
+    });
+
+    // 「生产」置灰，灰度/测试可选
+    expect(envRadio('prod').disabled).toBe(true);
+    expect(envOption('prod').getAttribute('data-disabled')).toBe('true');
+    expect(envRadio('gray').disabled).toBe(false);
+    expect(envRadio('test').disabled).toBe(false);
+
+    fireEvent.click(await findByTestId('wf-save'));
+
+    await waitFor(() => expect(dsApi.workflowDefinition.createWithTasks).toHaveBeenCalledTimes(1));
+    expect(dsApi.workflowDefinition.createWithTasks.mock.calls[0][1].name).toBe('demo_test');
+  });
+
+  it('角色准入：无提交调度权限时保存被拦截并提示', async () => {
+    const dsApi = makeDsApi({ projects: [{ code: 11, name: 'demo' }], workflows: [] });
+    const { findByTestId, container } = renderModal({
+      dsApi,
+      canSubmitSchedule: false,
+      canSubmitProd: false,
+    });
+
+    fireEvent.click(await findByTestId('wf-save'));
+
+    await waitFor(() => expect(container.textContent).toContain('当前角色无权提交调度'));
+    expect(dsApi.workflowDefinition.createWithTasks).not.toHaveBeenCalled();
+    expect(dsApi.workflowDefinition.update).not.toHaveBeenCalled();
+  });
+
   it('打开弹窗即自动配置跨工作流前置依赖：编辑器直接收到「前置依赖」节点与连线', async () => {
     const extFiles: Record<string, string> = {
       [`${FOLDER}/a.scala`]: header({ 引擎: 'spark' }) + 'object A {}\n',

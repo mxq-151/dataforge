@@ -12,6 +12,8 @@ import { useToast } from '../../components/Toast';
 import DeployEnvRadio from './DeployEnvRadio';
 import { DEFAULT_DEPLOY_ENV, withDeployEnvSuffix, shouldInjectLineage, type DeployEnv } from '../../utils/deployEnv';
 import { buildOpenLineageArgs, extractLineageParams } from '../../utils/lineageParams';
+import { findNonProdDatabases, prodDatabaseViolationMessage } from '../../utils/prodDatabaseGuard';
+import { SCHEDULE_ROLE_DENIED_MESSAGE, PROD_SCHEDULE_ROLE_DENIED_MESSAGE } from '../../utils/roleAccess';
 import { buildTaskAppName, taskTypeHasAppName } from '../../utils/appName';
 import './SubmitToSchedulerModal.css';
 
@@ -160,6 +162,13 @@ interface SubmitToSchedulerModalProps {
   isRealApi: boolean;
   compileConfig?: CompileConfig | null;
   openlineageTransportUrl?: string;
+  /**
+   * 当前用户是否有提交调度权限（灰度 / 测试，见 `utils/roleAccess.ts::canSubmitSchedule`）。
+   * 不传视为放行，保持既有调用方（含历史测试）行为不变。
+   */
+  canSubmitSchedule?: boolean;
+  /** 当前用户是否有生产环境提交调度权限（仅运维工程师 / 超管，`canSubmitProdSchedule`）。不传视为放行 */
+  canSubmitProd?: boolean;
   onClose: () => void;
   onSuccess: (projectName: string, workflowName: string) => void;
 }
@@ -191,6 +200,8 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
   isRealApi,
   compileConfig,
   openlineageTransportUrl,
+  canSubmitSchedule = true,
+  canSubmitProd = true,
   onClose,
   onSuccess,
 }) => {
@@ -1088,6 +1099,20 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
       });
     }
 
+    // 角色准入闸门：灰度/测试需数据开发工程师及以上，生产仅运维/超管
+    if (!canSubmitSchedule) {
+      errors.push({ field: 'role', message: SCHEDULE_ROLE_DENIED_MESSAGE });
+    } else if (deployEnv === 'prod' && !canSubmitProd) {
+      errors.push({ field: 'role', message: PROD_SCHEDULE_ROLE_DENIED_MESSAGE });
+    }
+
+    // 生产环境闸门：库环境必须与提交环境一致，代码中引用的库都必须以 _prod 结尾
+    if (deployEnv === 'prod') {
+      for (const v of findNonProdDatabases([{ file: fileName, content: codeContent }])) {
+        errors.push({ field: 'databaseEnv', message: prodDatabaseViolationMessage(v) });
+      }
+    }
+
     // 数值型任务参数非负校验：默认值为负数的参数（如 cpuQuota/memoryMax 的 -1 表示不限制）除外
     if (currentTaskTypeConfig) {
       errors.push(...collectNegativeNumericErrors(currentTaskTypeConfig.params, taskTypeParams));
@@ -1213,7 +1238,7 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
     const passed = errors.length === 0;
     setValidationPassed(passed);
     return errors;
-  }, [effectiveMapping, currentMapping, selectedProjectCode, workflowName, selectedWorkflowCode, isRealApi, projectCode, projects, projectMismatch, needsDatasource, selectedDatasourceId, codeDatasourceName, datasourceMismatch, isCompilableTask, compileConfig, fileName, codeContent, filePath, rootPath, savedConfig, scanHeaderDependencyTasks, currentTaskTypeConfig, taskTypeParams]);
+  }, [effectiveMapping, currentMapping, selectedProjectCode, workflowName, selectedWorkflowCode, isRealApi, projectCode, projects, projectMismatch, needsDatasource, selectedDatasourceId, codeDatasourceName, datasourceMismatch, isCompilableTask, compileConfig, fileName, codeContent, filePath, rootPath, savedConfig, scanHeaderDependencyTasks, currentTaskTypeConfig, taskTypeParams, deployEnv, canSubmitSchedule, canSubmitProd]);
 
   const handleSubmit = useCallback(async () => {
 
@@ -1226,6 +1251,31 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
       : [];
     if (numParamErrors.length > 0) {
       setValidationErrors(numParamErrors);
+      setShowValidation(true);
+      setStep('config');
+      return;
+    }
+
+    // 角色准入再查一次（与「校验」步骤同口径）：防止校验通过后才越权切到生产环境再直接提交
+    if (!canSubmitSchedule || (deployEnv === 'prod' && !canSubmitProd)) {
+      setValidationErrors([{
+        field: 'role',
+        message: canSubmitSchedule ? PROD_SCHEDULE_ROLE_DENIED_MESSAGE : SCHEDULE_ROLE_DENIED_MESSAGE,
+      }]);
+      setShowValidation(true);
+      setStep('config');
+      return;
+    }
+
+    // 生产环境闸门再查一次（与「校验」步骤同口径）：防止校验通过后才把环境切到生产再直接提交
+    const dbViolations = deployEnv === 'prod'
+      ? findNonProdDatabases([{ file: fileName, content: codeContent }])
+      : [];
+    if (dbViolations.length > 0) {
+      setValidationErrors(dbViolations.map(v => ({
+        field: 'databaseEnv',
+        message: prodDatabaseViolationMessage(v),
+      })));
       setShowValidation(true);
       setStep('config');
       return;
@@ -1594,7 +1644,8 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
     projects, workflowDesc, workflowName, autoTrigger, dsApi, onSuccess,
     compiledJarPath, needsDatasource, selectedDatasourceId, dsDataSources,
     selectedWorkerGroup, selectedEnvironmentCode, openlineageTransportUrl, projectCode,
-    deployEnv,
+    deployEnv, fileName, codeContent,
+    canSubmitSchedule, canSubmitProd,
     currentMapping, scanHeaderDependencyTasks, persistRememberNow,
     resolveExternalDeps, scanLocalHeaderDependencies,
   ]);
@@ -1839,6 +1890,7 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
                   <DeployEnvRadio
                     value={deployEnv}
                     onChange={setDeployEnv}
+                    disabledValues={canSubmitProd ? [] : ['prod']}
                     hint={
                       shouldInjectLineage(deployEnv)
                         ? `工作流名称将以 _${deployEnv} 结尾，提交时注入数据血缘参数`

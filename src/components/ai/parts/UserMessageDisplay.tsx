@@ -45,6 +45,13 @@ export interface UserMessageDisplayProps {
   onRevert?: () => void;
   /** 回滚按钮禁用（busy 时） */
   revertDisabled?: boolean;
+  /**
+   * 展示形态：
+   * - 'user'（默认）：用户真实输入的对话气泡，徽标为「用户」
+   * - 'subagent-task'：子代理会话首条消息（主会话注入的任务 prompt，非用户输入），
+   *   徽标为「子代理任务」并使用差异化配色
+   */
+  variant?: 'user' | 'subagent-task';
 }
 
 /** Agent 名称首字母大写 */
@@ -87,6 +94,7 @@ const UserMessageDisplay: React.FC<UserMessageDisplayProps> = ({
   attachments,
   onRevert,
   revertDisabled,
+  variant = 'user',
 }) => {
   // 从 message 提取 meta 字段（兼容 SDK 字段名）
   const msg = message as any;
@@ -104,12 +112,18 @@ const UserMessageDisplay: React.FC<UserMessageDisplayProps> = ({
 
   const hasAttachments = !!attachments?.length;
   const hasText = !!text?.trim();
+  // 子代理任务 prompt：由主会话注入（非用户输入），徽标与样式差异化，且不提供回滚
+  const isSubagentTask = variant === 'subagent-task';
 
   return (
     <div className="ai-panel__user-message">
       {/* 用户标识 — 放在气泡上方 */}
       <div className="ai-panel__user-message-header">
-        <span className="ai-panel__type-badge ai-panel__type-badge--user">用户</span>
+        <span
+          className={`ai-panel__type-badge ai-panel__type-badge--${isSubagentTask ? 'subagent-task' : 'user'}`}
+        >
+          {isSubagentTask ? '子代理任务' : '用户'}
+        </span>
         {meta && <span className="ai-panel__user-message-meta">{meta}</span>}
       </div>
 

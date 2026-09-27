@@ -12,9 +12,11 @@
  * 库表树由两处共用同一组件（DBTableBrowser 的抽取在第二批完成）；本面板不重复实现
  * 查询编辑器，需要查询时跳数据探索；不重复实现血缘图，血缘页签复用 Marquez 客户端。
  *
- * ── 当前阶段：入口占位 ──────────────────────────────────────
- * 服务端第一批只完成建表，接口尚未接入。目录树、检索、详情在接口不可达时显示
- * 「接口待接入」+ 能力清单；「资产盘点与治理」在本地即可解释，因此直接展示口径。
+ * ── 当前阶段：目录树/检索待接入，生命周期可修改 ──────────────
+ * 服务端第一批只完成建表：目录树、检索、详情在接口不可达时显示「接口待接入」+ 能力清单。
+ * 已接入的写能力只有一项 —— 选中表后可修改生命周期（热/冷/保留天数）。三档语义为
+ * 存储分层与保留期，须满足 hotDays ≤ coldDays ≤ keepDays；落库走 table_metadata 既有列，
+ * 不新建生命周期副本。读失败在区块内降级为「不可用 + 重新加载」，写失败才用 toast 提示。
  */
 
 import { useEffect, useState } from 'react';
@@ -32,9 +34,12 @@ import {
   Info,
   Link2,
   Tag,
+  Timer,
+  Pencil,
 } from 'lucide-react';
 import { assetCatalogApi } from '../../api/assetCatalog';
-import type { CatalogTreeNode, CatalogViewMode } from '../../api/assetCatalog';
+import type { AssetLifecycleVO, AssetTableDetailVO, CatalogTreeNode, CatalogViewMode } from '../../api/assetCatalog';
+import { useToast } from '../../components/Toast';
 import './AssetCatalogPanel.css';
 
 interface AssetCatalogPanelProps {
@@ -80,6 +85,31 @@ const HEALTH_ITEMS = [
 ];
 
 type ProbeState<T> = { status: 'loading' | 'ok' | 'unavailable'; data: T | null };
+
+/** 生命周期编辑表单：以字符串承载输入，提交前统一校验（避免输入中途被 number 化截断） */
+interface LifecycleForm {
+  hotDays: string;
+  coldDays: string;
+  keepDays: string;
+}
+
+/** 生命周期三档校验：正整数天数，且热 ≤ 冷 ≤ 保留（与 table_metadata 的列语义一致） */
+function validateLifecycle(form: LifecycleForm): { value?: AssetLifecycleVO; error?: string } {
+  const parseDays = (raw: string, label: string): number | string => {
+    const text = raw.trim();
+    if (!/^\d+$/.test(text) || Number(text) <= 0) return `${label}须为大于 0 的整数天数`;
+    return Number(text);
+  };
+  const hot = parseDays(form.hotDays, '热数据天数');
+  if (typeof hot === 'string') return { error: hot };
+  const cold = parseDays(form.coldDays, '冷数据天数');
+  if (typeof cold === 'string') return { error: cold };
+  const keep = parseDays(form.keepDays, '保留天数');
+  if (typeof keep === 'string') return { error: keep };
+  if (hot > cold) return { error: '热数据天数不得大于冷数据天数' };
+  if (cold > keep) return { error: '冷数据天数不得大于保留天数' };
+  return { value: { hotDays: hot, coldDays: cold, keepDays: keep } };
+}
 
 const TreePlaceholder: React.FC<{ view: CatalogViewMode }> = ({ view }) => (
   <div className="ac-placeholder">
@@ -173,12 +203,20 @@ const TreeNodeItem: React.FC<{
 };
 
 const AssetCatalogPanel: React.FC<AssetCatalogPanelProps> = ({ onNavigateToLineage }) => {
+  const toast = useToast();
   const [view, setView] = useState<CatalogViewMode>('engine');
   const [keyword, setKeyword] = useState('');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<CatalogTreeNode | null>(null);
   const [usedNavigator, setUsedNavigator] = useState(false);
   const [tree, setTree] = useState<ProbeState<CatalogTreeNode[]>>({ status: 'loading', data: null });
+  const [detail, setDetail] = useState<ProbeState<AssetTableDetailVO>>({ status: 'loading', data: null });
+  const [detailReload, setDetailReload] = useState(0);
+  const [lifecycleForm, setLifecycleForm] = useState<LifecycleForm | null>(null);
+  const [lifecycleError, setLifecycleError] = useState('');
+  const [savingLifecycle, setSavingLifecycle] = useState(false);
+
+  const selectedTableId = selected?.nodeKind === 'table' ? selected.tableMetadataId ?? null : null;
 
   // 目录树按视角探测：接口未接入时落到 unavailable，由 TreePlaceholder 呈现能力清单
   useEffect(() => {
@@ -197,6 +235,25 @@ const AssetCatalogPanel: React.FC<AssetCatalogPanelProps> = ({ onNavigateToLinea
     };
   }, [view]);
 
+  // 选中表即拉取资产详情（生命周期的回显载体）。失败降级到 unavailable，不弹全局错误
+  useEffect(() => {
+    if (!selectedTableId) return;
+    let cancelled = false;
+    setDetail({ status: 'loading', data: null });
+    assetCatalogApi
+      .getTableDetail(selectedTableId)
+      .then(res => {
+        if (cancelled) return;
+        setDetail(res?.data ? { status: 'ok', data: res.data } : { status: 'unavailable', data: null });
+      })
+      .catch(() => {
+        if (!cancelled) setDetail({ status: 'unavailable', data: null });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedTableId, detailReload]);
+
   const toggle = (key: string) => {
     setExpanded(prev => {
       const next = new Set(prev);
@@ -205,6 +262,70 @@ const AssetCatalogPanel: React.FC<AssetCatalogPanelProps> = ({ onNavigateToLinea
       return next;
     });
   };
+
+  const handleSelect = (node: CatalogTreeNode) => {
+    setSelected(node);
+    // 换表时关闭未提交的生命周期编辑，避免把 A 表的值带到 B 表
+    setLifecycleForm(null);
+    setLifecycleError('');
+  };
+
+  const openLifecycleEditor = () => {
+    if (!detail.data) return;
+    setLifecycleError('');
+    setLifecycleForm({
+      hotDays: detail.data.hotDays != null ? String(detail.data.hotDays) : '',
+      coldDays: detail.data.coldDays != null ? String(detail.data.coldDays) : '',
+      keepDays: detail.data.keepDays != null ? String(detail.data.keepDays) : '',
+    });
+  };
+
+  const submitLifecycle = async () => {
+    if (!selectedTableId || !lifecycleForm) return;
+    const checked = validateLifecycle(lifecycleForm);
+    if (checked.error || !checked.value) {
+      setLifecycleError(checked.error ?? '生命周期参数不合法');
+      return;
+    }
+    setSavingLifecycle(true);
+    try {
+      await assetCatalogApi.updateLifecycle(selectedTableId, checked.value);
+      // 写成功后就地回填，不整页重拉：目录树与详情的其余字段不受影响
+      setDetail(prev => (prev.data ? { status: 'ok', data: { ...prev.data, ...checked.value } } : prev));
+      setLifecycleForm(null);
+      setLifecycleError('');
+      toast.info(`${selected?.databaseName ? `${selected.databaseName}.` : ''}${selected?.tableName ?? ''} 的生命周期已更新`);
+    } catch (e) {
+      toast.error(`生命周期更新失败：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setSavingLifecycle(false);
+    }
+  };
+
+  /** 血缘联动入口：选中态与占位态共用，避免两处重复渲染 */
+  const lineageAction = (
+    <div className="ac-actions">
+      <button
+        className="ac-btn"
+        type="button"
+        disabled={!selected}
+        onClick={() => {
+          if (!selected?.tableName) return;
+          setUsedNavigator(true);
+          onNavigateToLineage?.({
+            namespace: selected.databaseName ?? '',
+            datasetName: selected.tableName,
+          });
+        }}
+      >
+        <Link2 size={13} />
+        <span>查看数据血缘</span>
+      </button>
+      <span className="ac-muted">
+        {usedNavigator ? '已跳转到数据血缘。' : '血缘不在本面板重复实现，复用数据血缘模块。'}
+      </span>
+    </div>
+  );
 
   return (
     <div className="ac-panel">
@@ -265,7 +386,7 @@ const AssetCatalogPanel: React.FC<AssetCatalogPanelProps> = ({ onNavigateToLinea
                 expanded={expanded}
                 selectedKey={selected?.key ?? null}
                 onToggle={toggle}
-                onSelect={setSelected}
+                onSelect={handleSelect}
               />
             ))}
         </div>
@@ -295,93 +416,214 @@ const AssetCatalogPanel: React.FC<AssetCatalogPanelProps> = ({ onNavigateToLinea
         </header>
 
         <div className="ac-main__body">
-          <div className="ac-notice">
-            <Info size={14} />
-            <span>
-              服务端 /api/asset/table/{'{id}'} 等接口尚未接入。本面板已按设计文档锁定接口契约
-              （src/api/assetCatalog.ts），接口就绪后详情页签按下列口径逐个接入。
-            </span>
-          </div>
+          {selectedTableId ? (
+            <>
+              {/* 选中表：生命周期是当前唯一接通的写能力，读失败降级为「不可用 + 重新加载」 */}
+              <section className="ac-section ac-section--first">
+                <h4 className="ac-section__title">
+                  <Timer size={13} />
+                  <span>基础信息 · 生命周期</span>
+                </h4>
 
-          <div className="ac-tabs">
-            {DETAIL_TABS.map(t => (
-              <span className="ac-tab" key={t}>
-                {t}
-              </span>
-            ))}
-          </div>
+                {detail.status === 'loading' && <div className="ac-loading">加载中…</div>}
 
-          <table className="ac-table">
-            <thead>
-              <tr>
-                <th>页签</th>
-                <th>将展示的内容</th>
-              </tr>
-            </thead>
-            <tbody>
-              {DETAIL_PLAN.map(item => (
-                <tr key={item.tab}>
-                  <td className="ac-table__strong">{item.tab}</td>
-                  <td>{item.content}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                {detail.status === 'unavailable' && (
+                  <div className="ac-placeholder">
+                    <div className="ac-placeholder__head">
+                      <CircleAlert size={14} />
+                      <span>资产详情接口不可用，生命周期暂无法读取与修改。</span>
+                    </div>
+                    <p className="ac-placeholder__lead">
+                      请确认服务端 /api/asset/table/{'{id}'} 已部署；其余字段与源表信息不受影响。
+                    </p>
+                    <button className="ac-btn ac-btn--ghost" type="button" onClick={() => setDetailReload(n => n + 1)}>
+                      <RefreshCw size={13} />
+                      <span>重新加载</span>
+                    </button>
+                  </div>
+                )}
 
-          {/* 联动入口：验证跨模块跳转范式（与指标管理 → 数据血缘一致） */}
-          <div className="ac-actions">
-            <button
-              className="ac-btn"
-              type="button"
-              disabled={!selected}
-              onClick={() => {
-                if (!selected?.tableName) return;
-                setUsedNavigator(true);
-                onNavigateToLineage?.({
-                  namespace: selected.databaseName ?? '',
-                  datasetName: selected.tableName,
-                });
-              }}
-            >
-              <Link2 size={13} />
-              <span>查看数据血缘</span>
-            </button>
-            <span className="ac-muted">
-              {usedNavigator ? '已跳转到数据血缘。' : '血缘不在本面板重复实现，复用数据血缘模块。'}
-            </span>
-          </div>
+                {detail.status === 'ok' && detail.data && (
+                  <>
+                    <div className="ac-kv">
+                      <div className="ac-kv__item">
+                        <span className="ac-kv__label">热数据天数</span>
+                        <span className="ac-kv__value">
+                          {detail.data.hotDays}
+                          <span className="ac-kv__unit">天</span>
+                        </span>
+                      </div>
+                      <div className="ac-kv__item">
+                        <span className="ac-kv__label">冷数据天数</span>
+                        <span className="ac-kv__value">
+                          {detail.data.coldDays}
+                          <span className="ac-kv__unit">天</span>
+                        </span>
+                      </div>
+                      <div className="ac-kv__item">
+                        <span className="ac-kv__label">保留天数</span>
+                        <span className="ac-kv__value">
+                          {detail.data.keepDays}
+                          <span className="ac-kv__unit">天</span>
+                        </span>
+                      </div>
+                    </div>
+                    <div className="ac-actions">
+                      <button className="ac-btn" type="button" onClick={openLifecycleEditor}>
+                        <Pencil size={13} />
+                        <span>修改生命周期</span>
+                      </button>
+                      <span className="ac-muted">
+                        热数据为高频访问期、冷数据为低频保留期，超过保留天数的数据可被归档或淘汰；
+                        修改仅作用于本表的存储治理口径，不改变数据本身。
+                      </span>
+                    </div>
+                  </>
+                )}
+              </section>
 
-          <section className="ac-section">
-            <h4 className="ac-section__title">
-              <Tag size={13} />
-              <span>资产盘点与治理项</span>
-            </h4>
-            <p className="ac-muted">
-              治理项只做可核查计数，不引入加权评分 —— 每个治理项都能追到具体对象。第一阶段口径：
-            </p>
-            <ul className="ac-list">
-              {HEALTH_ITEMS.map(item => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-            <p className="ac-muted">
-              其中「未标注字段」直接复用既有元数据标注缺口清单接口（/api/metadata/annotation-gaps），
-              其余由服务端盘点接口汇总。
-            </p>
-          </section>
+              {lineageAction}
+            </>
+          ) : (
+            <>
+              <div className="ac-notice">
+                <Info size={14} />
+                <span>
+                  服务端 /api/asset/* 按 src/api/assetCatalog.ts 的契约接入：目录树与检索未部署时
+                  按空态降级。已接通的写能力为「修改生命周期」—— 选中左侧表节点后在右侧修改
+                  （PUT /api/asset/table/{'{id}'}/lifecycle）；其余详情页签就绪后按下列口径逐个接入。
+                </span>
+              </div>
 
-          <section className="ac-section">
-            <h4 className="ac-section__title">
-              <Star size={13} />
-              <span>使用热度</span>
-            </h4>
-            <p className="ac-muted">
-              浏览与读取分别统计，按日汇总（T+1）；访问埋点写入独立的轻量表，不写操作审计日志。
-              热度指标：浏览数、读取数、收藏数、字段热度（0~5 星）。
-            </p>
-          </section>
+              <div className="ac-tabs">
+                {DETAIL_TABS.map(t => (
+                  <span className="ac-tab" key={t}>
+                    {t}
+                  </span>
+                ))}
+              </div>
+
+              <table className="ac-table">
+                <thead>
+                  <tr>
+                    <th>页签</th>
+                    <th>将展示的内容</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {DETAIL_PLAN.map(item => (
+                    <tr key={item.tab}>
+                      <td className="ac-table__strong">{item.tab}</td>
+                      <td>{item.content}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {/* 联动入口：验证跨模块跳转范式（与指标管理 → 数据血缘一致） */}
+              {lineageAction}
+
+              <section className="ac-section">
+                <h4 className="ac-section__title">
+                  <Tag size={13} />
+                  <span>资产盘点与治理项</span>
+                </h4>
+                <p className="ac-muted">
+                  治理项只做可核查计数，不引入加权评分 —— 每个治理项都能追到具体对象。第一阶段口径：
+                </p>
+                <ul className="ac-list">
+                  {HEALTH_ITEMS.map(item => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+                <p className="ac-muted">
+                  其中「未标注字段」直接复用既有元数据标注缺口清单接口（/api/metadata/annotation-gaps），
+                  其余由服务端盘点接口汇总。
+                </p>
+              </section>
+
+              <section className="ac-section">
+                <h4 className="ac-section__title">
+                  <Star size={13} />
+                  <span>使用热度</span>
+                </h4>
+                <p className="ac-muted">
+                  浏览与读取分别统计，按日汇总（T+1）；访问埋点写入独立的轻量表，不写操作审计日志。
+                  热度指标：浏览数、读取数、收藏数、字段热度（0~5 星）。
+                </p>
+              </section>
+            </>
+          )}
         </div>
       </main>
+
+      {/* ── 生命周期修改弹窗（写操作，成败都用 toast 收口）── */}
+      {lifecycleForm && detail.data && (
+        <div className="ac-modal-overlay">
+          <div className="ac-modal">
+            <div className="ac-modal__header">
+              <h3 className="ac-modal__title">
+                修改生命周期 · {selected?.databaseName}.{selected?.tableName}
+              </h3>
+              <button className="ac-modal__close" type="button" aria-label="关闭" onClick={() => setLifecycleForm(null)}>
+                ×
+              </button>
+            </div>
+            <div className="ac-modal__body">
+              <p className="ac-muted">
+                生命周期控制该表数据的存储分层与保留期限，须满足「热数据天数 ≤ 冷数据天数 ≤ 保留天数」。
+              </p>
+              <div className="ac-form-row">
+                <div className="ac-form-group">
+                  <label htmlFor="ac-lifecycle-hot">
+                    热数据天数 <span className="ac-required">*</span>
+                  </label>
+                  <input
+                    id="ac-lifecycle-hot"
+                    className="ac-input"
+                    inputMode="numeric"
+                    value={lifecycleForm.hotDays}
+                    onChange={e => setLifecycleForm({ ...lifecycleForm, hotDays: e.target.value })}
+                  />
+                </div>
+                <div className="ac-form-group">
+                  <label htmlFor="ac-lifecycle-cold">
+                    冷数据天数 <span className="ac-required">*</span>
+                  </label>
+                  <input
+                    id="ac-lifecycle-cold"
+                    className="ac-input"
+                    inputMode="numeric"
+                    value={lifecycleForm.coldDays}
+                    onChange={e => setLifecycleForm({ ...lifecycleForm, coldDays: e.target.value })}
+                  />
+                </div>
+                <div className="ac-form-group">
+                  <label htmlFor="ac-lifecycle-keep">
+                    保留天数 <span className="ac-required">*</span>
+                  </label>
+                  <input
+                    id="ac-lifecycle-keep"
+                    className="ac-input"
+                    inputMode="numeric"
+                    value={lifecycleForm.keepDays}
+                    onChange={e => setLifecycleForm({ ...lifecycleForm, keepDays: e.target.value })}
+                  />
+                </div>
+              </div>
+              {lifecycleError && <p className="ac-form-error">{lifecycleError}</p>}
+            </div>
+            <div className="ac-modal__footer">
+              <button className="ac-btn ac-btn--ghost" type="button" onClick={() => setLifecycleForm(null)}>
+                取消
+              </button>
+              <button className="ac-btn" type="button" disabled={savingLifecycle} onClick={submitLifecycle}>
+                {savingLifecycle ? '提交中…' : '确定'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -13,6 +13,8 @@ import useFileSystem from '../../hooks/useFileSystem';
 import useDevProjectConfig from '../../hooks/useDevProjectConfig';
 import { useAuth } from '../../contexts/AuthContext';
 import { useDataSourceCache } from '../../contexts/DataSourceContext';
+// 别名为 ByRole：文件内另有同名能力位变量（按当前用户算好的布尔），避免与判定函数本身重名
+import { canSubmitSchedule as canSubmitScheduleByRole, canSubmitProdSchedule } from '../../utils/roleAccess';
 import { StatusBarInfo, Tab, FileNode } from '../../types';
 import { generateId } from '../../utils';
 import { generateFileHeader } from '../../utils/fileHeader';
@@ -151,6 +153,16 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
   const { user } = useAuth();
   const { refresh } = useDataSourceCache();
   const toast = useToast();
+
+  /**
+   * 提交调度的角色准入（口径见 `utils/roleAccess.ts`）：
+   * · 灰度 / 测试 —— 数据开发工程师、运维工程师、超级管理员可发起；
+   * · 生产 —— 仅运维工程师与超级管理员可发起。
+   * 这里算成两个能力位向下透传（两个提交弹窗共用），前端只做 UX（选项置灰 + 提示拦截），
+   * 真正的安全边界仍由后端对提交端点独立校验。
+   */
+  const canSubmitSchedule = useMemo(() => canSubmitScheduleByRole(user), [user]);
+  const canSubmitProd = useMemo(() => canSubmitProdSchedule(user), [user]);
 
   // 项目级依赖配置（开发助手模块）：作为编译与悬停提示的默认依赖集合，
   // 与逐文件依赖合并生效。后端未部署项目级接口时优雅降级为空（仅逐文件行为）。
@@ -1270,6 +1282,9 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
           // 数据源可用性校验应放在「提交到调度系统」流程（SubmitToSchedulerModal），
           // 否则会因活动编辑器的 SQL 头部引用未接入的数据源而错误阻断 git commit。
           onBeforeCommit={() => ({ valid: true, message: null })}
+          // 文件夹右键「提交调度」的角色准入：与单文件提交调度用同一对能力位
+          canSubmitSchedule={canSubmitSchedule}
+          canSubmitProd={canSubmitProd}
           onAISummarize={async (files: string[], diffs: string) => {
             // 通过 opencode 临时会话生成业务维度的提交信息；服务不可用时回退本地统计摘要
             return generateCommitSummary({
@@ -1307,6 +1322,9 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
           mavenArtifactId: config.mavenArtifactId,
         }}
         openlineageTransportUrl={config.openlineageTransportUrl}
+        // 角色准入：数据开发工程师可提交灰度/测试；生产仅运维工程师与超管可提交
+        canSubmitSchedule={canSubmitSchedule}
+        canSubmitProd={canSubmitProd}
         onClose={() => setSubmitModalVisible(false)}
         onSuccess={(_projectName, workflowName) => {
           console.log(`已提交到调度系统，工作流: ${workflowName}`);

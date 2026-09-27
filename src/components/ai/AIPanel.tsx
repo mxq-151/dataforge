@@ -44,7 +44,7 @@ const COLLAPSED_KEY_PREFIX = 'ai-panel-collapsed';
 
 const AIPanel: React.FC<AIPanelProps> = ({ chatBackend, llmModels, onRollback, onOpenFile, onViewDiff, fileTree, moduleId }) => {
   const {
-    messages, busy, retry, connected, error, modals, currentSessionId,
+    messages, busy, retry, connected, error, modals, currentSessionId, currentSessionIsSubagent,
     contextUsage, tasks, todos, fileChanges,
     sendMessage, sendInterrupt, sendRollback, sendPermissionResponse,
     sendQuestionReply, sendQuestionReject,
@@ -379,6 +379,7 @@ const AIPanel: React.FC<AIPanelProps> = ({ chatBackend, llmModels, onRollback, o
           fileChanges={fileChanges}
           todoDock={todoDockProps}
           fileReview={fileReviewProps}
+          subagentSession={currentSessionIsSubagent}
         />
 
         {/* 「向左缩进 / 展开」按钮：独立绝对定位到面板右上角（不挤进头部 inline 流）。

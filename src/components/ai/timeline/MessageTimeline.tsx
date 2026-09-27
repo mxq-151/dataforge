@@ -96,6 +96,12 @@ export interface MessageTimelineProps {
   fileChanges?: FileChange[];
   /** 文件变更面板回调（内联 FileChangeRow 渲染用） */
   fileReview?: TimelineFileReviewProps;
+  /**
+   * 当前会话是否为子代理会话（带 parentID 的子会话）。
+   * 为 true 时，会话首条用户消息是主会话注入的子代理任务 prompt，
+   * 改标为「子代理任务」并隐藏回滚按钮（对齐「非用户输入」的语义）。
+   */
+  subagentSession?: boolean;
 }
 
 // ── VirtualRow：单行包装（memo 化，避免整屏行被无谓重渲染） ────
@@ -154,6 +160,7 @@ const MessageTimeline: React.FC<MessageTimelineProps> = ({
   todoDock,
   fileChanges,
   fileReview,
+  subagentSession = false,
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const { rows } = useTimelineProjection(messages, status, showReasoning, todos, fileChanges);
@@ -165,6 +172,13 @@ const MessageTimeline: React.FC<MessageTimelineProps> = ({
     for (const entry of messages) map.set(entry.info.id, entry);
     return map;
   }, [messages]);
+
+  // 子代理会话注入的任务 prompt（该会话的首条 user 消息）：
+  // 由主会话的 task 工具写入，并非用户输入，展示时改标为「子代理任务」
+  const subagentTaskMessageID = useMemo(() => {
+    if (!subagentSession) return undefined;
+    return messages.find((entry) => entry.info.role === 'user')?.info.id;
+  }, [subagentSession, messages]);
 
   // getMsgPart：根据 messageID + partID 查找 part（O(1) 索引 + 该消息 parts 内线性查找）
   const getMsgPart = useCallback(
@@ -292,12 +306,15 @@ const MessageTimeline: React.FC<MessageTimelineProps> = ({
             .filter((p) => p.type === 'text')
             .map((p) => (p as any).text ?? '')
             .join('\n');
+          // 子代理会话的注入任务 prompt：改标「子代理任务」且不提供回滚
+          const isSubagentTask = row.userMessageID === subagentTaskMessageID;
           return (
             <TimelineRowFrame row={row}>
               <UserMessageDisplay
                 message={message}
                 text={text}
-                onRevert={onRevert ? () => onRevert(row.userMessageID) : undefined}
+                variant={isSubagentTask ? 'subagent-task' : 'user'}
+                onRevert={!isSubagentTask && onRevert ? () => onRevert(row.userMessageID) : undefined}
                 revertDisabled={revertDisabled}
               />
             </TimelineRowFrame>
@@ -371,7 +388,7 @@ const MessageTimeline: React.FC<MessageTimelineProps> = ({
           return null;
       }
     },
-    [entryByID, onRevert, revertDisabled, renderAssistantPartGroup, retry, todoDock, fileReview],
+    [entryByID, onRevert, revertDisabled, renderAssistantPartGroup, retry, todoDock, fileReview, subagentTaskMessageID],
   );
 
   // PartsDataProvider 值（透传导航和流式文本读取）

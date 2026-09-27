@@ -126,6 +126,23 @@ const TABLE_NAMING_CONVENTIONS = `
 - 临时表以 tmp_ 前缀命名，如 tmp_trade_order
 - 视图以 v_ 前缀命名，如 v_trade_order_summary`;
 
+/**
+ * 库环境区分（S2 与 S3 共用）
+ *
+ * 环境以固定后缀落在**库名**上，与提交调度的部署环境（生产/灰度/测试 → `_prod`/`_gray`/`_test`，
+ * 见 src/utils/deployEnv.ts）同一套取值，避免库名后缀与工作流后缀各自漂移。
+ */
+const DATABASE_ENV_SPEC = `
+## 库环境区分
+同一业务域按环境拆分为多个库，库名以固定环境后缀结尾，格式 {分层}_{业务域}_{环境}，如 ods_olist_test、ods_olist_gray、ods_olist_prod：
+- 环境后缀固定三档：_test=测试、_gray=灰度、_prod=生产；只允许这三档，禁止自造其他后缀（如 _dev/_uat/_stage），也不得省略环境后缀
+- 环境取值以用户指定为准，未指明时按 _test（测试）处理
+- 环境只落在库名上，表名不带环境后缀（表名格式仍为 {分层}_{业务域}_{实体描述}_{刷新周期}）
+- 同一业务域的三套环境库保持同构：同名表、同名字段、同分区与同更新策略，仅数据范围与运行环境不同
+- S2 设计与 DDL：建表语句的库名、指标表"字段来源"与"下钻维度"里的库名、稽核规则"校验对象"里的库名，均须携带环境后缀且逐字一致
+- S3 开发：代码中引用的库名照搬设计文档，禁止改写或省略环境后缀；迁移环境只改库名后缀，表名与字段不变
+- 提交调度选择生产环境时平台会逐库校验：代码（含文件夹批量提交的全部代码）里引用的库必须都是生产库（_prod 结尾），出现 _test/_gray 或无环境后缀的库会被拦截`;
+
 /** 程序/任务命名规范（S3 专用） */
 const PROGRAM_NAMING_CONVENTIONS = `
 ## 程序/任务命名规范
@@ -368,6 +385,8 @@ ${LAYERING_SPEC}
 
 ${TABLE_NAMING_CONVENTIONS}
 
+${DATABASE_ENV_SPEC}
+
 ## 文档与 DDL 命名规范
 - 设计文档输出到 docs 目录，文件名：{业务名称}_数仓设计.md，{业务名称} 须与需求文档一致
 - DDL 按数仓分层拆分文件输出到 ddls 目录，文件名：{分层}_ddl.sql，如 ods_ddl.sql、dwd_ddl.sql、dws_ddl.sql、ads_ddl.sql、dim_ddl.sql、dqc_ddl.sql
@@ -528,6 +547,8 @@ ${LAYERING_SPEC}
 ${PROGRAM_NAMING_CONVENTIONS}
 
 ${TABLE_NAMING_CONVENTIONS}
+
+${DATABASE_ENV_SPEC}
 
 ## 指标实现规范（S3 强约束）
 - 指标编码、指标名称、计算表达式逐项照搬设计文档的"数据指标"章节，不得改写口径或重命名

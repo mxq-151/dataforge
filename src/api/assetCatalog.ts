@@ -123,6 +123,16 @@ export interface AssetTableDetailVO {
   tags: AssetTagVO[];
 }
 
+/**
+ * 生命周期三档（单位：天）。语义约束：热数据天数 ≤ 冷数据天数 ≤ 保留天数。
+ * 与 table_metadata 既有的 hot_days / cold_days / keep_days 对齐，不另起字段名。
+ */
+export interface AssetLifecycleVO {
+  hotDays: number;
+  coldDays: number;
+  keepDays: number;
+}
+
 export interface AssetColumnVO {
   id: number;
   columnName: string;
@@ -309,6 +319,19 @@ export const assetCatalogApi = {
     return request<ApiResponse<null>>(`${BASE}/table/${id}/tags`, {
       method: 'PUT',
       body: JSON.stringify({ tagCodes }),
+      suppressError: true,
+    });
+  },
+
+  /**
+   * 修改生命周期（热 / 冷 / 保留天数）。
+   * 服务端须在同一事务内校验 hotDays ≤ coldDays ≤ keepDays，并做库表权限校验与操作留痕；
+   * 已确认的历史事实（table_metadata 既有列）直接覆盖写，不产生新副本。
+   */
+  async updateLifecycle(id: number, payload: AssetLifecycleVO) {
+    return request<ApiResponse<null>>(`${BASE}/table/${id}/lifecycle`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
       suppressError: true,
     });
   },
