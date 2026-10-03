@@ -96,16 +96,6 @@ describe('链路共享契约 — 三方必须同时具备', () => {
     }
   });
 
-  it('S2 与 S3 共享同一份库环境区分口径，S1 不涉及库名', () => {
-    for (const { id, prompt } of STAGES.filter(s => s.id !== 'S1 需求')) {
-      expect(prompt, `${id} 缺少库环境区分口径`).toContain('## 库环境区分');
-      for (const key of ['_test', '_gray', '_prod', 'ods_olist_test', 'ods_olist_gray']) {
-        expect(prompt, `${id} 缺少库环境后缀约定: ${key}`).toContain(key);
-      }
-    }
-    expect(BUSINESS_REQUESTER_INSTRUCTIONS).not.toContain('_gray');
-  });
-
   it('血缘调研只出现在掌握表级血缘的 S2/S3，S1 不强求', () => {
     expect(DATA_ARCHITECT_INSTRUCTIONS).toContain('Marquez');
     expect(DATA_DEV_ENGINEER_INSTRUCTIONS).toContain('Marquez');

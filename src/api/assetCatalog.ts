@@ -106,6 +106,8 @@ export interface AssetTableDetailVO {
   coldDays: number;
   keepDays: number;
   storageFormat: string;
+  /** 压缩方式，源表未提供时为 null（与 /api/metadata/tables 的 table_metadata 同列） */
+  compression?: string | null;
   location: string;
   partitionColumns: string[];
   lastModifyTime: string;
@@ -220,6 +222,82 @@ export interface AssetInventoryVO {
   byDatasource: Array<{ datasourceId: number; datasourceName: string; tableCount: number }>;
   /** 命名不合规、未标注等需治理的总数 */
   unclassifiedCount: number;
+}
+
+// ── 资产概况（盘点看板）──────────────────────────────────────
+//
+// 环境口径与库名规范同源：库名 {分层}_{业务域}_{环境}，环境后缀仅限 _prod/_gray/_test，
+// 故 env 由服务端按库名解析，前端不自行猜测，避免「生产库被当测试库」这类误判。
+
+/** 环境码：生产 / 灰度 / 测试（与库名后缀 _prod/_gray/_test 一一对应） */
+export type AssetEnvCode = 'prod' | 'gray' | 'test';
+
+/** 按环境与项目聚合的表数量与占用空间 */
+export interface AssetEnvProjectStatVO {
+  env: AssetEnvCode;
+  projectCode: string;
+  projectName: string;
+  tableCount: number;
+  sizeBytes: number;
+}
+
+/** TOP 资产清单排序维度：访问频率 / 占用空间 */
+export type AssetTopSortBy = 'access' | 'size';
+
+export interface AssetTopAssetVO {
+  tableMetadataId: number;
+  databaseName: string;
+  tableName: string;
+  env: AssetEnvCode;
+  projectCode: string;
+  projectName: string;
+  /** 近 30 天访问次数（访问频率榜口径） */
+  accessCount30d: number;
+  sizeBytes: number;
+  ownerName: string;
+}
+
+/** TOP 任务排行排序维度：消耗计算资源 / 运行时长 */
+export type AssetTaskSortBy = 'resource' | 'duration';
+
+export interface AssetTopComputeTaskVO {
+  workflowName: string;
+  nodeName: string;
+  /** 任务类型（SPARK / HIVE / FLINK…） */
+  taskType: string;
+  projectName: string;
+  /** 消耗 CPU 核·小时 */
+  cpuHours: number;
+  /** 内存 GB·小时 */
+  memoryGbHours: number;
+  /** 运行时长（秒） */
+  runDurationSeconds: number;
+  execCount: number;
+}
+
+/** 任务延迟率（主要指 YARN 任务）：延迟 = 实际开始晚于计划开始 */
+export interface AssetTaskDelayVO {
+  totalTasks: number;
+  delayedTasks: number;
+  /** 延迟率 0~1 */
+  delayRate: number;
+  /** 统计窗口（天） */
+  windowDays: number;
+  byQueue: Array<{ queueName: string; totalTasks: number; delayedTasks: number; delayRate: number }>;
+}
+
+/** 数据大小增长率突增表（默认阈值：增长率 > 10% 且当前大小 > 10GB） */
+export interface AssetSizeGrowthVO {
+  tableMetadataId: number;
+  databaseName: string;
+  tableName: string;
+  env: AssetEnvCode;
+  projectName: string;
+  previousSizeBytes: number;
+  currentSizeBytes: number;
+  growthBytes: number;
+  /** 增长率 0~1 */
+  growthRate: number;
 }
 
 /** 埋点上报项：浏览与读取分开统计 */
@@ -417,6 +495,48 @@ export const assetCatalogApi = {
 
   async getInventoryHealth() {
     return request<ApiResponse<AssetHealthIssueVO[]>>(`${BASE}/inventory/health`, { suppressError: true });
+  },
+
+  // ── 资产概况（盘点看板）──────────────────────────────────
+
+  /** 按环境（生产 / 灰度 / 测试）与项目聚合的表数量与占用空间 */
+  async getInventoryByEnvProject() {
+    return request<ApiResponse<AssetEnvProjectStatVO[]>>(`${BASE}/inventory/env-project`, { suppressError: true });
+  },
+
+  /** 访问频率 / 占用空间 TOP 资产（默认 100 条） */
+  async getTopAssets(params: { sortBy: AssetTopSortBy; limit?: number }) {
+    return request<ApiResponse<AssetTopAssetVO[]>>(`${BASE}/inventory/top-assets`, {
+      params: toQuery({ sortBy: params.sortBy, limit: params.limit ?? 100 }),
+      suppressError: true,
+    });
+  },
+
+  /** 消耗计算资源 / 运行时长 TOP 任务（默认 50 条） */
+  async getTopComputeTasks(params: { sortBy: AssetTaskSortBy; limit?: number }) {
+    return request<ApiResponse<AssetTopComputeTaskVO[]>>(`${BASE}/inventory/top-compute`, {
+      params: toQuery({ sortBy: params.sortBy, limit: params.limit ?? 50 }),
+      suppressError: true,
+    });
+  },
+
+  /** 任务延迟率（主要针对 YARN 任务） */
+  async getTaskDelayRate(params: { days?: number } = {}) {
+    return request<ApiResponse<AssetTaskDelayVO>>(`${BASE}/inventory/task-delay`, {
+      params: toQuery({ days: params.days ?? 30 }),
+      suppressError: true,
+    });
+  },
+
+  /** 数据大小增长率突增表：默认 增长率 > 10% 且当前大小 > 10GB */
+  async getSizeGrowthAnomalies(params: { growthPercent?: number; minSizeBytes?: number } = {}) {
+    return request<ApiResponse<AssetSizeGrowthVO[]>>(`${BASE}/inventory/size-growth`, {
+      params: toQuery({
+        growthPercent: params.growthPercent ?? 10,
+        minSizeBytes: params.minSizeBytes ?? 10 * 1024 ** 3,
+      }),
+      suppressError: true,
+    });
   },
 
   /** 元数据标注缺口：既有接口，作为治理项之一接入健康度 */

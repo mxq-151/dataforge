@@ -2,7 +2,22 @@ import React, { useEffect, useState } from 'react';
 import { X, Loader2 } from 'lucide-react';
 import { fetchTableColumns, fetchTableMetadata, TableDetailColumn } from '../../api/datasource';
 import { useDataSourceCache } from '../../contexts/DataSourceContext';
+import TableDetailContent from './TableDetailContent';
+import type { TableDetailColumnItem, TableDetailData } from './TableDetailContent';
 import './TableDetail.css';
+
+/** 接口字段（0/1）→ 展示字段（布尔），与资产目录对齐同一份渲染输入 */
+function toColumnItem(column: TableDetailColumn): TableDetailColumnItem {
+  return {
+    id: column.id,
+    columnName: column.columnName,
+    columnType: column.columnType || '',
+    columnComment: column.columnComment || '',
+    isPartition: column.isPartition === 1,
+    isPrimaryKey: column.isPrimaryKey === 1,
+    nullable: column.nullable === 1,
+  };
+}
 
 interface TableDetailProps {
   datasourceId: number | null;
@@ -12,23 +27,9 @@ interface TableDetailProps {
   onClose: () => void;
 }
 
-interface ProcessedTableData {
-  databaseName: string;
-  tableName: string;
-  tableComment?: string;
-  storageEngine: string;
-  storageFormat: string;
-  compression: string | null;
-  location: string;
-  hotDays: number;
-  coldDays: number;
-  keepDays: number;
-  columns: TableDetailColumn[];
-}
-
 const TableDetailView: React.FC<TableDetailProps> = ({ datasourceId, storageEngine, databaseName, tableName, onClose }) => {
   const { dataSources, updateTableColumns } = useDataSourceCache();
-  const [detail, setDetail] = useState<ProcessedTableData | null>(null);
+  const [detail, setDetail] = useState<TableDetailData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -57,9 +58,9 @@ const TableDetailView: React.FC<TableDetailProps> = ({ datasourceId, storageEngi
           return;
         }
 
-        const sortedColumns = columns.sort((a, b) => (a.ordinalPosition || 0) - (b.ordinalPosition || 0));
+        const sortedColumns = columns.slice().sort((a, b) => (a.ordinalPosition || 0) - (b.ordinalPosition || 0));
 
-        // 将字段信息回写到上下文，供 SQL 补全使用
+        // 将字段信息回写到上下文，供 SQL 补全使用（上下文沿用接口原始形态）
         if (sortedColumns.length > 0) {
           const matchedDS = dataSources.find(ds => {
             const dsDbNames = ds.databaseName || [];
@@ -70,21 +71,19 @@ const TableDetailView: React.FC<TableDetailProps> = ({ datasourceId, storageEngi
           }
         }
 
-        const tableInfo: ProcessedTableData = {
-          databaseName: tableMeta?.databaseName || columns[0]?.databaseName || databaseName,
-          tableName: tableMeta?.tableName || columns[0]?.tableName || tableName,
-          tableComment: tableMeta?.tableComment || '',
+        // 展示层统一映射为 TableDetailData，与资产目录共用同一份渲染
+        const tableInfo: TableDetailData = {
           storageEngine: tableMeta?.storageEngine || columns[0]?.storageEngine || storageEngine,
           storageFormat: tableMeta?.storageFormat || '',
           compression: tableMeta?.compression ?? null,
+          tableComment: tableMeta?.tableComment || '',
           location: tableMeta?.location || '',
           hotDays: tableMeta?.hotDays ?? 90,
           coldDays: tableMeta?.coldDays ?? 180,
           keepDays: tableMeta?.keepDays ?? 720,
-          columns: sortedColumns,
+          columns: sortedColumns.map(toColumnItem),
         };
 
-        console.log('Processed table data:', tableInfo);
         setDetail(tableInfo);
       } catch (err) {
         setError('加载表详情失败');
@@ -136,87 +135,7 @@ const TableDetailView: React.FC<TableDetailProps> = ({ datasourceId, storageEngi
 
           {error && <div className="table-detail-modal__error">{error}</div>}
 
-          {detail && !loading && (
-            <>
-              <section className="table-detail-modal__info">
-                <div className="table-detail-modal__info-row">
-                  <div className="table-detail-modal__info-item">
-                    <span className="table-detail-modal__label">存储引擎</span>
-                    <span className="table-detail-modal__value">{detail.storageEngine || '-'}</span>
-                  </div>
-                  <div className="table-detail-modal__info-item">
-                    <span className="table-detail-modal__label">存储格式</span>
-                    <span className="table-detail-modal__value">{detail.storageFormat || '-'}</span>
-                  </div>
-                  <div className="table-detail-modal__info-item">
-                    <span className="table-detail-modal__label">压缩方式</span>
-                    <span className="table-detail-modal__value">{detail.compression ?? '-'}</span>
-                  </div>
-                  <div className="table-detail-modal__info-item">
-                    <span className="table-detail-modal__label">表注释</span>
-                    <span className="table-detail-modal__value">{detail.tableComment || '-'}</span>
-                  </div>
-                </div>
-
-                <div className="table-detail-modal__info-row">
-                  <div className="table-detail-modal__info-item">
-                    <span className="table-detail-modal__label">热数据天数</span>
-                    <span className="table-detail-modal__value">{detail.hotDays}</span>
-                  </div>
-                  <div className="table-detail-modal__info-item">
-                    <span className="table-detail-modal__label">冷数据天数</span>
-                    <span className="table-detail-modal__value">{detail.coldDays}</span>
-                  </div>
-                  <div className="table-detail-modal__info-item">
-                    <span className="table-detail-modal__label">保留天数</span>
-                    <span className="table-detail-modal__value">{detail.keepDays}</span>
-                  </div>
-                  <div className="table-detail-modal__info-item">
-                    <span className="table-detail-modal__label">存储位置</span>
-                    <span className="table-detail-modal__value table-detail-modal__value--truncate" title={detail.location || ''}>{detail.location || '-'}</span>
-                  </div>
-                </div>
-              </section>
-
-              <section className="table-detail-modal__columns">
-                <h4 className="table-detail-modal__columns-title">字段结构</h4>
-                {detail.columns && detail.columns.length > 0 ? (
-                  <div className="table-detail-modal__columns-table-wrapper">
-                    <div className="table-detail-modal__columns-scroll-container">
-                      <table className="table-detail-modal__columns-table">
-                      <thead>
-                        <tr>
-                          <th>#</th>
-                          <th>字段名</th>
-                          <th>类型</th>
-                          <th>注释</th>
-                          <th>分区</th>
-                          <th>主键</th>
-                          <th>可空</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {detail.columns.map((column, index) => (
-                          <tr key={column.id || index}>
-                            <td>{index + 1}</td>
-                            <td>{column.columnName}</td>
-                            <td>{column.columnType || '-'}</td>
-                            <td className="table-detail-modal__column-comment">{column.columnComment || '-'}</td>
-                            <td>{column.isPartition === 1 ? '是' : ''}</td>
-                            <td>{column.isPrimaryKey === 1 ? '是' : ''}</td>
-                            <td>{column.nullable === 1 ? '是' : ''}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="table-detail-modal__empty-columns">暂无字段信息</div>
-                )}
-              </section>
-            </>
-          )}
+          {detail && !loading && <TableDetailContent detail={detail} />}
         </div>
       </div>
     </div>

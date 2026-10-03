@@ -1,16 +1,64 @@
 /**
- * 数据资产目录面板样式
+ * 资产管理面板样式
  *
  * 视觉基准与数据质量面板一致（暗色）：页面 #1e1e1e / 面板 #252526 /
  * 分隔线 #3c3c3c / 正文 #cccccc / 次要 #858585 / 强调 #007acc。
- * 左栏固定 300px（目录树），右栏自适应（检索结果或资产详情）。
+ * 模块为「页签 + 内容」两段纵向结构：
+ * - 资产目录：左栏固定 300px（目录树），右栏自适应（检索结果或资产详情）；
+ * - 资产概况：五块看板纵向排布，整体可滚动。
  */
 
-.ac-panel {
+/* ── 模块骨架（标题 + 页签 + 内容）── */
+.ac-module {
   display: flex;
+  flex-direction: column;
   width: 100%;
   height: 100%;
   background-color: #1e1e1e;
+  color: #cccccc;
+  font-size: 13px;
+  overflow: hidden;
+}
+
+.ac-module__tabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 12px;
+  border-bottom: 1px solid #3c3c3c;
+  flex-shrink: 0;
+  overflow-x: auto;
+}
+
+.ac-module__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 12px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #858585;
+  font-size: 12.5px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ac-module__tab:hover {
+  color: #e0e0e0;
+}
+
+.ac-module__tab--active {
+  color: #ffffff;
+  border-bottom-color: #007acc;
+}
+
+/* ── 目录页签：左栏 + 右栏 ── */
+.ac-panel {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  width: 100%;
   color: #cccccc;
   font-size: 13px;
   overflow: hidden;
@@ -426,44 +474,20 @@
   margin: 0 0 3px;
 }
 
-/* ── 基础信息（生命周期）── */
-.ac-section--first {
+/* ── 表详情（复用数据探索的 table-detail-modal__* 区块）──
+   非模态承载：右栏本身可滚动，故取消模态内部的定高占位，
+   字段表改为按内容自适应高度 + 超高内部滚动，避免内容被裁切或撑出空白。 */
+.ac-main__body .table-detail-modal__info {
   margin-top: 0;
 }
 
-.ac-kv {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+.ac-main__body .table-detail-modal__columns-table-wrapper {
+  flex: none;
+  min-height: 0;
 }
 
-.ac-kv__item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 132px;
-  padding: 10px 14px;
-  background-color: #252526;
-  border: 1px solid #3c3c3c;
-  border-radius: 6px;
-}
-
-.ac-kv__label {
-  color: #858585;
-  font-size: 11.5px;
-}
-
-.ac-kv__value {
-  color: #ffffff;
-  font-size: 18px;
-  font-weight: 600;
-}
-
-.ac-kv__unit {
-  margin-left: 3px;
-  color: #858585;
-  font-size: 12px;
-  font-weight: 400;
+.ac-main__body .table-detail-modal__columns-scroll-container {
+  max-height: 56vh;
 }
 
 /* ── 次级按钮（取消 / 重新加载）── */
@@ -593,4 +617,197 @@
   margin: 12px 0 0;
   color: #f48771;
   font-size: 12.5px;
+}
+
+/* ── 资产概况页签（图表看板）── */
+.ac-ov {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ac-ov .ac-notice {
+  margin-bottom: 0;
+}
+
+/* 卡片：五块看板的统一容器 */
+.ac-card {
+  min-width: 0;
+  padding: 14px 16px 16px;
+  background-color: #252526;
+  border: 1px solid #3c3c3c;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+
+.ac-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ac-card__title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.ac-card__title svg {
+  color: #4fc3f7;
+}
+
+.ac-card__hint {
+  margin: 6px 0 0;
+  color: #858585;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.ac-card__empty {
+  padding: 34px 0;
+  text-align: center;
+  color: #7a7a7a;
+  font-size: 12.5px;
+}
+
+/* 指标卡 */
+.ac-ov-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.ac-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  background-color: #2d2d30;
+  border: 1px solid #3c3c3c;
+  border-radius: 8px;
+}
+
+.ac-stat__value {
+  color: #ffffff;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+.ac-stat__unit {
+  margin-left: 4px;
+  color: #858585;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.ac-stat__label {
+  color: #858585;
+  font-size: 11.5px;
+}
+
+/* 双图并排（窄视口自动堆叠） */
+.ac-ov-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 16px;
+  margin-top: 14px;
+}
+
+/* 网格项默认 min-width:auto，会被图表内在宽度撑开导致横向溢出，统一收为 0 */
+.ac-ov-cols > * {
+  min-width: 0;
+}
+
+.ac-ov-subtitle {
+  margin: 0 0 4px;
+  color: #a9a9a9;
+  font-size: 12px;
+}
+
+.ac-chart {
+  width: 100%;
+}
+
+/* 榜单完整清单：卡片内限高滚动，表头吸附 */
+.ac-ov-note {
+  margin: 12px 0 6px;
+  color: #7a7a7a;
+  font-size: 11.5px;
+}
+
+.ac-ov-scroll {
+  max-height: 240px;
+  overflow: auto;
+}
+
+.ac-ov-scroll thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+/* 排序维度切换（访问频率/占用空间、计算资源/运行时长） */
+.ac-ov-toggle {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 2px;
+  padding: 2px;
+  background-color: #2d2d30;
+  border: 1px solid #3c3c3c;
+  border-radius: 6px;
+}
+
+.ac-ov-toggle__btn {
+  padding: 4px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: #858585;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ac-ov-toggle__btn:hover {
+  color: #e0e0e0;
+}
+
+.ac-ov-toggle__btn--active {
+  background-color: #094771;
+  color: #ffffff;
+}
+
+.ac-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.ac-ov-rank {
+  width: 44px;
+  color: #858585;
+}
+
+.ac-ov-sub {
+  display: block;
+  margin-top: 2px;
+  color: #858585;
+  font-size: 11.5px;
+}
+
+.ac-ov-warn {
+  color: #ff8a65;
 }

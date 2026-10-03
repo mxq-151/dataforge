@@ -58,7 +58,7 @@ const ActivityBar: React.FC<ActivityBarProps> = ({ activeTab, onTabChange }) => 
     { id: 'scheduleManagement', icon: <Calendar size={20} />, title: '调度管理' },
     { id: 'dataLineage', icon: <GitBranch size={20} />, title: '数据血缘' },
     { id: 'dataQuality', icon: <ShieldCheck size={20} />, title: '数据质量' },
-    { id: 'assetCatalog', icon: <Library size={20} />, title: '资产目录' },
+    { id: 'assetCatalog', icon: <Library size={20} />, title: '资产管理' },
     { id: 'systemManagement', icon: <Shield size={20} />, title: '系统管理' },
     { id: 'settings', icon: <Settings size={20} />, title: '设置' },
   ];

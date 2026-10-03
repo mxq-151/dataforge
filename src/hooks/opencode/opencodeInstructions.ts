@@ -438,7 +438,6 @@ DDL 文件（ddls/{分层}_ddl.sql）同样需在文件最开头书写代码头�
 - 字段说明：
   - @数据源：必填，该文件建表所涉及的数据源名称（来自 metadata 工具），多个用英文逗号分隔
   - @引擎：必填，建表所用存储/计算引擎，取值限定为以下之一：spark、flink、flink_stream、kyuubi、hive、hivecli、doris、clickhouse、starrocks、mysql、postgresql、presto、trino、iceberg、hudi、paimon，须与"技术架构说明"及具体建表语法的引擎一致
-  - @数仓: 可填，所属数仓/项目编码
 - DDL 代码头写法示例：
   \`\`\`plaintext
   /*
@@ -569,7 +568,6 @@ ${DATABASE_ENV_SPEC}
   - @资源参数：本任务运行所需的**资源**（回答"这次给多少资源"），专门用于定义任务所需资源，写法同 @程序参数，取值写**真实值**（不是示例值），如 spark 的 --num-executors 4 --driver-memory 2g --executor-cores 2、flink 的 -p 4 -yjm 1024 -ytm 2048、队列 --queue root.default；只写与业务数据无关的算力与资源归属（并行度、内存、核数、slot、队列），提交调度时自动填入任务节点对应的资源字段，不随程序参数下发；没有资源诉求时填无
   - @任务参数：除资源外的**提交与引擎侧运行参数**（回答"这个任务怎么提交、引擎侧怎么配"），写法同 @程序参数，取值写**真实值**，如 --master yarn --deploy-mode cluster --class com.x.Y、-m yarn-cluster -Dyarn.application.name=ods_trade_order_load_r；提交调度时能对上节点字段的（部署模式、主Class）自动填入、对不上的原样进节点「其他参数」，不随程序参数下发；没有任务参数时填无
   - @数据源：必填，代码用到的数据源名称（来自 metadata 工具），多个用英文逗号分隔
-  - @数仓：可填，所属数仓/项目编码
 
 三个参数字段的区别（落笔前按"这次要算什么 / 这次给多少资源 / 这个任务怎么提交、引擎侧怎么配"判定归属，三者互斥，禁止混写）：
 

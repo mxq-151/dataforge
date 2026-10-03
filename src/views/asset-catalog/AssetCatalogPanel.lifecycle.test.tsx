@@ -72,6 +72,13 @@ const h = vi.hoisted(() => {
       return { code: 200, data: detail };
     }),
     updateLifecycle: vi.fn(async () => ({ code: 200, data: null })),
+    // 默认页签为「资产概况」，面板挂载即会探测这 5 个接口；本文件不覆盖概况，
+    // 统一返回空数据让看板落到「暂无数据」，避免因未定义方法抛错。
+    getInventoryByEnvProject: vi.fn(async () => ({ code: 200, data: [] })),
+    getTopAssets: vi.fn(async () => ({ code: 200, data: [] })),
+    getTopComputeTasks: vi.fn(async () => ({ code: 200, data: [] })),
+    getTaskDelayRate: vi.fn(async () => ({ code: 200, data: null })),
+    getSizeGrowthAnomalies: vi.fn(async () => ({ code: 200, data: [] })),
   };
 
   return { tableNode, detail, state, api };
@@ -82,6 +89,11 @@ vi.mock('../../api/assetCatalog', () => ({
     getCatalogTree: () => h.api.getCatalogTree(),
     getTableDetail: (id: number) => h.api.getTableDetail(id),
     updateLifecycle: (id: number, payload: unknown) => h.api.updateLifecycle(id, payload),
+    getInventoryByEnvProject: () => h.api.getInventoryByEnvProject(),
+    getTopAssets: (params: unknown) => h.api.getTopAssets(params),
+    getTopComputeTasks: (params: unknown) => h.api.getTopComputeTasks(params),
+    getTaskDelayRate: (params: unknown) => h.api.getTaskDelayRate(params),
+    getSizeGrowthAnomalies: (params: unknown) => h.api.getSizeGrowthAnomalies(params),
   },
 }));
 
@@ -92,15 +104,17 @@ const renderPanel = () =>
     </ToastProvider>
   );
 
-/** 点击目录树里的表节点（选中后右栏切换到「基础信息 · 生命周期」） */
+/** 切到「资产目录」页签并点击目录树里的表节点（选中后右栏切换到「基础信息 · 生命周期」） */
 async function selectTable() {
+  // 默认页签为「资产概况」，选表前先切到「资产目录」
+  fireEvent.click(screen.getByText('资产目录'));
   fireEvent.click(await screen.findByText('dwd_trade_order_d'));
 }
 
-/** 按标签取生命周期卡片上的展示值（值节点里带「天」单位，不能直接用 textContent 相等断言） */
-function lifecycleValue(label: string): string {
-  const item = screen.getByText(label).closest('.ac-kv__item');
-  return item?.querySelector('.ac-kv__value')?.textContent ?? '';
+/** 按标签取表详情基础信息里的展示值（该区块与数据探索模块共用 TableDetailContent） */
+function infoValue(label: string): string {
+  const item = screen.getByText(label).closest('.table-detail-modal__info-item');
+  return item?.querySelector('.table-detail-modal__value')?.textContent ?? '';
 }
 
 beforeEach(() => {
@@ -116,9 +130,9 @@ describe('AssetCatalogPanel 生命周期', () => {
     await selectTable();
 
     await waitFor(() => expect(screen.getByText('修改生命周期')).toBeTruthy());
-    expect(lifecycleValue('热数据天数')).toBe('90天');
-    expect(lifecycleValue('冷数据天数')).toBe('180天');
-    expect(lifecycleValue('保留天数')).toBe('720天');
+    expect(infoValue('热数据天数')).toBe('90');
+    expect(infoValue('冷数据天数')).toBe('180');
+    expect(infoValue('保留天数')).toBe('720');
     expect(h.api.getTableDetail).toHaveBeenCalledWith(1);
   });
 
@@ -160,8 +174,8 @@ describe('AssetCatalogPanel 生命周期', () => {
       expect(h.api.updateLifecycle).toHaveBeenCalledWith(1, { hotDays: 30, coldDays: 120, keepDays: 900 })
     );
     await waitFor(() => expect(screen.queryByText(/修改生命周期 · dwd\.dwd_trade_order_d/)).toBeNull());
-    expect(lifecycleValue('热数据天数')).toBe('30天');
-    expect(lifecycleValue('保留天数')).toBe('900天');
+    expect(infoValue('热数据天数')).toBe('30');
+    expect(infoValue('保留天数')).toBe('900');
   });
 
   it('写失败走 toast 提示，弹窗保持打开', async () => {
@@ -181,7 +195,7 @@ describe('AssetCatalogPanel 生命周期', () => {
     renderPanel();
     await selectTable();
 
-    await waitFor(() => expect(screen.getByText('资产详情接口不可用，生命周期暂无法读取与修改。')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('资产详情接口不可用，表详情暂无法读取。')).toBeTruthy());
     expect(h.api.getTableDetail).toHaveBeenCalledTimes(1);
 
     h.state.detailFails = false;
