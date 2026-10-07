@@ -1,0 +1,195 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import AssetDetailTabs from './AssetDetailTabs';
+import { ToastProvider } from '../../components/Toast';
+import type { AssetTableDetailVO } from '../../api/assetCatalog';
+
+/**
+ * 资产详情页签测试。
+ *
+ * 覆盖「页签 ↔ 接口」的接线本身：概览由宿主注入、指标 / 产出任务 / 数据质量 /
+ * 使用记录 / 数据预览 / 使用说明各自探各自的口，读失败降级为「接口未接入 + 能力清单」。
+ * 血缘页签不重复实现（只跳转），权限页签无独立端点（只读说明），两者不在此断言。
+ */
+
+const h = vi.hoisted(() => {
+  const state = {
+    producersFail: false,
+    docContent: '初始说明',
+    saved: null as { id: number; content: string } | null,
+  };
+
+  const api = {
+    getTableIndicators: vi.fn(async () => ({
+      code: 200,
+      data: [
+        { id: 11, code: 'IND_ORDER_AMT', name: '订单金额', topic: '交易', businessOwner: '张三', fieldName: 'amt' },
+      ],
+    })),
+    getTableProducers: vi.fn(async () => {
+      if (state.producersFail) throw new Error('调度系统不可达');
+      return { code: 200, data: [] };
+    }),
+    getTableQuality: vi.fn(async () => ({
+      code: 200,
+      data: {
+        ruleCount: 6,
+        enabledRuleCount: 5,
+        lastRunStatus: 'SUCCESS',
+        lastRunTime: '2026-10-06 02:00',
+        errorCount: 1,
+        failCount: 0,
+        problemRuleCount: 2,
+      },
+    })),
+    getTableUsage: vi.fn(async () => ({
+      code: 200,
+      data: {
+        browseTrend: [{ statDate: '2026-10-05', browseCount: 3, readCount: 1 }],
+        topColumns: [{ columnName: 'amt', hotScore: 4, hitCount: 9 }],
+        topReaders: [{ userName: '李四', readCount: 5 }],
+      },
+    })),
+    previewTable: vi.fn(async () => ({
+      code: 200,
+      data: { columns: ['id', 'amt'], rows: [['1', '100']] },
+    })),
+    getTableDoc: vi.fn(async () => ({
+      code: 200,
+      data: { content: state.docContent, updateTime: '2026-10-06 10:00', updateBy: 'zhangsan' },
+    })),
+    saveTableDoc: vi.fn(async (id: number, content: string) => {
+      state.saved = { id, content };
+      state.docContent = content;
+      return { code: 200, data: null };
+    }),
+    listDocHistory: vi.fn(async () => ({
+      code: 200,
+      data: [{ version: 2, updateTime: '2026-10-06 10:00', updateBy: 'zhangsan' }],
+    })),
+  };
+
+  return { state, api };
+});
+
+vi.mock('../../api/assetCatalog', () => ({
+  assetCatalogApi: {
+    getTableIndicators: (id: number) => h.api.getTableIndicators(id),
+    getTableProducers: (id: number) => h.api.getTableProducers(id),
+    getTableQuality: (id: number) => h.api.getTableQuality(id),
+    getTableUsage: (id: number, params: unknown) => h.api.getTableUsage(id, params),
+    previewTable: (id: number, params: unknown) => h.api.previewTable(id, params),
+    getTableDoc: (id: number) => h.api.getTableDoc(id),
+    saveTableDoc: (id: number, content: string) => h.api.saveTableDoc(id, content),
+    listDocHistory: (id: number) => h.api.listDocHistory(id),
+  },
+}));
+
+const detail = {
+  id: 1,
+  databaseName: 'dwd',
+  tableName: 'dwd_trade_order_d',
+  visibility: 'internal',
+  assetLevel: 'L2',
+  businessOwner: '',
+  techOwner: '',
+} as unknown as AssetTableDetailVO;
+
+const renderTabs = (onAccess?: (t: 'browse' | 'read') => void) =>
+  render(
+    <ToastProvider>
+      <AssetDetailTabs
+        tableId={1}
+        detail={detail}
+        overviewContent={<div>概览内容占位</div>}
+        onAccess={onAccess}
+      />
+    </ToastProvider>
+  );
+
+const openTab = async (name: string) => {
+  fireEvent.click(screen.getByRole('tab', { name }));
+};
+
+beforeEach(() => {
+  h.state.producersFail = false;
+  h.state.docContent = '初始说明';
+  h.state.saved = null;
+});
+
+describe('AssetDetailTabs 页签接线', () => {
+  it('默认落在概览页签并渲染宿主注入的内容', () => {
+    renderTabs();
+    expect(screen.getByText('概览内容占位')).toBeTruthy();
+    expect(screen.getByRole('tab', { name: '概览' }).getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('指标页签按 /table/{id}/indicators 取数并渲染', async () => {
+    renderTabs();
+    await openTab('指标');
+
+    await waitFor(() => expect(screen.getByText('IND_ORDER_AMT')).toBeTruthy());
+    expect(h.api.getTableIndicators).toHaveBeenCalledWith(1);
+    expect(screen.getByText('订单金额')).toBeTruthy();
+  });
+
+  it('产出任务接口失败时降级为「接口未接入 + 能力清单」', async () => {
+    h.state.producersFail = true;
+    renderTabs();
+    await openTab('产出任务');
+
+    await waitFor(() =>
+      expect(screen.getByText(/服务端 \/api\/asset\/table\/1\/producers 尚未接入/)).toBeTruthy()
+    );
+  });
+
+  it('数据质量页签渲染规则数与未通过规则数', async () => {
+    renderTabs();
+    await openTab('数据质量');
+
+    await waitFor(() => expect(screen.getByText('未通过规则')).toBeTruthy());
+    expect(h.api.getTableQuality).toHaveBeenCalledWith(1);
+    expect(screen.getByText('2')).toBeTruthy();
+  });
+
+  it('使用记录页签按 usage 接口渲染趋势与字段热度', async () => {
+    renderTabs();
+    await openTab('使用记录');
+
+    await waitFor(() => expect(screen.getByText('2026-10-05')).toBeTruthy());
+    expect(h.api.getTableUsage).toHaveBeenCalledWith(1, { days: 30 });
+    expect(screen.getByText('李四')).toBeTruthy();
+  });
+
+  it('数据预览按 preview 接口渲染列头，并上报一次 read 埋点', async () => {
+    const onAccess = vi.fn();
+    renderTabs(onAccess);
+    await openTab('数据预览');
+
+    await waitFor(() => expect(screen.getByText('amt')).toBeTruthy());
+    expect(h.api.previewTable).toHaveBeenCalledWith(1, { limit: 20 });
+    await waitFor(() => expect(onAccess).toHaveBeenCalledWith('read'));
+  });
+
+  it('使用说明可编辑并保存（PUT /table/{id}/doc）', async () => {
+    renderTabs();
+    await openTab('使用说明');
+
+    const textarea = (await screen.findByLabelText('使用说明')) as HTMLTextAreaElement;
+    await waitFor(() => expect(textarea.value).toBe('初始说明'));
+
+    fireEvent.change(textarea, { target: { value: '新说明内容' } });
+    fireEvent.click(screen.getByText('保存'));
+
+    await waitFor(() => expect(h.api.saveTableDoc).toHaveBeenCalledWith(1, '新说明内容'));
+    expect(h.state.saved).toEqual({ id: 1, content: '新说明内容' });
+  });
+
+  it('使用说明未修改时保存按钮不可点', async () => {
+    renderTabs();
+    await openTab('使用说明');
+
+    const button = (await screen.findByText('保存')).closest('button') as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+  });
+});

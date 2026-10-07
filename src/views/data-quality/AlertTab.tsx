@@ -3,12 +3,14 @@
  *
  * ── 定位 ────────────────────────────────────────────────────
  * 订阅挂在质检任务上：命中哪些校验结果时告警（橙色异常 / 红色异常 / 校验失败）、
- * 发给谁、走哪些渠道。渠道第一期只落站内记录，Webhook 与邮件作为可选渠道保留编码，
- * 由服务端决定是否真正投递 —— 前端只负责订阅配置的采集与回显。
+ * 发给谁、走哪些渠道。前端只负责订阅配置的采集与回显，是否真正投递由服务端决定：
+ * 「站内记录」落 dq_alert_log 即送达；Webhook 需服务端配置 alert.webhook.url 后投递；
+ * 邮件的 SMTP 尚未接入，相关记录会明确停在「待发」并写明原因。
+ * 投递结果与失败原因在本页签下方的「告警记录」区段（AlertLogSection）展示。
  *
  * ── 接口 ────────────────────────────────────────────────────
- * 走 api/quality 的 /quality/alert（suppressError: true），读失败在页签内呈现，
- * 写失败用 toast 提示。接口只提供 GET / POST：启停与编辑都通过 POST 覆盖保存。
+ * 走 api/quality 的 /quality/alert（订阅）与 /quality/alert/log（告警记录），均 suppressError: true，
+ * 读失败在页签内呈现，写失败用 toast 提示。订阅接口只提供 GET / POST：启停与编辑都通过 POST 覆盖保存。
  */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -16,6 +18,7 @@ import { Plus, Edit3, Power, CircleAlert } from 'lucide-react';
 import { qualityApi } from '../../api/quality';
 import type { QualityAlertSubscriptionVO, QualityTaskVO } from '../../types/quality';
 import { useToast } from '../../components/Toast';
+import AlertLogSection from './AlertLogSection';
 
 const PAGE_SIZE = 10;
 
@@ -26,7 +29,7 @@ const NOTIFY_OPTIONS = [
   { code: 'FAILED', label: '校验失败' },
 ];
 
-/** 渠道编码。第一期只落站内记录，其余渠道由服务端决定是否投递 */
+/** 渠道编码。站内记录落库即送达；Webhook 需服务端配地址；邮件 SMTP 未接入 */
 const CHANNEL_OPTIONS = [
   { code: 'INBOX', label: '站内记录' },
   { code: 'EMAIL', label: '邮件' },
@@ -224,8 +227,8 @@ const AlertTab: React.FC = () => {
     <div>
       <div className="dq-toolbar">
         <p className="dq-muted dq-toolbar__lead">
-          订阅挂在质检任务上：命中选定结果时按渠道通知接收人。第一期渠道只落站内记录，
-          接收人支持逗号分隔多人。
+          订阅挂在质检任务上：命中选定结果时按渠道通知接收人。「站内记录」落库即送达；
+          Webhook 需服务端配置地址后才会实际投递；接收人支持逗号分隔多人。
         </p>
         <button className="dq-btn dq-btn--primary" onClick={openCreate}>
           <Plus size={14} /> 新增订阅
@@ -312,6 +315,8 @@ const AlertTab: React.FC = () => {
         </div>
       )}
 
+      <AlertLogSection />
+
       {dialogOpen && (
         <div className="dq-modal-overlay">
           <div className="dq-modal dq-modal--sm">
@@ -364,7 +369,10 @@ const AlertTab: React.FC = () => {
                   selected={form.channels}
                   onChange={next => setForm(f => ({ ...f, channels: next }))}
                 />
-                <p className="dq-hint">第一期只落站内记录，邮件与 Webhook 由服务端决定是否投递。</p>
+                <p className="dq-hint">
+                  站内记录落库即送达；Webhook 需服务端配置地址后投递；邮件通道尚未接入，
+                  会停在「待发」并写明原因（见下方告警记录）。
+                </p>
               </div>
 
               <div className="dq-form-group">

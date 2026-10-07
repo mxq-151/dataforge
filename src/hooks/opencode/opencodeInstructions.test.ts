@@ -22,6 +22,7 @@ import {
   DATA_ARCHITECT_INSTRUCTIONS,
   DATA_DEV_ENGINEER_INSTRUCTIONS,
   BUSINESS_REQUESTER_INSTRUCTIONS,
+  getDeveloperInstructions,
 } from './opencodeInstructions';
 import { parseQualityRulesFromDesignDoc } from '../../utils/qualityRuleImport';
 
@@ -237,5 +238,152 @@ describe('产物路径 — 三方引用同一套约定', () => {
 
   it.each(STAGES)('$id 要求 {业务名称} 与上下游保持一致', ({ prompt }) => {
     expect(prompt).toMatch(/\{业务名称\}[^。\n]*一致|一致[^。\n]*\{业务名称\}/);
+  });
+});
+
+/**
+ * 规则模板下发（中间档）—— 只进 S3，目的是把「同一类规则各写一套 SQL」的实现走样收掉。
+ * 详见 buildQualityTemplateSpec 的注释。
+ */
+describe('质量规则模板下发', () => {
+  const template = {
+    id: 1,
+    templateCode: 'PRIMARY_KEY_UNIQUE',
+    templateName: '主键唯一性',
+    ruleType: 'PRIMARY_KEY_UNIQUE',
+    templateKind: 'builtin' as const,
+    // 骨架里含 ${占位符}：拼进模板字符串时若不做转义会被当插值吃掉，这里固定住
+    sqlTemplate: 'SELECT ${column} FROM ${table} GROUP BY ${column} HAVING COUNT(1) > 1',
+    fieldTypes: '',
+    paramSchema: '',
+    remark: '主键/唯一键重复检测',
+    enabled: true,
+  };
+
+  it('把模板编码、规则类型、SQL 骨架逐字拼进 S3 提示词', () => {
+    const prompt = getDeveloperInstructions('DATA_DEV_ENGINEER', 'u', 'dev-assistant', [template]);
+
+    expect(prompt).toContain('## 质量规则模板（平台预置，实现须照此骨架）');
+    expect(prompt).toContain('主键唯一性（PRIMARY_KEY_UNIQUE）· 内置模板');
+    expect(prompt).toContain('模板编码：PRIMARY_KEY_UNIQUE');
+    // 占位符必须原样保留，不能被当模板字符串插值吃掉
+    expect(prompt).toContain('SELECT ${column} FROM ${table} GROUP BY ${column} HAVING COUNT(1) > 1');
+    // 约束：模板由规则类型唯一决定 + 回传须带实际执行的 SQL
+    expect(prompt).toContain('模板由规则类型唯一决定，禁止自选模板');
+    expect(prompt).toContain('execSql');
+  });
+
+  it('自定义模板标注为自定义，且内置模板排在前面（提示词约定内置优先）', () => {
+    const custom = {
+      ...template,
+      id: 2,
+      templateCode: 'CUSTOM_AMT_RANGE',
+      templateName: '订单金额区间',
+      ruleType: 'VALUE_RANGE',
+      templateKind: 'custom' as const,
+      sqlTemplate: 'SELECT COUNT(1) FROM ${table} WHERE ${column} < 0',
+    };
+    const prompt = getDeveloperInstructions('DATA_DEV_ENGINEER', 'u', 'dev-assistant', [template, custom]);
+
+    expect(prompt.indexOf('PRIMARY_KEY_UNIQUE')).toBeLessThan(prompt.indexOf('CUSTOM_AMT_RANGE'));
+    expect(prompt).toContain('· 自定义模板');
+  });
+
+  it('停用或 SQL 为空的模板不下发', () => {
+    const prompt = getDeveloperInstructions('DATA_DEV_ENGINEER', 'u', 'dev-assistant', [
+      { ...template, enabled: false },
+      { ...template, id: 3, templateCode: 'EMPTY_ONE', sqlTemplate: '   ' },
+    ]);
+
+    expect(prompt).not.toContain('## 质量规则模板');
+    expect(prompt).not.toContain('EMPTY_ONE');
+  });
+
+  it('模板为空或拉取失败时退回「只有术语表」的旧形态，S3 仍可工作', () => {
+    const noTemplate = getDeveloperInstructions('DATA_DEV_ENGINEER', 'u', 'dev-assistant', []);
+    const undefinedTemplate = getDeveloperInstructions('DATA_DEV_ENGINEER', 'u', 'dev-assistant');
+
+    expect(noTemplate).not.toContain('## 质量规则模板');
+    expect(noTemplate).not.toContain('## 质量规则模板');
+    // 术语表与回传规范仍在，S3 不因模板缺失而失去基本约束
+    expect(noTemplate).toContain('数据质量规则类型（全链路统一术语）');
+    expect(noTemplate).toContain('/api/quality/run/report');
+    expect(undefinedTemplate).not.toContain('## 质量规则模板');
+  });
+
+  it('S1 / S2 / 数据探索不下发模板 SQL 骨架', () => {
+    expect(getDeveloperInstructions('BUSINESS_REQUESTER', 'u', 'dev-assistant', [template]))
+      .not.toContain('## 质量规则模板');
+    expect(getDeveloperInstructions('DATA_ARCHITECT', 'u', 'dev-assistant', [template]))
+      .not.toContain('## 质量规则模板');
+    expect(getDeveloperInstructions('DATA_ANALYST', 'u', 'dev-assistant', [template]))
+      .not.toContain('## 质量规则模板');
+    // 数据探索模块按 moduleName 短路，即使角色是数据开发也不该带模板
+    expect(getDeveloperInstructions('DATA_DEV_ENGINEER', 'u', 'data-explore', [template]))
+      .not.toContain('## 质量规则模板');
+  });
+
+  it('回传规范声明了 ruleId 与 execSql 两个字段', () => {
+    const prompt = DATA_DEV_ENGINEER_INSTRUCTIONS;
+    expect(prompt).toContain('| ruleId | 否 |');
+    expect(prompt).toContain('| execSql | 否 |');
+    expect(prompt).toContain('带上 ruleId 后关联不再依赖名字');
+  });
+});
+
+/**
+ * 规则登记（把关联键从规则名字符串换成 ID）—— 同样只进 S3。
+ */
+describe('规则登记规范', () => {
+  it('S3 提示词声明登记接口、幂等语义与取回 ruleId 的用法', () => {
+    const prompt = DATA_DEV_ENGINEER_INSTRUCTIONS;
+
+    expect(prompt).toContain('## 规则登记规范（强约束）');
+    expect(prompt).toContain('/api/quality/rule/register');
+    // 幂等：判定键必须写清，否则 S3 会以为重复登记会建新规则而选择跳过
+    expect(prompt).toContain('平台按"规则名 + 库 + 表"判定同一条规则');
+    expect(prompt).toContain('既不新建也不覆盖已有阈值');
+    // 令牌沿用回传那套环境变量，不另起一套
+    expect(prompt).toContain('DATAFORGE_QUALITY_REPORT_TOKEN');
+    // 失败不阻塞开发，但要在汇报里列出
+    expect(prompt).toContain('必须在交付汇报里列出未登记成功的规则');
+    // 自检清单要覆盖登记
+    expect(prompt).toContain('登记合规');
+  });
+
+  it('登记接口只出现在数据开发提示词里，S1 / S2 不得出现', () => {
+    expect(DATA_DEV_ENGINEER_INSTRUCTIONS).toContain('/api/quality/rule/register');
+    expect(BUSINESS_REQUESTER_INSTRUCTIONS).not.toContain('/api/quality/rule/register');
+    expect(DATA_ARCHITECT_INSTRUCTIONS).not.toContain('/api/quality/rule/register');
+    expect(BUSINESS_REQUESTER_INSTRUCTIONS).not.toContain('规则登记规范');
+    expect(DATA_ARCHITECT_INSTRUCTIONS).not.toContain('规则登记规范');
+  });
+
+  it('登记可顺带挂任务，且说清不挂任务的后果', () => {
+    const prompt = DATA_DEV_ENGINEER_INSTRUCTIONS;
+
+    expect(prompt).toContain('可选字段 taskId');
+    // 后果要写出来，否则 S3 不会认为这一步重要
+    expect(prompt).toContain('不挂任务的规则在平台里是"孤儿"');
+    expect(prompt).toContain('告警订阅也订不到它');
+    // 拿不到任务 ID 时的兜底（平台侧概念，程序无从发现）
+    expect(prompt).toContain('并在交付汇报里提示"需人工在质检任务页签挂载"');
+  });
+});
+
+/**
+ * 回传的表级权限：平台会 fail-close 校验，提示词必须提前说清，否则程序会以为"随便传都能落"。
+ */
+describe('回传的表级权限约定', () => {
+  it('提示词声明无权读表会被拒绝登记结果', () => {
+    const prompt = DATA_DEV_ENGINEER_INSTRUCTIONS;
+
+    expect(prompt).toContain('无权读取的表会被拒绝登记结果');
+    expect(prompt).toContain('令牌的权限就是发放者账号的权限');
+  });
+
+  it('权限说明不进 S1 / S2 提示词', () => {
+    expect(BUSINESS_REQUESTER_INSTRUCTIONS).not.toContain('无权读取的表会被拒绝登记结果');
+    expect(DATA_ARCHITECT_INSTRUCTIONS).not.toContain('无权读取的表会被拒绝登记结果');
   });
 });

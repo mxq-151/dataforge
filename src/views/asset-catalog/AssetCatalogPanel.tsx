@@ -5,7 +5,7 @@
  * 两个模块级页签：
  * - 资产概况：盘子与成本（环境×项目规模、访问/空间 TOP100、资源/耗时 TOP50、
  *   任务延迟率、数据大小突增），见 AssetOverviewTab，默认落在本页签；
- * - 资产目录：找数认数（目录树 + 检索 + 表详情/生命周期），本文件承载。
+ * - 资产目录：找数认数（目录树 + 检索 + 表详情），本文件承载。
  *
  * ── 定位 ────────────────────────────────────────────────────
  * 资产目录是「人」侧的元数据调研入口，与智能体侧的元数据代理接口 /metadata/agent 对位。
@@ -15,14 +15,26 @@
  * ── 与数据探索的边界（刻意并存，不重复建设）──────────────────
  * - 数据探索：取数即席查询（我要查数、我要写 SQL）
  * - 资产目录：治理视角的浏览与检索（含负责人、分类、质量、使用热度）
- * 库表树由两处共用同一组件（DBTableBrowser 的抽取在第二批完成）；本面板不重复实现
- * 查询编辑器，需要查询时跳数据探索；不重复实现血缘图，血缘页签复用 Marquez 客户端。
+ * - 血缘不重复实现：详情「血缘」页签跳数据血缘模块（Marquez 客户端）
+ * - 库表树与表详情内容与数据探索共用同一组件（DBTableBrowser / TableDetailContent）
  *
- * ── 当前阶段：目录树/检索待接入，生命周期可修改 ──────────────
- * 服务端第一批只完成建表：目录树、检索、详情在接口不可达时显示「接口待接入」+ 能力清单。
- * 已接入的写能力只有一项 —— 选中表后可修改生命周期（热/冷/保留天数）。三档语义为
- * 存储分层与保留期，须满足 hotDays ≤ coldDays ≤ keepDays；落库走 table_metadata 既有列，
- * 不新建生命周期副本。读失败在区块内降级为「不可用 + 重新加载」，写失败才用 toast 提示。
+ * ── 主区视图 ────────────────────────────────────────────────
+ * 右栏有三种互斥视图，由用户动作切换：
+ * - detail：选中一张表后的详情（概览 + 8 个能力页签，见 AssetDetailTabs）
+ * - search：提交检索后的结果列表（表 / 字段 / 指标三类，服务端已按权限过滤）
+ * - bookmark：我的收藏列表
+ *
+ * ── 接口接线 ────────────────────────────────────────────────
+ * 目录树 / 详情 / 生命周期 → 本文件；治理写操作（负责人、分类、标签、刷新元数据）
+ * → AssetGovernanceEditor；详情各能力页签 → AssetDetailTabs；档案检索 / 收藏 / 治理项
+ * 三个列表视图 → 本文件内的 SearchResultPane / BookmarkPane / GovernanceSection。
+ * 读失败按区块降级为「不可用 + 能力清单」，写失败才用 toast 提示。
+ *
+ * ── 埋点 ────────────────────────────────────────────────────
+ * 选中表记 browse、打开数据预览记 read、新增收藏记 bookmark，走 POST /asset/access。
+ * 埋点属非关键路径：任何失败静默降级，不阻塞交互，也不提示用户。
+ * 说明：/access 服务端要求 assetId 非空，因此「检索」这个没有具体资产的动作不上报，
+ * 避免写入 assetId=0 的脏埋点。
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -45,9 +57,25 @@ import {
   LayoutDashboard,
 } from 'lucide-react';
 import { assetCatalogApi } from '../../api/assetCatalog';
-import type { AssetLifecycleVO, AssetTableDetailVO, CatalogTreeNode, CatalogViewMode } from '../../api/assetCatalog';
+import type {
+  AnnotationGapSummary,
+  AssetAccessType,
+  AssetHealthIssueVO,
+  AssetInventoryVO,
+  AssetLifecycleVO,
+  AssetSearchHit,
+  AssetSearchResult,
+  AssetSearchType,
+  AssetTableDetailVO,
+  CatalogTreeNode,
+  CatalogViewMode,
+} from '../../api/assetCatalog';
+import type { PageResult } from '../../api/types';
 import { useToast } from '../../components/Toast';
+import { useProbe } from './useProbe';
 import AssetOverviewTab from './AssetOverviewTab';
+import AssetDetailTabs from './AssetDetailTabs';
+import AssetGovernanceEditor from './AssetGovernanceEditor';
 import TableDetailContent from '../data-explore/TableDetailContent';
 import type { TableDetailData } from '../data-explore/TableDetailContent';
 import './AssetCatalogPanel.css';
@@ -68,33 +96,11 @@ const MODULE_TABS: Array<{ id: AssetTabId; label: string; icon: React.ReactNode 
   { id: 'catalog', label: '资产目录', icon: <Library size={14} /> },
 ];
 
-/** 详情页签（接口就绪后逐个接入，这里先固定顺序） */
-const DETAIL_TABS = [
-  '概览',
-  '字段',
-  '分区',
-  '血缘',
-  '指标',
-  '产出任务',
-  '数据质量',
-  '使用记录',
-  '权限',
-  '使用说明',
-] as const;
+/** 右栏视图：详情 / 检索结果 / 收藏列表 */
+type MainView = 'detail' | 'search' | 'bookmark';
 
-/** 资产详情的规划内容（供占位说明使用） */
-const DETAIL_PLAN: Array<{ tab: string; content: string }> = [
-  { tab: '概览', content: '分层 / 业务域 / 负责人 / 主题域 / 可见性 / 生命周期 / 存储量 / 行数 / 最近更新 / 治理项' },
-  { tab: '字段', content: '字段类型、注释与业务描述、主键与分区标记、安全等级、字段热度星级' },
-  { tab: '分区', content: '分区字段、分区记录数与存储量' },
-  { tab: '血缘', content: '表级与字段级上下游（复用 Marquez 客户端，可跳数据血缘）' },
-  { tab: '指标', content: '该表产出的指标（按 indicators_fields 反查）：指标编码、名称、主题域、业务负责人' },
-  { tab: '产出任务', content: '写入该表的调度工作流与节点（服务端代理查询 DolphinScheduler）' },
-  { tab: '数据质量', content: '该表的规则数、最近一次校验结果、未通过规则条数（跨模块读质量模块）' },
-  { tab: '使用记录', content: '浏览与读取趋势、字段热度明细、读取 TOP 人员（T+1 汇总）' },
-  { tab: '权限', content: '当前用户对该表的行 / 列权限（既有 sys_table_permission，只读展示）' },
-  { tab: '使用说明', content: 'markdown 说明与历史版本（复用知识库文档能力）' },
-];
+const SEARCH_PAGE_SIZE = 10;
+const BOOKMARK_PAGE_SIZE = 20;
 
 /** 治理项口径：全部可核查，不引入加权评分 */
 const HEALTH_ITEMS = [
@@ -130,6 +136,40 @@ function validateLifecycle(form: LifecycleForm): { value?: AssetLifecycleVO; err
   if (hot > cold) return { error: '热数据天数不得大于冷数据天数' };
   if (cold > keep) return { error: '冷数据天数不得大于保留天数' };
   return { value: { hotDays: hot, coldDays: cold, keepDays: keep } };
+}
+
+/** 字节数 → 人类可读（与资产概况保持一致的口径） */
+function formatBytes(bytes: number | null | undefined): string {
+  if (bytes == null || !Number.isFinite(bytes)) return '—';
+  if (bytes <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / 1024 ** i;
+  return `${value >= 100 ? value.toFixed(0) : value.toFixed(2)} ${units[i]}`;
+}
+
+/** 检索命中的资产类型 → 中文名 */
+const HIT_TYPE_LABEL: Record<AssetSearchType, string> = {
+  table: '表',
+  column: '字段',
+  indicator: '指标',
+};
+
+/** 把检索命中折叠成一个「表」节点，复用详情视图的选中语义 */
+function hitToTableNode(hit: AssetSearchHit): CatalogTreeNode | null {
+  const tableMetadataId = hit.assetType === 'table' ? hit.id : hit.tableMetadataId;
+  if (!tableMetadataId) return null;
+  const [databaseName, tableName] = hit.subtitle.includes('.')
+    ? [hit.subtitle.split('.')[0], hit.subtitle.split('.').pop() ?? '']
+    : ['', hit.title];
+  return {
+    key: `table:${tableMetadataId}`,
+    label: hit.title,
+    nodeKind: 'table',
+    tableMetadataId,
+    databaseName,
+    tableName,
+  };
 }
 
 const TreePlaceholder: React.FC<{ view: CatalogViewMode }> = ({ view }) => (
@@ -223,22 +263,441 @@ const TreeNodeItem: React.FC<{
   );
 };
 
+/** 视图级不可用占位（与详情页签同一套视觉） */
+const PaneUnavailable: React.FC<{ title: string; apiPath: string; items: string[] }> = ({
+  title,
+  apiPath,
+  items,
+}) => (
+  <div className="ac-placeholder">
+    <div className="ac-placeholder__head">
+      <CircleAlert size={14} />
+      <span>
+        服务端 {apiPath} 尚未接入，{title}暂不可用。
+      </span>
+    </div>
+    <p className="ac-placeholder__lead">接口就绪后将提供：</p>
+    <ul className="ac-placeholder__list">
+      {items.map(item => (
+        <li key={item}>{item}</li>
+      ))}
+    </ul>
+  </div>
+);
+
+/** 分页条（检索与收藏共用） */
+const Pager: React.FC<{
+  current: number;
+  size: number;
+  total: number;
+  onChange: (next: number) => void;
+}> = ({ current, size, total, onChange }) => {
+  const pages = Math.max(1, Math.ceil(total / size));
+  if (total <= size) return null;
+  return (
+    <div className="ac-inlinebar ac-inlinebar--pager">
+      <button
+        className="ac-btn ac-btn--ghost"
+        type="button"
+        disabled={current <= 1}
+        onClick={() => onChange(current - 1)}
+      >
+        上一页
+      </button>
+      <span className="ac-muted">
+        第 {current} / {pages} 页 · 共 {total} 条
+      </span>
+      <button
+        className="ac-btn ac-btn--ghost"
+        type="button"
+        disabled={current >= pages}
+        onClick={() => onChange(current + 1)}
+      >
+        下一页
+      </button>
+    </div>
+  );
+};
+
+// ── 检索结果 ────────────────────────────────────────────────
+
+const SearchResultPane: React.FC<{
+  keyword: string;
+  onOpenTable: (hit: AssetSearchHit) => void;
+}> = ({ keyword, onOpenTable }) => {
+  const [page, setPage] = useState(1);
+  const { status, data } = useProbe<AssetSearchResult>(
+    () => assetCatalogApi.search({ keyword, current: page, size: SEARCH_PAGE_SIZE }),
+    [keyword, page]
+  );
+
+  useEffect(() => {
+    setPage(1);
+  }, [keyword]);
+
+  if (status === 'loading') return <div className="ac-loading">检索中…</div>;
+  if (status === 'unavailable')
+    return (
+      <PaneUnavailable
+        title="检索"
+        apiPath="/api/asset/search"
+        items={['表 / 字段 / 指标三类统一检索', '命中片段高亮、负责人与分层业务域', '结果由服务端按库表权限过滤']}
+      />
+    );
+  if (!data || data.total === 0) {
+    return (
+      <div className="ac-placeholder">
+        <div className="ac-placeholder__head">
+          <Info size={14} />
+          <span>未检索到与「{keyword}」匹配的表、字段或指标。</span>
+        </div>
+        <p className="ac-placeholder__lead">可尝试更短的关键词，或切换到规范视角浏览分层与业务域。</p>
+      </div>
+    );
+  }
+
+  const renderHits = (title: string, hits: AssetSearchHit[]) =>
+    hits.length === 0 ? null : (
+      <section className="ac-section ac-section--tight" key={title}>
+        <h4 className="ac-section__title">
+          <span>{title}</span>
+          <span className="ac-section__hint">{hits.length} 条</span>
+        </h4>
+        <ul className="ac-hitlist">
+          {hits.map(hit => (
+            <li key={`${hit.assetType}-${hit.id}-${hit.subtitle}`}>
+              <button
+                type="button"
+                className="ac-hit"
+                disabled={hit.assetType === 'indicator' || (!hit.tableMetadataId && hit.assetType === 'column')}
+                onClick={() => onOpenTable(hit)}
+              >
+                <span className={`ac-hit__type ac-hit__type--${hit.assetType}`}>{HIT_TYPE_LABEL[hit.assetType]}</span>
+                <span className="ac-hit__title">{hit.title}</span>
+                <span className="ac-hit__subtitle">{hit.subtitle}</span>
+                <span className="ac-hit__meta">
+                  {hit.layerCode && <span className="ac-tree__badge">{hit.layerCode}</span>}
+                  {hit.domainCode && <span className="ac-tree__badge">{hit.domainCode}</span>}
+                  {hit.ownerName && <span className="ac-muted">{hit.ownerName}</span>}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </section>
+    );
+
+  return (
+    <>
+      <p className="ac-muted">
+        命中 {data.total} 条，以下按表 / 字段 / 指标分组。字段命中点击后跳到所属表；指标详情在指标管理模块维护。
+      </p>
+      {renderHits('表', data.tables ?? [])}
+      {renderHits('字段', data.columns ?? [])}
+      {renderHits('指标', data.indicators ?? [])}
+      <Pager current={page} size={SEARCH_PAGE_SIZE} total={data.total} onChange={setPage} />
+    </>
+  );
+};
+
+// ── 收藏列表 ────────────────────────────────────────────────
+
+const BookmarkPane: React.FC<{
+  onOpenTable: (hit: AssetSearchHit) => void;
+  onChanged: () => void;
+}> = ({ onOpenTable, onChanged }) => {
+  const toast = useToast();
+  const [page, setPage] = useState(1);
+  const [version, setVersion] = useState(0);
+  const { status, data } = useProbe<PageResult<AssetSearchHit>>(
+    () => assetCatalogApi.listBookmarks({ current: page, size: BOOKMARK_PAGE_SIZE }),
+    [page, version]
+  );
+
+  const remove = async (hit: AssetSearchHit) => {
+    try {
+      await assetCatalogApi.removeBookmark({ assetType: hit.assetType, assetId: hit.id });
+      toast.info('已取消收藏');
+      setVersion(n => n + 1);
+      onChanged();
+    } catch (e) {
+      toast.error(`取消收藏失败：${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
+  if (status === 'loading') return <div className="ac-loading">加载中…</div>;
+  if (status === 'unavailable')
+    return (
+      <PaneUnavailable
+        title="我的收藏"
+        apiPath="/api/asset/bookmark"
+        items={['当前用户收藏的表 / 字段 / 指标', '一键取消收藏']}
+      />
+    );
+
+  const records = data?.records ?? [];
+  if (records.length === 0) {
+    return (
+      <div className="ac-placeholder">
+        <div className="ac-placeholder__head">
+          <Bookmark size={14} />
+          <span>还没有收藏任何资产。</span>
+        </div>
+        <p className="ac-placeholder__lead">在表详情右上角点「收藏」，即可把常用表固定到这里。</p>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <ul className="ac-hitlist">
+        {records.map(hit => (
+          <li key={`${hit.assetType}-${hit.id}-${hit.subtitle}`}>
+            <div className="ac-hit ac-hit--row">
+              <button
+                type="button"
+                className="ac-hit__main"
+                disabled={hit.assetType === 'indicator'}
+                onClick={() => onOpenTable(hit)}
+              >
+                <span className={`ac-hit__type ac-hit__type--${hit.assetType}`}>{HIT_TYPE_LABEL[hit.assetType]}</span>
+                <span className="ac-hit__title">{hit.title}</span>
+                <span className="ac-hit__subtitle">{hit.subtitle}</span>
+              </button>
+              <button className="ac-btn ac-btn--ghost" type="button" onClick={() => remove(hit)}>
+                取消收藏
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
+      <Pager
+        current={page}
+        size={BOOKMARK_PAGE_SIZE}
+        total={data?.total ?? 0}
+        onChange={setPage}
+      />
+    </>
+  );
+};
+
+// ── 治理项（未选中表时的盘点看板）───────────────────────────
+
+const GovernanceSection: React.FC = () => {
+  const overview = useProbe<AssetInventoryVO>(() => assetCatalogApi.getInventoryOverview(), []);
+  const health = useProbe<AssetHealthIssueVO[]>(() => assetCatalogApi.getInventoryHealth(), []);
+  const gaps = useProbe<AnnotationGapSummary>(() => assetCatalogApi.getAnnotationGaps({ current: 1, size: 200 }), []);
+
+  return (
+    <>
+      <section className="ac-section">
+        <h4 className="ac-section__title">
+          <Library size={13} />
+          <span>资产盘点</span>
+        </h4>
+        {overview.status === 'loading' && <div className="ac-loading">加载中…</div>}
+        {overview.status === 'unavailable' && (
+          <p className="ac-muted">服务端 /api/asset/inventory/overview 尚未接入，资产盘点暂不可用。</p>
+        )}
+        {overview.status === 'ok' && overview.data && (
+          <>
+            <div className="ac-detailstats">
+              <div className="ac-detailstat">
+                <span className="ac-detailstat__value">{overview.data.totalTables}</span>
+                <span className="ac-detailstat__label">表总数</span>
+              </div>
+              <div className="ac-detailstat">
+                <span className="ac-detailstat__value">{overview.data.totalColumns}</span>
+                <span className="ac-detailstat__label">字段总数</span>
+              </div>
+              <div className="ac-detailstat">
+                <span className="ac-detailstat__value">{formatBytes(overview.data.totalSizeBytes)}</span>
+                <span className="ac-detailstat__label">占用空间</span>
+              </div>
+              <div className="ac-detailstat">
+                <span
+                  className={`ac-detailstat__value ${overview.data.unclassifiedCount > 0 ? 'ac-detailstat__value--warn' : ''}`}
+                >
+                  {overview.data.unclassifiedCount}
+                </span>
+                <span className="ac-detailstat__label">未分类表</span>
+              </div>
+            </div>
+            {(overview.data.byLayer ?? []).length > 0 && (
+              <table className="ac-table">
+                <thead>
+                  <tr>
+                    <th>分层</th>
+                    <th>表数</th>
+                    <th>占用空间</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {overview.data.byLayer.map(layer => (
+                    <tr key={layer.layerCode}>
+                      <td className="ac-table__strong">{layer.layerCode || '未分类'}</td>
+                      <td>{layer.tableCount}</td>
+                      <td>{formatBytes(layer.sizeBytes)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </>
+        )}
+      </section>
+
+      <section className="ac-section">
+        <h4 className="ac-section__title">
+          <Tag size={13} />
+          <span>治理项</span>
+        </h4>
+        <p className="ac-muted">
+          治理项只做可核查计数，不引入加权评分 —— 每个治理项都能追到具体对象。口径：
+        </p>
+        <ul className="ac-list">
+          {HEALTH_ITEMS.map(item => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+        {health.status === 'loading' && <div className="ac-loading">加载中…</div>}
+        {health.status === 'unavailable' && (
+          <p className="ac-muted">服务端 /api/asset/inventory/health 尚未接入，治理项计数暂不可用。</p>
+        )}
+        {health.status === 'ok' &&
+          ((health.data?.length ?? 0) === 0 ? (
+            <p className="ac-muted">当前没有待治理项，或元数据尚未同步。</p>
+          ) : (
+            <table className="ac-table">
+              <thead>
+                <tr>
+                  <th>治理项</th>
+                  <th>数量</th>
+                  <th>影响面</th>
+                  <th>样例</th>
+                </tr>
+              </thead>
+              <tbody>
+                {health.data!.map(issue => (
+                  <tr key={issue.issueCode}>
+                    <td className="ac-table__strong">{issue.issueName}</td>
+                    <td>{issue.count}</td>
+                    <td>{issue.impact || '-'}</td>
+                    <td>
+                      {(issue.samples ?? []).length === 0
+                        ? '-'
+                        : issue.samples
+                            .slice(0, 3)
+                            .map(sample => `${sample.databaseName}.${sample.tableName}`)
+                            .join('、')}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ))}
+      </section>
+
+      <section className="ac-section">
+        <h4 className="ac-section__title">
+          <Info size={13} />
+          <span>元数据标注缺口</span>
+        </h4>
+        <p className="ac-muted">
+          复用既有接口 /api/metadata/annotation-gaps（由服务端按调用者的表权限过滤），
+          把「描述缺失」变成可见、可跟踪的清单，而不是逐个表点开才发现。
+        </p>
+        {gaps.status === 'loading' && <div className="ac-loading">加载中…</div>}
+        {gaps.status === 'unavailable' && <p className="ac-muted">标注缺口接口不可用。</p>}
+        {gaps.status === 'ok' &&
+          (gaps.data ? (
+            <>
+              <div className="ac-detailstats">
+                <div className="ac-detailstat">
+                  <span className="ac-detailstat__value">{gaps.data.tableScanned ?? 0}</span>
+                  <span className="ac-detailstat__label">已扫描表</span>
+                </div>
+                <div className="ac-detailstat">
+                  <span
+                    className={`ac-detailstat__value ${(gaps.data.unannotatedTableCount ?? 0) > 0 ? 'ac-detailstat__value--warn' : ''}`}
+                  >
+                    {gaps.data.unannotatedTableCount ?? 0}
+                  </span>
+                  <span className="ac-detailstat__label">缺注释表</span>
+                </div>
+                <div className="ac-detailstat">
+                  <span className="ac-detailstat__value">{gaps.data.unannotatedColumnCount ?? 0}</span>
+                  <span className="ac-detailstat__label">缺注释字段</span>
+                </div>
+              </div>
+              {(gaps.data.tables ?? []).length > 0 && (
+                <table className="ac-table">
+                  <thead>
+                    <tr>
+                      <th>表</th>
+                      <th>字段数</th>
+                      <th>缺注释字段</th>
+                      <th>表注释</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {gaps.data.tables.slice(0, 20).map(table => (
+                      <tr key={table.id}>
+                        <td className="ac-table__strong">
+                          {table.databaseName}.{table.tableName}
+                        </td>
+                        <td>{table.columnCount}</td>
+                        <td>{table.unannotatedColumnCount}</td>
+                        <td>{table.tableCommentMissing ? '缺失' : table.tableComment || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              {gaps.data.truncated && <p className="ac-muted">清单已截断，仅展示前 200 张表。</p>}
+            </>
+          ) : (
+            <p className="ac-muted">暂无标注缺口数据。</p>
+          ))}
+      </section>
+    </>
+  );
+};
+
+// ── 主面板 ──────────────────────────────────────────────────
+
 const AssetCatalogPanel: React.FC<AssetCatalogPanelProps> = ({ onNavigateToLineage }) => {
   const toast = useToast();
   const [activeTab, setActiveTab] = useState<AssetTabId>('overview');
   const [view, setView] = useState<CatalogViewMode>('engine');
   const [keyword, setKeyword] = useState('');
+  const [suggestions, setSuggestions] = useState<string[]>([]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<CatalogTreeNode | null>(null);
   const [usedNavigator, setUsedNavigator] = useState(false);
   const [tree, setTree] = useState<ProbeState<CatalogTreeNode[]>>({ status: 'loading', data: null });
   const [detail, setDetail] = useState<ProbeState<AssetTableDetailVO>>({ status: 'loading', data: null });
   const [detailReload, setDetailReload] = useState(0);
+  const [refreshTick, setRefreshTick] = useState(0);
   const [lifecycleForm, setLifecycleForm] = useState<LifecycleForm | null>(null);
   const [lifecycleError, setLifecycleError] = useState('');
   const [savingLifecycle, setSavingLifecycle] = useState(false);
 
+  // 右栏视图 + 检索/收藏的驱动参数
+  const [mainView, setMainView] = useState<MainView>('detail');
+  const [searchKeyword, setSearchKeyword] = useState('');
+  const [savingBookmark, setSavingBookmark] = useState(false);
+
   const selectedTableId = selected?.nodeKind === 'table' ? selected.tableMetadataId ?? null : null;
+
+  /** 埋点：非关键路径，任何失败静默降级（含接口未部署的环境） */
+  const track = (items: Array<{ assetType: AssetSearchType; assetId: number; accessType: AssetAccessType; keyword?: string }>) => {
+    try {
+      void assetCatalogApi.reportAccess(items);
+    } catch {
+      /* 埋点失败静默降级 */
+    }
+  };
 
   /**
    * 详情聚合体 → 表详情统一形态。
@@ -247,7 +706,7 @@ const AssetCatalogPanel: React.FC<AssetCatalogPanelProps> = ({ onNavigateToLinea
    */
   const tableDetail = useMemo<TableDetailData | null>(() => {
     const d = detail.data;
-    if (detail.status !== 'ok' || !d) return null;
+    if (!d) return null;
     return {
       storageEngine: d.storageEngine || '',
       storageFormat: d.storageFormat || '',
@@ -287,7 +746,7 @@ const AssetCatalogPanel: React.FC<AssetCatalogPanelProps> = ({ onNavigateToLinea
     return () => {
       cancelled = true;
     };
-  }, [view]);
+  }, [view, refreshTick]);
 
   // 选中表即拉取资产详情（生命周期的回显载体）。失败降级到 unavailable，不弹全局错误
   useEffect(() => {
@@ -306,7 +765,31 @@ const AssetCatalogPanel: React.FC<AssetCatalogPanelProps> = ({ onNavigateToLinea
     return () => {
       cancelled = true;
     };
-  }, [selectedTableId, detailReload]);
+  }, [selectedTableId, detailReload, refreshTick]);
+
+  // 检索联想：仅在有输入时探测，失败静默（联想属锦上添花，不降级为错误）
+  useEffect(() => {
+    const text = keyword.trim();
+    if (!text) {
+      setSuggestions([]);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      assetCatalogApi
+        .suggest(text)
+        .then(res => {
+          if (!cancelled) setSuggestions(res?.data ?? []);
+        })
+        .catch(() => {
+          if (!cancelled) setSuggestions([]);
+        });
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [keyword]);
 
   const toggle = (key: string) => {
     setExpanded(prev => {
@@ -319,9 +802,62 @@ const AssetCatalogPanel: React.FC<AssetCatalogPanelProps> = ({ onNavigateToLinea
 
   const handleSelect = (node: CatalogTreeNode) => {
     setSelected(node);
+    setMainView('detail');
     // 换表时关闭未提交的生命周期编辑，避免把 A 表的值带到 B 表
     setLifecycleForm(null);
     setLifecycleError('');
+    if (node.nodeKind === 'table' && node.tableMetadataId) {
+      track([{ assetType: 'table', assetId: node.tableMetadataId, accessType: 'browse' }]);
+    }
+  };
+
+  const submitSearch = () => {
+    const text = keyword.trim();
+    if (!text) return;
+    setSearchKeyword(text);
+    setMainView('search');
+    setSuggestions([]);
+  };
+
+  const openFromHit = (hit: AssetSearchHit) => {
+    const node = hitToTableNode(hit);
+    if (!node) return;
+    setSelected(node);
+    setMainView('detail');
+    setLifecycleForm(null);
+    setLifecycleError('');
+    if (node.tableMetadataId) {
+      track([{ assetType: 'table', assetId: node.tableMetadataId, accessType: 'browse' }]);
+    }
+  };
+
+  const toggleBookmark = async () => {
+    const d = detail.data;
+    if (!d || !selectedTableId) return;
+    setSavingBookmark(true);
+    try {
+      if (d.bookmarked) {
+        await assetCatalogApi.removeBookmark({ assetType: 'table', assetId: selectedTableId });
+      } else {
+        await assetCatalogApi.addBookmark({
+          assetType: 'table',
+          assetId: selectedTableId,
+          tableMetadataId: selectedTableId,
+        });
+        track([{ assetType: 'table', assetId: selectedTableId, accessType: 'bookmark' }]);
+      }
+      setDetail(prev => (prev.data ? { status: 'ok', data: { ...prev.data, bookmarked: !prev.data.bookmarked } } : prev));
+      toast.info(d.bookmarked ? '已取消收藏' : '已收藏');
+    } catch (e) {
+      toast.error(`${d.bookmarked ? '取消收藏' : '收藏'}失败：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setSavingBookmark(false);
+    }
+  };
+
+  const reloadAll = () => {
+    setRefreshTick(n => n + 1);
+    if (selectedTableId) setDetailReload(n => n + 1);
   };
 
   const openLifecycleEditor = () => {
@@ -356,7 +892,7 @@ const AssetCatalogPanel: React.FC<AssetCatalogPanelProps> = ({ onNavigateToLinea
     }
   };
 
-  /** 血缘联动入口：选中态与占位态共用，避免两处重复渲染 */
+  /** 血缘联动入口：详情页签与未选中态共用，避免两处重复渲染 */
   const lineageAction = (
     <div className="ac-actions">
       <button
@@ -380,6 +916,90 @@ const AssetCatalogPanel: React.FC<AssetCatalogPanelProps> = ({ onNavigateToLinea
       </span>
     </div>
   );
+
+  /** 概览页签内容：基础信息 + 生命周期 + 治理写操作（由 AssetGovernanceEditor 提供） */
+  const overviewContent = detail.data ? (
+    <>
+      {tableDetail && (
+        <TableDetailContent
+          detail={tableDetail}
+          infoActions={
+            <div className="ac-actions">
+              <button className="ac-btn" type="button" onClick={openLifecycleEditor}>
+                <Pencil size={13} />
+                <span>修改生命周期</span>
+              </button>
+              <span className="ac-muted">
+                热数据为高频访问期、冷数据为低频保留期，超过保留天数的数据可被归档或淘汰；
+                修改仅作用于本表的存储治理口径，不改变数据本身。
+              </span>
+            </div>
+          }
+        />
+      )}
+      <AssetGovernanceEditor detail={detail.data} onSaved={() => setDetailReload(n => n + 1)} />
+    </>
+  ) : null;
+
+  const mainBody = (() => {
+    if (mainView === 'search') {
+      return <SearchResultPane key={`search-${searchKeyword}-${refreshTick}`} keyword={searchKeyword} onOpenTable={openFromHit} />;
+    }
+    if (mainView === 'bookmark') {
+      return <BookmarkPane key={`bm-${refreshTick}`} onOpenTable={openFromHit} onChanged={reloadAll} />;
+    }
+    if (selectedTableId) {
+      return (
+        <>
+          {/* 选中表：基础信息与数据探索模块共用同一份内容（TableDetailContent），
+              其余能力页签见 AssetDetailTabs；读失败降级为「不可用 + 重新加载」 */}
+          {detail.status === 'loading' && <div className="ac-loading">加载中…</div>}
+
+          {detail.status === 'unavailable' && (
+            <div className="ac-placeholder">
+              <div className="ac-placeholder__head">
+                <CircleAlert size={14} />
+                <span>资产详情接口不可用，表详情暂无法读取。</span>
+              </div>
+              <p className="ac-placeholder__lead">
+                请确认服务端 /api/asset/table/{'{id}'} 已部署；目录树与源表信息不受影响。
+              </p>
+              <button className="ac-btn ac-btn--ghost" type="button" onClick={() => setDetailReload(n => n + 1)}>
+                <RefreshCw size={13} />
+                <span>重新加载</span>
+              </button>
+            </div>
+          )}
+
+          {detail.status === 'ok' && detail.data && (
+            <>
+              <AssetDetailTabs
+                tableId={detail.data.id}
+                detail={detail.data}
+                overviewContent={overviewContent}
+                onNavigateToLineage={onNavigateToLineage}
+                onAccess={type => track([{ assetType: 'table', assetId: detail.data!.id, accessType: type }])}
+              />
+              {lineageAction}
+            </>
+          )}
+        </>
+      );
+    }
+    return (
+      <>
+        <div className="ac-notice">
+          <Info size={14} />
+          <span>
+            从左侧目录树选择一张表，或在上方检索定位。选中后右栏提供概览（含负责人、分类、标签、生命周期）
+            与指标 / 产出任务 / 数据质量 / 使用记录 / 数据预览 / 使用说明 / 血缘等页签。
+          </span>
+        </div>
+        {lineageAction}
+        <GovernanceSection />
+      </>
+    );
+  })();
 
   return (
     <div className="ac-module">
@@ -410,9 +1030,35 @@ const AssetCatalogPanel: React.FC<AssetCatalogPanelProps> = ({ onNavigateToLinea
               <input
                 className="ac-side__search-input"
                 placeholder="搜索表 / 字段 / 指标"
+                aria-label="搜索表 / 字段 / 指标"
                 value={keyword}
                 onChange={e => setKeyword(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') submitSearch();
+                }}
               />
+              <button className="ac-iconbtn ac-iconbtn--sm" type="button" aria-label="检索" onClick={submitSearch}>
+                <Search size={13} />
+              </button>
+              {suggestions.length > 0 && (
+                <ul className="ac-suggest" role="listbox">
+                  {suggestions.slice(0, 8).map(text => (
+                    <li key={text}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setKeyword(text);
+                          setSearchKeyword(text);
+                          setMainView('search');
+                          setSuggestions([]);
+                        }}
+                      >
+                        {text}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
 
             <div className="ac-side__views" role="tablist">
@@ -466,143 +1112,62 @@ const AssetCatalogPanel: React.FC<AssetCatalogPanelProps> = ({ onNavigateToLinea
             </div>
 
             <div className="ac-side__footer">
-              <button className="ac-side__link" type="button">
+              <button
+                className={`ac-side__link ${mainView === 'bookmark' ? 'ac-side__link--active' : ''}`}
+                type="button"
+                onClick={() => setMainView('bookmark')}
+              >
                 <Bookmark size={12} />
                 <span>我的收藏</span>
               </button>
             </div>
           </aside>
 
-          {/* ── 右栏：检索结果 / 资产详情 ── */}
+          {/* ── 右栏：详情 / 检索结果 / 收藏 ── */}
           <main className="ac-main">
             <header className="ac-main__header">
               <div>
-                <h2 className="ac-main__title">{selected ? selected.label : '资产详情'}</h2>
+                <h2 className="ac-main__title">
+                  {mainView === 'search'
+                    ? `检索「${searchKeyword}」`
+                    : mainView === 'bookmark'
+                      ? '我的收藏'
+                      : selected
+                        ? selected.label
+                        : '资产详情'}
+                </h2>
                 <p className="ac-main__subtitle">
-                  {selected
-                    ? `${selected.databaseName ?? ''}${selected.tableName ? `.${selected.tableName}` : ''}`
-                    : '从左侧目录树选择一张表，或直接检索定位'}
+                  {mainView !== 'detail'
+                    ? '检索与收藏结果由服务端按库表权限过滤'
+                    : selected
+                      ? `${selected.databaseName ?? ''}${selected.tableName ? `.${selected.tableName}` : ''}`
+                      : '从左侧目录树选择一张表，或直接检索定位'}
                 </p>
               </div>
-              <button className="ac-iconbtn" type="button" aria-label="刷新">
-                <RefreshCw size={14} />
-              </button>
+              <div className="ac-main__tools">
+                {mainView === 'detail' && detail.status === 'ok' && detail.data && (
+                  <button
+                    className={`ac-btn ac-btn--ghost ${detail.data.bookmarked ? 'ac-btn--on' : ''}`}
+                    type="button"
+                    disabled={savingBookmark}
+                    onClick={toggleBookmark}
+                  >
+                    <Star size={13} />
+                    <span>{detail.data.bookmarked ? '已收藏' : '收藏'}</span>
+                  </button>
+                )}
+                {mainView !== 'detail' && (
+                  <button className="ac-btn ac-btn--ghost" type="button" onClick={() => setMainView('detail')}>
+                    返回详情
+                  </button>
+                )}
+                <button className="ac-iconbtn" type="button" aria-label="刷新" onClick={reloadAll}>
+                  <RefreshCw size={14} />
+                </button>
+              </div>
             </header>
 
-            <div className="ac-main__body">
-              {selectedTableId ? (
-                <>
-                  {/* 选中表：表详情与数据探索模块共用同一份内容（TableDetailContent），
-                      读失败降级为「不可用 + 重新加载」；生命周期编辑是资产侧独有的写能力 */}
-                  {detail.status === 'loading' && <div className="ac-loading">加载中…</div>}
-
-                  {detail.status === 'unavailable' && (
-                    <div className="ac-placeholder">
-                      <div className="ac-placeholder__head">
-                        <CircleAlert size={14} />
-                        <span>资产详情接口不可用，表详情暂无法读取。</span>
-                      </div>
-                      <p className="ac-placeholder__lead">
-                        请确认服务端 /api/asset/table/{'{id}'} 已部署；目录树与源表信息不受影响。
-                      </p>
-                      <button className="ac-btn ac-btn--ghost" type="button" onClick={() => setDetailReload(n => n + 1)}>
-                        <RefreshCw size={13} />
-                        <span>重新加载</span>
-                      </button>
-                    </div>
-                  )}
-
-                  {tableDetail && (
-                    <TableDetailContent
-                      detail={tableDetail}
-                      infoActions={
-                        <div className="ac-actions">
-                          <button className="ac-btn" type="button" onClick={openLifecycleEditor}>
-                            <Pencil size={13} />
-                            <span>修改生命周期</span>
-                          </button>
-                          <span className="ac-muted">
-                            热数据为高频访问期、冷数据为低频保留期，超过保留天数的数据可被归档或淘汰；
-                            修改仅作用于本表的存储治理口径，不改变数据本身。
-                          </span>
-                        </div>
-                      }
-                    />
-                  )}
-
-                  {lineageAction}
-                </>
-              ) : (
-                <>
-                  <div className="ac-notice">
-                    <Info size={14} />
-                    <span>
-                      服务端 /api/asset/* 按 src/api/assetCatalog.ts 的契约接入：目录树与检索未部署时
-                      按空态降级。已接通的写能力为「修改生命周期」—— 选中左侧表节点后在右侧修改
-                      （PUT /api/asset/table/{'{id}'}/lifecycle）；其余详情页签就绪后按下列口径逐个接入。
-                    </span>
-                  </div>
-
-                  <div className="ac-tabs">
-                    {DETAIL_TABS.map(t => (
-                      <span className="ac-tab" key={t}>
-                        {t}
-                      </span>
-                    ))}
-                  </div>
-
-                  <table className="ac-table">
-                    <thead>
-                      <tr>
-                        <th>页签</th>
-                        <th>将展示的内容</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {DETAIL_PLAN.map(item => (
-                        <tr key={item.tab}>
-                          <td className="ac-table__strong">{item.tab}</td>
-                          <td>{item.content}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-
-                  {/* 联动入口：验证跨模块跳转范式（与指标管理 → 数据血缘一致） */}
-                  {lineageAction}
-
-                  <section className="ac-section">
-                    <h4 className="ac-section__title">
-                      <Tag size={13} />
-                      <span>资产盘点与治理项</span>
-                    </h4>
-                    <p className="ac-muted">
-                      治理项只做可核查计数，不引入加权评分 —— 每个治理项都能追到具体对象。第一阶段口径：
-                    </p>
-                    <ul className="ac-list">
-                      {HEALTH_ITEMS.map(item => (
-                        <li key={item}>{item}</li>
-                      ))}
-                    </ul>
-                    <p className="ac-muted">
-                      其中「未标注字段」直接复用既有元数据标注缺口清单接口（/api/metadata/annotation-gaps），
-                      其余由服务端盘点接口汇总。
-                    </p>
-                  </section>
-
-                  <section className="ac-section">
-                    <h4 className="ac-section__title">
-                      <Star size={13} />
-                      <span>使用热度</span>
-                    </h4>
-                    <p className="ac-muted">
-                      浏览与读取分别统计，按日汇总（T+1）；访问埋点写入独立的轻量表，不写操作审计日志。
-                      热度指标：浏览数、读取数、收藏数、字段热度（0~5 星）。
-                    </p>
-                  </section>
-                </>
-              )}
-            </div>
+            <div className="ac-main__body">{mainBody}</div>
           </main>
         </div>
       )}

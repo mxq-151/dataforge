@@ -10,7 +10,14 @@
   2026-09-15 11:43 由此写坏过 `.git`。只读命令安全（加 `-c maintenance.auto=false -c gc.auto=0`）。
 - **同一文件多处编辑必须串行**（并行 Edit 会互相抹掉）。查并发写者 `find src -mmin -8`。
 - macOS：`grep "a\|b"` 静默失败，须 `grep -E`。
-- 回归基线：**59 文件 / 1001 例**。负载高（load 7~10）时 `waitFor` 会超时误报，**load 回落即过**。
+- 回归基线：**前端 68 文件 / 1134 例**（2026-10-07 实测；前值 67/1126、67/1117、59/1001 均已过期）。
+  负载高（load 7~10）时 `waitFor` 会超时误报，**load 回落即过**。
+- **后端编译状态不可信**：10-07 发现 `asset/service/AssetInventoryService.java` L530 有一个多余右括号
+  （10-04 遗留），导致 `mvn compile` **整体失败三天**。动后端前先跑一次
+  `export JAVA_HOME=/opt/homebrew/opt/openjdk@17; /opt/homebrew/bin/mvn -o -q compile` 确认基线是绿的。
+- 后端只跑关心的类（整包 ~5 分钟且含环境依赖失败项）：
+  `mvn -o test -Dtest='DqRunApiContractTest,DqRunServiceReportTest,DqRuleApiContractTest,DqRuleRegisterTest,DqTaskServiceScheduleTest,DqOverviewApiContractTest,DqAlertServiceLogTest,QualityRuleTypeContractTest,DqSqlBuilderMatrixTest,AssetCatalogApiContractTest' -DfailIfNoTests=false`；
+  实测这 10 个类 **93 例全通过**（2026-10-07）。
 
 ## 模型上下文窗口
 
@@ -116,9 +123,72 @@
   规则名+校验对象+阈值+处置方式、S3 独立成文件挂处理任务下游（「校验输出须可定位：规则名/校验对象/
   阈值/实际值/是否通过」）。**DQC 质量层 = 规则定义 + 稽核结果存储**（`LAYERING_SPEC`），前缀 `dqc_`，
   DDL 文件 `ddls/dqc_ddl.sql`。
-- **「阻断下游」的既有约定是「独立质检任务挂下游」，不是 DataWorks 式「反向置调度节点失败」**。别再提后者。
-- **质量侧现状 = 半条链路**：只有结果表 `data_quality_check_result`（「检查项」是自由文本）+ `/quality/check-result`
-  四接口，**无规则/模板/任务/触发/告警，桌面端零 UI**。别再写「完全没有」。
+## 质量链路：智能体产物 ↔ 平台（2026-10-06 核实，写文档必用）
+
+- **关联键是 `rule_name` 字符串，没有外键**。契约链：S2 设计文档「稽核规则清单」5 列表格
+  （`规则名|规则类型|校验对象|阈值|处置方式`，提示词明写「S3 禁止改写」）→ `qualityRuleImport.ts`
+  解析 + 元数据反查 → `dq_rule.rule_name` → S3 回传 `rule_name` → `dq_rule_result.rule_name`。
+  表注释即设计意图：「结果自包含，规则被删后仍可追溯」。
+- **两条写入 `dq_rule_result` 的路径，字段填充不同**：
+  ①平台执行 `/quality/task/{id}/run` → `startRun`+`executeOneRule` → **有 task_id、有 rule_id、有 exec_sql**；
+  ②程序回传 `POST /quality/run/report` → `reportRun` 按 `(batchNo+库+表+当天未结束)` 复用/新建实例
+  → **rule_id 与 exec_sql 已于 10-07 补上**（`resolveRuleId`：显式传入优先 → 按「规则名+库+表」三段反查
+  → 查不到落 null 且不报错；回传 DTO 增 `ruleId`/`execSql`），**task_id 仍为空**（实例的 taskName 落的是规则名）。
+- **五个断点已全部补全（2026-10-07，勿再写成"未闭环"）**：
+  1) ~~回传不落 rule_id~~ **已修**：回传 DTO 带 `ruleId`/`execSql`，`reportRun` 落两者；
+     未传 ruleId 时按「规则名+库+表」反查回填，查不到落 null 不报错。环比基线（`DqExecutionService`
+     按 rule_id 取 metric_value）因此能取到程序回传的数据了；
+  2) ~~告警只登记不发送~~ **已修**：渠道语义照界面既有契约落地 ——
+     **INBOX 落表即 SENT**（此前一律写 PENDING 是错的）、**WEBHOOK** 按 `alert.webhook.url` 投递
+     （成功 SENT / 失败 FAILED+原因）、**EMAIL** 无 SMTP 配置保持 PENDING 并写明原因。
+     `sendTime` **只在真正送达时写**。程序回传路径**现在也登记告警**（此前只有平台执行路径会）。
+     站内告警箱 `GET /quality/alert/log` + 前端 `AlertLogSection.tsx`；
+  3) ~~调度触发缺入口~~ **已修**：`POST /quality/task/{id}/run-by-schedule`（收 scheduleInstanceId / batchNo），
+     **只接受 triggerType=SCHEDULE 的任务**（手动任务被调度悄悄驱动等于配置形同虚设）；
+  4) ~~回传不做表级权限校验~~ **已修**：`reportRun` 接上 `hasTableReadAccess`，**fail-close**。
+     注意它第一道闸是「有没有登录」（`SecurityUtils.getCurrentUserId()`），**单测须先造 SecurityContext**，
+     否则测到的是"未登录"分支而非"无权限"分支；
+  5) ~~回传运行实例 taskId 为空~~ **已修**：由 `ruleId` 反查 `dq_task_rule_rel`，
+     **唯一绑定才认、多绑定不猜**（猜错会让告警发错人），留空时 taskName 退化为规则名。
+- **告警记录的两个状态别混**：`status` = **投递状态**（SENT / PENDING / FAILED），
+  `checkStatus` = **触发状态**（WARN / ERROR / FAILED）。触发状态**不在告警表里**，
+  服务端按 `runId + ruleId`（退化为规则名）回校验结果表取，一次 `in(runIds)` 批量查 ——
+  **避免动四方言 DDL**；代价是 SQL 层按严重程度筛不了（要做需给 `dq_alert_log` 加列）。
+- **`DATAFORGE_QUALITY_REPORT_TOKEN` 是提示词侧约定，后端不读它**（2026-10-07 核实，勿再写「令牌级鉴权」）：
+  该变量在 dataforge-server **零匹配**，只存在于 `opencodeInstructions.ts` 与 api 注释里 ——
+  它装的就是用户的 **bearer token**。`SecurityConfig` 为 `.anyRequest().authenticated()`，
+  `/quality/run/report`、`/quality/rule/register` 都不在 `permitAll` 名单 ⇒ **需要真实 JWT**。
+- **规则登记接口（2026-10-07）**：`POST /quality/rule/register` 幂等登记，返回
+  `{ruleId, ruleName, ruleType, templateCode, created, taskId}`。判定键 = **规则名 + 库 + 表**，
+  **必须与 `DqRunService.resolveRuleId` 的反查口径逐字一致**（否则「登记到 A、回传匹配到 B」）；
+  已存在**不覆盖**（阈值可能已被人手工调过）。
+  **可选 `taskId`**（`QualityRuleRegisterDTO`）：登记后幂等写 `dq_task_rule_rel`，
+  任务不存在则拒绝 —— 不挂任务的规则在平台里是"孤儿"（不执行、按项目统计看不到、告警订不到）。
+  **已知局限**：判定键不含数据源 ⇒ 两数据源下同名库表 + 同名规则会被视为同一条；改判定键须同时改回传反查。
+  `GET /quality/rule` 已加 `ruleName` **精确**过滤。`RuleTab` 的「导入设计文档」仍走 `createRule`（未切登记，
+  属产品语义变更待定）。
+- **登记 ≠ 挂任务**（2026-10-07 核实，写流程必讲）：`register` 只 `dq_ruleMapper.insert`，
+  **不写 `dq_task_rule_rel`**。所以登记进来的规则：进平台、能拿 ruleId、**不带项目口径时计入覆盖率**
+  （分母 = `table_metadata` 表总数去重库.表），但 **平台不会执行它**（`/task/{id}/run` 要任务绑定）、
+  **按项目统计看不到它**（`DqOverviewService.scopedRuleIds` 走 `dq_task_rule_rel`→taskIds）、
+  **告警订阅订不到它**（按 taskId 订阅）。要让平台自己跑，必须另在「质检任务」页签挂载。
+- **规则的两种来源**：①界面「导入设计文档」→ `createRule`（人工确认后新建）；②S3 程序 `POST /quality/rule/register`（幂等登记）。两条路都只建规则，**挂任务都要单独做**。
+- **质检实际执行的两条路**：①S3 生成的独立质检任务在调度上跑，算完回传（主路径）；
+  ②平台自己执行任务挂载的规则（`/quality/task/{id}/run`，用模板渲染 SQL 走 `CodeExecutionService`）。
+  后者 task_id/rule_id/exec_sql 齐全，适合模板能完整表达的规则。
+- **规则模板已按「中间档」下发（10-07）**：`opencodeInstructions.ts::buildQualityTemplateSpec()` 把平台模板
+  （templateCode + ruleType + SQL 骨架 + 参数）拼进**仅数据开发（S3）**的提示词；`getDeveloperInstructions`
+  第 4 参传模板，`useOpencodeChat` 发消息前拉取（模块级缓存 + in-flight 去重，失败降级空数组且**空结果不写缓存**）。
+  **注意**：`DqRuleService.bindTemplate`（L381）本来就有「规则类型 → 内置模板自动绑定」，别重复实现。
+  **坑**：SQL 骨架含 `${占位符}`，不能用 TS 模板字符串拼（会被当插值吃掉），必须数组 + 字符串拼接。
+- S3 回传约定：地址/令牌走环境变量 `DATAFORGE_QUALITY_REPORT_URL` / `DATAFORGE_QUALITY_REPORT_TOKEN`，
+  禁止硬编码；**回传失败不得改变校验任务成败判定**；回传与校验写在同一任务内，不为回传单独建调度节点。
+- 「阻断下游」的既有约定是「独立质检任务挂处理任务下游（失败即非零退出）」，平台**不反向改写调度状态**。
+
+- ~~质量侧现状 = 半条链路~~ **已过期，勿再引用**。2026-10-06 复核：服务端已补齐
+  `DqRule` / `DqRuleTemplate` / `DqTask` / `DqRun` / `DqOverview` 五个控制器（均真实实现），
+  桌面端 `views/data-quality/` 已有六页签 UI（大盘 / 规则配置 / 规则模板 / 质检任务 / 运行记录 / 告警订阅）；
+  `/quality/check-result/*` 降级为保留兼容的遗留端点。旧说法「无规则/模板/任务/告警，桌面端零 UI」作废。
 - **资产分类不人工维护**：表名规范 `{分层}_{业务域}_{实体描述}_{刷新周期}` ⇒ 分层与业务域可确定性解析，
   解析失败即「未分类」且自动成为治理项。这是与 DataWorks（人工维护业务分类树）的核心差异。
 - **改一级菜单必查三连锁**：① `ActiveTab` / `MENU_CODE_MAP` / `App.tsx::FIRST_LEVEL_TAB_IDS` 同批改，
@@ -129,6 +199,34 @@
 - **两条安全闸门**：校验 SQL 下发前必须过 `SqlPermissionRewriter`；资产目录的树/检索/详情必须服务端
   fail-close 过滤 `sys_table_permission`（含列级），否则泄露越权表名与字段名。
 - 相关评估稿：`output/2026-09-17-dataworks-gap/index.html`（含 12 处桌面端改动 + 服务端 15 新表 / 3 改造表 / ~46 接口清单）。
+
+## 资产 / 质量 接口接线（2026-10-06 已补全，勿回退）
+
+- **现状：资产 31/31、质量 25/26 已接线**。唯一未接线是 `POST /quality/run/report`（供 S3 程序回传，
+  非界面调用）；`/asset/task/*/run` ×3 与 `/quality/check-result/*` ×6 属内部/遗留端点。
+- **后端零 LLM、也不落后**：两边路径**全部**对得上且是真实实现，**不存在「前端调了后端没写」**。
+  缺口从来只在前端 UI，别看到空态就以为要写后端。
+- **资产模块文件分工（新）**：`AssetCatalogPanel.tsx` = 目录树 + 检索 + 收藏 + 治理项三视图编排；
+  `AssetDetailTabs.tsx` = 详情 9 页签（概览由宿主注入，其余各自探各自的口）；
+  `AssetGovernanceEditor.tsx` = 负责人/分类/标签/刷新元数据四个写操作；
+  `useProbe.ts` = 共用探测钩子（AssetOverviewTab 已改为引用它，别再各写一份）。
+- **`useProbe` 必须写成 `Promise.resolve().then(loader)`**，否则 loader **同步抛错**（接口封装缺失、
+  mock 未定义方法）会在 effect 里冒泡成渲染错误而不是降级为 unavailable。
+- **埋点只上报有具体资产的动作**（选中表=browse / 预览=read / 新增收藏=bookmark）。
+  服务端 `recordAccess` 对 `assetId == null` 直接 `continue`，所以「检索」这个无资产动作**故意不上报**，
+  避免写 `assetId=0` 脏数据。别为了凑 accessType 把 query 补上。
+- **分类/标签字典不可用时降级为只读，不放开自由文本**（否则写入服务端不认识的编码）；
+  标签接口是**整体替换**（提交最终集合）。写成功后由宿主**重拉详情**，不本地推测
+  （`categoryCode` 清空后服务端会按表名重解析分层/业务域）；只有 `updateLifecycle` 沿用就地回填。
+- 质量侧「规则模板」页签已从本地契约静态渲染改为真接口（`TemplateTab.tsx`：内置只读 + 自定义 CRUD +
+  `preview-sql`）；**模板校验前置对齐服务端**：单条 SELECT/WITH、必须归属 7 类之一、编码/名称非空；
+  内置模板服务端 `assertCustom` 拒绝改删，界面也不给入口。`preview-sql` 必须选目标表才渲染得出方言 SQL。
+- **改模块级 mock 要连坐**：`AssetCatalogPanel.lifecycle.test.tsx` 用 `vi.mock` 整体替换
+  `api/assetCatalog`，**面板新调一个方法就必须在该 mock 里补上**，否则未定义方法调用会炸。
+- 核查/复核手法（可复用）：后端 `grep -nE "@(Rest)?Controller|@GetMapping|@PostMapping|@PutMapping|@DeleteMapping"`；
+  前端封装方法名在 `src/` 全量 grep 调用点。**注意**：① zsh 不做默认分词，循环要写数组
+  `for m in $array`；② 文件名加 `--include` 会报 no matches，用 `grep -rl` 或 Grep 工具；
+  ③ 调用拆成多行时（`assetCatalogApi\n  .getCatalogTree(...)`）单行正则会漏，须另查 `\.方法名\(`。
 
 ## 数据库脚本与方言（2026-09-17 落地第一批，改 schema 必读）
 

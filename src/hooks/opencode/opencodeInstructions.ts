@@ -39,7 +39,8 @@
  *   注释内不算、不用 $[yyyyMMdd]）必须同步 parseSqlVarKeys 与 programArgs.test.ts 的断言。
  */
 
-import { QUALITY_RULE_TYPES } from '../../types/quality';
+import { QUALITY_RULE_TYPES, getQualityRuleType } from '../../types/quality';
+import type { QualityRuleTemplateVO } from '../../types/quality';
 
 // ══════════════════════════════════════════════════════════════
 // 一、全链路共享契约（S1 / S2 / S3 共用）
@@ -101,6 +102,70 @@ ${QUALITY_RULE_TYPES.map((t, i) => `${i + 1}. ${t.label}：${t.desc}`).join('\n'
 - 规则名由 S2 在设计文档"稽核规则清单"中一次定死，格式 {前缀}_{业务域}_{序号} {中文描述}，如 R_AD_001 事件主键唯一；同一设计文档内唯一，禁止重名
 - S3 实现校验逻辑、回传校验结果时逐字沿用该规则名，禁止改写、翻译、缩写或另起别名
 - 平台按"数据源 + 库 + 表 + 批次 + 规则名"把设计文档、监控规则与校验结果串起来：改名等于断开链路，规则覆盖率与告警都会失配`;
+
+/**
+ * 质量规则模板下发（**仅 S3 数据开发使用**）
+ *
+ * ── 为什么要把模板 SQL 下发给 S3 ────────────────────────────
+ * 三阶段原先只共享「7 类规则类型」这套术语（见 QUALITY_RULE_SPEC），S3 据此自己写校验 SQL。
+ * 结果是同一类规则在不同业务域、不同批次写出的 SQL 口径并不一致 —— 「主键唯一性」有的写
+ * GROUP BY ... HAVING COUNT(1) > 1，有的拿 COUNT(*) 比 COUNT(DISTINCT)；阈值语义也跟着漂。
+ * 名字对得上，但名字底下的算法各写一套，平台的运行记录与大盘就没有可比口径。
+ *
+ * 这里把平台预置模板的 SQL 骨架随提示词一并下发，让 S3「照骨架填占位符」而不是从零发挥：
+ * 实现口径由模板唯一决定，方言适配与「单条 SELECT/WITH」约束平台已经校验过。
+ *
+ * ── 约束（写进提示词，避免 S3 自由发挥）──────────────────────
+ * - 模板由**规则类型唯一决定**，S3 不得自选模板 —— 否则「名字说 A、代码在做 B」照样发生。
+ * - 模板是可变资产：生成代码时拉的模板之后可能被改，所以回传必须带实际执行的 SQL（execSql），
+ *   让「规则名叫什么」与「当时到底跑了什么」可事后核对。
+ * - 内置模板只读；自定义模板是现场口径补充，同样归属 7 类之一。
+ *
+ * 返回空串表示无可用模板（接口未接入 / 全部停用）—— 此时提示词退回「只给术语表」的旧形态，
+ * 不影响 S3 继续工作，只是失去口径统一的收益。
+ */
+export function buildQualityTemplateSpec(templates: QualityRuleTemplateVO[]): string {
+  const usable = (templates ?? []).filter(t => t.enabled !== false && (t.sqlTemplate ?? '').trim() !== '');
+  if (usable.length === 0) {
+    return '';
+  }
+
+  // 用数组拼接而非模板字符串：模板 SQL 骨架里含 ${占位符}，写进模板字符串会被当成插值。
+  const lines: string[] = [];
+  lines.push('');
+  lines.push('## 质量规则模板（平台预置，实现须照此骨架）');
+  lines.push(
+    '下列模板由平台维护、按规则类型组织。把某条规则实现成校验逻辑时，**按该规则的规则类型取对应模板的 SQL 骨架、填好占位符**，不要另起一套算法 —— 同一类规则各写一套，平台无法判断哪份结果可信。'
+  );
+  lines.push('');
+  lines.push('使用约束：');
+  lines.push('- 模板由规则类型唯一决定，禁止自选模板，也不要改动骨架的判定逻辑');
+  lines.push('- 同一规则类型存在多张模板时，优先用内置模板（templateKind=builtin）；自定义模板是现场口径补充');
+  lines.push('- 骨架里的占位符（形如 ${表名}，写法见下方）在生成代码时替换为设计文档里对应的库表字段；替换后仍须是单条 SELECT / WITH 查询');
+  lines.push(
+    '- 模板会随平台维护而改版，因此回传时必须带上本次**实际执行**的 SQL（execSql 字段）—— 否则事后无法核对当时跑的是哪一版口径'
+  );
+
+  for (const template of usable) {
+    const typeLabel = getQualityRuleType(template.ruleType)?.label ?? template.ruleType;
+    const kindLabel = template.templateKind === 'builtin' ? '内置模板' : '自定义模板';
+    lines.push('');
+    lines.push('### ' + typeLabel + '（' + template.ruleType + '）· ' + kindLabel);
+    lines.push('- 模板编码：' + template.templateCode);
+    lines.push('- 模板名称：' + template.templateName);
+    lines.push('- 适用字段类型：' + (template.fieldTypes || '不限'));
+    if ((template.paramSchema ?? '').trim() !== '') {
+      lines.push('- 参数定义：' + template.paramSchema);
+    }
+    if ((template.remark ?? '').trim() !== '') {
+      lines.push('- 说明：' + template.remark);
+    }
+    lines.push('- SQL 骨架：');
+    lines.push(template.sqlTemplate.trim());
+  }
+
+  return lines.join('\n');
+}
 
 /** 分层规范（S2 主导设计，S3 必须遵循） */
 const LAYERING_SPEC = `
@@ -627,6 +692,16 @@ ${DATABASE_ENV_SPEC}
 - 规则类型取自"数据质量规则类型"，实现范围须覆盖设计文档中为对应表定义的全部规则
 - 校验不通过时阻断下游或告警，并输出异常明细，便于定位与修复
 
+## 规则登记规范（强约束）
+实现校验逻辑之前，先把设计文档里的每条规则登记到平台并取回规则 ID —— 平台默认按规则名匹配规则，规则一旦改名（设计文档改了、平台里没跟着改）关联就断；带上规则 ID 后关联不再依赖名字。
+- 接口：POST {平台地址}/api/quality/rule/register，Content-Type: application/json，每条规则登记一次
+- 平台地址与访问令牌与"质检结果回传规范"同一套：读环境变量 DATAFORGE_QUALITY_REPORT_URL 与 DATAFORGE_QUALITY_REPORT_TOKEN，请求头带 Authorization: Bearer {令牌}；禁止硬编码
+- 幂等：平台按"规则名 + 库 + 表"判定同一条规则，重复登记返回同一条记录（响应 created=false），既不新建也不覆盖已有阈值 —— 因此每天重跑登记是安全的
+- 请求体字段（字段名逐字使用）：ruleName、ruleType、datasourceName、databaseName、tableName、columnName（字段级规则必填）、expectedValue（阈值）、disposeMode；取值与设计文档"稽核规则清单"逐字一致
+- 可选字段 taskId：登记的同时把规则挂到该质检任务上。**不挂任务的规则在平台里是"孤儿"** —— 平台不会执行它、按项目维度的统计看不到它、按任务配置的告警订阅也订不到它。任务 ID 只有人能提供（平台侧概念，程序无从发现），拿不到就留空，并在交付汇报里提示"需人工在质检任务页签挂载"
+- 响应：data.ruleId 即该规则的平台 ID，实现校验逻辑与回传结果时都要带上它；data.created=true 表示本次新建；data.taskId 为实际挂载到的任务（未挂载时为空）
+- 登记失败（平台不可达、规则未通过平台校验等）不阻塞开发：捕获异常、记录日志后继续实现，回传时 ruleId 留空由平台按规则名反查兜底，但必须在交付汇报里列出未登记成功的规则
+
 ## 质检结果回传规范（强约束）
 校验任务除了算出结果，还必须把每条规则的校验结果回传平台——平台的运行记录、告警订阅与质量大盘全部依赖这份回传，只落自己的结果表等于平台看不到校验：
 - 接口：POST {平台地址}/api/quality/run/report，Content-Type: application/json，每条规则回传一次
@@ -640,6 +715,7 @@ ${DATABASE_ENV_SPEC}
 | tableName | 是 | 被校验表 |
 | batchNo | 是 | 本次业务批次，取值与处理任务同一批次参数一致 |
 | ruleName | 是 | 逐字取自设计文档"稽核规则清单"的规则名 |
+| ruleId | 否 | 该规则在平台的 ID，由"规则登记规范"取得；**能拿到就一定要传** |
 | ruleType | 是 | 逐字取自"数据质量规则类型"的规则类型名 |
 | checkObject | 否 | 校验对象，库.表.字段 |
 | threshold | 否 | 阈值，与设计文档取值一致 |
@@ -648,7 +724,10 @@ ${DATABASE_ENV_SPEC}
 | checkRecordCount | 否 | 检查记录数 |
 | failRecordCount | 否 | 未通过记录数 |
 | failDetail | 否 | 失败明细，便于定位与修复 |
+| execSql | 否 | 本次**实际执行**的校验 SQL（模板会改版，留下它才能事后核对口径） |
 
+- 为什么建议回传 ruleId：平台默认按"规则名"匹配规则，规则一旦改名（设计文档改了、平台里没跟着改）关联就断；带上 ruleId 后关联不再依赖名字。另外"行数波动 / 行数环比"这类规则的历史基线是按规则 ID 取的，只传规则名会让程序回传的结果进不了基线计算
+- 回传前平台会校验调用者对目标表的读权限：**无权读取的表会被拒绝登记结果**。令牌的权限就是发放者账号的权限，请确保用它有权读取被校验的表；被拒时按"回传失败不改变任务成败"处理，并在汇报里说明哪些表没传上去
 - 回传失败不得改变校验任务本身的成败判定：捕获异常、记录日志后继续执行，不得把回传异常判成任务失败
 - 回传步骤与校验逻辑写在同一任务内（校验 SQL 由 python/java/shell 包装执行后再回传），不得为回传单独新建调度节点
 - 确无法完成回传的（如纯 SQL 任务不便改造），须在交付汇报中列出未回传的规则清单，提示用户手动登记结果
@@ -673,6 +752,7 @@ ${deliverySelfCheck(`- 设计对齐：代码中的目标表、字段、类型、
 - 命名与路径：文件名与目录符合程序命名规范；Java/Scala 的包声明与类名校验通过
 - 指标对齐：代码中实现的指标编码与计算表达式同设计文档"数据指标"章节一致，且已显式标注
 - 下钻对齐：输出字段与分组键覆盖设计文档声明的全部下钻维度，维度层级与取值同设计一致
+- 登记合规：每条规则都按"规则登记规范"登记并取回 ruleId（未登记成功的已在汇报中列出）
 - 回传合规：每条规则都按"质检结果回传规范"回传，ruleName 逐字取自设计文档规则清单，平台地址与令牌取自环境变量（未硬编码）；未回传的规则已在汇报中列出
 - 可重跑：按分区重复执行结果一致，不产生重复数据或部分写入`)}
 
@@ -770,14 +850,23 @@ export type RoleType = 'SUPER_ADMIN' | 'DATA_ARCHITECT' | 'DATA_DEV_ENGINEER' | 
 
 /**
  * 根据用户角色类型生成对应的系统指令
+ *
+ * @param qualityTemplates 平台预置的质量规则模板（可选）。**只对数据开发（S3）生效**：
+ *   S1/S2 只消费术语表，给他们下发模板会误导成"照模板写规则"。模板拉取失败时传空数组即可，
+ *   提示词自动退回"只有术语表"的形态，不阻塞对话。详见 {@link buildQualityTemplateSpec}。
  */
 export function getDeveloperInstructions(
   roleType: RoleType | string,
   username: string,
-  _moduleName: string
+  _moduleName: string,
+  qualityTemplates?: QualityRuleTemplateVO[]
 ): string {
+  // 只在数据开发分支拼模板章节；其余角色保持原样（S1/S2 的提示词不该出现 SQL 骨架）
+  const devInstructions = (): string =>
+    DATA_DEV_ENGINEER_INSTRUCTIONS + buildQualityTemplateSpec(qualityTemplates ?? []);
+
   if (!roleType) {
-    return DATA_DEV_ENGINEER_INSTRUCTIONS;
+    return devInstructions();
   }
 
   if (_moduleName==="data-explore")
@@ -800,5 +889,5 @@ export function getDeveloperInstructions(
     return BUSINESS_REQUESTER_INSTRUCTIONS;
   }
   // 默认数据开发工程师
-  return DATA_DEV_ENGINEER_INSTRUCTIONS;
+  return devInstructions();
 }

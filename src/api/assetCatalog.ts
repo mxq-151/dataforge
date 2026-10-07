@@ -159,6 +159,50 @@ export interface AssetTagVO {
   color: string;
 }
 
+/**
+ * 分类字典项（分层 / 业务域）。
+ * 与「分类不人工维护」的定位一致：这里只是可选覆盖项，主口径仍由表名规范解析。
+ */
+export interface AssetCategoryVO {
+  code: string;
+  name: string;
+  parentCode: string;
+  categoryKind: 'layer' | 'domain';
+}
+
+/**
+ * 元数据标注缺口摘要（复用既有 /api/metadata/annotation-gaps）。
+ * 作为治理项「未标注字段」的可核查来源，与 AssetHealthIssueVO 的治理项计数互补。
+ */
+export interface AnnotationGapSummary {
+  /** 已扫描表数 */
+  tableScanned: number;
+  /** 表注释缺失（或存在无注释字段）的表数 */
+  unannotatedTableCount: number;
+  /** 无注释字段总数 */
+  unannotatedColumnCount: number;
+  /** 是否因 limit 截断 */
+  truncated: boolean;
+  tables: Array<{
+    id: number;
+    datasourceId: number;
+    datasourceName: string;
+    storageEngine: string;
+    databaseName: string;
+    tableName: string;
+    tableComment: string;
+    tableCommentMissing: boolean;
+    columnCount: number;
+    unannotatedColumnCount: number;
+    unannotatedColumns: Array<{
+      columnName: string;
+      columnType: string;
+      ordinalPosition: number;
+      isPartition: number;
+    }>;
+  }>;
+}
+
 /** 使用记录（热度趋势 + 字段热度） */
 export interface AssetUsageVO {
   browseTrend: Array<{ statDate: string; browseCount: number; readCount: number }>;
@@ -465,7 +509,7 @@ export const assetCatalogApi = {
   },
 
   async listCategories() {
-    return request<ApiResponse<Array<{ code: string; name: string; parentCode: string; categoryKind: 'layer' | 'domain' }>>>(`${BASE}/category`, { suppressError: true });
+    return request<ApiResponse<AssetCategoryVO[]>>(`${BASE}/category`, { suppressError: true });
   },
 
   // ── 埋点与盘点 ────────────────────────────────────────────
@@ -541,7 +585,7 @@ export const assetCatalogApi = {
 
   /** 元数据标注缺口：既有接口，作为治理项之一接入健康度 */
   async getAnnotationGaps(params: { current?: number; size?: number } = {}) {
-    return request<ApiResponse<unknown>>(`/api/metadata/annotation-gaps`, {
+    return request<ApiResponse<AnnotationGapSummary>>(`/api/metadata/annotation-gaps`, {
       params: toQuery(params as Record<string, unknown>),
       suppressError: true,
     });

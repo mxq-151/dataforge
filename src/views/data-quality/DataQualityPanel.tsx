@@ -2,14 +2,18 @@
  * 数据质量面板（一级入口「数据质量」）
  *
  * ── 页签就绪度 ──────────────────────────────────────────────
- * 六个页签全部接入：质量大盘（/quality/overview）、规则配置（/quality/rule，左树取自
- * DataSourceProvider 缓存的元数据）、质检任务（/quality/task）、运行记录（/quality/run）、
- * 告警订阅（/quality/alert）、规则模板（本地契约，无需接口）。
+ * 六个页签全部接入真实接口：
+ * - 质量大盘  GET /quality/overview
+ * - 规则配置  /quality/rule*（左树取自 DataSourceProvider 缓存的元数据）
+ * - 质检任务  /quality/task*
+ * - 运行记录  GET /quality/run、/run/{id}、/run/{id}/results
+ * - 告警订阅  /quality/alert
+ * - 规则模板  /quality/template*（内置模板只读 + 自定义模板 CRUD + SQL 预览），见 TemplateTab
  *
  * 接口不可达时各页签在自己的空态/错误态里呈现原因，而不是白屏或空表格。
  *
- * 规则模板页签的内置模板即 7 类规则类型，来自本地契约（src/types/quality.ts，
- * 与智能体提示词同源），不需要接口即可正确展示，服务端就绪后以服务端数据为准。
+ * 「运行记录」分两层：列表（listRuns）只看摘要，选中一行后再拉实例详情（getRun）
+ * 与规则级结果（listRunResults）—— 调度实例号、结束时间与各项统计只有详情接口才有。
  *
  * ── 与提示词契约的关系 ──────────────────────────────────────
  * 7 类规则类型与处置方式的取值都取自 types/quality，不得在本文件内出现
@@ -25,15 +29,14 @@ import {
   History,
   Bell,
   CircleAlert,
-  Info,
   RefreshCw,
 } from 'lucide-react';
-import { QUALITY_RULE_TYPES, QUALITY_DISPOSE_MODES } from '../../types/quality';
 import type { QualityOverviewVO, QualityRunInstanceVO, QualityRuleResultVO } from '../../types/quality';
 import { qualityApi } from '../../api/quality';
 import RuleTab from './RuleTab';
 import TaskTab from './TaskTab';
 import AlertTab from './AlertTab';
+import TemplateTab from './TemplateTab';
 import './DataQualityPanel.css';
 
 type TabId = 'overview' | 'ruleByTable' | 'template' | 'task' | 'run' | 'alert';
@@ -229,51 +232,6 @@ const OverviewTab: React.FC = () => {
   );
 };
 
-/** 规则模板：内置模板来自本地契约，无需接口 */
-const TemplateTab: React.FC = () => (
-  <div className="dq-template">
-    <div className="dq-notice">
-      <Info size={14} />
-      <span>
-        内置模板即 7 类规则类型，来自本地契约 src/types/quality.ts，与智能体提示词（S1/S2/S3）同源；
-        服务端接口就绪后以服务端模板为准。
-      </span>
-    </div>
-    <table className="dq-table">
-      <thead>
-        <tr>
-          <th>规则类型</th>
-          <th>校验对象</th>
-          <th>说明</th>
-        </tr>
-      </thead>
-      <tbody>
-        {QUALITY_RULE_TYPES.map(t => (
-          <tr key={t.code}>
-            <td className="dq-table__strong">{t.label}</td>
-            <td>{t.scope === 'COLUMN' ? '字段级' : t.scope === 'TABLE' ? '表级' : '两张表'}</td>
-            <td>{t.desc}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-    <div className="dq-section">
-      <h4 className="dq-section__title">处置方式</h4>
-      <div className="dq-chips">
-        {QUALITY_DISPOSE_MODES.map(m => (
-          <span className="dq-chip" key={m.code}>
-            {m.label}（{m.code}）
-          </span>
-        ))}
-      </div>
-      <p className="dq-muted">
-        处置方式取自提示词中 S2 的「处置方式」。阻断下游由质检任务作为 DAG 节点实现：校验失败即非零退出，
-        下游自然不执行，平台不做反向改写调度状态。
-      </p>
-    </div>
-  </div>
-);
-
 /** 校验结果状态的中文名 —— 与 types/quality 的 QualityCheckStatus 一一对应 */
 const CHECK_STATUS_LABEL: Record<string, string> = {
   PASS: '通过',
@@ -290,6 +248,11 @@ const RunTab: React.FC = () => {
   const [selected, setSelected] = useState<number | null>(null);
   const results = useApiProbe<QualityRuleResultVO[]>(
     () => (selected ? qualityApi.listRunResults(selected) : Promise.resolve({ data: [] as QualityRuleResultVO[] })),
+    [selected]
+  );
+  // 实例详情：列表只带摘要，调度实例号 / 结束时间 / 各项统计要单独查（GET /quality/run/{id}）
+  const runDetail = useApiProbe<QualityRunInstanceVO | null>(
+    () => (selected ? qualityApi.getRun(selected) : Promise.resolve({ data: null })),
     [selected]
   );
 
@@ -338,39 +301,86 @@ const RunTab: React.FC = () => {
         </tbody>
       </table>
       {selected !== null && (
-        <div className="dq-section">
-          <h4 className="dq-section__title">规则级结果</h4>
-          {results.status === 'unavailable' ? (
-            <p className="dq-muted">结果明细接口尚未接入。</p>
-          ) : results.status === 'loading' ? (
-            <p className="dq-muted">加载中…</p>
-          ) : (results.data?.length ?? 0) === 0 ? (
-            <p className="dq-muted">该次运行暂无规则级结果。</p>
-          ) : (
-            <table className="dq-table">
-              <thead>
-                <tr>
-                  <th>规则名</th>
-                  <th>校验对象</th>
-                  <th>阈值</th>
-                  <th>实际值</th>
-                  <th>是否通过</th>
-                </tr>
-              </thead>
-              <tbody>
-                {results.data!.map(item => (
-                  <tr key={item.id}>
-                    <td>{item.ruleName}</td>
-                    <td>{item.checkObject}</td>
-                    <td>{item.threshold}</td>
-                    <td>{item.actualValue}</td>
-                    <td>{CHECK_STATUS_LABEL[item.status] ?? item.status}</td>
+        <>
+          <div className="dq-section">
+            <h4 className="dq-section__title">运行实例详情</h4>
+            {runDetail.status === 'unavailable' ? (
+              <p className="dq-muted">实例详情接口 GET /api/quality/run/{'{id}'} 尚未接入。</p>
+            ) : runDetail.status === 'loading' ? (
+              <p className="dq-muted">加载中…</p>
+            ) : runDetail.data ? (
+              <table className="dq-table">
+                <thead>
+                  <tr>
+                    <th>任务</th>
+                    <th>批次</th>
+                    <th>触发</th>
+                    <th>调度实例号</th>
+                    <th>开始时间</th>
+                    <th>结束时间</th>
+                    <th>状态</th>
+                    <th>检查记录</th>
+                    <th>未通过</th>
+                    <th>通过 / 橙色 / 红色 / 失败</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td className="dq-table__strong">{runDetail.data.taskName}</td>
+                    <td>{runDetail.data.batchNo}</td>
+                    <td>{runDetail.data.triggerType === 'MANUAL' ? '手动' : '调度'}</td>
+                    <td>{runDetail.data.scheduleInstanceId ?? '—'}</td>
+                    <td>{runDetail.data.startTime || '—'}</td>
+                    <td>{runDetail.data.endTime || '—'}</td>
+                    <td>{runDetail.data.status}</td>
+                    <td>{runDetail.data.checkRecordCount}</td>
+                    <td>{runDetail.data.failRecordCount}</td>
+                    <td>
+                      {runDetail.data.passCount} / {runDetail.data.warnCount} / {runDetail.data.errorCount} /{' '}
+                      {runDetail.data.failedCount}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            ) : (
+              <p className="dq-muted">暂无实例详情。</p>
+            )}
+          </div>
+
+          <div className="dq-section">
+            <h4 className="dq-section__title">规则级结果</h4>
+            {results.status === 'unavailable' ? (
+              <p className="dq-muted">结果明细接口尚未接入。</p>
+            ) : results.status === 'loading' ? (
+              <p className="dq-muted">加载中…</p>
+            ) : (results.data?.length ?? 0) === 0 ? (
+              <p className="dq-muted">该次运行暂无规则级结果。</p>
+            ) : (
+              <table className="dq-table">
+                <thead>
+                  <tr>
+                    <th>规则名</th>
+                    <th>校验对象</th>
+                    <th>阈值</th>
+                    <th>实际值</th>
+                    <th>是否通过</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {results.data!.map(item => (
+                    <tr key={item.id}>
+                      <td>{item.ruleName}</td>
+                      <td>{item.checkObject}</td>
+                      <td>{item.threshold}</td>
+                      <td>{item.actualValue}</td>
+                      <td>{CHECK_STATUS_LABEL[item.status] ?? item.status}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </>
       )}
     </div>
   );

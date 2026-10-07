@@ -42,6 +42,7 @@ import type {
   AssetTopComputeTaskVO,
   AssetTopSortBy,
 } from '../../api/assetCatalog';
+import { useProbe } from './useProbe';
 import './AssetCatalogPanel.css';
 
 /** TOP 清单条数上限：与需求一致（表 100 / 任务 50） */
@@ -54,40 +55,6 @@ const GROWTH_MIN_BYTES = 10 * 1024 ** 3;
 const WINDOW_DAYS = 30;
 /** 排行榜图表展示条数：榜单仍完整落表，图表只取头部避免柱子过密 */
 const CHART_TOP_N = 12;
-
-type ProbeStatus = 'loading' | 'ok' | 'unavailable';
-interface ProbeResult<T> {
-  status: ProbeStatus;
-  data: T | null;
-}
-
-/**
- * 探测单个看板接口：成功取数据，失败一律落到 unavailable（不抛异常、不弹 toast）。
- * 接口未接入是预期状态，不是错误。
- */
-function useProbe<T>(loader: () => Promise<{ data: T[] | T }>, deps: unknown[] = []): ProbeResult<T> {
-  const [state, setState] = useState<ProbeResult<T>>({ status: 'loading', data: null });
-  const depsKey = JSON.stringify(deps);
-
-  useEffect(() => {
-    let cancelled = false;
-    setState({ status: 'loading', data: null });
-    loader()
-      .then(res => {
-        if (!cancelled) setState({ status: 'ok', data: (res?.data ?? null) as T | null });
-      })
-      .catch(() => {
-        if (!cancelled) setState({ status: 'unavailable', data: null });
-      });
-    return () => {
-      cancelled = true;
-    };
-    // loader 为内联函数，不放进依赖；由 depsKey 驱动重探测
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [depsKey]);
-
-  return state;
-}
 
 // ── 图表主题常量（与模块暗色基准一致）─────────────────────
 const AXIS_LABEL = '#a5a5a5';

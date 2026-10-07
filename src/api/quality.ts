@@ -18,22 +18,26 @@ import type { ApiResponse, PageResult } from './types';
 import type {
   QualityRuleTemplateVO,
   QualityRuleVO,
+  QualityRuleRegisterVO,
   QualityTaskVO,
   QualityRunInstanceVO,
   QualityRuleResultVO,
   QualityOverviewVO,
   QualityAlertSubscriptionVO,
+  QualityAlertLogVO,
   QualityTriggerType,
 } from '../types/quality';
 
 export type {
   QualityRuleTemplateVO,
   QualityRuleVO,
+  QualityRuleRegisterVO,
   QualityTaskVO,
   QualityRunInstanceVO,
   QualityRuleResultVO,
   QualityOverviewVO,
   QualityAlertSubscriptionVO,
+  QualityAlertLogVO,
 };
 
 /** 创建/更新入参：由面板收集，字段与 VO 对齐（id 仅更新时必填） */
@@ -50,6 +54,8 @@ export interface QualityRuleListParams {
   columnName?: string;
   ruleType?: string;
   enabled?: boolean;
+  /** 规则名精确匹配（非模糊）：登记前查「这条规则在不在平台」用得上 */
+  ruleName?: string;
 }
 
 export interface QualityRunListParams {
@@ -166,6 +172,24 @@ export const qualityApi = {
     });
   },
 
+  /**
+   * 规则登记（幂等）。
+   *
+   * 给 S3 侧质检程序用：实现校验逻辑前先登记并取回 `ruleId`，之后实现与回传都用 ID 关联，
+   * 规则名退化为展示字段——改名不再断开链路。判定键是「规则名 + 库 + 表」，
+   * 与 `/quality/run/report` 的服务端反查口径一致；已登记则原样返回既有记录（不覆盖）。
+   *
+   * 界面侧的批量导入（RuleTab）仍走 `createRule` / `batchCreateRulesByTemplate`：
+   * 那两条面向「人工确认后落库」，语义是新建而非登记。
+   */
+  async registerRule(data: QualityRuleSaveDTO & { taskId?: number }): Promise<ApiResponse<QualityRuleRegisterVO>> {
+    return request<ApiResponse<QualityRuleRegisterVO>>(`${BASE}/rule/register`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+      suppressError: true,
+    });
+  },
+
   // ── 质检任务 ──────────────────────────────────────────────
 
   async listTasks(params: { current?: number; size?: number; keyword?: string; triggerType?: QualityTriggerType; enabled?: boolean } = {}) {
@@ -238,6 +262,11 @@ export const qualityApi = {
     tableName: string;
     batchNo: string;
     ruleName: string;
+    /**
+     * 平台规则 ID。可选，但**能拿到就一定要传**：
+     * 平台默认按规则名匹配，改名即断链；带 ruleId 后关联不再依赖名字字符串。
+     */
+    ruleId?: number;
     ruleType: string;
     checkObject?: string;
     threshold?: string;
@@ -246,6 +275,8 @@ export const qualityApi = {
     checkRecordCount?: number;
     failRecordCount?: number;
     failDetail?: string;
+    /** 本次**实际执行**的校验 SQL：模板会改版，留下它才能事后核对口径 */
+    execSql?: string;
   }): Promise<ApiResponse<null>> {
     return request<ApiResponse<null>>(`${BASE}/run/report`, {
       method: 'POST',
@@ -274,6 +305,19 @@ export const qualityApi = {
     return request<ApiResponse<null>>(`${BASE}/alert`, {
       method: 'POST',
       body: JSON.stringify(data),
+      suppressError: true,
+    });
+  },
+
+  /**
+   * 站内告警箱：分页查告警记录。
+   *
+   * 「站内记录」渠道落库即送达，Webhook 的投递结果（SENT / FAILED + 原因）也落在这里，
+   * 因此这一张表就是可用的告警箱。
+   */
+  async listAlertLogs(params: { current?: number; size?: number; taskId?: number; channel?: string; status?: string } = {}) {
+    return request<ApiResponse<PageResult<QualityAlertLogVO>>>(`${BASE}/alert/log`, {
+      params: toQuery(params as Record<string, unknown>),
       suppressError: true,
     });
   },

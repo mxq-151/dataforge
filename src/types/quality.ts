@@ -147,6 +147,26 @@ export interface QualityRuleVO {
   updateTime: string;
 }
 
+/**
+ * 规则登记回执。
+ *
+ * 「登记」是幂等的：平台按「规则名 + 库 + 表」判定同一条规则 —— 该口径与结果回传时
+ * 服务端的反查口径**故意一致**，否则会出现「登记到 A、回传匹配到 B」这种最难查的错配。
+ * 已登记则原样返回既有记录（不覆盖，平台里的阈值可能已被人手工调过）。
+ */
+export interface QualityRuleRegisterVO {
+  /** 平台规则 ID —— 回传结果时带上它，改名不会断开链路 */
+  ruleId: number;
+  /** 规则名（逐字回显，便于核对匹配到的就是自己要的那条） */
+  ruleName: string;
+  /** 规则类型编码（7 类之一） */
+  ruleType: string;
+  /** 自动绑定到的模板编码；无内置模板时退化为规则类型编码 */
+  templateCode: string;
+  /** true=本次新建；false=已存在，直接复用 */
+  created: boolean;
+}
+
 /** 质检任务（一组规则的执行计划） */
 export interface QualityTaskVO {
   id: number;
@@ -240,6 +260,37 @@ export interface QualityOverviewVO {
   }>;
   /** 强规则阻断次数 */
   blockCount: number;
+}
+
+/**
+ * 告警记录（站内告警箱）。
+ *
+ * 「站内记录」渠道（INBOX）落 `dq_alert_log` 即送达，所以这张表本身就是可用的告警箱。
+ *
+ * 别把两个状态搞混：
+ * - `status` 是**投递状态**（SENT 已送达 / PENDING 待发 / FAILED 投递失败），衡量"通知发出去了没有"；
+ * - `checkStatus` 是**触发状态**（WARN / ERROR / FAILED），衡量"因为什么触发"。
+ *   后者不在告警表里，服务端按 runId + ruleId 回校验结果表取出来。
+ */
+export interface QualityAlertLogVO {
+  id: number;
+  runId: number;
+  taskId: number;
+  /** 任务名（服务端由 taskId 反查） */
+  taskName: string;
+  ruleId: number | null;
+  ruleName: string;
+  /** 渠道编码：INBOX / EMAIL / WEBHOOK */
+  channel: string;
+  receiver: string;
+  /** 投递状态：SENT 已送达 / PENDING 待发 / FAILED 投递失败 */
+  status: string;
+  /** 投递失败或未投递的原因；已送达时为空 */
+  failReason: string;
+  /** 实际送达时间；待发记录为空 */
+  sendTime: string;
+  /** 触发本次告警的校验结果状态：WARN / ERROR / FAILED */
+  checkStatus: string;
 }
 
 /** 告警订阅 */

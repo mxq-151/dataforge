@@ -8,7 +8,10 @@ import { ToastProvider } from '../../components/Toast';
  *
  * 只覆盖生命周期这一条：三档回显 → 打开弹窗 → 校验拦截 → 提交成功后写接口与就地回填
  * → 写失败 toast → 详情接口不可用时降级为「不可用 + 重新加载」。
- * 目录树与详情由假 api 提供，目录树搜索/检索等其余占位能力不在本文件范围内。
+ *
+ * 目录树 / 详情 / 概况看板 / 治理项 / 详情页签各自的接口由假 api 提供统一空值，
+ * 保证「面板挂载即探测」不会因未定义方法抛错；这些链路的自身断言在
+ * AssetDetailTabs.test.tsx 与其它专项测试里。
  */
 
 const h = vi.hoisted(() => {
@@ -79,6 +82,31 @@ const h = vi.hoisted(() => {
     getTopComputeTasks: vi.fn(async () => ({ code: 200, data: [] })),
     getTaskDelayRate: vi.fn(async () => ({ code: 200, data: null })),
     getSizeGrowthAnomalies: vi.fn(async () => ({ code: 200, data: [] })),
+
+    // ── 「资产目录」页签挂载后会被触达的接口（本文件不断言其行为，只保证不抛错）──
+    search: vi.fn(async () => ({ code: 200, data: { tables: [], columns: [], indicators: [], total: 0 } })),
+    suggest: vi.fn(async () => ({ code: 200, data: [] })),
+    listBookmarks: vi.fn(async () => ({ code: 200, data: { records: [], total: 0, size: 20, current: 1, pages: 0 } })),
+    addBookmark: vi.fn(async () => ({ code: 200, data: null })),
+    removeBookmark: vi.fn(async () => ({ code: 200, data: null })),
+    reportAccess: vi.fn(async () => ({ code: 200, data: null })),
+    getInventoryOverview: vi.fn(async () => ({ code: 200, data: null })),
+    getInventoryHealth: vi.fn(async () => ({ code: 200, data: [] })),
+    getAnnotationGaps: vi.fn(async () => ({ code: 200, data: null })),
+    listCategories: vi.fn(async () => ({ code: 200, data: [] })),
+    listTags: vi.fn(async () => ({ code: 200, data: [] })),
+    updateOwner: vi.fn(async () => ({ code: 200, data: null })),
+    updateCategory: vi.fn(async () => ({ code: 200, data: null })),
+    updateTags: vi.fn(async () => ({ code: 200, data: null })),
+    refreshTableMetadata: vi.fn(async () => ({ code: 200, data: null })),
+    getTableIndicators: vi.fn(async () => ({ code: 200, data: [] })),
+    getTableProducers: vi.fn(async () => ({ code: 200, data: [] })),
+    getTableQuality: vi.fn(async () => ({ code: 200, data: null })),
+    getTableUsage: vi.fn(async () => ({ code: 200, data: null })),
+    previewTable: vi.fn(async () => ({ code: 200, data: { columns: [], rows: [] } })),
+    getTableDoc: vi.fn(async () => ({ code: 200, data: null })),
+    saveTableDoc: vi.fn(async () => ({ code: 200, data: null })),
+    listDocHistory: vi.fn(async () => ({ code: 200, data: [] })),
   };
 
   return { tableNode, detail, state, api };
@@ -94,6 +122,30 @@ vi.mock('../../api/assetCatalog', () => ({
     getTopComputeTasks: (params: unknown) => h.api.getTopComputeTasks(params),
     getTaskDelayRate: (params: unknown) => h.api.getTaskDelayRate(params),
     getSizeGrowthAnomalies: (params: unknown) => h.api.getSizeGrowthAnomalies(params),
+
+    search: (params: unknown) => h.api.search(params),
+    suggest: (keyword: string) => h.api.suggest(keyword),
+    listBookmarks: (params: unknown) => h.api.listBookmarks(params),
+    addBookmark: (payload: unknown) => h.api.addBookmark(payload),
+    removeBookmark: (params: unknown) => h.api.removeBookmark(params),
+    reportAccess: (items: unknown) => h.api.reportAccess(items),
+    getInventoryOverview: (params?: unknown) => h.api.getInventoryOverview(params),
+    getInventoryHealth: () => h.api.getInventoryHealth(),
+    getAnnotationGaps: (params?: unknown) => h.api.getAnnotationGaps(params),
+    listCategories: () => h.api.listCategories(),
+    listTags: () => h.api.listTags(),
+    updateOwner: (id: number, payload: unknown) => h.api.updateOwner(id, payload),
+    updateCategory: (id: number, payload: unknown) => h.api.updateCategory(id, payload),
+    updateTags: (id: number, tags: unknown) => h.api.updateTags(id, tags),
+    refreshTableMetadata: (id: number) => h.api.refreshTableMetadata(id),
+    getTableIndicators: (id: number) => h.api.getTableIndicators(id),
+    getTableProducers: (id: number) => h.api.getTableProducers(id),
+    getTableQuality: (id: number) => h.api.getTableQuality(id),
+    getTableUsage: (id: number, params: unknown) => h.api.getTableUsage(id, params),
+    previewTable: (id: number, params: unknown) => h.api.previewTable(id, params),
+    getTableDoc: (id: number) => h.api.getTableDoc(id),
+    saveTableDoc: (id: number, content: string) => h.api.saveTableDoc(id, content),
+    listDocHistory: (id: number) => h.api.listDocHistory(id),
   },
 }));
 
@@ -203,5 +255,16 @@ describe('AssetCatalogPanel 生命周期', () => {
 
     await waitFor(() => expect(screen.getByText('修改生命周期')).toBeTruthy());
     expect(h.api.getTableDetail).toHaveBeenCalledTimes(2);
+  });
+
+  it('选中表后上报一次 browse 埋点', async () => {
+    renderPanel();
+    await selectTable();
+
+    await waitFor(() =>
+      expect(h.api.reportAccess).toHaveBeenCalledWith([
+        { assetType: 'table', assetId: 1, accessType: 'browse' },
+      ])
+    );
   });
 });

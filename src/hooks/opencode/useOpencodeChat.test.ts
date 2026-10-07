@@ -15,6 +15,48 @@ import { describe, it, expect, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useOpencodeChat } from './useOpencodeChat';
 
+/**
+ * 质量规则模板桩。
+ *
+ * sendMessage 前会拉一次平台模板（内置 + 自定义）拼进数据开发角色的 system 提示词。
+ * 这里固定返回一张内置模板，既避免真实网络请求，也让「模板是否真的进了提示词」可断言 ——
+ * 非空结果会被 useOpencodeChat 的模块级缓存记住，因此本文件内所有用例看到的都是同一份。
+ */
+const h = vi.hoisted(() => {
+  const builtinSql = 'SELECT ${column} FROM ${table} GROUP BY ${column} HAVING COUNT(1) > 1';
+  return {
+    builtinSql,
+    listBuiltinTemplates: vi.fn(async () => ({
+      code: 200,
+      data: [
+        {
+          id: 1,
+          templateCode: 'PRIMARY_KEY_UNIQUE',
+          templateName: '主键唯一性',
+          ruleType: 'PRIMARY_KEY_UNIQUE',
+          templateKind: 'builtin' as const,
+          sqlTemplate: builtinSql,
+          fieldTypes: '',
+          paramSchema: '',
+          remark: '主键/唯一键重复检测',
+          enabled: true,
+        },
+      ],
+    })),
+    listTemplates: vi.fn(async (_params?: unknown) => ({
+      code: 200,
+      data: { records: [], total: 0, size: 50, current: 1, pages: 0 },
+    })),
+  };
+});
+
+vi.mock('../../api/quality', () => ({
+  qualityApi: {
+    listBuiltinTemplates: () => h.listBuiltinTemplates(),
+    listTemplates: (params: unknown) => h.listTemplates(params),
+  },
+}));
+
 /** 构造只有 session.create / session.prompt 的最小 client 桩 */
 function createClient() {
   const prompt = vi.fn().mockResolvedValue({ data: {} });
@@ -200,6 +242,35 @@ describe('useOpencodeChat 角色指令逐轮下发', () => {
     }
 
     expect(new Set(systems).size).toBe(3);
+  });
+
+  it('平台规则模板只进数据开发的 system，其它角色不带 SQL 骨架', async () => {
+    const systemOf = async (roleType: string): Promise<string> => {
+      const { client, prompt } = createClient();
+      const { result } = renderHook(() =>
+        useOpencodeChat({
+          username: 'u',
+          moduleId: 'dev-assistant',
+          roleType,
+          currentSessionId: 'sess-1',
+          setCurrentSessionId: vi.fn(),
+        }),
+      );
+      await act(async () => { await result.current.sendMessage(client, 'x', 'sess-1'); });
+      return prompt.mock.calls[0][0].system as string;
+    };
+
+    const dev = await systemOf('DATA_DEV_ENGINEER');
+    expect(dev).toContain('## 质量规则模板（平台预置，实现须照此骨架）');
+    expect(dev).toContain('PRIMARY_KEY_UNIQUE');
+    expect(dev).toContain('HAVING COUNT(1) > 1');
+    // 回传规范里新加的字段必须随提示词下发，否则 S3 不知道要带 ruleId / execSql
+    expect(dev).toContain('execSql');
+    expect(dev).toContain('ruleId');
+
+    const architect = await systemOf('DATA_ARCHITECT');
+    expect(architect).not.toContain('## 质量规则模板');
+    expect(architect).not.toContain('HAVING COUNT(1) > 1');
   });
 
   it('没有会话时才创建新会话', async () => {

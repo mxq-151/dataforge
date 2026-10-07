@@ -360,7 +360,7 @@
   margin-top: 2px;
 }
 
-/* ── 详情页签（占位态为静态标签）── */
+/* ── 详情页签 ── */
 .ac-tabs {
   display: flex;
   flex-wrap: wrap;
@@ -375,6 +375,23 @@
   border-radius: 10px;
   color: #a9a9a9;
   font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.ac-tab:hover {
+  border-color: #4a4a4a;
+  color: #cccccc;
+}
+
+.ac-tab--active {
+  background-color: #0e639c;
+  border-color: #1177bb;
+  color: #ffffff;
+}
+
+.ac-tabbody {
+  padding-top: 2px;
 }
 
 /* ── 表格 ── */
@@ -811,3 +828,351 @@
 .ac-ov-warn {
   color: #ff8a65;
 }
+
+/* ── 资产目录：检索 / 收藏 / 治理项 / 详情页签内容 ──────────────
+   新增于「前端与后端接口对接补全」改动：详情由静态占位改为真页签，
+   新增检索结果、收藏列表、治理项看板、概览内治理写表单所需的类名。
+   配色沿用文件头的暗色基准（#1e1e1e / #252526 / #3c3c3c / #cccccc / #007acc）。 */
+
+/* 右栏头部工具区（收藏 / 返回 / 刷新） */
+.ac-main__tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* 紧凑型图标按钮（搜索框内的检索按钮） */
+.ac-iconbtn--sm {
+  width: 22px;
+  height: 22px;
+}
+
+/* 已选中态按钮（如「已收藏」） */
+.ac-btn--on {
+  background-color: #0e639c;
+  border-color: #1177bb;
+  color: #ffffff;
+}
+
+/* 左栏底部入口的选中态 */
+.ac-side__link--active {
+  background-color: #094771;
+  color: #ffffff;
+}
+
+/* ── 搜索联想 ── */
+.ac-side__search {
+  position: relative;
+}
+
+.ac-suggest {
+  position: absolute;
+  z-index: 20;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin: 4px 0 0;
+  padding: 4px;
+  list-style: none;
+  background-color: #252526;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.ac-suggest button {
+  display: block;
+  width: 100%;
+  padding: 5px 6px;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  color: #cccccc;
+  font-size: 12.5px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ac-suggest button:hover {
+  background-color: #2d2d2d;
+}
+
+/* ── 检索命中 / 收藏列表 ── */
+.ac-hitlist {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ac-hit {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  background-color: #252526;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  color: #cccccc;
+  font-size: 12.5px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ac-hit:hover:not(:disabled) {
+  border-color: #1177bb;
+}
+
+.ac-hit:disabled {
+  cursor: default;
+  opacity: 0.75;
+}
+
+.ac-hit--row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: default;
+}
+
+.ac-hit__main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ac-hit__main:disabled {
+  cursor: default;
+}
+
+.ac-hit__type {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 11px;
+  background-color: #2d2d2d;
+  color: #a9a9a9;
+}
+
+.ac-hit__type--table {
+  background-color: #0e3a5c;
+  color: #7fc4f0;
+}
+
+.ac-hit__type--column {
+  background-color: #3d3316;
+  color: #e0b954;
+}
+
+.ac-hit__type--indicator {
+  background-color: #2f3a2a;
+  color: #9ccc7a;
+}
+
+.ac-hit__title {
+  color: #ffffff;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.ac-hit__subtitle {
+  color: #858585;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ac-hit__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* ── 治理项 / 详情统计卡 ── */
+.ac-detailstats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 10px 0;
+}
+
+.ac-detailstat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 96px;
+  padding: 8px 12px;
+  background-color: #252526;
+  border: 1px solid #3c3c3c;
+  border-radius: 6px;
+}
+
+.ac-detailstat__value {
+  color: #ffffff;
+  font-size: 17px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.ac-detailstat__value--warn {
+  color: #ff8a65;
+}
+
+.ac-detailstat__label {
+  color: #858585;
+  font-size: 11.5px;
+}
+
+/* 区块紧凑变体（页签内部用，减少纵向留白） */
+.ac-section--tight {
+  margin-top: 12px;
+}
+
+.ac-section__hint {
+  margin-left: 8px;
+  color: #858585;
+  font-size: 11.5px;
+  font-weight: 400;
+}
+
+/* ── 行内工具条 ── */
+.ac-inlinebar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.ac-inlinebar .ac-muted {
+  margin: 0;
+}
+
+.ac-inlinebar__label {
+  color: #a9a9a9;
+  font-size: 12px;
+}
+
+.ac-inlinebar--pager {
+  justify-content: flex-end;
+}
+
+/* ── 表单控件 ── */
+.ac-select {
+  width: 100%;
+  padding: 5px 8px;
+  background-color: #1e1e1e;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  color: #cccccc;
+  font-size: 12.5px;
+  font-family: inherit;
+}
+
+.ac-select--sm {
+  width: auto;
+  min-width: 72px;
+}
+
+.ac-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  background-color: #1e1e1e;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  color: #cccccc;
+  font-size: 12.5px;
+  font-family: inherit;
+  line-height: 1.7;
+  resize: vertical;
+}
+
+.ac-textarea:focus,
+.ac-select:focus,
+.ac-input:focus {
+  outline: none;
+  border-color: #007acc;
+}
+
+/* ── 标签选择（整体替换语义）── */
+.ac-chips--selectable {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ac-chip {
+  padding: 3px 10px;
+  background-color: #2d2d2d;
+  border: 1px solid #3c3c3c;
+  border-radius: 10px;
+  color: #a9a9a9;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.ac-chip--on {
+  background-color: #0e639c;
+  border-color: #1177bb;
+  color: #ffffff;
+}
+
+/* ── 数据预览 ── */
+.ac-preview {
+  margin-top: 10px;
+  overflow-x: auto;
+}
+
+.ac-table--preview td,
+.ac-table--preview th {
+  white-space: nowrap;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── 迷你条形图（使用趋势占比）── */
+.ac-bar {
+  display: inline-block;
+  height: 8px;
+  min-width: 2px;
+  background-color: #1177bb;
+  border-radius: 4px;
+  vertical-align: middle;
+}
+
+/* ── 字段热度星级 ── */
+.ac-stars {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.ac-star--on {
+  color: #e0b954;
+}
+
+.ac-star--off {
+  color: #4a4a4a;
+}
+
