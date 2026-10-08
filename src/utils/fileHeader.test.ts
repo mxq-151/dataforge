@@ -9,9 +9,10 @@
  * - 位于文件开头，不得被 import 或 package 语句隔断
  * - 含 @备注 / @引擎 / @数据源 必填项，且 @引擎 取值可被识别为调度任务类型
  *
- * 代码头已不再承载运行参数：历史字段 @用法 / @程序参数 / @资源参数 / @任务参数 已废弃，
- * 解析器不再识别、提示词样例也不再书写。运行参数统一由「配置参数 → 配置程序参数」维护，
- * SQL 正文里的 `${参数名}` 只作为「运行程序」弹窗的预填来源（见 programArgs.test.ts）。
+ * 代码头承载的运行参数只保留 @程序参数：声明程序运行期参数，时间类参数的取值一律写成
+ * `${变量名}` 变量（与 SQL 正文同名），由调度侧以 DolphinScheduler 内置时间变量作为取值解析。
+ * 历史字段 @用法 / @资源参数 / @任务参数 已废弃，解析器不再识别、提示词样例也不再书写。
+ * SQL 正文里的 `${参数名}` 与代码头声明合并后，作为「运行程序」弹窗的预填来源。
  *
  * 本测试直接从提示词中抽取样例代码块并喂给真实解析器，防止改提示词时破坏解析。
  * 文末另锁「SQL 开发规范」里的变量写法（${参数名}）：正文变量由 parseSqlVarKeys 识别。
@@ -51,7 +52,7 @@ function sampleOf(lang: string): PromptSample {
 }
 
 /** 代码头已废弃的参数字段（解析器不再识别，提示词样例也不应再出现） */
-const DEPRECATED_HEADER_FIELDS = ['@用法', '@程序参数', '@资源参数', '@任务参数'];
+const DEPRECATED_HEADER_FIELDS = ['@用法', '@资源参数', '@任务参数'];
 
 describe('数据开发提示词样例 — 代码头可被解析', () => {
   it('提示词给出了 SQL 与 Java 两个样例', () => {
@@ -71,22 +72,24 @@ describe('数据开发提示词样例 — 代码头可被解析', () => {
     }
   });
 
-  it('每个样例都不再书写已废弃的参数字段', () => {
+  it('每个样例都声明了 @程序参数，且不再书写已废弃的参数字段', () => {
     for (const s of promptSamples()) {
+      const header = parseFileHeader(s.content);
+      expect(header!.programArgs, `.${s.lang} 样例缺少 @程序参数`).toBeTruthy();
       for (const field of DEPRECATED_HEADER_FIELDS) {
         expect(s.content, `.${s.lang} 样例不应再出现 ${field}`).not.toContain(field);
       }
     }
   });
 
-  it('Java 样例不扫描正文 ${} → 无预填参数名（命令行入参由弹窗手填）', () => {
+  it('Java 样例 @程序参数 为「无」：不扫描正文 ${}，无预填参数名', () => {
     const { content } = sampleOf('java');
-    expect(extractProgramParams(content, 'java')).toEqual({ keys: [] });
+    expect(extractProgramParams(content, 'java')).toEqual({ keys: [], programArgs: '无' });
   });
 
-  it('SQL 样例只从正文识别业务入参', () => {
+  it('SQL 样例：代码头 @程序参数 与正文 ${day} 同名合并，只留业务入参', () => {
     const { content } = sampleOf('sql');
-    expect(extractProgramParams(content, 'sql')).toEqual({ keys: ['day'] });
+    expect(extractProgramParams(content, 'sql')).toEqual({ keys: ['day'], programArgs: '--day ${day}' });
   });
 
   it('SQL 样例被识别为 SQL 任务，数据源取自 @数据源', () => {
@@ -124,10 +127,13 @@ describe('数据开发提示词 — SQL 变量规范与解析器口径一致', (
     }
   });
 
-  it('提示词不再提代码头参数字段', () => {
+  it('提示词不再提已废弃的代码头参数字段，并恢复 @程序参数 与调度侧取值说明', () => {
     for (const field of DEPRECATED_HEADER_FIELDS) {
       expect(DATA_DEV_ENGINEER_INSTRUCTIONS, `S3 提示词不应再出现 ${field}`).not.toContain(field);
     }
+    expect(DATA_DEV_ENGINEER_INSTRUCTIONS).toContain('@程序参数');
+    // 时间类参数在调度侧的取值来自 DS 内置时间变量
+    expect(DATA_DEV_ENGINEER_INSTRUCTIONS).toContain('$[yyyyMMdd]');
   });
 
   it('SQL 样例正文里的 ${day} 被识别为参数名 day', () => {
@@ -157,7 +163,8 @@ describe('数据开发提示词 — SQL 变量规范与解析器口径一致', (
  * 新建文件时由 generateFileHeader 灌入的代码头模板，是人工书写代码头的范本。
  * 模板若漏字段，人工新建的 .java/.scala/.py 就只会填模板里有的项，
  * 进而丢 @引擎（任务被默认判为 SPARK）与 @数据源（调度依赖缺失）。
- * 代码头不再承载运行参数，模板也就不再产出 @程序参数 / @资源参数 / @任务参数 / @用法。
+ * 代码头只保留 @程序参数 作为运行参数声明（时间类参数以 `${变量名}` 变量描述），
+ * 模板不再产出 @资源参数 / @任务参数 / @用法。
  */
 describe('generateFileHeader — 模板字段完整性', () => {
   const cases: Array<{ file: string }> = [
@@ -173,8 +180,8 @@ describe('generateFileHeader — 模板字段完整性', () => {
     expect(header).toBeTruthy();
     expect(header.startsWith('/*')).toBe(true);
     expect(header.endsWith(' */')).toBe(true);
-    // 代码头只保留 备注/数仓/引擎/依赖/数据源；历史参数字段一律不再生成
-    for (const field of ['备注', '数仓', '引擎', '依赖', '数据源']) {
+    // 代码头含 备注/数仓/引擎/依赖/程序参数/数据源；历史参数字段一律不再生成
+    for (const field of ['备注', '数仓', '引擎', '依赖', '程序参数', '数据源']) {
       expect(header).toContain(`@${field}: `);
     }
     for (const field of DEPRECATED_HEADER_FIELDS) {
@@ -188,6 +195,7 @@ describe('generateFileHeader — 模板字段完整性', () => {
     expect(parsed!.remark).toBe('');
     expect(parsed!.engine).toBe('');
     expect(parsed!.dependency).toBe('');
+    expect(parsed!.programArgs).toBe('');
     expect(parsed!.dataSource).toBe('');
   });
 
@@ -281,25 +289,26 @@ describe('parseFileHeader — 边界与回归', () => {
     expect(header?.dependency).toBe('');
   });
 
-  it('已废弃的参数字段不再被解析（值不落入任何已知字段）', () => {
+  it('已废弃的参数字段不再被解析，@程序参数 仍被解析', () => {
     const content = [
       '/*',
       ' * @引擎: spark',
       ' * @备注: 历史字段',
-      ' * @程序参数: --day 20260501',
       ' * @资源参数: --num-executors 4',
       ' * @任务参数: --master yarn',
       ' * @用法: --day 20260501',
+      ' * @程序参数: --day ${day}',
       ' * @数据源: test_datasource',
       ' */',
     ].join('\n');
     const header = parseFileHeader(content);
     expect(header).not.toBeNull();
-    // 只认已知字段，废弃字段被忽略
     expect(header!.engine).toBe('spark');
     expect(header!.dataSource).toBe('test_datasource');
+    // @程序参数 保留原文（时间类参数写 ${} 变量），废弃字段被忽略、不落入任何已知字段
+    expect(header!.programArgs).toBe('--day ${day}');
     expect(Object.keys(header!).sort()).toEqual(
-      ['dataSource', 'dependency', 'engine', 'filePath', 'language', 'remark', 'style', 'warehouse'],
+      ['dataSource', 'dependency', 'engine', 'filePath', 'language', 'programArgs', 'remark', 'style', 'warehouse'],
     );
   });
 });

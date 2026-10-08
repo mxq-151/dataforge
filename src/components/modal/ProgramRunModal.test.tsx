@@ -10,7 +10,7 @@ import { ProgramRunModal } from './ProgramRunModal';
  *  1. 打开时用「配置参数 → 配置程序参数」的值逐行预填，可增删改；
  *  2. 「确定」回传的是**当前行里的内容**（所见即所发），不是已保存的旧值；
  *  3. 会被丢弃 / 被覆盖的两种情况必须显式提示（缺参数名、参数名重复）；
- *  4. SQL 正文识别到的参数名并成空白行预填，并提示识别来源（代码头不再声明参数）。
+ *  4. 代码头 @程序参数 与 SQL 正文识别到的参数名并成空白行预填，并提示识别来源。
  */
 const setup = (props: Partial<React.ComponentProps<typeof ProgramRunModal>> = {}) => {
   const onConfirm = vi.fn();
@@ -182,10 +182,16 @@ describe('ProgramRunModal', () => {
     expect(queryByTestId('program-run-key-1')).toBeNull();
   });
 
-  it('提示识别来源（SQL 正文）与识别到的参数名', () => {
-    const { getByTestId } = setup({ extractedKeys: ['day'] });
+  it('提示识别到的参数名与代码头 @程序参数 声明原文', () => {
+    const { getByTestId } = setup({ extractedKeys: ['day'], programArgsHint: '--day ${day}' });
     const source = getByTestId('program-run-extracted');
-    expect(source.textContent).toContain('已从 SQL 正文识别 1 个程序参数：day');
+    expect(source.textContent).toContain('已识别 1 个程序参数：day');
+    expect(source.textContent).toContain('代码头 @程序参数：--day ${day}');
+  });
+
+  it('未声明 @程序参数 时只提示参数名，不显示代码头出处', () => {
+    const { getByTestId } = setup({ extractedKeys: ['day'] });
+    expect(getByTestId('program-run-extracted').textContent).not.toContain('@程序参数');
   });
 
   it('未识别到参数时不显示提取入口与来源提示', () => {

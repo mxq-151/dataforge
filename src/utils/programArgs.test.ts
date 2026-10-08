@@ -6,6 +6,7 @@ import {
   findRowsMissingKey,
   mergeExtractedKeys,
   paramsFromItems,
+  parseParamKeys,
   parseSqlVarKeys,
   stripSqlComments,
   toParamRows,
@@ -143,17 +144,54 @@ describe('stripSqlComments / parseSqlVarKeys', () => {
 });
 
 /**
- * 代码头已不再声明运行参数（历史 @用法 / @程序参数 / @资源参数 / @任务参数 全部废弃），
- * 「运行程序」弹窗的预填只有一个来源：SQL 正文里的 `${day}` 变量名。
- * Java / Scala / Python 的运行参数是命令行入参，正文里的 `${}` 通常是日志/模板而非运行参数，
- * 故不扫描，返回空 —— 由用户在弹窗里手填。
+ * 代码头 `@程序参数` 声明里的参数名：兼容 `--键 值`（命令行形态）与 `${变量名}`（纯变量形态），
+ * 时间类参数的取值写 `${变量名}`，与正文同名。
  */
-describe('extractProgramParams — 只扫 SQL 正文的 ${} 变量', () => {
-  it('SQL：正文变量按出现顺序去重后作为参数名；已废弃的代码头参数字段被忽略', () => {
+describe('parseParamKeys — 代码头 @程序参数 声明里的参数名', () => {
+  it('命令行形态取键名、跳过字面取值', () => {
+    expect(parseParamKeys('--day 20260501 -checkpoint 60000')).toEqual(['day', 'checkpoint']);
+  });
+
+  it('时间类参数的取值写成 ${变量名} 时按声明顺序取到', () => {
+    expect(parseParamKeys('--day ${day} --hour ${hour}')).toEqual(['day', 'hour']);
+  });
+
+  it('纯变量形态（无 --键 前缀）也能取到变量名', () => {
+    expect(parseParamKeys('${day} ${city}')).toEqual(['day', 'city']);
+  });
+
+  it('--key=value 与重复声明都去重', () => {
+    expect(parseParamKeys('--env=prod --env gray')).toEqual(['env']);
+  });
+
+  it('「无」/ 空值 / null / undefined 都得到空数组', () => {
+    expect(parseParamKeys('无')).toEqual([]);
+    expect(parseParamKeys('')).toEqual([]);
+    expect(parseParamKeys(null)).toEqual([]);
+    expect(parseParamKeys(undefined)).toEqual([]);
+  });
+
+  it('取值里的短横线不会被当成参数名（--offset -1）', () => {
+    expect(parseParamKeys('--offset -1')).toEqual(['offset']);
+  });
+
+  it('夹带的说明文字被忽略，只取声明里的参数名', () => {
+    expect(parseParamKeys('运行需要 --day ${day} 才能跑')).toEqual(['day']);
+  });
+});
+
+/**
+ * 代码头只承载 `@程序参数`（历史 @用法 / @资源参数 / @任务参数 已废弃，不再解析）。
+ * 「运行程序」弹窗的预填来源：代码头 `@程序参数` 声明 + SQL 正文的 `${day}` 变量，
+ * 两者同名合并去重；Java / Scala / Python 的运行参数是命令行入参，正文里的 `${}` 通常是
+ * 日志/模板而非运行参数，故不扫描，参数名只来自代码头。
+ */
+describe('extractProgramParams — 代码头 @程序参数 与 SQL 正文变量合并', () => {
+  it('SQL：代码头声明在前、正文变量在后，去重合并；已废弃字段被忽略', () => {
     const sql = [
       '/*',
       ' * @引擎: kyuubi',
-      ' * @程序参数: --day 20260501',
+      ' * @程序参数: --day ${day} --hour ${hour}',
       ' * @资源参数: --num-executors 4',
       ' * @任务参数: --master yarn',
       ' * @用法: --day 20260501',
@@ -161,29 +199,36 @@ describe('extractProgramParams — 只扫 SQL 正文的 ${} 变量', () => {
       "insert overwrite table t partition(dt = '${day}')",
       "select * from s where dt = '${day}' and city = '${city}';",
     ].join('\n');
-    expect(extractProgramParams(sql, 'sql')).toEqual({ keys: ['day', 'city'] });
+    expect(extractProgramParams(sql, 'sql')).toEqual({
+      keys: ['day', 'hour', 'city'],
+      programArgs: '--day ${day} --hour ${hour}',
+    });
   });
 
-  it('Java / Scala / Python：正文 ${} 不算参数，代码头声明也被忽略', () => {
+  it('Java / Scala / Python：正文 ${} 不算参数，参数名只来自代码头 @程序参数', () => {
     const java = [
       '/*',
       ' * @引擎: spark',
-      ' * @用法: --day 20260501 -checkpoint 60000',
+      ' * @程序参数: --day ${day} -checkpoint 60000',
       ' */',
       'package TEST.java.ods;',
       'class Test { String tpl = "${notAParam}"; String flag = "--nope"; }',
     ].join('\n');
-    expect(extractProgramParams(java, 'java')).toEqual({ keys: [] });
-    expect(extractProgramParams(java, 'scala')).toEqual({ keys: [] });
-    expect(extractProgramParams(java, 'python')).toEqual({ keys: [] });
+    const expected = { keys: ['day', 'checkpoint'], programArgs: '--day ${day} -checkpoint 60000' };
+    expect(extractProgramParams(java, 'java')).toEqual(expected);
+    expect(extractProgramParams(java, 'scala')).toEqual(expected);
+    expect(extractProgramParams(java, 'python')).toEqual(expected);
   });
 
   it('codeType 省略时按 SQL 处理（未知扩展名在 getFileInfo 里也默认 sql）', () => {
-    expect(extractProgramParams("select 1 from t where dt = '${day}'")).toEqual({ keys: ['day'] });
+    expect(extractProgramParams("select 1 from t where dt = '${day}'"))
+      .toEqual({ keys: ['day'], programArgs: '' });
   });
 
-  it('正文没有 ${} → 空（弹窗只给一行空白）', () => {
-    expect(extractProgramParams('select 1;', 'sql')).toEqual({ keys: [] });
+  it('未声明 @程序参数 且正文无变量 → 空（弹窗只给一行空白）', () => {
+    expect(extractProgramParams('select 1;', 'sql')).toEqual({ keys: [], programArgs: '' });
+    expect(extractProgramParams('/*\n * @程序参数: 无\n */\nselect 1;', 'sql'))
+      .toEqual({ keys: [], programArgs: '无' });
   });
 });
 

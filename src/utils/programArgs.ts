@@ -10,13 +10,19 @@
  *   - 参数名重复时**后出现的取值生效**（弹窗会显式提示，不静默覆盖）
  *   - 值一律按字符串下发（`true` / `1` 也是字符串，后端按字符串处理）
  *
- * 代码头已不再承载运行参数（历史 @程序参数 / @资源参数 / @任务参数 / @用法 均已废弃），
- * 因此这里只保留 SQL 正文的 `${day}` 变量提取作为弹窗预填来源；Java / Scala / Python 的
- * 运行参数是命令行入参，正文不扫 `${}`，只能由用户在弹窗里填。
+ * 代码头只承载 `@程序参数`：声明程序运行期需要的参数；时间类参数（业务日期、时间窗口等）
+ * 的取值一律写成 `${变量名}` 变量（如 `--day ${day}`），与 SQL 正文同名，由调度侧以
+ * DolphinScheduler 内置时间变量（`$[yyyyMMdd]` 等）作为取值解析。
+ * 这里把**代码头声明**与 **SQL 正文的 `${day}` 变量**合并成弹窗预填的参数名；
+ * Java / Scala / Python 的运行参数是命令行入参，正文不扫 `${}`，参数名只来自代码头。
+ *
+ * 历史字段 @资源参数 / @任务参数 / @用法 已废弃，不再解析。
  *
  * 与「本地运行配置」的文本参数无关：本地执行传的是 args 数组、不经 shell，
  * 那条链路仍按空格拆分（见 useProgramRunner 的 splitArgs）。
  */
+
+import { parseFileHeader } from './fileHeader';
 
 export interface ProgramParamItem {
   id?: string;
@@ -152,23 +158,56 @@ export function parseSqlVarKeys(sql: string): string[] {
 }
 
 export interface ExtractedProgramParams {
-  /** 识别出的**程序（业务）**参数名：来自 SQL 正文变量，保持出现顺序并去重 */
+  /** 识别出的程序参数名：代码头 `@程序参数` 声明的 + SQL 正文 `${}` 变量，去重并保持出现顺序 */
   keys: string[];
+  /** 代码头 `@程序参数` 的声明原文（未声明为空串），供弹窗提示出处 */
+  programArgs: string;
+}
+
+/**
+ * 取代码头 `@程序参数` 声明里的参数名，兼容两种写法并去重保序：
+ *  - 命令行形态 `--键 值`（如 `--day ${day} --env prod`）→ 取键名
+ *  - 纯变量形态 `${变量名}`（如 `${day}`）→ 取变量名
+ *
+ * `--offset -1` 这类取值里的短横线不会被当成参数名（`-1` 不以字母/下划线开头）；
+ * 写「无」或空值得到空数组。
+ */
+export function parseParamKeys(text: string | null | undefined): string[] {
+  const src = text ?? '';
+  const keys: string[] = [];
+  const push = (key: string) => { if (key && !keys.includes(key)) keys.push(key); };
+
+  const flagPattern = /(?:^|\s)--?([A-Za-z_][\w.\-]*)/g;
+  let match: RegExpExecArray | null;
+  while ((match = flagPattern.exec(src)) !== null) push(match[1]);
+
+  for (const key of parseSqlVarKeys(src)) push(key);
+  return keys;
 }
 
 /**
  * 提取「运行程序」弹窗预填用的参数名（打开时并成空白行，用户只填取值）。
  *
- * 代码头不再声明参数，唯一来源是 SQL 正文的 `${day}` 变量；Java / Scala / Python 的运行参数
- * 是命令行入参，正文里的 `${...}` 通常是日志/模板而非运行参数，故不扫描，返回空。
+ * 来源有二：代码头 `@程序参数` 的声明（时间类参数写 `${变量名}` 变量），以及 SQL 正文的
+ * `${day}` 变量 —— 两者同名合并去重，代码头声明在前。Java / Scala / Python 的正文里
+ * `${...}` 通常是日志/模板而非运行参数，故不扫描，参数名只来自代码头。
  *
- * 只提取**参数名**，不提取取值：取值一律留空由用户填写。
+ * 只提取**参数名**，不提取取值：取值一律留空由用户填写（时间类参数在调度侧由
+ * DolphinScheduler 用内置时间变量解析）。
  *
  * @param codeType `getFileInfo().codeType`（'sql' | 'java' | 'scala' | 'python'）；省略按 sql 处理
  */
 export function extractProgramParams(content: string, codeType?: string): ExtractedProgramParams {
-  const keys = !codeType || codeType === 'sql' ? parseSqlVarKeys(content ?? '') : [];
-  return { keys };
+  const text = content ?? '';
+  const programArgs = (parseFileHeader(text)?.programArgs ?? '').trim();
+  const fromHeader = parseParamKeys(programArgs);
+  const fromBody = !codeType || codeType === 'sql' ? parseSqlVarKeys(text) : [];
+
+  const keys: string[] = [];
+  for (const key of [...fromHeader, ...fromBody]) {
+    if (key && !keys.includes(key)) keys.push(key);
+  }
+  return { keys, programArgs };
 }
 
 /**

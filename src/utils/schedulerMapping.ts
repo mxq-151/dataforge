@@ -25,6 +25,16 @@ function inferMainClass(code: string, ext: string): string {
   return '';
 }
 
+/**
+ * 代码头 `@程序参数` 的声明原文 → 调度节点「主参数」(mainArgs)。
+ * 时间类参数写成 `${变量名}` 变量（如 `--day ${day}`），由 DolphinScheduler 在调度时用
+ * 内置时间变量解析；未声明或写「无」返回空串（保持节点默认值）。
+ */
+function deriveMainArgsFromHeader(codeContent: string): string {
+  const value = (parseFileHeader(codeContent)?.programArgs ?? '').trim();
+  return !value || value === '无' ? '' : value;
+}
+
 /** 从代码正文中提取 YARN 作业名称（Spark/Flink/SQL/Hive/MR 等提交到 YARN 的任务）。
  * 支持的常见写法：
  *  - Spark/Scala/Java: SparkSession.builder.appName("xxx") / .setAppName("xxx")
@@ -791,6 +801,13 @@ export function mapCodeFileToTask(
       applyRuntimeParams(baseParams, savedConfig, taskType);
       break;
     }
+  }
+
+  // 代码头 @程序参数 → 节点「主参数」：仅对带 mainArgs 字段的任务类型生效
+  // （SPARK / FLINK / FLINK_STREAM / JAVA 等）；SQL / PYTHON / SHELL 无该字段。
+  const headerMainArgs = deriveMainArgsFromHeader(codeContent);
+  if (headerMainArgs && 'mainArgs' in baseParams) {
+    (baseParams as Record<string, unknown>).mainArgs = headerMainArgs;
   }
 
   const dataDependencies = extractDataDependencies(codeContent, header);

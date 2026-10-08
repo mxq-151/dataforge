@@ -473,3 +473,41 @@ describe('layoutWorkflowByDependency — 前置节点在依赖节点左侧', () 
     expect(Math.abs(nodes[0].y - nodes[1].y)).toBe(GRID_GAP_Y);
   });
 });
+
+/**
+ * 代码头 @程序参数 声明 → 调度节点「主参数」(mainArgs)。
+ * 时间类参数的取值写成 ${变量名} 变量（如 `--day ${day}`），由 DolphinScheduler 调度时用
+ * 内置时间变量解析，节点参数里原样保留该变量、不写死日期。
+ */
+describe('mapCodeFileToTask — @程序参数 落到节点「主参数」', () => {
+  const sparkHeader = [
+    '/*',
+    ' * @备注: 代码头驱动节点参数',
+    ' * @引擎: spark',
+    ' * @程序参数: --day ${day} --env prod',
+    ' * @数据源: test_datasource',
+    ' */',
+    'package TEST.java.ods;',
+  ].join('\n');
+
+  it('SPARK：@程序参数 原文写进 mainArgs（${day} 变量原样保留，由 DS 解析）', () => {
+    const mapping = mapCodeFileToTask('OdsLoad.java', sparkHeader);
+    expect(mapping.taskType).toBe('SPARK');
+    expect(mapping.taskParams.mainArgs).toBe('--day ${day} --env prod');
+  });
+
+  it('写「无」或未声明时保持节点默认（空）', () => {
+    const none = ['/*', ' * @引擎: spark', ' * @程序参数: 无', ' */', 'package TEST.java.ods;'].join('\n');
+    expect(mapCodeFileToTask('OdsLoad.java', none).taskParams.mainArgs).toBe('');
+
+    const absent = ['/*', ' * @引擎: spark', ' */', 'package TEST.java.ods;'].join('\n');
+    expect(mapCodeFileToTask('OdsLoad.java', absent).taskParams.mainArgs).toBe('');
+  });
+
+  it('SQL 节点没有 mainArgs 字段，不受 @程序参数 影响', () => {
+    const sql = ['/*', ' * @引擎: kyuubi', ' * @程序参数: --day ${day}', ' */', 'select 1;'].join('\n');
+    const mapping = mapCodeFileToTask('a.sql', sql);
+    expect(mapping.taskType).toBe('SQL');
+    expect('mainArgs' in mapping.taskParams).toBe(false);
+  });
+});

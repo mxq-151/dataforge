@@ -14,8 +14,10 @@ import './ProgramRunModal.css';
 interface ProgramRunModalProps {
   /** 预填的程序参数（取自当前文件「配置参数 → 配置程序参数」），逐行可编辑 */
   defaultParams: ProgramParamItem[];
-  /** 从 SQL 正文识别到的 `${day}` 参数名，打开时并成空白行预填 */
+  /** 从 SQL 正文与代码头 `@程序参数` 识别到的参数名，打开时并成空白行预填 */
   extractedKeys?: string[];
+  /** 代码头 `@程序参数` 的声明原文（未声明为空串），用于提示出处 */
+  programArgsHint?: string;
   open: boolean;
   /**
    * 用户点「确定」：回传确认后的键值对行（所见即所发），由调用方换算成 runParams。
@@ -30,8 +32,9 @@ interface ProgramRunModalProps {
  *
  * 远程执行接口只收键值对（runParams），这里就用键值对逐行编辑，形态与
  * 「配置参数 → 配置程序参数」一致，避免「文本要按什么规矩写」的额外心智负担。
- * 打开时把**SQL 正文里的 `${day}` 变量名**并成空白行（见 extractProgramParams），用户不必
- * 自己去数；只提取名字不提取取值，取值始终由用户填。代码头已不再声明参数。
+ * 打开时把**代码头 `@程序参数` 声明的与 SQL 正文里的 `${day}` 变量名**并成空白行
+ * （见 extractProgramParams），用户不必自己去数；只提取名字不提取取值，取值始终由用户填
+ * （时间类参数在调度侧由 DolphinScheduler 用内置时间变量解析）。
  *
  * 两类**会被丢弃/被覆盖**的情况必须显式提示，不能静默：
  *   - 只填了值没填参数名的行（整行被忽略）
@@ -41,6 +44,7 @@ export function ProgramRunModal({
   open,
   defaultParams,
   extractedKeys,
+  programArgsHint,
   onConfirm,
   onCancel,
 }: ProgramRunModalProps) {
@@ -221,7 +225,8 @@ export function ProgramRunModal({
 
           {extracted.length > 0 && (
             <div className="program-run__source" data-testid="program-run-extracted">
-              已从 SQL 正文识别 {extracted.length} 个程序参数：{extracted.join('、')}
+              已识别 {extracted.length} 个程序参数：{extracted.join('、')}
+              {programArgsHint ? `（代码头 @程序参数：${programArgsHint}）` : ''}
             </div>
           )}
 

@@ -5,8 +5,10 @@
  * 本文件是代码头解析域的唯一实现入口；参数派生见 programArgs.ts，
  * 调度映射见 schedulerMapping.ts。
  *
- * 代码头不再承载运行参数：历史字段 @用法 / @程序参数 / @资源参数 / @任务参数 已废弃，
- * 解析器不再识别它们。运行参数统一由「配置参数 → 配置程序参数」维护。
+ * 代码头承载的运行参数只保留 @程序参数：声明程序运行期需要的参数；时间类参数（业务日期、
+ * 时间窗口等）的取值一律写成 `${变量名}` 变量，与 SQL 正文同名，由调度侧以 DolphinScheduler
+ * 内置时间变量（如 `$[yyyyMMdd]`）作为取值解析。历史字段 @用法 / @资源参数 / @任务参数 已废弃，
+ * 解析器不再识别。
  */
 
 type SupportedLang = 'sql' | 'java' | 'scala' | 'python';
@@ -31,9 +33,10 @@ const getSupportedLang = (filename: string): SupportedLang | null => {
  * 「SQL 有引擎、Java 没有引擎」这类漂移。
  *
  * 自 v2 起代码头统一使用块注释（/* ... *\/）逐行书写，不再支持行注释（-- // #）。
- * 历史参数声明字段（@用法 / @程序参数 / @资源参数 / @任务参数）已废弃，不再生成、不再解析。
+ * 运行参数声明字段只保留 @程序参数（时间类参数以 `${变量名}` 变量描述）；
+ * 历史字段 @用法 / @资源参数 / @任务参数 已废弃，不再生成、不再解析。
  */
-const HEADER_FIELDS = ['备注', '数仓', '引擎', '依赖', '数据源'] as const;
+const HEADER_FIELDS = ['备注', '数仓', '引擎', '依赖', '程序参数', '数据源'] as const;
 
 export const generateFileHeader = (filePath: string, _rootPath?: string): string => {
   const fileName = filePath.split(/[/\\]/).pop() || filePath;
@@ -57,6 +60,11 @@ export interface FileHeaderInfo {
   warehouse?: string;
   engine?: string;
   dependency?: string;
+  /**
+   * `@程序参数` 的声明原文（如 `--day ${day} --env prod`）。
+   * 时间类参数以 `${变量名}` 变量描述，与 SQL 正文同名；未声明或写「无」为空串。
+   */
+  programArgs?: string;
   dataSource?: string;
   /**
    * 代码头注释风格。
@@ -77,6 +85,7 @@ function parseHeaderField(key: string, value: string, info: FileHeaderInfo): voi
     case '数仓': info.warehouse = value; break;
     case '引擎': info.engine = value; break;
     case '依赖': info.dependency = value; break;
+    case '程序参数': info.programArgs = value; break;
     case '数据源': info.dataSource = value; break;
   }
 }
@@ -95,6 +104,7 @@ export const parseFileHeader = (content: string): FileHeaderInfo | null => {
     warehouse: '',
     engine: '',
     dependency: '',
+    programArgs: '',
     dataSource: '',
     style: 'none',
   };

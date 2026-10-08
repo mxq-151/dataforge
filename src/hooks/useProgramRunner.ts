@@ -84,6 +84,8 @@ interface PendingProgramRun {
   defaultParams: ProgramParamItem[];
   /** 从 SQL 正文识别到的 `${day}` 参数名，弹窗并成空白行预填 */
   extractedKeys: string[];
+  /** 代码头 `@程序参数` 的声明原文（未声明为空串），弹窗提示出处用 */
+  programArgsHint: string;
   /** 触发时选中的代码片段（有选区时只跑选区）；未选中为 undefined = 整个文件 */
   selectedCode?: string;
 }
@@ -639,9 +641,9 @@ export function useProgramRunner({
    * 预填当前文件「配置参数 → 配置程序参数」里已保存的键值对。打开弹窗即清空上一次的
    * 执行结果，避免用户在确认参数期间把残留结果误判成本次运行（口径与「本地运行」一致）。
    *
-   * 同时从 SQL 正文提取 `${day}` 参数名交给弹窗并成空白行 —— 只给名字不给取值，取值由用户
-   * 在弹窗里填。提取的是**即将执行的内容**：选中执行时看选区，否则看整个文件，与真正下发的
-   * 内容同源。代码头已不再声明参数。
+   * 同时提取程序参数名交给弹窗并成空白行 —— 来源是代码头 `@程序参数` 与 SQL 正文的 `${day}`
+   * 变量，只给名字不给取值，取值由用户在弹窗里填。提取的是**即将执行的内容**：选中执行时
+   * 看选区，否则看整个文件，与真正下发的内容同源。
    */
   const handleRunProgram = useCallback(async (selectedCode?: string) => {
     const service = serviceRef.current;
@@ -649,13 +651,14 @@ export function useProgramRunner({
 
     const { filePath, codeType } = getFileInfo();
     const content = selectedCode || currentContent;
-    const { keys } = extractProgramParams(content, codeType);
+    const { keys, programArgs } = extractProgramParams(content, codeType);
 
     setCurrentResults([]);
     setRunningLogs('请确认程序运行参数后点击「确定」，确认后将开始执行。');
     setPendingProgramRun({
       defaultParams: savedConfigParams[filePath]?.programParams ?? [],
       extractedKeys: keys,
+      programArgsHint: programArgs,
       selectedCode,
     });
   }, [currentContent, getFileInfo, savedConfigParams]);

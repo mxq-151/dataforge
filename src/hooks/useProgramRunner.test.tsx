@@ -75,6 +75,7 @@ describe('useProgramRunner — 运行程序前的参数确认', () => {
     expect(result.current.pendingProgramRun).toEqual({
       defaultParams: [{ id: 'p1', key: 'env', value: 'prod' }],
       extractedKeys: [],
+      programArgsHint: '',
       selectedCode: undefined,
     });
   });
@@ -154,13 +155,11 @@ describe('useProgramRunner — 运行程序前的参数确认', () => {
     expect(tasks[0].runParams).toBeUndefined();
   });
 
-  it('SQL：从正文 ${var} 提取程序参数名（只给名字，取值留空；代码头声明已废弃）', async () => {
+  it('SQL：代码头 @程序参数 与正文 ${var} 合并出参数名（只给名字，取值留空）', async () => {
     const content = [
       '/*',
       ' * @引擎: kyuubi',
-      ' * @程序参数: --day 20260501',
-      ' * @资源参数: 无',
-      ' * @任务参数: 无',
+      ' * @程序参数: --day ${day}',
       ' */',
       "insert overwrite table t partition(dt = '${day}')",
       "select 1 from s where dt = '${day}' and city = '${city}'",
@@ -170,11 +169,12 @@ describe('useProgramRunner — 运行程序前的参数确认', () => {
 
     await act(async () => { await result.current.handleRunProgram(); });
 
-    // 只取 SQL 正文里的变量名，按出现顺序去重（代码头里的 @程序参数 不再参与）
+    // 代码头声明的 day 在前，正文新增的 city 在后；两者都不带取值
     expect(result.current.pendingProgramRun?.extractedKeys).toEqual(['day', 'city']);
+    expect(result.current.pendingProgramRun?.programArgsHint).toBe('--day ${day}');
   });
 
-  it('Java/Scala：正文里的 ${} 与代码头声明都不算参数（命令行入参只能在弹窗里手填）', async () => {
+  it('Java/Scala：正文里的 ${} 不算参数，废弃的 @用法 也不再解析', async () => {
     const content = [
       '/*',
       ' * @引擎: spark',
