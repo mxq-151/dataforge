@@ -2,8 +2,11 @@
  * 代码头（文件头注释）域：生成、解析与校验。
  *
  * 代码头是机器解析契约：@引擎 与 @数据源 决定调度侧的任务类型与数据依赖。
- * 本文件是代码头解析域的唯一实现入口；参数派生见 programArgs.ts /
- * headerTaskParams.ts，调度映射见 schedulerMapping.ts。
+ * 本文件是代码头解析域的唯一实现入口；参数派生见 programArgs.ts，
+ * 调度映射见 schedulerMapping.ts。
+ *
+ * 代码头不再承载运行参数：历史字段 @用法 / @程序参数 / @资源参数 / @任务参数 已废弃，
+ * 解析器不再识别它们。运行参数统一由「配置参数 → 配置程序参数」维护。
  */
 
 type SupportedLang = 'sql' | 'java' | 'scala' | 'python';
@@ -28,13 +31,9 @@ const getSupportedLang = (filename: string): SupportedLang | null => {
  * 「SQL 有引擎、Java 没有引擎」这类漂移。
  *
  * 自 v2 起代码头统一使用块注释（/* ... *\/）逐行书写，不再支持行注释（-- // #）。
- * 自 v3 起原 `@用法` 拆分为 `@程序参数`（程序自身入参）与 `@任务参数`（引擎与资源参数）
- * 两个字段，无该类参数时写「无」；自 v4 起再把「资源」从 `@任务参数` 中单列为
- * `@资源参数`（任务运行所需的算力与资源归属：并行度/内存/核数/slot/队列），
- * `@任务参数` 只保留提交与引擎侧参数。`@用法` 仅保留解析兼容（旧文件仍能识别），
- * 新模板不再生成。
+ * 历史参数声明字段（@用法 / @程序参数 / @资源参数 / @任务参数）已废弃，不再生成、不再解析。
  */
-const HEADER_FIELDS = ['备注', '数仓', '引擎', '依赖', '程序参数', '资源参数', '任务参数', '数据源'] as const;
+const HEADER_FIELDS = ['备注', '数仓', '引擎', '依赖', '数据源'] as const;
 
 export const generateFileHeader = (filePath: string, _rootPath?: string): string => {
   const fileName = filePath.split(/[/\\]/).pop() || filePath;
@@ -58,21 +57,6 @@ export interface FileHeaderInfo {
   warehouse?: string;
   engine?: string;
   dependency?: string;
-  /**
-   * 旧格式（v2）`@用法` 原文 —— 仅保留解析兼容：老文件里「程序参数」「资源参数」与「任务参数」
-   * 混写在这一个字段里（见 utils/programArgs.ts 的引擎参数表）。新文件应使用
-   * programArgs / resourceArgs / taskArgs。
-   */
-  usage?: string;
-  /** 程序自身运行入参（v3 `@程序参数` 原文），如 `--day 20260501 -checkpoint 60000`；无则「无」 */
-  programArgs?: string;
-  /**
-   * 任务运行所需的资源（v4 `@资源参数` 原文），如 `--num-executors 4 -yjm 1024`、
-   * `-p 4 --queue root.default`；无则「无」。由调度侧落到任务配置的资源字段，不下发 runParams。
-   */
-  resourceArgs?: string;
-  /** 除资源外的提交与引擎侧参数（`@任务参数` 原文），如 `--master yarn --deploy-mode cluster`；无则「无」 */
-  taskArgs?: string;
   dataSource?: string;
   /**
    * 代码头注释风格。
@@ -93,12 +77,6 @@ function parseHeaderField(key: string, value: string, info: FileHeaderInfo): voi
     case '数仓': info.warehouse = value; break;
     case '引擎': info.engine = value; break;
     case '依赖': info.dependency = value; break;
-    // 旧格式（v2）单字段写法，仅为兼容老文件保留
-    case '用法': info.usage = value; break;
-    // v3：原 `@用法` 拆成的两个字段；v4：`@资源参数` 从 `@任务参数` 中单列
-    case '程序参数': info.programArgs = value; break;
-    case '资源参数': info.resourceArgs = value; break;
-    case '任务参数': info.taskArgs = value; break;
     case '数据源': info.dataSource = value; break;
   }
 }
@@ -117,10 +95,6 @@ export const parseFileHeader = (content: string): FileHeaderInfo | null => {
     warehouse: '',
     engine: '',
     dependency: '',
-    usage: '',
-    programArgs: '',
-    resourceArgs: '',
-    taskArgs: '',
     dataSource: '',
     style: 'none',
   };

@@ -11,17 +11,18 @@ import { ExecutionType, type DolphinSchedulerApi } from '../../types/dolphinsche
  *
  * 需求：右键文件夹 → 提交调度 → 弹窗内容与「工作流定义」一致，
  * 但**不显示左侧任务节点类型面板**（节点按该文件夹下的代码文件自动生成），
- * 且**不提供运行**、只做保存；保存前对 Java/Scala 可编译节点编译并回填主 Jar 包。
+ * 且**不提供运行**、只做保存；保存不做编译，主 Jar 包由工具栏「校验」阶段编译并回填。
  *
  * 工作流定义编辑器在这里被替换为桩组件：它的内部是 @antv/x6 画布，jsdom 下无法渲染，
  * 而本测试要钉住的是「传进去的节点/边是否正确、是否隐藏了侧栏、是否给了运行入口」，
  * 用桩组件反而更直接。
  *
  * unifiedCompile / bridge.fs 在这里被 mock 掉：编译走主进程 Maven，jsdom 下不可用；
- * 要测的是「编译成功 → 上传 → 回填 mainJar」与「编译失败 → 阻止保存」的接线，而非编译本身。
+ * 要测的是**校验阶段**「编译成功 → 上传 → 回填 mainJar」的接线（保存阶段不再编译），而非编译本身。
  */
 
 const saveSpy = vi.fn();
+const validateResultSpy = vi.fn();
 
 vi.mock('../schedule-management/components/WorkflowDefinitionEditor', () => ({
   default: (props: any) => (
@@ -54,6 +55,14 @@ vi.mock('../schedule-management/components/WorkflowDefinitionEditor', () => ({
       >
         save
       </button>
+      <button
+        data-testid="wf-validate"
+        onClick={async () => {
+          validateResultSpy(await props.onValidate?.(props.existingNodes));
+        }}
+      >
+        validate
+      </button>
     </div>
   ),
 }));
@@ -78,7 +87,7 @@ const FILES: Record<string, string> = {
   [`${FOLDER}/c.scala`]: header({ 引擎: 'spark', 依赖: 'demo.a' }) + 'object C {}\n',
 };
 
-/** 不含可编译文件（sql/py/sh）的文件集，用于测「保存 → create/update」的基本接线，避免编译闸门干扰 */
+/** 不含可编译文件（sql/py/sh）的文件集，用于测「保存 → create/update」的基本接线 */
 const NON_COMPILABLE_FILES: Record<string, string> = {
   [`${FOLDER}/a.sql`]: header({ 引擎: 'mysql' }) + 'select 1;\n',
   [`${FOLDER}/b.py`]: header({ 引擎: 'python' }) + 'print(1)\n',
@@ -182,6 +191,7 @@ const envRadio = (env: 'prod' | 'gray' | 'test') =>
 
 beforeEach(() => {
   saveSpy.mockClear();
+  validateResultSpy.mockClear();
   readFileContent.mockClear();
   vi.mocked(unifiedCompile).mockReset();
 });
@@ -432,7 +442,25 @@ describe('FolderSubmitScheduleModal', () => {
     expect(dsApi.workflowDefinition.createWithTasks).not.toHaveBeenCalled();
   });
 
-  it('保存前编译 Java/Scala 节点并回填主 Jar 包，SQL 节点不参与', async () => {
+  it('保存不再编译代码：不调用编译/上传，直接提交画布上的节点', async () => {
+    const dsApi = makeDsApi({ projects: [{ code: 11, name: 'demo' }], workflows: [] });
+
+    const { findByTestId } = renderModal({ dsApi, compileConfig: COMPILE_CONFIG, devProjectId: 1 });
+
+    fireEvent.click(await findByTestId('wf-save'));
+    await waitFor(() => expect(dsApi.workflowDefinition.createWithTasks).toHaveBeenCalledTimes(1));
+
+    // 编译与上传都只发生在「校验」阶段，保存阶段一次都不做
+    expect(unifiedCompile).not.toHaveBeenCalled();
+    expect(dsApi.resource.upload).not.toHaveBeenCalled();
+
+    // 未点过「校验」时 mainJar 为空，保存原样提交（mainJar 为空不再拦保存）
+    const [, payload] = dsApi.workflowDefinition.createWithTasks.mock.calls[0] as any;
+    const a = payload.nodes.find((n: any) => n.name === 'a');
+    expect(JSON.parse(a.taskParams).mainJar || '').toBe('');
+  });
+
+  it('工具栏「校验」：编译 Java/Scala、上传 Jar 并回填主 Jar 包，返回校验通过', async () => {
     const dsApi = makeDsApi({ projects: [{ code: 11, name: 'demo' }], workflows: [] });
     vi.mocked(unifiedCompile).mockResolvedValue({
       success: true, jarPath: '/tmp/a.jar', output: '', error: '', packageName: '', className: '',
@@ -440,53 +468,63 @@ describe('FolderSubmitScheduleModal', () => {
 
     const { findByTestId } = renderModal({ dsApi, compileConfig: COMPILE_CONFIG, devProjectId: 1 });
 
-    fireEvent.click(await findByTestId('wf-save'));
-    await waitFor(() => expect(dsApi.workflowDefinition.createWithTasks).toHaveBeenCalledTimes(1));
+    fireEvent.click(await findByTestId('wf-validate'));
 
-    // 仅 a.scala / c.scala（SPARK）触发编译，b.sql 不触发
+    // 仅 a.scala / c.scala（SPARK）编译并上传，b.sql 不参与
+    await waitFor(() => expect(dsApi.resource.upload).toHaveBeenCalledTimes(2));
     expect(unifiedCompile).toHaveBeenCalledTimes(2);
 
-    const [, payload] = dsApi.workflowDefinition.createWithTasks.mock.calls[0] as any;
-    const a = payload.nodes.find((n: any) => n.name === 'a');
-    const c = payload.nodes.find((n: any) => n.name === 'c');
-    const b = payload.nodes.find((n: any) => n.name === 'b');
-
-    const aParams = JSON.parse(a.taskParams);
-    expect(aParams.mainJar).toContain('/resources/demo/');
-    expect(aParams.mainJar).toContain('.jar');
-    const cParams = JSON.parse(c.taskParams);
-    expect(cParams.mainJar).toContain('.jar');
-    // SQL 节点没有 mainJar 字段，未被回填
-    const bParams = JSON.parse(b.taskParams);
-    expect(bParams.mainJar).toBeUndefined();
-    // jar 已上传到资源中心
-    expect(dsApi.resource.upload).toHaveBeenCalledTimes(2);
+    const res = validateResultSpy.mock.calls[0][0];
+    expect(res.ok).toBe(true);
+    expect(res.message).toContain('已编译并回填 2 个任务的主 Jar 包');
+    // 回填后的节点带上了主 Jar 包资源路径，编辑器据此写回画布
+    const a = res.nodes.find((n: any) => n.name === 'a');
+    expect(JSON.parse(a.taskParams).mainJar).toContain('/resources/demo/');
+    expect(JSON.parse(a.taskParams).mainJar).toContain('.jar');
+    const b = res.nodes.find((n: any) => n.name === 'b');
+    expect(JSON.parse(b.taskParams).mainJar).toBeUndefined();
   });
 
-  it('编译失败时阻止保存并提示', async () => {
+  it('工具栏「校验」：编译失败时返回未通过且不提交', async () => {
     const dsApi = makeDsApi({ projects: [{ code: 11, name: 'demo' }], workflows: [] });
     vi.mocked(unifiedCompile).mockResolvedValue({
       success: false, jarPath: '', output: 'compile error', error: 'compile error', packageName: '', className: '',
     });
 
-    const { findByTestId, container } = renderModal({ dsApi, compileConfig: COMPILE_CONFIG, devProjectId: 1 });
+    const { findByTestId } = renderModal({ dsApi, compileConfig: COMPILE_CONFIG, devProjectId: 1 });
 
-    fireEvent.click(await findByTestId('wf-save'));
+    fireEvent.click(await findByTestId('wf-validate'));
 
-    await waitFor(() => expect(container.textContent).toContain('编译失败'));
+    await waitFor(() => expect(validateResultSpy).toHaveBeenCalled());
+    const res = validateResultSpy.mock.calls[0][0];
+    expect(res.ok).toBe(false);
+    expect(dsApi.resource.upload).not.toHaveBeenCalled();
     expect(dsApi.workflowDefinition.createWithTasks).not.toHaveBeenCalled();
     expect(dsApi.workflowDefinition.update).not.toHaveBeenCalled();
   });
 
-  it('未配置 JAVA_HOME 时阻止保存并提示', async () => {
+  it('保存不受编译失败影响：不再编译，直接提交', async () => {
     const dsApi = makeDsApi({ projects: [{ code: 11, name: 'demo' }], workflows: [] });
-    const { findByTestId, container } = renderModal({ dsApi }); // 不传 compileConfig
+    vi.mocked(unifiedCompile).mockResolvedValue({
+      success: false, jarPath: '', output: 'compile error', error: 'compile error', packageName: '', className: '',
+    });
+
+    const { findByTestId } = renderModal({ dsApi, compileConfig: COMPILE_CONFIG, devProjectId: 1 });
 
     fireEvent.click(await findByTestId('wf-save'));
 
-    await waitFor(() => expect(container.textContent).toContain('JAVA_HOME 未配置'));
-    expect(dsApi.workflowDefinition.createWithTasks).not.toHaveBeenCalled();
-    expect(dsApi.workflowDefinition.update).not.toHaveBeenCalled();
+    await waitFor(() => expect(dsApi.workflowDefinition.createWithTasks).toHaveBeenCalledTimes(1));
+    expect(unifiedCompile).not.toHaveBeenCalled();
+  });
+
+  it('未配置 JAVA_HOME 也不阻止保存（编译只在「校验」阶段）', async () => {
+    const dsApi = makeDsApi({ projects: [{ code: 11, name: 'demo' }], workflows: [] });
+    const { findByTestId } = renderModal({ dsApi }); // 不传 compileConfig
+
+    fireEvent.click(await findByTestId('wf-save'));
+
+    await waitFor(() => expect(dsApi.workflowDefinition.createWithTasks).toHaveBeenCalledTimes(1));
+    expect(unifiedCompile).not.toHaveBeenCalled();
   });
 
   it('生产环境：代码里引用了非生产库时阻止保存并逐条提示', async () => {

@@ -5,58 +5,7 @@
 import { useCallback } from 'react';
 import type { OpencodeClient } from '@opencode-ai/sdk/v2/client';
 import { getDeveloperInstructions } from './opencodeInstructions';
-import { qualityApi } from '../../api/quality';
-import type { QualityRuleTemplateVO } from '../../types/quality';
 import type { LogEntry } from '../../types/opencode-backend';
-
-/**
- * 质量规则模板快照（模块级缓存）。
- *
- * ── 为什么要拉这个 ──────────────────────────────────────────
- * 数据开发角色（S3）的提示词里要带上平台预置的规则模板 SQL 骨架，让 S3「照骨架填占位符」
- * 而不是自己发挥 —— 否则同一类规则在不同业务域会写出不同的 SQL 口径（见
- * opencodeInstructions.ts 的 buildQualityTemplateSpec）。
- *
- * ── 为什么只拉一次 ──────────────────────────────────────────
- * 提示词每轮对话都要重算，但模板是低频变更的平台配置，没必要每轮请求；
- * 用 in-flight Promise 去重，避免首轮并发对话重复打接口。
- *
- * ── 失败降级 ────────────────────────────────────────────────
- * 接口不可达时返回空数组，提示词退回「只有术语表」的旧形态 —— 模板是增强项，
- * 不该让对话发不出去。空结果不写入缓存：可能是没配、也可能是这次没拉到，留待下轮重试。
- */
-let qualityTemplateCache: QualityRuleTemplateVO[] | null = null;
-let qualityTemplateInflight: Promise<QualityRuleTemplateVO[]> | null = null;
-
-async function loadQualityTemplatesSafe(): Promise<QualityRuleTemplateVO[]> {
-  if (qualityTemplateCache) {
-    return qualityTemplateCache;
-  }
-  if (!qualityTemplateInflight) {
-    // 内置在前、自定义在后：提示词里约定「同类型优先用内置模板」，顺序即优先级
-    qualityTemplateInflight = Promise.all([
-      qualityApi
-        .listBuiltinTemplates()
-        .then(res => res?.data ?? [])
-        .catch(() => [] as QualityRuleTemplateVO[]),
-      qualityApi
-        .listTemplates({ current: 1, size: 50 })
-        .then(res => res?.data?.records ?? [])
-        .catch(() => [] as QualityRuleTemplateVO[]),
-    ])
-      .then(([builtin, custom]) => {
-        const merged = [...builtin, ...custom];
-        if (merged.length > 0) {
-          qualityTemplateCache = merged;
-        }
-        return merged;
-      })
-      .finally(() => {
-        qualityTemplateInflight = null;
-      });
-  }
-  return qualityTemplateInflight;
-}
 
 export interface UseOpencodeChatOptions {
   username?: string;
@@ -188,13 +137,10 @@ export function useOpencodeChat(options: UseOpencodeChatOptions): UseOpencodeCha
   ): Promise<string | null> => {
     if (!client) return null;
 
-    // 质量规则模板：只在数据开发分支会被拼进提示词，拉取失败自动降级为空数组
-    const qualityTemplates = await loadQualityTemplatesSafe();
     const systemInstructions = getDeveloperInstructions(
       roleType ?? '',
       username ?? '',
-      moduleId ?? '',
-      qualityTemplates
+      moduleId ?? ''
     );
 
     // 如果没有 session，先创建一个

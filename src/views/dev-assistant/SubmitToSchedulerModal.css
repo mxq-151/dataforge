@@ -544,33 +544,6 @@
   border: 1px solid rgba(86, 156, 214, 0.2);
 }
 
-/* 代码头声明的节点参数：已按代码头填充的项 + 未能落到字段的声明（不静默丢弃） */
-.submit-scheduler__header-params {
-  display: flex;
-  gap: 8px;
-  align-items: flex-start;
-  margin-top: 10px;
-  padding: 8px 10px;
-  border-radius: 4px;
-  font-size: 12px;
-  line-height: 1.6;
-  color: #569cd6;
-  background-color: rgba(86, 156, 214, 0.08);
-  border: 1px solid rgba(86, 156, 214, 0.2);
-}
-
-.submit-scheduler__header-params svg {
-  flex: 0 0 auto;
-  margin-top: 2px;
-}
-
-.submit-scheduler__header-params-body {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  word-break: break-word;
-}
-
 .submit-scheduler__name-check-hint--ok {
   color: #4EC9B0;
   background-color: rgba(78, 201, 176, 0.06);

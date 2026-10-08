@@ -75,12 +75,6 @@ describe('useProgramRunner — 运行程序前的参数确认', () => {
     expect(result.current.pendingProgramRun).toEqual({
       defaultParams: [{ id: 'p1', key: 'env', value: 'prod' }],
       extractedKeys: [],
-      taskParamKeys: [],
-      resourceParamKeys: [],
-      programArgsHint: '',
-      resourceArgsHint: '',
-      taskArgsHint: '',
-      usageHint: '',
       selectedCode: undefined,
     });
   });
@@ -160,7 +154,7 @@ describe('useProgramRunner — 运行程序前的参数确认', () => {
     expect(tasks[0].runParams).toBeUndefined();
   });
 
-  it('SQL：从正文 ${var} 与代码头 @程序参数 提取程序参数名（只给名字，取值留空）', async () => {
+  it('SQL：从正文 ${var} 提取程序参数名（只给名字，取值留空；代码头声明已废弃）', async () => {
     const content = [
       '/*',
       ' * @引擎: kyuubi',
@@ -176,16 +170,11 @@ describe('useProgramRunner — 运行程序前的参数确认', () => {
 
     await act(async () => { await result.current.handleRunProgram(); });
 
-    // 代码头 @程序参数 的 day 在前，正文新增的 city 在后；两者都不带取值
+    // 只取 SQL 正文里的变量名，按出现顺序去重（代码头里的 @程序参数 不再参与）
     expect(result.current.pendingProgramRun?.extractedKeys).toEqual(['day', 'city']);
-    expect(result.current.pendingProgramRun?.programArgsHint).toBe('--day 20260501');
-    expect(result.current.pendingProgramRun?.taskArgsHint).toBe('无');
-    expect(result.current.pendingProgramRun?.taskParamKeys).toEqual([]);
-    expect(result.current.pendingProgramRun?.resourceArgsHint).toBe('无');
-    expect(result.current.pendingProgramRun?.resourceParamKeys).toEqual([]);
   });
 
-  it('Java：旧格式 @用法 下参数名只来自代码头，正文里的 ${} 不算', async () => {
+  it('Java/Scala：正文里的 ${} 与代码头声明都不算参数（命令行入参只能在弹窗里手填）', async () => {
     const content = [
       '/*',
       ' * @引擎: spark',
@@ -203,61 +192,7 @@ describe('useProgramRunner — 运行程序前的参数确认', () => {
 
     await act(async () => { await result.current.handleRunProgram(); });
 
-    expect(result.current.pendingProgramRun?.extractedKeys).toEqual(['day', 'checkpoint']);
-  });
-
-  it('旧格式 @用法：提交框架参数仍被剔到 taskParamKeys，只把程序参数交给弹窗', async () => {
-    const content = [
-      '/*',
-      ' * @引擎: spark',
-      ' * @用法: --master yarn --deploy-mode cluster --class com.x.Y --num-executors 4 --driver-memory 2g --day 20260501',
-      ' */',
-      'package TEST.scala.ods;',
-      'object Test {}',
-    ].join('\n');
-    const props = buildProps({
-      tabs: [{ id: 's1', name: 'Test.scala', path: '/proj/TEST/code/ods/Test.scala' }],
-      activeTabId: 's1',
-      currentContent: content,
-    });
-    const { result } = renderHook(() => useProgramRunner(props));
-
-    await act(async () => { await result.current.handleRunProgram(); });
-
-    expect(result.current.pendingProgramRun?.extractedKeys).toEqual(['day']);
-    expect(result.current.pendingProgramRun?.taskParamKeys).toEqual([
-      '--master', '--deploy-mode', '--class', '--num-executors', '--driver-memory',
-    ]);
-    expect(result.current.pendingProgramRun?.usageHint).toContain('--master yarn');
-  });
-
-  it('新格式 @资源参数 / @任务参数：两者都只告知、不进预填行，且各归各的桶', async () => {
-    const content = [
-      '/*',
-      ' * @引擎: spark',
-      ' * @程序参数: --day 20260501 -checkpoint 60000',
-      ' * @资源参数: --num-executors 4 --driver-memory 2g',
-      ' * @任务参数: --master yarn --deploy-mode cluster',
-      ' */',
-      'package TEST.scala.ods;',
-      'object Test {}',
-    ].join('\n');
-    const props = buildProps({
-      tabs: [{ id: 's1', name: 'Test.scala', path: '/proj/TEST/code/ods/Test.scala' }],
-      activeTabId: 's1',
-      currentContent: content,
-    });
-    const { result } = renderHook(() => useProgramRunner(props));
-
-    await act(async () => { await result.current.handleRunProgram(); });
-
-    expect(result.current.pendingProgramRun?.extractedKeys).toEqual(['day', 'checkpoint']);
-    expect(result.current.pendingProgramRun?.resourceParamKeys).toEqual(['--num-executors', '--driver-memory']);
-    expect(result.current.pendingProgramRun?.taskParamKeys).toEqual(['--master', '--deploy-mode']);
-    expect(result.current.pendingProgramRun?.programArgsHint).toBe('--day 20260501 -checkpoint 60000');
-    expect(result.current.pendingProgramRun?.resourceArgsHint).toBe('--num-executors 4 --driver-memory 2g');
-    expect(result.current.pendingProgramRun?.taskArgsHint).toBe('--master yarn --deploy-mode cluster');
-    expect(result.current.pendingProgramRun?.usageHint).toBe('');
+    expect(result.current.pendingProgramRun?.extractedKeys).toEqual([]);
   });
 
   it('带选区触发时，按选区内容提取参数（不是整个文件）', async () => {

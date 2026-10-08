@@ -66,10 +66,6 @@ const MAPPING: CodeFileMapping = {
   dataSource: null,
   dataDependencies: [],
   headerDependencies: [],
-  // 本用例不涉及代码头声明，三个字段给空值即可
-  headerTaskParams: {},
-  headerParamHits: [],
-  headerParamUnmapped: [],
 };
 
 const envRadio = (env: 'prod' | 'gray' | 'test') =>

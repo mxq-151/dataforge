@@ -25,6 +25,7 @@ import {
   getDeveloperInstructions,
 } from './opencodeInstructions';
 import { parseQualityRulesFromDesignDoc } from '../../utils/qualityRuleImport';
+import { QUALITY_RULE_TYPES } from '../../types/quality';
 
 /** 三阶段提示词，顺序即链路顺序 */
 const STAGES = [
@@ -242,85 +243,42 @@ describe('产物路径 — 三方引用同一套约定', () => {
 });
 
 /**
- * 规则模板下发（中间档）—— 只进 S3，目的是把「同一类规则各写一套 SQL」的实现走样收掉。
- * 详见 buildQualityTemplateSpec 的注释。
+ * 规则模板改由 opencode 的 quality-template 工具按需拉取（不再内嵌提示词）。
+ * 提示词侧只负责「告诉 S3 去调这个工具、传哪个规则类型编码、怎么用结果」。
+ * 工具实现见 opencode 侧 src/tool/quality-template.ts。
  */
-describe('质量规则模板下发', () => {
-  const template = {
-    id: 1,
-    templateCode: 'PRIMARY_KEY_UNIQUE',
-    templateName: '主键唯一性',
-    ruleType: 'PRIMARY_KEY_UNIQUE',
-    templateKind: 'builtin' as const,
-    // 骨架里含 ${占位符}：拼进模板字符串时若不做转义会被当插值吃掉，这里固定住
-    sqlTemplate: 'SELECT ${column} FROM ${table} GROUP BY ${column} HAVING COUNT(1) > 1',
-    fieldTypes: '',
-    paramSchema: '',
-    remark: '主键/唯一键重复检测',
-    enabled: true,
-  };
+describe('质量规则模板（工具拉取）', () => {
+  it('S3 提示词要求先调 quality-template 工具取模板，再照骨架实现', () => {
+    const prompt = DATA_DEV_ENGINEER_INSTRUCTIONS;
 
-  it('把模板编码、规则类型、SQL 骨架逐字拼进 S3 提示词', () => {
-    const prompt = getDeveloperInstructions('DATA_DEV_ENGINEER', 'u', 'dev-assistant', [template]);
-
-    expect(prompt).toContain('## 质量规则模板（平台预置，实现须照此骨架）');
-    expect(prompt).toContain('主键唯一性（PRIMARY_KEY_UNIQUE）· 内置模板');
-    expect(prompt).toContain('模板编码：PRIMARY_KEY_UNIQUE');
-    // 占位符必须原样保留，不能被当模板字符串插值吃掉
-    expect(prompt).toContain('SELECT ${column} FROM ${table} GROUP BY ${column} HAVING COUNT(1) > 1');
-    // 约束：模板由规则类型唯一决定 + 回传须带实际执行的 SQL
-    expect(prompt).toContain('模板由规则类型唯一决定，禁止自选模板');
+    expect(prompt).toContain('## 质量规则模板获取（强约束）');
+    expect(prompt).toContain('quality-template');
+    expect(prompt).toContain('ruleType');
+    expect(prompt).toContain('禁止自选模板');
+    // 约束：模板会改版，回传须带实际执行的 SQL
     expect(prompt).toContain('execSql');
+    // 工具不可用时不阻塞开发（降级路径要写清楚，否则模型可能卡住不产出）
+    expect(prompt).toContain('不阻塞开发');
   });
 
-  it('自定义模板标注为自定义，且内置模板排在前面（提示词约定内置优先）', () => {
-    const custom = {
-      ...template,
-      id: 2,
-      templateCode: 'CUSTOM_AMT_RANGE',
-      templateName: '订单金额区间',
-      ruleType: 'VALUE_RANGE',
-      templateKind: 'custom' as const,
-      sqlTemplate: 'SELECT COUNT(1) FROM ${table} WHERE ${column} < 0',
-    };
-    const prompt = getDeveloperInstructions('DATA_DEV_ENGINEER', 'u', 'dev-assistant', [template, custom]);
+  it('提示词给出 7 类规则类型的编码对照，供调用工具时传参', () => {
+    const prompt = DATA_DEV_ENGINEER_INSTRUCTIONS;
 
-    expect(prompt.indexOf('PRIMARY_KEY_UNIQUE')).toBeLessThan(prompt.indexOf('CUSTOM_AMT_RANGE'));
-    expect(prompt).toContain('· 自定义模板');
+    for (const t of QUALITY_RULE_TYPES) {
+      expect(prompt, `缺少规则类型编码对照: ${t.code}`).toContain(`${t.label}（${t.code}）`);
+    }
   });
 
-  it('停用或 SQL 为空的模板不下发', () => {
-    const prompt = getDeveloperInstructions('DATA_DEV_ENGINEER', 'u', 'dev-assistant', [
-      { ...template, enabled: false },
-      { ...template, id: 3, templateCode: 'EMPTY_ONE', sqlTemplate: '   ' },
-    ]);
-
-    expect(prompt).not.toContain('## 质量规则模板');
-    expect(prompt).not.toContain('EMPTY_ONE');
-  });
-
-  it('模板为空或拉取失败时退回「只有术语表」的旧形态，S3 仍可工作', () => {
-    const noTemplate = getDeveloperInstructions('DATA_DEV_ENGINEER', 'u', 'dev-assistant', []);
-    const undefinedTemplate = getDeveloperInstructions('DATA_DEV_ENGINEER', 'u', 'dev-assistant');
-
-    expect(noTemplate).not.toContain('## 质量规则模板');
-    expect(noTemplate).not.toContain('## 质量规则模板');
-    // 术语表与回传规范仍在，S3 不因模板缺失而失去基本约束
-    expect(noTemplate).toContain('数据质量规则类型（全链路统一术语）');
-    expect(noTemplate).toContain('/api/quality/run/report');
-    expect(undefinedTemplate).not.toContain('## 质量规则模板');
-  });
-
-  it('S1 / S2 / 数据探索不下发模板 SQL 骨架', () => {
-    expect(getDeveloperInstructions('BUSINESS_REQUESTER', 'u', 'dev-assistant', [template]))
-      .not.toContain('## 质量规则模板');
-    expect(getDeveloperInstructions('DATA_ARCHITECT', 'u', 'dev-assistant', [template]))
-      .not.toContain('## 质量规则模板');
-    expect(getDeveloperInstructions('DATA_ANALYST', 'u', 'dev-assistant', [template]))
-      .not.toContain('## 质量规则模板');
+  it('S1 / S2 / 数据探索不下发模板获取章节', () => {
+    expect(getDeveloperInstructions('BUSINESS_REQUESTER', 'u', 'dev-assistant'))
+      .not.toContain('## 质量规则模板获取');
+    expect(getDeveloperInstructions('DATA_ARCHITECT', 'u', 'dev-assistant'))
+      .not.toContain('## 质量规则模板获取');
+    expect(getDeveloperInstructions('DATA_ANALYST', 'u', 'dev-assistant'))
+      .not.toContain('## 质量规则模板获取');
     // 数据探索模块按 moduleName 短路，即使角色是数据开发也不该带模板
-    expect(getDeveloperInstructions('DATA_DEV_ENGINEER', 'u', 'data-explore', [template]))
-      .not.toContain('## 质量规则模板');
+    expect(getDeveloperInstructions('DATA_DEV_ENGINEER', 'u', 'data-explore'))
+      .not.toContain('## 质量规则模板获取');
   });
 
   it('回传规范声明了 ruleId 与 execSql 两个字段', () => {

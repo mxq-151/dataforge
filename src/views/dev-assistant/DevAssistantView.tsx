@@ -1335,12 +1335,6 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
         open={!!pendingProgramRun}
         defaultParams={pendingProgramRun?.defaultParams ?? []}
         extractedKeys={pendingProgramRun?.extractedKeys ?? []}
-        taskParamKeys={pendingProgramRun?.taskParamKeys ?? []}
-        resourceParamKeys={pendingProgramRun?.resourceParamKeys ?? []}
-        programArgsHint={pendingProgramRun?.programArgsHint ?? ''}
-        resourceArgsHint={pendingProgramRun?.resourceArgsHint ?? ''}
-        taskArgsHint={pendingProgramRun?.taskArgsHint ?? ''}
-        usageHint={pendingProgramRun?.usageHint ?? ''}
         onConfirm={handleProgramRunConfirm}
         onCancel={handleCancelProgramRun}
       />

@@ -560,6 +560,12 @@
   border-color: #5a5a5a;
 }
 
+/* 委托式校验（编译 + 上传 + 回填）执行中：按钮禁用并降透明度 */
+.wf-toolbar__validate:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
 .wf-toolbar__validate--warn {
   background-color: rgba(255, 152, 0, 0.15);
   border-color: rgba(255, 152, 0, 0.5);

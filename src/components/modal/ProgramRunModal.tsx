@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, Play, Plus, Sliders, SlidersHorizontal, Trash2, Wand2, X } from 'lucide-react';
+import { AlertTriangle, Play, Plus, Sliders, Trash2, Wand2, X } from 'lucide-react';
 import {
   createParamRow,
   findDuplicateKeys,
@@ -14,30 +14,8 @@ import './ProgramRunModal.css';
 interface ProgramRunModalProps {
   /** 预填的程序参数（取自当前文件「配置参数 → 配置程序参数」），逐行可编辑 */
   defaultParams: ProgramParamItem[];
-  /**
-   * 从代码里识别出的**程序参数**名（代码头 `@程序参数` 的 `--day`、SQL 正文的 `${day}`），
-   * 打开时并成空白行预填。
-   */
+  /** 从 SQL 正文识别到的 `${day}` 参数名，打开时并成空白行预填 */
   extractedKeys?: string[];
-  /**
-   * 代码头 `@任务参数` 声明的提交/引擎侧参数原始 flag（`--master`、`--deploy-mode`…）。
-   * 它们**不属于业务入参**，不进预填行、也不会随程序参数下发；弹窗只把它们列出来
-   * 告知去向，不能静默吞掉。
-   */
-  taskParamKeys?: string[];
-  /**
-   * 代码头 `@资源参数` 声明的资源参数原始 flag（`--num-executors`、`-p`、`--queue`…）。
-   * 与 taskParamKeys 同理只列出告知：属调度侧任务的资源配置，不进预填行、不随程序参数下发。
-   */
-  resourceParamKeys?: string[];
-  /** 代码头 `@程序参数` 原文（空串=未声明），作为识别来源提示展示 */
-  programArgsHint?: string;
-  /** 代码头 `@资源参数` 原文（空串=未声明） */
-  resourceArgsHint?: string;
-  /** 代码头 `@任务参数` 原文（空串=未声明） */
-  taskArgsHint?: string;
-  /** 旧格式代码头 `@用法` 原文（空串=未使用旧格式），非空时提示迁移到新字段 */
-  usageHint?: string;
   open: boolean;
   /**
    * 用户点「确定」：回传确认后的键值对行（所见即所发），由调用方换算成 runParams。
@@ -52,10 +30,8 @@ interface ProgramRunModalProps {
  *
  * 远程执行接口只收键值对（runParams），这里就用键值对逐行编辑，形态与
  * 「配置参数 → 配置程序参数」一致，避免「文本要按什么规矩写」的额外心智负担。
- * 打开时把**代码里识别到的程序参数名**并成空白行（见 extractProgramParams，
- * 来源为代码头 @程序参数 与 SQL 正文的 `${day}`），用户不必自己去数；只提取名字不提取取值，
- * 取值始终由用户填。代码头 @资源参数（算力/资源归属）与 @任务参数（提交/引擎侧参数）都不是
- * 业务入参，只列出告知（不下发）。
+ * 打开时把**SQL 正文里的 `${day}` 变量名**并成空白行（见 extractProgramParams），用户不必
+ * 自己去数；只提取名字不提取取值，取值始终由用户填。代码头已不再声明参数。
  *
  * 两类**会被丢弃/被覆盖**的情况必须显式提示，不能静默：
  *   - 只填了值没填参数名的行（整行被忽略）
@@ -65,12 +41,6 @@ export function ProgramRunModal({
   open,
   defaultParams,
   extractedKeys,
-  taskParamKeys,
-  resourceParamKeys,
-  programArgsHint,
-  resourceArgsHint,
-  taskArgsHint,
-  usageHint,
   onConfirm,
   onCancel,
 }: ProgramRunModalProps) {
@@ -85,8 +55,6 @@ export function ProgramRunModal({
   defaultsRef.current = { defaultParams, extractedKeys };
 
   const extracted = extractedKeys ?? [];
-  const skippedTaskParamKeys = taskParamKeys ?? [];
-  const skippedResourceParamKeys = resourceParamKeys ?? [];
 
   // 每次打开都回到「已保存参数 + 代码识别到的参数名」的预填值，避免上次改了一半的临时内容
   // 泄漏到下一次运行；两者都为空时给一行空白，省得用户要先点「添加参数」
@@ -253,34 +221,7 @@ export function ProgramRunModal({
 
           {extracted.length > 0 && (
             <div className="program-run__source" data-testid="program-run-extracted">
-              已从代码识别 {extracted.length} 个程序参数：{extracted.join('、')}
-              {programArgsHint ? `｜代码头 @程序参数：${programArgsHint}` : ''}
-              {usageHint ? `｜代码头 @用法（旧格式，建议拆成 @程序参数 / @资源参数 / @任务参数）：${usageHint}` : ''}
-            </div>
-          )}
-
-          {skippedResourceParamKeys.length > 0 && (
-            <div className="program-run__task-note" data-testid="program-run-resource-params">
-              <SlidersHorizontal size={13} />
-              <span>
-                已识别 {skippedResourceParamKeys.length} 个资源参数（{skippedResourceParamKeys.join('、')}）——
-                它们属任务的资源诉求而非业务入参，不随程序参数下发；提交调度时会自动填入任务节点对应的资源字段
-                （spark：Executor数量/内存/核数/YARN队列，flink：并行度/内存/slot），节点没有对应字段的项请到
-                「配置参数 → 配置任务参数」里设置
-                {resourceArgsHint ? `｜代码头 @资源参数：${resourceArgsHint}` : ''}
-              </span>
-            </div>
-          )}
-
-          {skippedTaskParamKeys.length > 0 && (
-            <div className="program-run__task-note" data-testid="program-run-task-params">
-              <SlidersHorizontal size={13} />
-              <span>
-                已识别 {skippedTaskParamKeys.length} 个任务参数（{skippedTaskParamKeys.join('、')}）——
-                它们属「任务参数」而非业务入参，不随程序参数下发；提交调度时会填入能对上的节点字段
-                （部署模式、主Class），其余原样进节点「其他参数」
-                {taskArgsHint ? `｜代码头 @任务参数：${taskArgsHint}` : ''}
-              </span>
+              已从 SQL 正文识别 {extracted.length} 个程序参数：{extracted.join('、')}
             </div>
           )}
 

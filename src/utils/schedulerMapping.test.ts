@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildJarsArg, mapCodeFileToTask, buildWorkflowFromFolder, type SavedConfig, reconcileWorkflowDependencies, findDependencyCycle, dependentNodeName, layoutWorkflowByDependency, GRID_START_X, GRID_START_Y, GRID_GAP_X, GRID_GAP_Y, type HeaderDependency } from './schedulerMapping';
+import { buildJarsArg, mapCodeFileToTask, type SavedConfig, reconcileWorkflowDependencies, findDependencyCycle, dependentNodeName, layoutWorkflowByDependency, GRID_START_X, GRID_START_Y, GRID_GAP_X, GRID_GAP_Y, type HeaderDependency } from './schedulerMapping';
 import type { DSWorkflowTaskNode, DSWorkflowEdge } from '../types/dolphinscheduler';
 
 function mkNode(code: number, name: string, taskType = 'SPARK'): DSWorkflowTaskNode {
@@ -471,85 +471,5 @@ describe('layoutWorkflowByDependency — 前置节点在依赖节点左侧', () 
       expect(n.x).toBe(GRID_START_X);
     }
     expect(Math.abs(nodes[0].y - nodes[1].y)).toBe(GRID_GAP_Y);
-  });
-});
-
-
-/**
- * 节点任务参数来自源代码头（见 utils/headerTaskParams.ts）。
- *
- * 两条提交入口都会经过 mapCodeFileToTask，因此这里同时锁：
- *   - 单文件提交：代码头声明并入 taskParams，并单独留一份 headerTaskParams 供弹窗压过「上次记住的取值」
- *   - 文件夹提交（buildWorkflowFromFolder，savedConfig 为 null）：节点同样带上代码头声明
- */
-describe('mapCodeFileToTask — 节点任务参数来自源代码头', () => {
-  const sparkHeader = [
-    '/*',
-    ' * @备注: 代码头驱动节点参数',
-    ' * @引擎: spark',
-    ' * @程序参数: --day 20260501',
-    ' * @资源参数: --num-executors 4 --driver-memory 2g --queue root.default',
-    ' * @任务参数: --master yarn --deploy-mode cluster --class com.demo.OdsLoad --jars dep.jar',
-    ' * @数据源: test_datasource',
-    ' */',
-    'package TEST.java.ods;',
-  ].join('\n');
-
-  it('SPARK：@资源参数 / @任务参数 / @程序参数 落到节点 taskParams（取值即真实值）', () => {
-    const mapping = mapCodeFileToTask('OdsLoad.java', sparkHeader);
-    expect(mapping.taskType).toBe('SPARK');
-    expect(mapping.taskParams).toMatchObject({
-      numExecutors: 4,
-      driverMemory: '2g',
-      yarnQueue: 'root.default',
-      deployMode: 'cluster',
-      mainClass: 'com.demo.OdsLoad',
-      mainArgs: '--day 20260501',
-      // --master 在节点参数里没有对应字段 → 原样进「其他参数」
-      others: '--master yarn',
-    });
-  });
-
-  it('代码头声明单独留一份 headerTaskParams（弹窗据此压过「上次记住的取值」），并逐条回报去向', () => {
-    const mapping = mapCodeFileToTask('OdsLoad.java', sparkHeader);
-    expect(mapping.headerTaskParams.numExecutors).toBe(4);
-    expect(mapping.headerParamHits.map(h => h.key)).toContain('numExecutors');
-    // --jars 由「配置参数 → 依赖」自动拼装，代码头声明不生效但必须回报
-    expect(mapping.headerParamUnmapped.map(h => h.raw)).toEqual(['--jars dep.jar']);
-  });
-
-  it('代码头取值压过「配置参数」里已保存的资源取值（代码头优先级最高）', () => {
-    const withSaved: SavedConfig = {
-      dependencies: [],
-      programParams: [],
-      taskParams: [
-        { id: 't1', key: 'spark.executor.instances', value: '9' },
-        { id: 't2', key: 'spark.driver.memory', value: '8g' },
-      ],
-    };
-    const mapping = mapCodeFileToTask('OdsLoad.java', sparkHeader, undefined, undefined, withSaved);
-    expect(mapping.taskParams.numExecutors).toBe(4);
-    expect(mapping.taskParams.driverMemory).toBe('2g');
-  });
-
-  it('文件夹提交（savedConfig 为 null）：每个代码文件节点都带上代码头声明', () => {
-    const sqlNoHeader = 'select 1;';
-    const draft = buildWorkflowFromFolder([
-      { filePath: '/proj/TEST/code/ods/OdsLoad.java', content: sparkHeader },
-      { filePath: '/proj/TEST/code/ods/Other.java', content: sqlNoHeader },
-    ]);
-
-    const node = draft.nodes.find(n => n.name === 'OdsLoad');
-    expect(node).toBeTruthy();
-    const params = JSON.parse(node!.taskParams);
-    expect(params.numExecutors).toBe(4);
-    expect(params.mainArgs).toBe('--day 20260501');
-
-    const other = draft.nodes.find(n => n.name === 'Other');
-    const otherParams = JSON.parse(other!.taskParams);
-    // 没有代码头声明 → 保持 DS 默认值，不被代码头取值污染
-    expect(otherParams.mainArgs).toBe('');
-    expect(otherParams.others).toBe('');
-    expect(otherParams.numExecutors).not.toBe(4);
   });
 });

@@ -7,6 +7,21 @@ import type { CodeFileMapping } from '../../utils/schedulerMapping';
 import type { DolphinSchedulerApi } from '../../types/dolphinscheduler';
 
 /**
+ * 当前 vitest/jsdom 环境未注入全局 localStorage（Node 22+ 实验性全局未启用，
+ * 缺失时 localStorage 为 undefined）。这些用例需要清空 localStorage，提供内存版实现。
+ */
+const storage = new Map<string, string>();
+Object.defineProperty(globalThis, 'localStorage', {
+  configurable: true,
+  value: {
+    getItem: (k: string) => (storage.has(k) ? storage.get(k)! : null),
+    setItem: (k: string, v: string) => { storage.set(k, String(v)); },
+    removeItem: (k: string) => { storage.delete(k); },
+    clear: () => { storage.clear(); },
+  },
+});
+
+/**
  * 单文件「提交调度」的**数据血缘参数**注入闸门。
  *
  * 需求：用户选择**非生产环境**（灰度 / 测试）提交时，提交的任务**不带任何数据血缘相关参数**；
@@ -70,9 +85,6 @@ const makeMapping = (others: string): CodeFileMapping => ({
   dataSource: null,
   dataDependencies: [],
   headerDependencies: [],
-  headerTaskParams: {},
-  headerParamHits: [],
-  headerParamUnmapped: [],
 });
 
 /** 自定义依赖：验证非生产环境仍拼出 --jars（血缘闸门不能顺手把它掐掉） */

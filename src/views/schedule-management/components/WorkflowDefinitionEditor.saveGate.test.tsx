@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import WorkflowDefinitionEditor from './WorkflowDefinitionEditor';
 import { ToastProvider } from '../../../components/Toast';
 import { Priority, type DSWorkflowTaskNode } from '../../../types/dolphinscheduler';
@@ -226,5 +226,78 @@ describe('WorkflowDefinitionEditor - 保存前参数校验闸门', () => {
     expect(screen.getByText('任务参数校验未通过')).toBeTruthy();
     expect(screen.queryByText('保存工作流')).toBeNull();
     expect(onSave).not.toHaveBeenCalled();
+  });
+});
+
+describe('WorkflowDefinitionEditor - 委托式校验通过前的保存闸门（onValidate）', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const okNodes = () => [
+    node({ code: 11, name: 'a_shell', taskParams: JSON.stringify({ rawScript: 'echo 1', localParams: [] }) }),
+    node({ code: 12, name: 'b_sql', taskType: 'SQL', taskParams: JSON.stringify({ sql: 'select 1', localParams: [] }) }),
+  ];
+
+  const renderWithValidate = (nodes: DSWorkflowTaskNode[], onValidate: (ns: DSWorkflowTaskNode[]) => any) => {
+    render(
+      <ToastProvider>
+        <WorkflowDefinitionEditor
+          workflowName="demo_wf"
+          description=""
+          existingNodes={nodes}
+          existingEdges={[]}
+          onValidate={onValidate}
+          onSave={vi.fn()}
+          onClose={() => {}}
+        />
+      </ToastProvider>
+    );
+  };
+
+  const saveButton = () => screen.getByTestId('wf-toolbar-save') as HTMLButtonElement;
+
+  it('未校验时保存按钮不可用，点击也不打开保存弹窗', () => {
+    renderWithValidate(okNodes(), vi.fn(async () => ({ ok: true })));
+
+    expect(saveButton().disabled).toBe(true);
+    expect(saveButton().title).toBe('请先通过「校验」后再保存');
+
+    fireEvent.click(saveButton());
+    expect(screen.queryByText('保存工作流')).toBeNull();
+  });
+
+  it('校验通过后保存按钮解锁，可打开保存弹窗', async () => {
+    renderWithValidate(okNodes(), vi.fn(async () => ({ ok: true, message: '校验通过' })));
+
+    fireEvent.click(screen.getByTestId('wf-toolbar-validate'));
+
+    await waitFor(() => expect(saveButton().disabled).toBe(false));
+    fireEvent.click(saveButton());
+    expect(screen.getByText('保存工作流')).toBeTruthy();
+  });
+
+  it('校验返回未通过（ok=false）时保存按钮仍不可用', async () => {
+    renderWithValidate(okNodes(), vi.fn(async () => ({ ok: false, message: '编译失败' })));
+
+    fireEvent.click(screen.getByTestId('wf-toolbar-validate'));
+
+    await waitFor(() => expect(screen.getByText('编译失败')).toBeTruthy());
+    expect(saveButton().disabled).toBe(true);
+  });
+
+  it('参数校验未通过（report）时保存按钮仍不可用', async () => {
+    const bad = [node({ code: 11, name: 'bad_sql', taskType: 'SQL', taskParams: JSON.stringify({ sql: '', localParams: [] }) })];
+    renderWithValidate(bad, vi.fn(async () => ({ ok: false, report: { ok: false, issues: [], failedNodes: [{ taskCode: 11, taskName: 'bad_sql', taskTypeLabel: 'SQL', messages: ['请填写SQL语句'] }] } })));
+
+    fireEvent.click(screen.getByTestId('wf-toolbar-validate'));
+
+    await waitFor(() => expect(screen.getByText('任务参数校验未通过')).toBeTruthy());
+    expect(saveButton().disabled).toBe(true);
+  });
+
+  it('未提供 onValidate 的入口（普通工作流定义）不受影响，保存按钮始终可用', () => {
+    renderEditor(okNodes());
+    expect(saveButton().disabled).toBe(false);
   });
 });

@@ -1,25 +1,26 @@
 /**
  * fileHeader.test.ts — 代码头解析与数据开发提示词的一致性测试
  *
- * 代码头是机器解析契约：src/utils/index.ts 的 parseFileHeader 扫描文件头注释区，
+ * 代码头是机器解析契约：src/utils/fileHeader.ts 的 parseFileHeader 扫描文件头注释区，
  * 优先按块注释（/* ... *\/）逐行匹配 * @键: 值，容忍开头 BOM/空行，
  * 遇到首个真实代码行（非注释）即终止；未出现块注释时回退按旧式行注释（-- // #）扫描。
  * 因此 opencodeInstructions.ts 中数据开发提示词的代码头样例必须：
  * - 使用块注释（/* ... *\/）逐行书写，行注释书写的代码头会被判为不合规
  * - 位于文件开头，不得被 import 或 package 语句隔断
  * - 含 @备注 / @引擎 / @数据源 必填项，且 @引擎 取值可被识别为调度任务类型
- * - 参数声明用 @程序参数 / @资源参数 / @任务参数（无则「无」），不再使用旧字段 @用法
+ *
+ * 代码头已不再承载运行参数：历史字段 @用法 / @程序参数 / @资源参数 / @任务参数 已废弃，
+ * 解析器不再识别、提示词样例也不再书写。运行参数统一由「配置参数 → 配置程序参数」维护，
+ * SQL 正文里的 `${参数名}` 只作为「运行程序」弹窗的预填来源（见 programArgs.test.ts）。
  *
  * 本测试直接从提示词中抽取样例代码块并喂给真实解析器，防止改提示词时破坏解析。
- * 文末另锁「SQL 开发规范」里的变量写法（${参数名}）：正文变量由 parseSqlVarKeys 识别，
- * 须与 @程序参数 同名且为合法标识符。
+ * 文末另锁「SQL 开发规范」里的变量写法（${参数名}）：正文变量由 parseSqlVarKeys 识别。
  */
 
 import { describe, it, expect } from 'vitest';
 import { generateFileHeader, parseFileHeader, validateFileHeader } from './fileHeader';
 import { extractProgramParams } from './programArgs';
 import { mapCodeFileToTask } from './schedulerMapping';
-import { deriveTaskParamsFromHeader } from './headerTaskParams';
 import { DATA_DEV_ENGINEER_INSTRUCTIONS } from '../hooks/opencode/opencodeInstructions';
 
 interface PromptSample {
@@ -49,6 +50,9 @@ function sampleOf(lang: string): PromptSample {
   return found;
 }
 
+/** 代码头已废弃的参数字段（解析器不再识别，提示词样例也不应再出现） */
+const DEPRECATED_HEADER_FIELDS = ['@用法', '@程序参数', '@资源参数', '@任务参数'];
+
 describe('数据开发提示词样例 — 代码头可被解析', () => {
   it('提示词给出了 SQL 与 Java 两个样例', () => {
     const langs = promptSamples().map(s => s.lang);
@@ -67,72 +71,22 @@ describe('数据开发提示词样例 — 代码头可被解析', () => {
     }
   });
 
-  it('每个样例都声明了 @程序参数 / @资源参数 / @任务参数（无参数时写「无」），且不再出现旧字段 @用法', () => {
+  it('每个样例都不再书写已废弃的参数字段', () => {
     for (const s of promptSamples()) {
-      const header = parseFileHeader(s.content);
-      expect(header!.programArgs, `.${s.lang} 样例缺少 @程序参数`).toBeTruthy();
-      expect(header!.resourceArgs, `.${s.lang} 样例缺少 @资源参数`).toBeTruthy();
-      expect(header!.taskArgs, `.${s.lang} 样例缺少 @任务参数`).toBeTruthy();
-      expect(header!.usage, `.${s.lang} 样例仍在使用旧字段 @用法`).toBe('');
+      for (const field of DEPRECATED_HEADER_FIELDS) {
+        expect(s.content, `.${s.lang} 样例不应再出现 ${field}`).not.toContain(field);
+      }
     }
   });
 
-  it('样例的三个参数字段被正确分流：@程序参数 → 预填行，@资源参数 / @任务参数 → 只告知', () => {
+  it('Java 样例不扫描正文 ${} → 无预填参数名（命令行入参由弹窗手填）', () => {
     const { content } = sampleOf('java');
-    const { keys, taskParamKeys, resourceParamKeys } = extractProgramParams(content, 'java');
-    expect(keys).toEqual(['day', 'checkpoint']);
-    expect(resourceParamKeys).toEqual(['-p', '-yjm', '-ytm']);
-    expect(taskParamKeys).toEqual(['-m', '-Dyarn.application.name=ods_trade_order_load_r']);
+    expect(extractProgramParams(content, 'java')).toEqual({ keys: [] });
   });
 
-  it('SQL 样例的资源参数（kyuubi/spark 形态）只进资源参数、不混进预填行', () => {
+  it('SQL 样例只从正文识别业务入参', () => {
     const { content } = sampleOf('sql');
-    const { keys, resourceParamKeys, taskParamKeys } = extractProgramParams(content, 'sql');
-    expect(keys).toEqual(['day']);
-    expect(resourceParamKeys).toEqual(['--num-executors', '--driver-memory', '--executor-cores']);
-    expect(taskParamKeys).toEqual([]);
-  });
-
-  it('提示词给出了三个参数字段的区别说明（三者互斥的判定口径）', () => {
-    for (const key of [
-      '三个参数字段的区别',
-      '@资源参数',
-      '回答"这次给多少资源"',
-      '判定顺序',
-      // 取值语义与落到节点的字段对照：提示词与「提交调度」的换算口径必须一致
-      '真实取值',
-      '落到节点字段的对照',
-      'Executor数量',
-    ]) {
-      expect(DATA_DEV_ENGINEER_INSTRUCTIONS, `S3 提示词缺少三者区别说明片段: ${key}`).toContain(key);
-    }
-  });
-
-  it('Java 样例（flink）的三类声明能落到调度节点参数：资源/任务字段 + 主参数 + 其他参数', () => {
-    const { content } = sampleOf('java');
-    const { params } = deriveTaskParamsFromHeader(content, 'FLINK');
-    expect(params).toMatchObject({
-      parallelism: 4,
-      jobManagerMemory: '1024',
-      taskManagerMemory: '2048',
-      // -m yarn-cluster 收敛成节点「部署模式」的合法取值
-      deployMode: 'cluster',
-      mainArgs: '--day 20260501 -checkpoint 60000',
-    });
-    // -Dyarn.application.name 在节点参数里没有对应字段 → 原样进「其他参数」
-    expect(params.others).toBe('-Dyarn.application.name=ods_trade_order_load_r');
-  });
-
-  it('SQL 样例（kyuubi）的资源参数不写进 SQL 节点，逐条回报给用户（不静默丢弃）', () => {
-    const { content } = sampleOf('sql');
-    const { supported, params, unmapped } = deriveTaskParamsFromHeader(content, 'SQL');
-    expect(supported).toBe(false);
-    expect(params).toEqual({});
-    expect(unmapped.map(h => h.raw)).toEqual([
-      '--num-executors 4',
-      '--driver-memory 2g',
-      '--executor-cores 2',
-    ]);
+    expect(extractProgramParams(content, 'sql')).toEqual({ keys: ['day'] });
   });
 
   it('SQL 样例被识别为 SQL 任务，数据源取自 @数据源', () => {
@@ -160,22 +114,26 @@ describe('数据开发提示词样例 — 代码头可被解析', () => {
 
 /**
  * 「SQL 开发规范」里的变量写法同样是机器解析契约：src/utils/programArgs.ts::parseSqlVarKeys
- * 先剥离注释，再扫 SQL 正文的 ${} 取纯标识符名，最后与代码头 @程序参数 合并、按名去重，
- * 作为「运行程序」弹窗的预填兜底。提示词写错（用 $[yyyyMMdd]、变量与声明不同名、
- * 只在注释里写变量）都会让参数漏配，这里钉住口径。
+ * 先剥离注释，再扫 SQL 正文的 ${} 取纯标识符名，作为「运行程序」弹窗的预填兜底。
+ * 提示词写错（用 $[yyyyMMdd]、只在注释里写变量）都会让参数漏配，这里钉住口径。
  */
 describe('数据开发提示词 — SQL 变量规范与解析器口径一致', () => {
   it('提示词声明了变量的写法约束', () => {
-    for (const key of ['变量编写规范', '${参数名}', '@程序参数', '$[yyyyMMdd]', '同名']) {
+    for (const key of ['变量编写规范', '${参数名}', '$[yyyyMMdd]', '取值由「运行程序」弹窗']) {
       expect(DATA_DEV_ENGINEER_INSTRUCTIONS, `S3 提示词缺少 SQL 变量规范片段: ${key}`).toContain(key);
     }
   });
 
-  it('SQL 样例的正文变量与 @程序参数 同名（合并去重后只剩一个 day）', () => {
+  it('提示词不再提代码头参数字段', () => {
+    for (const field of DEPRECATED_HEADER_FIELDS) {
+      expect(DATA_DEV_ENGINEER_INSTRUCTIONS, `S3 提示词不应再出现 ${field}`).not.toContain(field);
+    }
+  });
+
+  it('SQL 样例正文里的 ${day} 被识别为参数名 day', () => {
     const { content } = sampleOf('sql');
-    const { keys, programArgs } = extractProgramParams(content, 'sql');
-    expect(programArgs).toContain('--day');
-    expect(keys).toEqual(['day']);
+    expect(content).toContain('${day}');
+    expect(extractProgramParams(content, 'sql').keys).toEqual(['day']);
   });
 
   it('提示词里的错误写法不会被解析器误收：$[yyyyMMdd] 与带默认值的模板表达式', () => {
@@ -199,8 +157,7 @@ describe('数据开发提示词 — SQL 变量规范与解析器口径一致', (
  * 新建文件时由 generateFileHeader 灌入的代码头模板，是人工书写代码头的范本。
  * 模板若漏字段，人工新建的 .java/.scala/.py 就只会填模板里有的项，
  * 进而丢 @引擎（任务被默认判为 SPARK）与 @数据源（调度依赖缺失）。
- * v3 起模板含 @程序参数 / @任务参数（原 @用法 已拆分），v4 起补 @资源参数，
- * 漏掉会导致「运行程序」识别不到参数。
+ * 代码头不再承载运行参数，模板也就不再产出 @程序参数 / @资源参数 / @任务参数 / @用法。
  */
 describe('generateFileHeader — 模板字段完整性', () => {
   const cases: Array<{ file: string }> = [
@@ -216,11 +173,13 @@ describe('generateFileHeader — 模板字段完整性', () => {
     expect(header).toBeTruthy();
     expect(header.startsWith('/*')).toBe(true);
     expect(header.endsWith(' */')).toBe(true);
-    // 原 @用法 已拆成 @程序参数 / @资源参数 / @任务参数（无则「无」），生成器不得再产出 @用法
-    for (const field of ['备注', '数仓', '引擎', '依赖', '程序参数', '资源参数', '任务参数', '数据源']) {
+    // 代码头只保留 备注/数仓/引擎/依赖/数据源；历史参数字段一律不再生成
+    for (const field of ['备注', '数仓', '引擎', '依赖', '数据源']) {
       expect(header).toContain(`@${field}: `);
     }
-    expect(header).not.toContain('@用法: ');
+    for (const field of DEPRECATED_HEADER_FIELDS) {
+      expect(header).not.toContain(`${field}: `);
+    }
 
     // 模板必须能被真实解析器识别为块注释，且各字段键都在（值留空待填）
     const parsed = parseFileHeader(header);
@@ -229,10 +188,6 @@ describe('generateFileHeader — 模板字段完整性', () => {
     expect(parsed!.remark).toBe('');
     expect(parsed!.engine).toBe('');
     expect(parsed!.dependency).toBe('');
-    expect(parsed!.programArgs).toBe('');
-    expect(parsed!.resourceArgs).toBe('');
-    expect(parsed!.taskArgs).toBe('');
-    expect(parsed!.usage).toBe('');
     expect(parsed!.dataSource).toBe('');
   });
 
@@ -324,6 +279,28 @@ describe('parseFileHeader — 边界与回归', () => {
   it('未声明 @依赖 时 dependency 为空串', () => {
     const header = parseFileHeader('/*\n * @引擎: spark\n * @备注: 无前置依赖\n */');
     expect(header?.dependency).toBe('');
+  });
+
+  it('已废弃的参数字段不再被解析（值不落入任何已知字段）', () => {
+    const content = [
+      '/*',
+      ' * @引擎: spark',
+      ' * @备注: 历史字段',
+      ' * @程序参数: --day 20260501',
+      ' * @资源参数: --num-executors 4',
+      ' * @任务参数: --master yarn',
+      ' * @用法: --day 20260501',
+      ' * @数据源: test_datasource',
+      ' */',
+    ].join('\n');
+    const header = parseFileHeader(content);
+    expect(header).not.toBeNull();
+    // 只认已知字段，废弃字段被忽略
+    expect(header!.engine).toBe('spark');
+    expect(header!.dataSource).toBe('test_datasource');
+    expect(Object.keys(header!).sort()).toEqual(
+      ['dataSource', 'dependency', 'engine', 'filePath', 'language', 'remark', 'style', 'warehouse'],
+    );
   });
 });
 

@@ -520,33 +520,6 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
     return TASK_TYPE_PARAMS_CONFIG[currentMapping.taskType] || null;
   }, [currentMapping?.taskType]);
 
-  /**
-   * 代码头声明的节点参数签名（见 utils/headerTaskParams.ts）。
-   *
-   * 用途：把「代码头改了」精确地变成回填 effect 的依赖 —— 直接依赖 headerTaskParams 对象会每次
-   * 重算都换引用、反复重置用户手填值；用签名字符串则只在代码头取值真的变了才重跑。
-   */
-  const headerParamsSignature = useMemo(
-    () => Object.entries(currentMapping?.headerTaskParams || {})
-      .map(([k, v]) => `${k}=${v}`)
-      .sort()
-      .join('|'),
-    [currentMapping?.headerTaskParams],
-  );
-
-  /** 代码头声明的节点参数提示（已写入的项 + 未能落到字段的项），无内容时为 null */
-  const headerParamNotice = useMemo(() => {
-    if (!currentMapping) return null;
-    const applied = currentMapping.headerParamHits || [];
-    const unmapped = currentMapping.headerParamUnmapped || [];
-    if (applied.length === 0 && unmapped.length === 0) return null;
-    const keys: string[] = [];
-    for (const hit of applied) {
-      if (hit.key && !keys.includes(hit.key)) keys.push(hit.key);
-    }
-    return { keys, unmapped };
-  }, [currentMapping]);
-
   useEffect(() => {
     if (currentMapping && currentTaskTypeConfig) {
       const defaults: Record<string, string | boolean> = {};
@@ -574,23 +547,13 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
           if (REMEMBER_EXCLUDE_KEYS.has(k)) continue;
           merged[k] = typeof v === 'boolean' ? v : String(v);
         }
-        // 代码头声明优先级最高：压过默认值、文件推导值与「上次记住的取值」。
-        // 唯一让位给用户的是本次已在弹窗里手改的「其他参数」（preservedOthers，见下）。
-        // 只接受本任务类型确实存在的配置项：别名表与本表一旦不一致，宁可不写，
-        // 也不让脏键混进 taskParams 一起提交给调度（submitOrderSimulation 会校验参数名）。
-        const knownKeys = new Set(currentTaskTypeConfig.params.map(param => param.key));
-        for (const [k, v] of Object.entries(currentMapping.headerTaskParams || {})) {
-          if (!knownKeys.has(k)) continue;
-          if (v === undefined || v === null || v === '') continue;
-          merged[k] = typeof v === 'boolean' ? v : String(v);
-        }
         if (preservedOthers) merged.others = preservedOthers;
         return merged;
       });
     } else {
       setTaskTypeParams({});
     }
-  }, [currentMapping?.taskType, fileName, filePath, visible, headerParamsSignature]);
+  }, [currentMapping?.taskType, fileName, filePath, visible]);
 
   const applyTaskTypeParamsToMapping = useCallback((mapping: CodeFileMapping | null): CodeFileMapping | null => {
     if (!mapping) return mapping;
@@ -2044,26 +2007,6 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
                   </div>
                 </div>
               )}
-
-              {headerParamNotice && (
-                <div className="submit-scheduler__header-params" data-testid="submit-scheduler-header-params">
-                  <Info size={13} />
-                  <div className="submit-scheduler__header-params-body">
-                    {headerParamNotice.keys.length > 0 && (
-                      <div data-testid="submit-scheduler-header-params-applied">
-                        已按代码头填充 {headerParamNotice.keys.length} 项节点参数：{headerParamNotice.keys.join('、')}
-                        （取值即代码头声明值，可在上方直接改）
-                      </div>
-                    )}
-                    {headerParamNotice.unmapped.map((hit, index) => (
-                      <div key={`${hit.from}-${hit.raw}-${index}`} data-testid="submit-scheduler-header-params-unmapped">
-                        {hit.raw} —— {hit.note}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
 
               <div className="submit-scheduler__section">
                 <div className="submit-scheduler__section-title">执行配置</div>

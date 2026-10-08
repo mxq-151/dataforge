@@ -110,22 +110,6 @@
   word-break: break-all;
 }
 
-/* 代码头 @资源参数 / @任务参数 的非业务入参：说明它们不下发 runParams、该去哪配（不静默丢弃） */
-.program-run__task-note {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  font-size: 11px;
-  line-height: 1.6;
-  color: var(--text-secondary, #9aa3b2);
-  word-break: break-all;
-}
-
-.program-run__task-note svg {
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-
 /* 参数行较多时限制高度，避免弹窗被撑高到超出屏幕 */
 .program-run__rows {
   display: flex;

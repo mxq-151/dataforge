@@ -17,30 +17,19 @@
  *   直接读取表头行做列数断言。改列名/列数/顺序必须同步改解析器与测试。
  * - DATA_DEV_ENGINEER_INSTRUCTIONS 的代码头样例被 src/utils/fileHeader.test.ts 抽取
  *   后喂给真实解析器。改样例必须保持：块注释（/* ... *\/）连续书写于文件开头、含
- *   @备注/@引擎/@数据源/@程序参数/@资源参数/@任务参数（后三者无参数时写「无」）、
- *   Java 样例 package 声明为 TEST.java.ods。
+ *   @备注/@引擎/@数据源，Java 样例 package 声明为 TEST.java.ods。
  * - @依赖 是数据开发提示词里代码头的机器解析字段，src/utils/index.ts 的
  *   parseFileHeader 会提取其原始值（前置依赖逗号分隔串，写为 {调度项目}.{前置任务名称}，
  *   前置任务名称不含文件扩展名）。同步修改 opencodeInstructions.ts 的 @依赖 描述时，
  *   须保持该格式约定与 fileHeader.test.ts 中的解析断言一致。
- * - @程序参数 / @资源参数 / @任务参数 是数据开发代码头的三个机器解析字段（@程序参数 与
- *   @任务参数 由 v3 的 @用法 拆分而来，@资源参数 自 v4 起再把「资源」从 @任务参数 中单列）：
- *   parseFileHeader 分别解析为 programArgs / resourceArgs / taskArgs，再由
- *   src/utils/programArgs.ts::extractProgramParams 取其中的参数名 —— @程序参数 进
- *   「运行程序」弹窗的预填行，@资源参数 与 @任务参数 只列出告知（分别属调度侧的资源配置与
- *   提交参数，都不下发 runParams）。三者的判定口径见「代码头格式规范」里的对比表。
- *   改这三个字段的名称、语法或「无」的写法，必须同步改 parseFileHeader 的字段映射、
- *   extractProgramParams 与 programArgs.test.ts / fileHeader.test.ts 的断言。
- *   @用法 仅为解析兼容旧文件保留，新提示词不再出现。
- * - SQL 变量（数据开发「SQL 开发规范」里的 ${参数名}）是另一条机器解析契约：
+ * - SQL 变量（数据开发「SQL 开发规范」里的 ${参数名}）是机器解析契约：
  *   src/utils/programArgs.ts::parseSqlVarKeys 先剥离注释（stripSqlComments）再扫 SQL 正文的
- *   ${}，只取纯标识符名（PARAM_KEY_PATTERN），再与代码头 @程序参数 合并、按名去重，作为
- *   「运行程序」弹窗的预填兜底。改提示词里的变量写法（${} 形式、合法名、与 @程序参数 同名、
- *   注释内不算、不用 $[yyyyMMdd]）必须同步 parseSqlVarKeys 与 programArgs.test.ts 的断言。
+ *   ${}，只取纯标识符名（PARAM_KEY_PATTERN），作为「运行程序」弹窗的预填来源。改提示词里的
+ *   变量写法（${} 形式、合法名、注释内不算、不用 $[yyyyMMdd]）必须同步 parseSqlVarKeys 与
+ *   programArgs.test.ts 的断言。
  */
 
-import { QUALITY_RULE_TYPES, getQualityRuleType } from '../../types/quality';
-import type { QualityRuleTemplateVO } from '../../types/quality';
+import { QUALITY_RULE_TYPES } from '../../types/quality';
 
 // ══════════════════════════════════════════════════════════════
 // 一、全链路共享契约（S1 / S2 / S3 共用）
@@ -104,16 +93,19 @@ ${QUALITY_RULE_TYPES.map((t, i) => `${i + 1}. ${t.label}：${t.desc}`).join('\n'
 - 平台按"数据源 + 库 + 表 + 批次 + 规则名"把设计文档、监控规则与校验结果串起来：改名等于断开链路，规则覆盖率与告警都会失配`;
 
 /**
- * 质量规则模板下发（**仅 S3 数据开发使用**）
+ * 质量规则模板获取（**仅 S3 数据开发使用**）
  *
- * ── 为什么要把模板 SQL 下发给 S3 ────────────────────────────
+ * ── 为什么要把模板交给 S3 ───────────────────────────────────
  * 三阶段原先只共享「7 类规则类型」这套术语（见 QUALITY_RULE_SPEC），S3 据此自己写校验 SQL。
  * 结果是同一类规则在不同业务域、不同批次写出的 SQL 口径并不一致 —— 「主键唯一性」有的写
  * GROUP BY ... HAVING COUNT(1) > 1，有的拿 COUNT(*) 比 COUNT(DISTINCT)；阈值语义也跟着漂。
  * 名字对得上，但名字底下的算法各写一套，平台的运行记录与大盘就没有可比口径。
  *
- * 这里把平台预置模板的 SQL 骨架随提示词一并下发，让 S3「照骨架填占位符」而不是从零发挥：
- * 实现口径由模板唯一决定，方言适配与「单条 SELECT/WITH」约束平台已经校验过。
+ * ── 为什么改为工具拉取而不是内嵌提示词 ──────────────────────
+ * 模板是低频变更但**确实会变**的平台配置资产：内嵌进提示词意味着每次对话都要先把模板
+ * 拼进 system，改一次模板得等下一条消息才生效，且同一份内容随每轮请求重复传输。
+ * 改为 quality-template 工具（见 opencode 侧 src/tool/quality-template.ts）后，模板由
+ * S3 在实现校验逻辑前**按需、按规则类型**现拉现用，拿到的永远是最新版。
  *
  * ── 约束（写进提示词，避免 S3 自由发挥）──────────────────────
  * - 模板由**规则类型唯一决定**，S3 不得自选模板 —— 否则「名字说 A、代码在做 B」照样发生。
@@ -121,51 +113,20 @@ ${QUALITY_RULE_TYPES.map((t, i) => `${i + 1}. ${t.label}：${t.desc}`).join('\n'
  *   让「规则名叫什么」与「当时到底跑了什么」可事后核对。
  * - 内置模板只读；自定义模板是现场口径补充，同样归属 7 类之一。
  *
- * 返回空串表示无可用模板（接口未接入 / 全部停用）—— 此时提示词退回「只给术语表」的旧形态，
- * 不影响 S3 继续工作，只是失去口径统一的收益。
+ * 工具不可用（平台不可达 / 无可用模板）时不阻塞开发：按规则类型语义自行实现，
+ * 但必须在交付汇报中说明模板缺失，便于人工复核口径。
  */
-export function buildQualityTemplateSpec(templates: QualityRuleTemplateVO[]): string {
-  const usable = (templates ?? []).filter(t => t.enabled !== false && (t.sqlTemplate ?? '').trim() !== '');
-  if (usable.length === 0) {
-    return '';
-  }
-
-  // 用数组拼接而非模板字符串：模板 SQL 骨架里含 ${占位符}，写进模板字符串会被当成插值。
-  const lines: string[] = [];
-  lines.push('');
-  lines.push('## 质量规则模板（平台预置，实现须照此骨架）');
-  lines.push(
-    '下列模板由平台维护、按规则类型组织。把某条规则实现成校验逻辑时，**按该规则的规则类型取对应模板的 SQL 骨架、填好占位符**，不要另起一套算法 —— 同一类规则各写一套，平台无法判断哪份结果可信。'
-  );
-  lines.push('');
-  lines.push('使用约束：');
-  lines.push('- 模板由规则类型唯一决定，禁止自选模板，也不要改动骨架的判定逻辑');
-  lines.push('- 同一规则类型存在多张模板时，优先用内置模板（templateKind=builtin）；自定义模板是现场口径补充');
-  lines.push('- 骨架里的占位符（形如 ${表名}，写法见下方）在生成代码时替换为设计文档里对应的库表字段；替换后仍须是单条 SELECT / WITH 查询');
-  lines.push(
-    '- 模板会随平台维护而改版，因此回传时必须带上本次**实际执行**的 SQL（execSql 字段）—— 否则事后无法核对当时跑的是哪一版口径'
-  );
-
-  for (const template of usable) {
-    const typeLabel = getQualityRuleType(template.ruleType)?.label ?? template.ruleType;
-    const kindLabel = template.templateKind === 'builtin' ? '内置模板' : '自定义模板';
-    lines.push('');
-    lines.push('### ' + typeLabel + '（' + template.ruleType + '）· ' + kindLabel);
-    lines.push('- 模板编码：' + template.templateCode);
-    lines.push('- 模板名称：' + template.templateName);
-    lines.push('- 适用字段类型：' + (template.fieldTypes || '不限'));
-    if ((template.paramSchema ?? '').trim() !== '') {
-      lines.push('- 参数定义：' + template.paramSchema);
-    }
-    if ((template.remark ?? '').trim() !== '') {
-      lines.push('- 说明：' + template.remark);
-    }
-    lines.push('- SQL 骨架：');
-    lines.push(template.sqlTemplate.trim());
-  }
-
-  return lines.join('\n');
-}
+const QUALITY_TEMPLATE_TOOL_SPEC = `
+## 质量规则模板获取（强约束）
+实现任何一条校验规则之前，先用 quality-template 工具按该规则的规则类型取回平台模板，照模板的 SQL 骨架填占位符实现 —— 不要另起一套算法：同一类规则各写一套，平台无法判断哪份结果可信。
+- 调用方式：quality-template 工具，传 ruleType 为该规则的规则类型编码（对照见下方；不传则返回全部模板）
+- 模板由规则类型唯一决定，禁止自选模板，也不要改动骨架的判定逻辑
+- 同一规则类型存在多张模板时，优先用内置模板（templateKind=builtin）；自定义模板是现场口径补充
+- 骨架里的占位符（形如 \${表名}）替换为设计文档里对应的库表字段；替换后仍须是单条 SELECT / WITH 查询
+- 模板会随平台维护改版，因此回传时必须带上本次**实际执行**的 SQL（execSql 字段）—— 否则事后无法核对当时跑的是哪一版口径
+- 工具不可用（平台不可达、无可用模板）时不阻塞开发：按规则类型语义自行实现，并在交付汇报里说明模板缺失
+- 规则类型编码对照（调用时传编码，与"数据质量规则类型"的 7 类一一对应）：
+${QUALITY_RULE_TYPES.map((t, i) => `${i + 1}. ${t.label}（${t.code}）`).join('\n')}`;
 
 /** 分层规范（S2 主导设计，S3 必须遵循） */
 const LAYERING_SPEC = `
@@ -595,8 +556,8 @@ ${LAYERING_SPEC}
 2. 现状调研：知识库（集群架构、开发规范、业务规范、处理流程）→ 后端元数据服务（已有库表结构、字段业务含义、数据源）→ Marquez（数据血缘与上下游依赖）
 3. 复用优先：先查找可复用的已有程序、utils 工具类与集群同步组件；能复用则复用，禁止重复造轮子
 4. 技术选型：确定运行引擎与实现语言（见"引擎与技术选型规范"），处理链路须与知识库定义的集群架构及处理流程一致
-5. 编码实现：先写代码头再写主体（代码头的三个参数字段 @程序参数 / @资源参数 / @任务参数 按"代码头格式规范"的判定顺序各自归类，无则写「无」），SQL 与 Java/Scala/Python 分别遵照对应的开发规范；按设计文档逐表逐指标实现
-6. 质量实现：把设计文档定义的稽核规则实现为独立的校验任务（见"数据质量校验规范"），并按"质检结果回传规范"把规则级结果回传平台
+5. 编码实现：先写代码头再写主体, SQL 与 Java/Scala/Python 分别遵照对应的开发规范；按设计文档逐表逐指标实现
+6. 质量实现：先用 quality-template 工具按规则类型取回平台模板，照骨架实现校验逻辑（见"数据质量校验规范"与"质量规则模板获取"），并按"质检结果回传规范"把规则级结果回传平台
 7. 校验修复：调用 compile / sql-validate 校验，逐个修复报错直至零错误，校验不通过不得落地产出
 8. 落地产出与交付自检：用文件写入工具落到目标目录，再按"交付前自检清单"逐项核对，不通过则先修正产出，再回复用户
 
@@ -629,34 +590,14 @@ ${DATABASE_ENV_SPEC}
   - @备注：必填，描述代码实现的业务逻辑、业务需求与注意点；若本程序产出设计文档中的指标，须在此写明指标编码
   - @引擎：必填，取值见"引擎与技术选型规范"
   - @依赖: 必填，描述当前任务有哪些前置依赖任务；格式为 @依赖: {调度项目}.{前置任务名称}，多个前置依赖用英文逗号分隔，参考：@依赖: test_project.ods_load_user_f,test_project.ods_load_events_f，其中 test_project 是调度项目（也是项目编码），ods_load_user_f、ods_load_events_f 为前置任务名称（不含文件扩展名，如 .java/.sql 等不写入）；若无前置依赖任务则填无
-  - @程序参数：程序自身的**业务入参**（回答"这次要算什么"），写为 \`--参数名 取值\`，多个用空格分隔，如 --day 20260501 -threshold 0.9（取值写**真实值**、不是占位符：提交调度时该取值会写进任务节点的「主参数 mainArgs」随任务一起提交，参数名同时用于「运行程序」弹窗预填、由弹窗填运行时取值）；只写随业务批次变化、由业务语义决定的入参，**不得**把引擎参数、提交框架参数与资源参数写在这里（spark 的 --master/--deploy-mode/--class/--num-executors/--driver-memory/--conf，flink 的 -c/-m/-p/-yjm/-ytm/-ys/-Dk=v 等一律不属于本字段）；没有程序入参时填无
-  - @资源参数：本任务运行所需的**资源**（回答"这次给多少资源"），专门用于定义任务所需资源，写法同 @程序参数，取值写**真实值**（不是示例值），如 spark 的 --num-executors 4 --driver-memory 2g --executor-cores 2、flink 的 -p 4 -yjm 1024 -ytm 2048、队列 --queue root.default；只写与业务数据无关的算力与资源归属（并行度、内存、核数、slot、队列），提交调度时自动填入任务节点对应的资源字段，不随程序参数下发；没有资源诉求时填无
-  - @任务参数：除资源外的**提交与引擎侧运行参数**（回答"这个任务怎么提交、引擎侧怎么配"），写法同 @程序参数，取值写**真实值**，如 --master yarn --deploy-mode cluster --class com.x.Y、-m yarn-cluster -Dyarn.application.name=ods_trade_order_load_r；提交调度时能对上节点字段的（部署模式、主Class）自动填入、对不上的原样进节点「其他参数」，不随程序参数下发；没有任务参数时填无
   - @数据源：必填，代码用到的数据源名称（来自 metadata 工具），多个用英文逗号分隔
 
-三个参数字段的区别（落笔前按"这次要算什么 / 这次给多少资源 / 这个任务怎么提交、引擎侧怎么配"判定归属，三者互斥，禁止混写）：
-
-| 字段 | 回答的问题 | 取值特征 | 示例 | 谁消费 |
-|------|------------|----------|------|--------|
-| @程序参数 | 程序这次要算什么 | 随业务批次变化：业务日期、批次号、开关、阈值，每次运行可能不同 | --day 20260501、-threshold 0.9 | 取值 → 提交调度时写进任务节点「主参数(mainArgs)」；参数名 → 「运行程序」弹窗预填，运行时取值由弹窗填 |
-| @资源参数 | 这次给多少资源 | 与业务数据无关、稳定少变的算力与资源归属：并行度、内存、核数、slot、队列 | --num-executors 4 --driver-memory 2g、-p 4 -yjm 1024、--queue root.default | 提交调度时自动填入任务节点对应资源字段（见下方对照），不下发到程序入参 |
-| @任务参数 | 这个任务怎么提交、引擎侧怎么配 | 与业务数据无关、稳定少变的提交形态与引擎配置：提交目标、提交模式、主类、引擎侧开关 | --master yarn --deploy-mode cluster、-m yarn-cluster -Dyarn.application.name=xxx | 提交调度时填入能对上的节点字段（部署模式、主Class），其余原样进节点「其他参数」，不下发到程序入参 |
-
-判定顺序：是业务入参 → @程序参数；不是业务入参、且回答"给多少资源"（数量类：并行度、内存、核数、slot、队列）→ @资源参数；其余提交与引擎侧配置 → @任务参数。三个字段都写成「参数名 + 真实取值」，取值是**最终生效值**、不是占位符：@程序参数 的取值进节点「主参数」，@资源参数 / @任务参数 的取值进节点对应字段；无对应参数时写「无」，不得留空、不得省略字段。
-
-落到节点字段的对照（提交调度自动识别，写代码头时按这套名字组织，别自造同义参数）：
-- spark：--num-executors→Executor数量、--driver-memory→Driver内存、--driver-cores→Driver核心数、--executor-memory→Executor内存、--executor-cores→Executor核心数、--queue→YARN队列、--deploy-mode→部署模式、--class→主Class；其余（--master、--conf、-Dk=v 等）原样进「其他参数」
-- flink：-p/--parallelism→并行度、-yjm→JobManager内存、-ytm→TaskManager内存、-ys→Slot数、-yn→TaskManager数、-yqu/--queue→YARN队列、-m→部署模式、-c/--class→主Class；其余（-d、-Dyarn.* 等）原样进「其他参数」
-- 主 Jar 与「应用名称」分别由编译产物与「项目.工作流.任务」自动生成，**不要**写进代码头（写 --jars / --name 也无效）
 
 - 代码头写法示例：
   \`\`\`plaintext
   /*
    * @备注: 描述业务逻辑
    * @引擎: kyuubi
-   * @程序参数: --day 20260501
-   * @资源参数: --num-executors 4 --driver-memory 2g
-   * @任务参数: 无
    * @数据源: test_datasource
    */
   \`\`\`
@@ -666,9 +607,9 @@ ${DATABASE_ENV_SPEC}
 - 参数化：业务日期与分区值一律使用参数/变量，禁止硬编码具体日期、账号、密码、密钥
 - 变量编写规范（机器解析，强约束）：运行期取值一律写成 \`\${参数名}\` 形式，系统按此识别程序参数
   - 合法名：字母或下划线开头，只含字母、数字、下划线、点、连字符，如 \`\${day}\`、\`\${biz_date}\`、\`\${start.dt}\`；禁止中文、空格、以数字或连字符开头；不要写带默认值/类型标注的模板表达式（\`\${day:20260501}\`、\`\${day:-1}\` 这类系统识别不到，等同于硬编码）
-  - 写在有效 SQL 语句里：只有正文语句中的 \`\${...}\` 才会被识别为参数，注释（代码头、\`--\` 行注释）里的示例变量会被忽略——参数声明写在代码头 \`@程序参数\`，正文只负责使用
-  - 与代码头同名声明：正文用到的每个变量都须在 \`@程序参数\` 中声明同名参数（逐字一致、大小写敏感），两处按名去重；\`@程序参数\` 是「运行程序」弹窗的预填来源，正文变量用于兜底补全
-  - 日期参数只用 \`\${}\` 形式：不要使用 DolphinScheduler 内置的 \`$[yyyyMMdd]\` 写法——形式不同，系统不会把它当作程序参数下发，运行时会取不到值
+  - 写在有效 SQL 语句里：只有正文语句中的 \`\${...}\` 才会被识别为参数，注释（代码头、\`--\` 行注释）里的示例变量会被忽略
+  - 取值由「运行程序」弹窗按识别到的变量名逐项填写：正文只负责以 \`\${参数名}\` 形式声明并使用，不要在代码里给变量写默认值兜底
+  - 日期参数只用 \`\${}\` 形式：不要使用 DolphinScheduler 内置的 \`$[yyyyMMdd]\` 写法——形式不同，系统不会把它当作参数下发，运行时会取不到值
   - 一词一义：同一语义在全脚本只用一个变量名（不要 \`\${day}\` 与 \`\${dt}\` 混用），写法与大小写保持一致
   - 引用时保留引号：变量出现在分区条件或字符串比较中须带引号，如 \`PARTITION (dt = '\${day}')\`、\`WHERE dt = '\${day}'\`，不得写成 \`dt = \${day}\`
 - 分区与幂等：写入分区表必须显式指定分区字段；按业务日期分区覆盖（overwrite）或先清后写，保证同一分区重复执行结果一致，禁止无分区条件的全表覆盖
@@ -683,7 +624,6 @@ ${DATABASE_ENV_SPEC}
 - 公共逻辑抽取到 utils/ 目录复用，禁止在多个任务文件中复制同一段实现
 - Spark：合理设置并行度与分区数，避免 collect 大结果集到 Driver，复用 SparkSession；大表关联关注数据倾斜并做广播或加盐处理
 - Flink：明确状态后端与检查点配置，状态须设置 TTL；保证任务可重启、可重跑；Source/Sink 需明确幂等或 exactly-once 语义
-- 资源参数（并行度、内存、核数、队列等）与提交参数声明在代码头 @资源参数 / @任务参数，提交调度时自动填入任务节点对应字段（对照表见「代码头格式规范」），禁止硬编码在代码里
 - 敏感字段按设计文档的分类分级与脱敏建议实现脱敏，禁止明文落库
 
 ## 数据质量校验规范
@@ -691,6 +631,8 @@ ${DATABASE_ENV_SPEC}
 - 校验输出须可定位：规则名、校验对象、阈值、实际值、是否通过
 - 规则类型取自"数据质量规则类型"，实现范围须覆盖设计文档中为对应表定义的全部规则
 - 校验不通过时阻断下游或告警，并输出异常明细，便于定位与修复
+
+${QUALITY_TEMPLATE_TOOL_SPEC}
 
 ## 规则登记规范（强约束）
 实现校验逻辑之前，先把设计文档里的每条规则登记到平台并取回规则 ID —— 平台默认按规则名匹配规则，规则一旦改名（设计文档改了、平台里没跟着改）关联就断；带上规则 ID 后关联不再依赖名字。
@@ -746,9 +688,8 @@ ${DATABASE_ENV_SPEC}
 
 ${deliverySelfCheck(`- 设计对齐：代码中的目标表、字段、类型、分区与口径同数仓设计文档及 DDL 逐项一致，无臆造字段
 - 校验通过：SQL 通过 sql-validate，Java/Scala 通过 compile，无语法与编译错误
-- 代码头合规：块注释（/* ... */）书写、位于文件开头且连续，@备注/@依赖/@数据源 必填项齐全，@程序参数/@资源参数/@任务参数 三者齐备且在无对应参数时已写「无」，@引擎 取值在允许集合内
-- 参数归属：业务入参写 @程序参数、资源诉求写 @资源参数、提交与引擎侧配置写 @任务参数，三者未混写（尤其未把 --num-executors/--driver-memory/-p/-yjm/--queue 这类资源参数写进 @程序参数 或 @任务参数）；三个字段的取值均为真实生效值（不是占位符），且未写由系统自动生成的主 Jar 与应用名称（--jars / --name）
-- 变量合规：SQL 正文里的 \${变量} 均为合法标识符、已在 @程序参数 中同名声明，未使用 $[yyyyMMdd] 写法，无硬编码日期与取值
+- 代码头合规：块注释（/* ... */）书写、位于文件开头且连续，@备注/@依赖/@数据源 必填项齐全
+- 变量合规：SQL 正文里的 \${变量} 均为合法标识符、未使用 $[yyyyMMdd] 写法，无硬编码日期与取值
 - 命名与路径：文件名与目录符合程序命名规范；Java/Scala 的包声明与类名校验通过
 - 指标对齐：代码中实现的指标编码与计算表达式同设计文档"数据指标"章节一致，且已显式标注
 - 下钻对齐：输出字段与分组键覆盖设计文档声明的全部下钻维度，维度层级与取值同设计一致
@@ -763,9 +704,6 @@ ${OUTPUT_REQUIREMENTS}
   /*
    * @备注: 将 ODS 层登录明细清洗后写入 DWD 层用户登录明细，按天分区，支持重跑；产出指标 USR_0001 日活用户数
    * @引擎: kyuubi
-   * @程序参数: --day 20260501
-   * @资源参数: --num-executors 4 --driver-memory 2g --executor-cores 2
-   * @任务参数: 无
    * @数据源: test_datasource
    */
   INSERT OVERWRITE TABLE dwd_user_login_d PARTITION (dt = '\${day}')
@@ -780,9 +718,6 @@ ${OUTPUT_REQUIREMENTS}
   /*
    * @备注: 实时消费订单 Kafka 消息写入 ODS 层订单表
    * @引擎: flink
-   * @程序参数: --day 20260501 -checkpoint 60000
-   * @资源参数: -p 4 -yjm 1024 -ytm 2048
-   * @任务参数: -m yarn-cluster -Dyarn.application.name=ods_trade_order_load_r
    * @数据源: test_datasource
    */
   package TEST.java.ods;
@@ -851,22 +786,16 @@ export type RoleType = 'SUPER_ADMIN' | 'DATA_ARCHITECT' | 'DATA_DEV_ENGINEER' | 
 /**
  * 根据用户角色类型生成对应的系统指令
  *
- * @param qualityTemplates 平台预置的质量规则模板（可选）。**只对数据开发（S3）生效**：
- *   S1/S2 只消费术语表，给他们下发模板会误导成"照模板写规则"。模板拉取失败时传空数组即可，
- *   提示词自动退回"只有术语表"的形态，不阻塞对话。详见 {@link buildQualityTemplateSpec}。
+ * 质量规则模板不再内嵌进提示词：S3 在实现校验逻辑前用 quality-template 工具按规则类型现拉，
+ * 模板永远是最新版（见 QUALITY_TEMPLATE_TOOL_SPEC）。
  */
 export function getDeveloperInstructions(
   roleType: RoleType | string,
   username: string,
-  _moduleName: string,
-  qualityTemplates?: QualityRuleTemplateVO[]
+  _moduleName: string
 ): string {
-  // 只在数据开发分支拼模板章节；其余角色保持原样（S1/S2 的提示词不该出现 SQL 骨架）
-  const devInstructions = (): string =>
-    DATA_DEV_ENGINEER_INSTRUCTIONS + buildQualityTemplateSpec(qualityTemplates ?? []);
-
   if (!roleType) {
-    return devInstructions();
+    return DATA_DEV_ENGINEER_INSTRUCTIONS;
   }
 
   if (_moduleName==="data-explore")
@@ -889,5 +818,5 @@ export function getDeveloperInstructions(
     return BUSINESS_REQUESTER_INSTRUCTIONS;
   }
   // 默认数据开发工程师
-  return devInstructions();
+  return DATA_DEV_ENGINEER_INSTRUCTIONS;
 }

@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import type { Graph, Node } from '@antv/x6';
 import {
   ArrowLeft, Save, Trash2, ZoomIn, ZoomOut, Maximize2, Maximize,
-  Move, Plus, X, Zap, Search, Download, LayoutGrid, AlertTriangle, ShieldCheck,
+  Move, Plus, X, Zap, Search, Download, LayoutGrid, AlertTriangle, ShieldCheck, Loader2,
 } from 'lucide-react';
 import type {
   DSWorkflowTaskNode, DSWorkflowEdge, DSWorkflowGlobalParam,
@@ -32,6 +32,20 @@ import {
 import { useToast } from '../../../components/Toast';
 import './WorkflowDefinitionEditor.css';
 
+/**
+ * 工具栏「校验」委托结果（见 `WorkflowDefinitionEditorProps.onValidate`）。
+ */
+export interface EditorValidateResult {
+  /** 是否通过；false 且无 report 时按 message 给出失败提示 */
+  ok: boolean;
+  /** 任务参数校验报告：非空表示参数未通过，弹出校验报告弹窗（优先于 ok/message） */
+  report?: WorkflowNodeValidationResult | null;
+  /** 回填后的节点：非空时写回画布（如编译回填的主 Jar 包） */
+  nodes?: DSWorkflowTaskNode[];
+  /** 轻提示文案（通过时的成功提示 / 未通过时的失败提示） */
+  message?: string;
+}
+
 interface WorkflowDefinitionEditorProps {
   workflowName: string;
   description: string;
@@ -60,6 +74,12 @@ interface WorkflowDefinitionEditorProps {
    * 文件夹「提交调度」保持显示（节点自动生成，批量提交前主动校验更有用）。
    */
   hideToolbarValidate?: boolean;
+  /**
+   * 自定义「校验」动作（可选）。提供时，工具栏「校验」按钮改为委托给它执行，
+   * 供文件夹「提交调度」等入口在参数校验之外**编译代码、上传 Jar 并回填主 Jar 包**。
+   * 未提供时保持默认：仅做任务节点参数校验。
+   */
+  onValidate?: (nodes: DSWorkflowTaskNode[]) => Promise<EditorValidateResult> | EditorValidateResult;
   /**
    * 「应用名称」自动生成上下文（`{project}.{workflow}.{task}`，见 utils/appName.ts）。
    * 仅提交入口（单文件 / 文件夹提交调度）传入：任务节点里的应用名称变为只读派生值，
@@ -99,6 +119,7 @@ const WorkflowDefinitionEditor: React.FC<WorkflowDefinitionEditorProps> = ({
   showTaskTypeSidebar = true,
   hideToolbarHeader = false,
   hideToolbarValidate = false,
+  onValidate,
   appNameContext,
   workflowDefinitions,
   workerGroups,
@@ -131,6 +152,17 @@ const WorkflowDefinitionEditor: React.FC<WorkflowDefinitionEditorProps> = ({
   const [showTriggerModal, setShowTriggerModal] = useState(false);
   // 保存前的任务节点参数校验报告（非空 = 校验未通过，保存被拦下）
   const [validationReport, setValidationReport] = useState<WorkflowNodeValidationResult | null>(null);
+  // 委托式校验（onValidate）执行中：编译 + 上传 + 回填通常耗时，按钮进入忙碌态
+  const [validating, setValidating] = useState(false);
+  // 保存闸门（仅提供 onValidate 且工具栏有「校验」按钮的入口，如文件夹「提交调度」生效）：
+  // 必须先点「校验」并通过，保存按钮才可用；校验通过后画布再有改动则要求重新校验。
+  // canvasRev 记录画布改动次数（增删节点/边、改任务参数时 +1），validatedRev 记录
+  // 校验通过时所处的改动版本，二者一致才解锁保存。
+  const [canvasRev, setCanvasRev] = useState(0);
+  const [validatedRev, setValidatedRev] = useState<number | null>(null);
+  const bumpCanvasRev = useCallback(() => setCanvasRev(r => r + 1), []);
+  const saveGateRequired = !!onValidate && !hideToolbarValidate;
+  const saveUnlocked = !saveGateRequired || validatedRev === canvasRev;
 
   const toast = useToast();
 
@@ -181,11 +213,63 @@ const WorkflowDefinitionEditor: React.FC<WorkflowDefinitionEditorProps> = ({
   const liveValidation = useMemo(() => validateWorkflowNodes(nodes), [nodes]);
 
   /**
+   * 把回填后的节点写回画布（如编译回填的 mainJar），保证用户能在节点配置里看到派生值。
+   * 写回口径与 `handleSaveTask` 一致：节点数据存在 cell 的 data.task 上。
+   */
+  const writeBackNodes = useCallback((list: DSWorkflowTaskNode[]) => {
+    const graph = graphRef.current;
+    if (!graph) return;
+    list.forEach(task => {
+      const cell = graph.getCellById(String(task.code)) as Node | undefined;
+      if (!cell) return;
+      cell.setData({
+        ...cell.getData(),
+        task,
+        taskType: task.taskType,
+        taskName: task.name,
+        flag: task.flag,
+      });
+    });
+    setNodes(extractNodes(graph.getNodes()));
+  }, []);
+
+  /**
    * 工具栏「校验」按钮：主动校验全部任务节点参数。
    * 与保存闸门同一份规则——通过给轻提示，不通过打开校验报告。
+   * 提供 `onValidate` 时改为委托执行（文件夹「提交调度」会在参数校验外编译并回填主 Jar 包）。
    */
-  const handleValidate = useCallback(() => {
+  const handleValidate = useCallback(async () => {
     const list = currentNodes();
+
+    if (onValidate) {
+      setValidating(true);
+      try {
+        const res = await onValidate(list);
+        // 先写回回填后的节点（即使部分失败也保留已成功的 mainJar），再决定提示
+        if (res.nodes) writeBackNodes(res.nodes);
+        if (res.report && !res.report.ok) {
+          setValidatedRev(null);
+          setValidationReport(res.report);
+          return;
+        }
+        setValidationReport(null);
+        if (res.ok) {
+          // 校验通过：把保存闸门解锁到当前画布版本（写回不改变 canvasRev）
+          setValidatedRev(canvasRev);
+          toast.info(res.message ?? `校验通过：${list.length} 个任务节点参数完整`);
+        } else {
+          setValidatedRev(null);
+          if (res.message) toast.error(res.message);
+        }
+      } catch (e) {
+        setValidatedRev(null);
+        toast.error(e instanceof Error ? e.message : String(e));
+      } finally {
+        setValidating(false);
+      }
+      return;
+    }
+
     const result = validateWorkflowNodes(list);
     if (result.ok) {
       setValidationReport(null);
@@ -193,12 +277,17 @@ const WorkflowDefinitionEditor: React.FC<WorkflowDefinitionEditorProps> = ({
       return;
     }
     setValidationReport(result);
-  }, [currentNodes, toast]);
+  }, [currentNodes, toast, onValidate, writeBackNodes, canvasRev]);
 
   /**
    * 打开保存弹窗前的闸门：先校验全部任务节点参数，有任一不通过就只弹出校验报告、不放行保存。
+   * 提供 onValidate 的入口还需先通过工具栏「校验」（saveUnlocked），否则保存按钮本身不可用。
    */
   const handleOpenSaveModal = useCallback(() => {
+    if (!saveUnlocked) {
+      toast.info('请先点击「校验」，通过后再保存');
+      return;
+    }
     const result = validateWorkflowNodes(currentNodes());
     if (!result.ok) {
       setValidationReport(result);
@@ -206,14 +295,15 @@ const WorkflowDefinitionEditor: React.FC<WorkflowDefinitionEditorProps> = ({
     }
     setValidationReport(null);
     setShowSaveModal(true);
-  }, [currentNodes]);
+  }, [currentNodes, saveUnlocked, toast]);
 
   // ---------- graph 就绪后接线 ----------
   const handleGraphReady = useCallback((graph: Graph) => {
     graphRef.current = graph;
 
-    const syncNodes = () => setNodes(extractNodes(graph.getNodes()));
-    const syncEdges = () => setEdges(extractEdges(graph.getEdges()));
+    // 画布结构变化（增删节点/边、移动）后同步 state，并让已通过的「校验」失效（要求重新校验）
+    const syncNodes = () => { setNodes(extractNodes(graph.getNodes())); bumpCanvasRev(); };
+    const syncEdges = () => { setEdges(extractEdges(graph.getEdges())); bumpCanvasRev(); };
 
     graph.on('node:added', syncNodes);
     graph.on('node:removed', syncNodes);
@@ -244,7 +334,7 @@ const WorkflowDefinitionEditor: React.FC<WorkflowDefinitionEditorProps> = ({
     if (existingNodes && existingNodes.length > 0) {
       graph.fromJSON(buildGraph(existingNodes, existingEdges || []));
     }
-  }, [existingNodes, existingEdges]);
+  }, [existingNodes, existingEdges, bumpCanvasRev]);
 
   const handleEditNode = useCallback((node: DSWorkflowTaskNode) => {
     if (readonly) return;
@@ -329,10 +419,12 @@ const WorkflowDefinitionEditor: React.FC<WorkflowDefinitionEditorProps> = ({
       // 否则编辑器里的节点搜索、上游任务下拉、以及保存前的参数校验都会读到改动前的旧参数。
       setNodes(extractNodes(graph.getNodes()));
       if (newEdges) setEdges(extractEdges(graph.getEdges()));
+      // 任务参数被改动（不触发图事件）→ 让已通过的「校验」失效
+      bumpCanvasRev();
     }
     setShowTaskModal(false);
     setEditingTask(null);
-  }, []);
+  }, [bumpCanvasRev]);
 
   // ---------- 删除 ----------
   const handleDeleteSelected = useCallback(() => {
@@ -516,21 +608,32 @@ const WorkflowDefinitionEditor: React.FC<WorkflowDefinitionEditorProps> = ({
               className={`wf-toolbar__validate${liveValidation.ok ? '' : ' wf-toolbar__validate--warn'}`}
               data-testid="wf-toolbar-validate"
               onClick={handleValidate}
+              disabled={validating}
               title={
-                liveValidation.ok
-                  ? '校验全部任务节点的参数完整性'
-                  : `存在 ${liveValidation.failedNodes.length} 个待完善的任务节点，点击查看`
+                validating
+                  ? '正在校验并编译代码…'
+                  : liveValidation.ok
+                    ? '校验全部任务节点参数并按需编译、回填主 Jar 包'
+                    : `存在 ${liveValidation.failedNodes.length} 个待完善的任务节点，点击查看`
               }
             >
-              {liveValidation.ok ? <ShieldCheck size={13} /> : <AlertTriangle size={13} />}
-              校验
-              {!liveValidation.ok && (
+              {validating
+                ? <Loader2 size={13} className="sm-spin" />
+                : liveValidation.ok ? <ShieldCheck size={13} /> : <AlertTriangle size={13} />}
+              {validating ? '校验中…' : '校验'}
+              {!validating && !liveValidation.ok && (
                 <span className="wf-toolbar__validate-badge">{liveValidation.failedNodes.length}</span>
               )}
             </button>
           )}
           {!readonly && (
-            <button className="sm-btn sm-btn--primary sm-btn--xs" onClick={handleOpenSaveModal}>
+            <button
+              className="sm-btn sm-btn--primary sm-btn--xs"
+              data-testid="wf-toolbar-save"
+              onClick={handleOpenSaveModal}
+              disabled={!saveUnlocked}
+              title={saveUnlocked ? '保存工作流' : '请先通过「校验」后再保存'}
+            >
               <Save size={14} /> 保存
             </button>
           )}

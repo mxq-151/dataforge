@@ -82,26 +82,8 @@ interface PendingLocalRun {
 interface PendingProgramRun {
   /** 预填的键值对（取自当前文件「配置参数 → 配置程序参数」），弹窗里逐行可编辑 */
   defaultParams: ProgramParamItem[];
-  /** 从代码里识别到的**程序参数**名（代码头 `@程序参数`、SQL 的 `${day}`），弹窗并成空白行预填 */
+  /** 从 SQL 正文识别到的 `${day}` 参数名，弹窗并成空白行预填 */
   extractedKeys: string[];
-  /**
-   * 代码头 `@任务参数` 声明的提交/引擎侧参数（`--master`、`--deploy-mode`…）。
-   * 它们属「任务参数」不是业务入参，弹窗只列出告知，不进预填行、不下发 runParams。
-   */
-  taskParamKeys: string[];
-  /**
-   * 代码头 `@资源参数` 声明的资源参数（`--num-executors`、`-p`、`--queue`…）。
-   * 与 taskParamKeys 同理只列出告知：属调度侧的资源配置，不进预填行、不下发 runParams。
-   */
-  resourceParamKeys: string[];
-  /** 代码头 `@程序参数` 原文（空串=未声明），弹窗里作为填写提示 */
-  programArgsHint: string;
-  /** 代码头 `@资源参数` 原文（空串=未声明） */
-  resourceArgsHint: string;
-  /** 代码头 `@任务参数` 原文（空串=未声明） */
-  taskArgsHint: string;
-  /** 旧格式 `@用法` 原文（空串=未使用旧格式），弹窗据此提示迁移 */
-  usageHint: string;
   /** 触发时选中的代码片段（有选区时只跑选区）；未选中为 undefined = 整个文件 */
   selectedCode?: string;
 }
@@ -657,10 +639,9 @@ export function useProgramRunner({
    * 预填当前文件「配置参数 → 配置程序参数」里已保存的键值对。打开弹窗即清空上一次的
    * 执行结果，避免用户在确认参数期间把残留结果误判成本次运行（口径与「本地运行」一致）。
    *
-   * 同时从代码里提取**程序参数名**（代码头 `@程序参数` 的 `--day ...`、SQL 正文的 `${day}`）
-   * 交给弹窗并成空白行 —— 只给名字不给取值，取值由用户在弹窗里填。提取的是**即将执行的内容**：
-   * 选中执行时看选区，否则看整个文件，与真正下发的内容同源。代码头 `@资源参数` 与 `@任务参数`
-   * 只转达给弹窗展示（资源参数属调度侧资源配置、任务参数属提交参数，都不下发 runParams）。
+   * 同时从 SQL 正文提取 `${day}` 参数名交给弹窗并成空白行 —— 只给名字不给取值，取值由用户
+   * 在弹窗里填。提取的是**即将执行的内容**：选中执行时看选区，否则看整个文件，与真正下发的
+   * 内容同源。代码头已不再声明参数。
    */
   const handleRunProgram = useCallback(async (selectedCode?: string) => {
     const service = serviceRef.current;
@@ -668,20 +649,13 @@ export function useProgramRunner({
 
     const { filePath, codeType } = getFileInfo();
     const content = selectedCode || currentContent;
-    const { keys, taskParamKeys, resourceParamKeys, programArgs, resourceArgs, taskArgs, usage } =
-      extractProgramParams(content, codeType);
+    const { keys } = extractProgramParams(content, codeType);
 
     setCurrentResults([]);
     setRunningLogs('请确认程序运行参数后点击「确定」，确认后将开始执行。');
     setPendingProgramRun({
       defaultParams: savedConfigParams[filePath]?.programParams ?? [],
       extractedKeys: keys,
-      taskParamKeys,
-      resourceParamKeys,
-      programArgsHint: programArgs,
-      resourceArgsHint: resourceArgs,
-      taskArgsHint: taskArgs,
-      usageHint: usage,
       selectedCode,
     });
   }, [currentContent, getFileInfo, savedConfigParams]);

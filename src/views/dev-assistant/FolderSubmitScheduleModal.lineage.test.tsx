@@ -6,6 +6,21 @@ import { ToastProvider } from '../../components/Toast';
 import { ExecutionType, type DolphinSchedulerApi } from '../../types/dolphinscheduler';
 
 /**
+ * 当前 vitest/jsdom 环境未注入全局 localStorage（Node 22+ 实验性全局未启用，
+ * 缺失时 localStorage 为 undefined）。这些用例需要清空 localStorage，提供内存版实现。
+ */
+const storage = new Map<string, string>();
+Object.defineProperty(globalThis, 'localStorage', {
+  configurable: true,
+  value: {
+    getItem: (k: string) => (storage.has(k) ? storage.get(k)! : null),
+    setItem: (k: string, v: string) => { storage.set(k, String(v)); },
+    removeItem: (k: string) => { storage.delete(k); },
+    clear: () => { storage.clear(); },
+  },
+});
+
+/**
  * 文件夹「提交调度」的数据血缘参数注入（生产环境）与闸门。
  *
  * 需求：生产环境批量提交时，与单文件入口一样给 Spark 节点带上 `spark.openlineage.*`；
@@ -68,12 +83,10 @@ const FOLDER = `${ROOT}/demo`;
 const header = (fields: Record<string, string>) =>
   `/*\n${Object.entries(fields).map(([k, v]) => ` * @${k}: ${v}`).join('\n')}\n */\n`;
 
-/** 一个 SPARK（.py + @引擎:spark，不需要编译）+ 一个 SQL（不该被注入血缘）
- *  + 一个代码头把命令声明进「其他参数」的 SPARK（验证追加而不是覆盖） */
+/** 一个 SPARK（.py + @引擎:spark，不需要编译）+ 一个 SQL（不该被注入血缘） */
 const FILES: Record<string, string> = {
   [`${FOLDER}/ods_a.py`]: header({ 引擎: 'spark' }) + 'print(1)\n',
   [`${FOLDER}/ods_b.sql`]: header({ 引擎: 'mysql' }) + 'select 1;\n',
-  [`${FOLDER}/ods_c.py`]: header({ 引擎: 'spark', 任务参数: '--master yarn' }) + 'print(2)\n',
 };
 
 const TRANSPORT_URL = 'http://openlineage.test:5000';
@@ -174,24 +187,6 @@ describe('FolderSubmitScheduleModal — 生产环境批量提交注入血缘参�
     // 该文件没有其他参数声明，注入结果就是四个 --conf 拼成的一行
     expect(others).toBe(
       '--conf spark.extraListeners=io.openlineage.spark.agent.OpenLineageSparkListener'
-      + ' --conf spark.openlineage.transport.type=http'
-      + ` --conf spark.openlineage.transport.url=${TRANSPORT_URL}`
-      + ' --conf spark.openlineage.namespace=demo'
-    );
-  });
-
-  it('生产环境：代码头声明进「其他参数」的命令被保留，血缘参数追加在同一行末尾', async () => {
-    const dsApi = makeDsApi();
-    const { findByTestId } = renderModal({ dsApi });
-    await findByTestId('wf-editor');
-
-    fireEvent.click(envRadio('prod'));
-    const params = await saveAndGetNodeParams(dsApi, findByTestId);
-
-    // ods_c 的代码头声明了 --master yarn（映射不到节点字段 → 原样进其他参数）
-    expect(String(params.get('ods_c')?.others || '')).toBe(
-      '--master yarn'
-      + ' --conf spark.extraListeners=io.openlineage.spark.agent.OpenLineageSparkListener'
       + ' --conf spark.openlineage.transport.type=http'
       + ` --conf spark.openlineage.transport.url=${TRANSPORT_URL}`
       + ' --conf spark.openlineage.namespace=demo'

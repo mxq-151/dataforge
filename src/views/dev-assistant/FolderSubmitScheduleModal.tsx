@@ -4,7 +4,7 @@ import type {
   DolphinSchedulerApi, DSProject, DSWorkerGroup, DSEnvironment,
 } from '../../types/dolphinscheduler';
 import { ReleaseState, ExecutionType, type DSWorkflowGlobalParam, type DSWorkflowTaskNode, type DSWorkflowEdge } from '../../types/dolphinscheduler';
-import WorkflowDefinitionEditor from '../schedule-management/components/WorkflowDefinitionEditor';
+import WorkflowDefinitionEditor, { type EditorValidateResult } from '../schedule-management/components/WorkflowDefinitionEditor';
 import {
   buildWorkflowFromFolder, sanitizeDsName, isCompilableFile, buildTaskNameToFilePathMap,
   reconcileWorkflowDependencies, layoutWorkflowByDependency, findDependencyCycle,
@@ -13,6 +13,7 @@ import {
   type BuildWorkflowFromFolderResult, type ResolvedDependency, type HeaderDependency,
 } from '../../utils/schedulerMapping';
 import { toRelativePath, splitPath, getBaseName } from '../../utils/pathUtils';
+import { validateWorkflowNodes } from '../../utils/workflowNodeValidation';
 import { unifiedCompile, type CompileConfig } from '../../services/unifiedCompile';
 import { readFile } from '../../bridge/fs';
 import { useToast } from '../../components/Toast';
@@ -611,6 +612,39 @@ const FolderSubmitScheduleModal: React.FC<FolderSubmitScheduleModalProps> = ({
     return { nodes: result, errors };
   }, [dsApi, filePathByTaskName, compileConfig, devProjectId, projectCode, rootPath, readFileContent]);
 
+  // ---------- 工具栏「校验」：参数校验 + 编译上传并回填主 Jar 包 ----------
+  /**
+   * 批量提交调度的「校验」入口：与保存同一闸门做任务节点参数校验后，
+   * 再把 Java/Scala 节点逐个编译、上传 Jar 到调度资源中心并回填 taskParams.mainJar，
+   * 让用户在保存前就能确认代码能编译、主 Jar 包能上传（与单文件提交调度的校验链路一致）。
+   * 回填后的节点由编辑器写回画布，用户可在节点配置里看到派生出的主 Jar 包路径。
+   */
+  const handleValidate = useCallback(async (nodes: DSWorkflowTaskNode[]): Promise<EditorValidateResult> => {
+    // 1. 参数校验（与保存前的闸门同一份规则）：不通过直接弹校验报告，不做编译
+    const report = validateWorkflowNodes(nodes);
+    if (!report.ok) return { ok: false, report };
+
+    // 2. 编译 → 上传 → 回填主 Jar 包；有任一失败即视为校验未通过（逐条提示）
+    const { nodes: filled, errors } = await compileAndFillMainJars(nodes);
+    if (errors.length > 0) {
+      errors.slice(0, 5).forEach(m => toast.error(m));
+      if (errors.length > 5) toast.error(`另有 ${errors.length - 5} 个文件未通过编译，请修正后重试`);
+      // 仍返回已成功回填的节点，避免画布上已生成的 mainJar 被丢弃
+      return { ok: false, nodes: filled };
+    }
+
+    // 与入参逐节点比对 taskParams，统计本次真正回填了主 Jar 包的节点数
+    const jarCount = filled.filter((n, i) => n.taskParams !== nodes[i]?.taskParams).length;
+    return {
+      ok: true,
+      nodes: filled,
+      report: null,
+      message: jarCount > 0
+        ? `校验通过：已编译并回填 ${jarCount} 个任务的主 Jar 包`
+        : `校验通过：${nodes.length} 个任务节点参数完整`,
+    };
+  }, [compileAndFillMainJars, toast]);
+
   // ---------- 保存前：为 SPARK 节点注入数据血缘参数（仅生产环境） ----------
   /**
    * 血缘参数（`spark.openlineage.*`）的拼装与两道闸门都在 `utils/lineageParams.ts`，
@@ -701,22 +735,16 @@ const FolderSubmitScheduleModal: React.FC<FolderSubmitScheduleModalProps> = ({
         }
       }
 
-      // 1. 编译可编译节点并回填主 Jar 包；有任一失败即阻止保存（与单文件提交调度一致）
-      setSavingLabel('正在编译代码…');
-      const { nodes: compiledNodes, errors } = await compileAndFillMainJars(data.nodes);
-      if (errors.length > 0) {
-        errors.slice(0, 5).forEach(m => toast.error(m));
-        if (errors.length > 5) toast.error(`另有 ${errors.length - 5} 个文件未通过编译，请修正后重试`);
-        return;
-      }
+      // 1. 保存不再编译代码：主 Jar 包由「校验」阶段编译并回填到节点，
+      //    保存直接使用画布上的节点（用户也可点「校验」先确认代码可编译、Jar 可上传）
 
       // 2. 为 SPARK 节点注入数据血缘参数（仅生产环境；非生产一个请求都不发）
-      const lineageNodes = await applyLineageParamsToSparkNodes(compiledNodes);
+      const lineageNodes = await applyLineageParamsToSparkNodes(data.nodes);
 
       // 3. 依赖重建：解析代码头 @依赖，同工作流依赖直接连边，
       //    跨文件夹/跨项目依赖自动生成专属「前置依赖」DEPENDENT 节点（与单文件提交调度一致）
       const headerDeps = draft?.headerDeps ?? new Map<string, HeaderDependency[]>();
-      const alloc = makeReconcileAllocators(compiledNodes);
+      const alloc = makeReconcileAllocators(lineageNodes);
       const recon = await reconcileWorkflowDependencies({
         nodes: lineageNodes,
         edges: data.edges,
@@ -760,7 +788,7 @@ const FolderSubmitScheduleModal: React.FC<FolderSubmitScheduleModalProps> = ({
       // 提交前按依赖关系分层布局：前置节点（含 DEPENDENT 前置依赖节点）总在依赖节点左侧
       layoutWorkflowByDependency(finalNodes, recon.edges);
 
-      // 4. 用回填了 mainJar、注入了血缘参数且重建了依赖的节点/边提交
+      // 4. 用注入了血缘参数且重建了依赖的节点/边提交（mainJar 取校验阶段回填的值）
       setSavingLabel('正在提交到调度系统…');
       const payload = { ...data, nodes: finalNodes, edges: recon.edges };
       const { release, ...rest } = payload;
@@ -800,7 +828,7 @@ const FolderSubmitScheduleModal: React.FC<FolderSubmitScheduleModalProps> = ({
       setSaving(false);
       setSavingLabel('正在提交到调度系统…');
     }
-  }, [dsApi, project, projectError, toast, onSuccess, onClose, compileAndFillMainJars, applyLineageParamsToSparkNodes, draft, resolveExternalDeps, deployEnv, readFileContent, codeFilePaths, canSubmitSchedule, canSubmitProd]);
+  }, [dsApi, project, projectError, toast, onSuccess, onClose, applyLineageParamsToSparkNodes, draft, resolveExternalDeps, deployEnv, readFileContent, codeFilePaths, canSubmitSchedule, canSubmitProd]);
 
   if (!visible) return null;
 
@@ -943,6 +971,8 @@ const FolderSubmitScheduleModal: React.FC<FolderSubmitScheduleModalProps> = ({
                 environments={meta.environments}
                 api={dsApi ?? undefined}
                 onSave={handleSave}
+                // 工具栏「校验」：参数校验之外，编译 Java/Scala 并上传 Jar 回填主 Jar 包
+                onValidate={handleValidate}
                 // 不传 onTrigger：本入口只做保存，不提供「运行」
                 onClose={onClose}
               />
