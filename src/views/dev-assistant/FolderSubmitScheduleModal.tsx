@@ -10,7 +10,7 @@ import {
   reconcileWorkflowDependencies, layoutWorkflowByDependency, findDependencyCycle,
   deriveFolderWorkflowName,
   GRID_START_X, GRID_START_Y, GRID_GAP_X, GRID_GAP_Y,
-  type BuildWorkflowFromFolderResult, type ResolvedDependency, type HeaderDependency,
+  type BuildWorkflowFromFolderResult, type ResolvedDependency, type HeaderDependency, type SavedConfig,
 } from '../../utils/schedulerMapping';
 import { toRelativePath, splitPath, getBaseName } from '../../utils/pathUtils';
 import { validateWorkflowNodes } from '../../utils/workflowNodeValidation';
@@ -270,6 +270,9 @@ const FolderSubmitScheduleModal: React.FC<FolderSubmitScheduleModalProps> = ({
   const resolvedDepsRef = useRef<Map<string, ResolvedDependency>>(new Map());
   // 已做过依赖重建的 draft 对象引用：setDraft 产生新对象后会再次触发重建 effect，用它防重入
   const reconciledForRef = useRef<BuildWorkflowFromFolderResult | null>(null);
+  // 逐文件「配置参数」已保存值（key 为文件绝对路径）：草稿生成时读取一次，
+  // 节点参数回填（生成时）与保存时的血缘注入（仅生产）共用，避免重复请求后端
+  const fileConfigRef = useRef<Map<string, SavedConfig | null>>(new Map());
 
   /** 展示用路径：项目编码 + 项目内相对路径（与「配置参数」的目标列表同一口径） */
   const displayPath = useMemo(() => {
@@ -302,14 +305,26 @@ const FolderSubmitScheduleModal: React.FC<FolderSubmitScheduleModalProps> = ({
     setDepResolving(false);
     resolvedDepsRef.current = new Map();
     reconciledForRef.current = null;
+    fileConfigRef.current = new Map();
 
     (async () => {
       try {
         // 并发读取全部目标文件；数量与顺序同 codeFilePaths 一一对应
         const contents = await Promise.all(codeFilePaths.map(p => readFileContent(p)));
+        // 并发读取每个文件「配置参数」已保存值（程序参数 / 任务参数）：
+        // 作为生成节点的回填来源，使自定义任务参数能覆盖引擎默认值（与单文件提交调度同口径）。
+        // 后端按 (project_id, 项目内相对路径) 联合键存储，路径口径与「配置参数」弹窗一致。
+        const configs = await Promise.all(codeFilePaths.map(async (p): Promise<[string, SavedConfig | null]> => {
+          if (!devProjectId) return [p, null];
+          return [p, await fetchByFilePath(devProjectId, toRelativePath(p, rootPath))];
+        }));
         if (seq !== loadSeqRef.current) return;
+        const configByFilePath = new Map<string, SavedConfig | null>(configs);
+        fileConfigRef.current = configByFilePath;
         const files = codeFilePaths.map((p, i) => ({ filePath: p, content: contents[i] ?? '' }));
-        setDraft(buildWorkflowFromFolder(files, { rootPath, folderPath, projectCode }));
+        setDraft(buildWorkflowFromFolder(files, {
+          rootPath, folderPath, projectCode, savedConfigByFilePath: configByFilePath,
+        }));
         setPhase('ready');
       } catch (e) {
         if (seq !== loadSeqRef.current) return;
@@ -320,7 +335,7 @@ const FolderSubmitScheduleModal: React.FC<FolderSubmitScheduleModalProps> = ({
 
     return () => { loadSeqRef.current++; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, filesKey, readFileContent, rootPath, folderPath, projectCode]);
+  }, [visible, filesKey, readFileContent, rootPath, folderPath, projectCode, devProjectId, fetchByFilePath]);
 
   // ---------- 解析目标调度项目 + 编辑器所需的只读上下文 ----------
   useEffect(() => {
@@ -667,8 +682,8 @@ const FolderSubmitScheduleModal: React.FC<FolderSubmitScheduleModalProps> = ({
       const filePath = filePathByTaskName.get(sanitizeDsName(node.name));
       let fileLineage: Record<string, string> = {};
       if (filePath && devProjectId) {
-        // 后端按 (project_id, 项目内相对路径) 联合键存储，路径口径与「配置参数」弹窗一致
-        const loaded = await fetchByFilePath(devProjectId, toRelativePath(filePath, rootPath));
+        // 复用草稿生成时已读取的逐文件配置（键为文件绝对路径），不再重复请求后端
+        const loaded = fileConfigRef.current.get(filePath);
         fileLineage = extractLineageParams(loaded?.taskParams);
       }
 
@@ -690,8 +705,7 @@ const FolderSubmitScheduleModal: React.FC<FolderSubmitScheduleModalProps> = ({
     }
     return result;
   }, [
-    deployEnv, filePathByTaskName, devProjectId, rootPath, projectCode,
-    openlineageTransportUrl, fetchByFilePath,
+    deployEnv, filePathByTaskName, devProjectId, projectCode, openlineageTransportUrl,
   ]);
 
   // ---------- 保存（创建或更新调度工作流） ----------

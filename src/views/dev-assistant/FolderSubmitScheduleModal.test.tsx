@@ -71,6 +71,14 @@ vi.mock('../../services/unifiedCompile', () => ({
   unifiedCompile: vi.fn(),
 }));
 
+// 「配置参数」逐文件读取来自后端 /params；本文件用于钉住「自定义任务参数覆盖节点默认值」这条链路
+const fetchProjectConfigByFilePath = vi.fn();
+
+vi.mock('../../api/devProject', () => ({
+  fetchProjectConfigByFilePath: (...args: unknown[]) => fetchProjectConfigByFilePath(...args),
+  saveProjectConfig: vi.fn(async () => ({ code: 200, message: '', data: null })),
+}));
+
 vi.mock('../../bridge/fs', () => ({
   readFile: vi.fn(async () => new Uint8Array([0x50, 0x4b])),
 }));
@@ -194,6 +202,9 @@ beforeEach(() => {
   validateResultSpy.mockClear();
   readFileContent.mockClear();
   vi.mocked(unifiedCompile).mockReset();
+  fetchProjectConfigByFilePath.mockReset();
+  // 默认后端无该文件配置：不传 devProjectId 的用例根本不会查，传了的用例得到「无配置」
+  fetchProjectConfigByFilePath.mockResolvedValue({ code: 200, message: '', data: null });
 });
 
 describe('FolderSubmitScheduleModal', () => {
@@ -348,6 +359,85 @@ describe('FolderSubmitScheduleModal', () => {
     const [, payload] = dsApi.workflowDefinition.createWithTasks.mock.calls[0] as any;
     const a = payload.nodes.find((n: any) => n.name === 'a');
     expect(JSON.parse(a.taskParams).appName).toBe('demo.demo_prod.a');
+  });
+
+  it('「配置参数」里自定义的任务参数与 jar 覆盖节点默认值（程序参数落到 localParams）', async () => {
+    fetchProjectConfigByFilePath.mockImplementation(async (_pid: number, filePath: string) => ({
+      code: 200,
+      message: '',
+      data: {
+        projectId: 9,
+        filePath,
+        engine: 'spark',
+        datasources: [],
+        jarDependencyCatalogs: [{
+          jarName: 'udf', artifactId: 'udf', version: '1.0', source: 'custom',
+          jarPath: 'udf/my-udf.jar', basePath: '/opt/jars',
+        }],
+        runParams: { day: '20240101' },
+        computeResources: { 'spark.driver.memory': '8g', 'spark.executor.cores': '3', 'spark.executor.instances': '5' },
+        remark: '',
+      },
+    }));
+
+    const dsApi = makeDsApi({ projects: [{ code: 11, name: 'demo' }], workflows: [] });
+    const { findByTestId } = renderModal({ dsApi, devProjectId: 9 });
+
+    fireEvent.click(await findByTestId('wf-save'));
+    await waitFor(() => expect(dsApi.workflowDefinition.createWithTasks).toHaveBeenCalledTimes(1));
+
+    const [, payload] = dsApi.workflowDefinition.createWithTasks.mock.calls[0] as any;
+    const a = JSON.parse(payload.nodes.find((n: any) => n.name === 'a').taskParams);
+    // 引擎默认值（driverMemory=512M / executorCores=2 / numExecutors=2）被「配置参数」里的自定义值覆盖
+    expect(a.driverMemory).toBe('8g');
+    expect(a.executorCores).toBe(3);
+    expect(a.numExecutors).toBe(5);
+    // 程序参数 → localParams
+    expect(a.localParams).toEqual([
+      { prop: 'day', direct: 'IN', type: 'VARCHAR', value: '20240101' },
+    ]);
+    // 自定义 jar → SPARK 节点的「其他参数」写成 --jars
+    expect(a.others).toBe('--jars /opt/jars/udf/my-udf.jar');
+    // 按 (project_id, 项目内相对路径) 读取已保存配置
+    expect(fetchProjectConfigByFilePath).toHaveBeenCalledWith(9, 'demo/a.scala');
+  });
+
+  it('批量提交：FLINK 节点的自定义 jar 写成 -C，出现在「其他参数」里', async () => {
+    fetchProjectConfigByFilePath.mockImplementation(async (_pid: number, filePath: string) => ({
+      code: 200,
+      message: '',
+      data: {
+        projectId: 9,
+        filePath,
+        engine: 'flink',
+        datasources: [],
+        jarDependencyCatalogs: [{
+          jarName: 'udf', artifactId: 'udf', version: '1.0', source: 'custom',
+          jarPath: 'udf.jar', basePath: '/opt/jars',
+        }],
+        runParams: {},
+        computeResources: {},
+        remark: '',
+      },
+    }));
+
+    const flinkFiles: Record<string, string> = {
+      [`${FOLDER}/job.java`]: header({ 引擎: 'flink' }) + 'public class Job {}\n',
+    };
+    const dsApi = makeDsApi({ projects: [{ code: 11, name: 'demo' }], workflows: [] });
+    const { findByTestId } = renderModal({
+      dsApi,
+      devProjectId: 9,
+      codeFilePaths: Object.keys(flinkFiles),
+      readFileContent: vi.fn(async (p: string) => flinkFiles[p] ?? ''),
+    });
+
+    fireEvent.click(await findByTestId('wf-save'));
+    await waitFor(() => expect(dsApi.workflowDefinition.createWithTasks).toHaveBeenCalledTimes(1));
+
+    const [, payload] = dsApi.workflowDefinition.createWithTasks.mock.calls[0] as any;
+    const job = JSON.parse(payload.nodes.find((n: any) => n.name === 'job').taskParams);
+    expect(job.others).toBe('-C /opt/jars/udf.jar');
   });
 
   it('节点数徽标按画布上的任务节点统计，文案为「个任务节点」', async () => {

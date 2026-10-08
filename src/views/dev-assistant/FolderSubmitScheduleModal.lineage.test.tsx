@@ -274,7 +274,7 @@ describe('FolderSubmitScheduleModal — 生产环境批量提交注入血缘参�
 });
 
 describe('FolderSubmitScheduleModal — 非生产环境不提交血缘参数', () => {
-  it('测试环境（默认）：不带血缘参数，且不为血缘去后端查配置', async () => {
+  it('测试环境（默认）：不带血缘参数（不为血缘注入，配置仅用于回填节点参数）', async () => {
     const dsApi = makeDsApi();
     const { findByTestId } = renderModal({ dsApi });
     await findByTestId('wf-editor');
@@ -283,10 +283,9 @@ describe('FolderSubmitScheduleModal — 非生产环境不提交血缘参数', (
     const params = await saveAndGetNodeParams(dsApi, findByTestId);
 
     expect(String(params.get('ods_a')?.others || '').toLowerCase()).not.toContain('openlineage');
-    expect(fetchProjectConfigByFilePath).not.toHaveBeenCalled();
   });
 
-  it('灰度环境：同样不带血缘参数，也不查配置', async () => {
+  it('灰度环境：同样不带血缘参数', async () => {
     const dsApi = makeDsApi();
     const { findByTestId } = renderModal({ dsApi });
     await findByTestId('wf-editor');
@@ -295,7 +294,6 @@ describe('FolderSubmitScheduleModal — 非生产环境不提交血缘参数', (
     const params = await saveAndGetNodeParams(dsApi, findByTestId);
 
     expect(String(params.get('ods_a')?.others || '').toLowerCase()).not.toContain('openlineage');
-    expect(fetchProjectConfigByFilePath).not.toHaveBeenCalled();
   });
 
   it('界面提示随环境变化，明确说明非生产不带血缘参数', async () => {

@@ -179,14 +179,14 @@ export interface ResolvedDependency {
 }
 
 /**
- * 将自定义 jar 依赖拼接为 --jars 参数值（多个以逗号连接）。
+ * 将自定义 jar 依赖换算为逐个 jar 的资源路径（SPARK 用逗号连接，FLINK 逐个 -C）。
  * - 有 basePath：`basePath(尾斜杠判断) + jarPath(去前导斜杠)`（后端 SparkExecutionStrategy 语义）。
  * - 无 basePath（旧兼容）：jarPath 以 .jar 结尾视为完整文件路径直接使用；否则 jarPath(去尾斜杠) + '/' + (jarName||name)。
  * - 忽略无 jarPath 或无处名的条目。
  */
-export function buildJarsArg(
+export function buildJarPaths(
   deps: { jarPath?: string; basePath?: string; jarName?: string; name?: string }[],
-): string {
+): string[] {
   const args: string[] = [];
   for (const d of deps) {
     if (!d.jarPath || !d.jarPath.trim()) continue;
@@ -207,7 +207,39 @@ export function buildJarsArg(
     const dir = d.jarPath.endsWith('/') ? d.jarPath.replace(/\/+$/, '') : d.jarPath;
     args.push(`${dir}/${file}`);
   }
-  return args.join(',');
+  return args;
+}
+
+/** 自定义 jar 依赖拼接为 `--jars` 参数值（多个以逗号连接，与 spark-submit 一致） */
+export function buildJarsArg(
+  deps: { jarPath?: string; basePath?: string; jarName?: string; name?: string }[],
+): string {
+  return buildJarPaths(deps).join(',');
+}
+
+/** 「其他参数」里承载自定义 jar 的任务类型：SPARK 用 `--jars`，FLINK 用 `-C` */
+const CUSTOM_JAR_TASK_TYPES: ReadonlySet<string> = new Set(['SPARK', 'FLINK']);
+
+/**
+ * 把「配置参数 → 配置依赖」里 source=custom 的 jar 写进节点「其他参数」(others)：
+ * - SPARK：`--jars a.jar,b.jar`（逗号连接，与 spark-submit 一致）
+ * - FLINK：`-C a.jar -C b.jar`（逐个 -C，等价 flink run 的 classpath）
+ * 在**生成任务节点时**写入，用户在「提交调度」/「提交调度（文件夹）」的
+ * 「其他参数」里直接可见、可编辑；两个提交入口不再在提交阶段重复拼接。
+ */
+function applyCustomJarsToOthers(
+  taskParams: Record<string, unknown>,
+  savedConfig: SavedConfig | null | undefined,
+  taskType: DSTaskType | string,
+): void {
+  if (!savedConfig || !CUSTOM_JAR_TASK_TYPES.has(taskType)) return;
+  const paths = buildJarPaths(savedConfig.dependencies.filter(d => d.source === 'custom'));
+  if (paths.length === 0) return;
+  const jarArg = taskType === 'FLINK'
+    ? paths.map(p => `-C ${p}`).join(' ')
+    : `--jars ${paths.join(',')}`;
+  const existing = ((taskParams.others as string) || '').trim();
+  taskParams.others = existing ? `${existing} ${jarArg}` : jarArg;
 }
 
 /**
@@ -810,6 +842,10 @@ export function mapCodeFileToTask(
     (baseParams as Record<string, unknown>).mainArgs = headerMainArgs;
   }
 
+  // 「配置参数 → 配置依赖」里 source=custom 的 jar → 节点「其他参数」（SPARK: --jars / FLINK: -C），
+  // 生成节点时即写入，两个提交入口都直接可见、可编辑
+  applyCustomJarsToOthers(baseParams, savedConfig, taskType);
+
   const dataDependencies = extractDataDependencies(codeContent, header);
   const headerDependencies = parseDependencyHeader(header?.dependency);
 
@@ -864,7 +900,8 @@ function applyRuntimeParams(
         taskParams.executorMemory = p.value;
       } else if (keyLower.includes('executor') && keyLower.includes('cores') && taskType === 'SPARK') {
         taskParams.executorCores = Number(p.value) || 2;
-      } else if (keyLower.includes('num') && keyLower.includes('executor') && taskType === 'SPARK') {
+      } else if ((keyLower.includes('num') || keyLower.includes('instances')) && keyLower.includes('executor') && taskType === 'SPARK') {
+        // 兼容 `--num-executors` 与引擎默认任务参数使用的 `spark.executor.instances`
         taskParams.numExecutors = Number(p.value) || 2;
       } else if (keyLower.includes('parallelism') && taskType === 'FLINK') {
         taskParams.parallelism = Number(p.value) || 1;
@@ -1079,7 +1116,18 @@ export interface BuildWorkflowFromFolderResult {
  */
 export function buildWorkflowFromFolder(
   files: FolderCodeFileInput[],
-  options?: { rootPath?: string; folderPath?: string; projectCode?: string },
+  options?: {
+    rootPath?: string;
+    folderPath?: string;
+    projectCode?: string;
+    /**
+     * 逐文件「配置参数」已保存值（程序参数 / 任务参数），key 为文件绝对路径。
+     * 由 `mapCodeFileToTask` 的 savedConfig 消费：SavedConfig 覆盖引擎默认值，
+     * 使「配置参数 → 配置任务参数」里自定义的任务参数能落到生成的任务节点上
+     * （与单文件提交调度同口径；缺省或未命中按无配置处理）。
+     */
+    savedConfigByFilePath?: ReadonlyMap<string, SavedConfig | null>;
+  },
 ): BuildWorkflowFromFolderResult {
   const rootPath = options?.rootPath;
   const projectCode = (options?.projectCode || '').trim();
@@ -1092,7 +1140,8 @@ export function buildWorkflowFromFolder(
 
   files.forEach((file, index) => {
     const fileName = file.filePath.split(/[/\\]/).pop() || file.filePath;
-    const mapping = mapCodeFileToTask(fileName, file.content, file.filePath, rootPath);
+    const savedConfig = options?.savedConfigByFilePath?.get(file.filePath) ?? null;
+    const mapping = mapCodeFileToTask(fileName, file.content, file.filePath, rootPath, savedConfig);
     const code = codeBase + index;
 
     nodes.push({

@@ -341,7 +341,7 @@ describe('buildJarsArg — basePath/jarPath 组成', () => {
   });
 });
 
-describe('mapCodeFileToTask — 配置依赖通过 --jars 跟随提交', () => {
+describe('mapCodeFileToTask — 配置依赖写入节点「其他参数」', () => {
   const sparkScalaContent = `/*
  * @备注: 测试 Spark 任务
  * @引擎: spark
@@ -351,51 +351,7 @@ object TestApp {
   def main(args: Array[String]): Unit = {}
 }`;
 
-  const mkConfig = (dependencies: SavedConfig['dependencies']): SavedConfig => ({
-    dependencies,
-    programParams: [],
-    taskParams: [],
-  });
-
-  it('SPARK 任务：--jars 不在 mapCodeFileToTask 注入（改由提交端 buildJarsArg 拼接，避免污染弹窗输入框）', () => {
-    const mapping = mapCodeFileToTask('TestApp.scala', sparkScalaContent, undefined, undefined, mkConfig([
-      { id: 'd1', name: 'my-udf', version: '1.0', source: 'custom', basePath: '/opt/dataforge/jars', jarPath: 'udf/my-udf.jar' },
-    ]));
-    expect(mapping.taskType).toBe('SPARK');
-    expect(mapping.taskParams.others || '').not.toContain('--jars');
-    // 依赖不进入 Spark 任务的 resourceList，仅由提交端 buildJarsArg 生成 --jars
-    expect(mapping.taskParams.resourceList).not.toContain('my-udf');
-  });
-
-  it('SPARK 任务：多个 custom jar 的拼接由 buildJarsArg 完成（basePath/jarPath 逗号连接）', () => {
-    const config = mkConfig([
-      { id: 'd1', name: 'a', version: '1.0', source: 'custom', basePath: '/opt/jars', jarPath: 'a.jar' },
-      { id: 'd2', name: 'b', version: '1.0', source: 'custom', basePath: '/opt/jars', jarPath: 'udf/b.jar' },
-    ]);
-    const mapping = mapCodeFileToTask('TestApp.scala', sparkScalaContent, undefined, undefined, config);
-    expect(mapping.taskType).toBe('SPARK');
-    expect(mapping.taskParams.others || '').not.toContain('--jars');
-    // --jars 由提交弹窗调用 buildJarsArg 动态生成，此处验证拼接结果正确
-    const jarsArg = buildJarsArg(config.dependencies.filter(d => d.source === 'custom'));
-    expect(jarsArg).toBe('/opt/jars/a.jar,/opt/jars/udf/b.jar');
-  });
-
-  it('SPARK 任务：custom 但无 jarPath（仅 Maven 坐标）时不注入 --jars', () => {
-    const mapping = mapCodeFileToTask('TestApp.scala', sparkScalaContent, undefined, undefined, mkConfig([
-      { id: 'd1', name: 'org.apache.spark:spark-sql_2.12:3.5.0', version: '', source: 'custom' },
-    ]));
-    expect(mapping.taskParams.others || '').not.toContain('--jars');
-  });
-
-  it('SPARK 任务：非 custom 来源（即使带 jarPath）不注入 --jars', () => {
-    const mapping = mapCodeFileToTask('TestApp.scala', sparkScalaContent, undefined, undefined, mkConfig([
-      { id: 'd1', name: 'spark-sql', version: '3.5.0', source: 'maven', jarPath: '/opt/jars/', jarName: 'spark-sql.jar' },
-    ]));
-    expect(mapping.taskParams.others || '').not.toContain('--jars');
-  });
-
-  it('FLINK 任务：即使依赖带 jarPath 也不注入 --jars', () => {
-    const flinkJavaContent = `/*
+  const flinkJavaContent = `/*
  * @备注: 测试 Flink 任务
  * @引擎: flink
  * @数据源: test_datasource
@@ -403,11 +359,52 @@ object TestApp {
 public class TestJob {
   public static void main(String[] args) {}
 }`;
+
+  const mkConfig = (dependencies: SavedConfig['dependencies']): SavedConfig => ({
+    dependencies,
+    programParams: [],
+    taskParams: [],
+  });
+
+  it('SPARK 任务：custom jar 写成 --jars（多个逗号连接），不进入 resourceList', () => {
+    const mapping = mapCodeFileToTask('TestApp.scala', sparkScalaContent, undefined, undefined, mkConfig([
+      { id: 'd1', name: 'my-udf', version: '1.0', source: 'custom', basePath: '/opt/dataforge/jars', jarPath: 'udf/my-udf.jar' },
+    ]));
+    expect(mapping.taskType).toBe('SPARK');
+    expect(mapping.taskParams.others).toBe('--jars /opt/dataforge/jars/udf/my-udf.jar');
+    // 依赖不进入 Spark 任务的 resourceList
+    expect(mapping.taskParams.resourceList).not.toContain('my-udf');
+  });
+
+  it('SPARK 任务：多个 custom jar 以逗号连接', () => {
+    const mapping = mapCodeFileToTask('TestApp.scala', sparkScalaContent, undefined, undefined, mkConfig([
+      { id: 'd1', name: 'a', version: '1.0', source: 'custom', basePath: '/opt/jars', jarPath: 'a.jar' },
+      { id: 'd2', name: 'b', version: '1.0', source: 'custom', basePath: '/opt/jars', jarPath: 'udf/b.jar' },
+    ]));
+    expect(mapping.taskParams.others).toBe('--jars /opt/jars/a.jar,/opt/jars/udf/b.jar');
+  });
+
+  it('SPARK 任务：custom 但无 jarPath（仅 Maven 坐标）不写入', () => {
+    const mapping = mapCodeFileToTask('TestApp.scala', sparkScalaContent, undefined, undefined, mkConfig([
+      { id: 'd1', name: 'org.apache.spark:spark-sql_2.12:3.5.0', version: '', source: 'custom' },
+    ]));
+    expect(mapping.taskParams.others || '').not.toContain('--jars');
+  });
+
+  it('SPARK 任务：非 custom 来源（即使带 jarPath）不写入', () => {
+    const mapping = mapCodeFileToTask('TestApp.scala', sparkScalaContent, undefined, undefined, mkConfig([
+      { id: 'd1', name: 'spark-sql', version: '3.5.0', source: 'maven', jarPath: '/opt/jars/', jarName: 'spark-sql.jar' },
+    ]));
+    expect(mapping.taskParams.others || '').not.toContain('--jars');
+  });
+
+  it('FLINK 任务：custom jar 写成逐个 -C（flink 的 classpath 写法）', () => {
     const mapping = mapCodeFileToTask('TestJob.java', flinkJavaContent, undefined, undefined, mkConfig([
       { id: 'd1', name: 'my-udf', version: '1.0', source: 'custom', basePath: '/opt/jars', jarPath: 'my-udf.jar' },
+      { id: 'd2', name: 'other', version: '1.0', source: 'custom', basePath: '/opt/jars', jarPath: 'other.jar' },
     ]));
     expect(mapping.taskType).toBe('FLINK');
-    expect(mapping.taskParams.others || '').not.toContain('--jars');
+    expect(mapping.taskParams.others).toBe('-C /opt/jars/my-udf.jar -C /opt/jars/other.jar');
   });
 });
 

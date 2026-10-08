@@ -3,7 +3,7 @@ import { X, Send, Loader2, FolderKanban, GitBranch, CheckCircle, AlertTriangle, 
 import type { DolphinSchedulerApi, DSProject, DSWorkflowDefinition, DSTaskType, DSDataSource, DSWorkerGroup, DSEnvironment, DSWorkflowTaskNode } from '../../types/dolphinscheduler';
 import { TASK_TYPE_LABELS, ReleaseState, Priority, parseReleaseState } from '../../types/dolphinscheduler';
 import type { CodeFileMapping, SavedConfig, ValidationError } from '../../utils/schedulerMapping';
-import { buildWorkflowFromCodeFile, validateSubmission, getAvailableTaskTypes, mapCodeFileToTask, sanitizeDsName, validateYarnJobName, buildDependentTaskNode, buildJarsArg, parseDependencyHeader, reconcileWorkflowDependencies, findDependencyCycle, dependentNodeName, layoutWorkflowByDependency, type ResolvedDependency, type HeaderDependency } from '../../utils/schedulerMapping';
+import { buildWorkflowFromCodeFile, validateSubmission, getAvailableTaskTypes, mapCodeFileToTask, sanitizeDsName, validateYarnJobName, buildDependentTaskNode, parseDependencyHeader, reconcileWorkflowDependencies, findDependencyCycle, dependentNodeName, layoutWorkflowByDependency, type ResolvedDependency, type HeaderDependency } from '../../utils/schedulerMapping';
 import { type CompileResult } from '../../services/compileService';
 import { unifiedCompile } from '../../services/unifiedCompile';
 import { validateFileHeader, parseFileHeader } from '../../utils/fileHeader';
@@ -545,6 +545,9 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
         const merged: Record<string, string | boolean> = { ...defaults, ...fromMapping };
         for (const [k, v] of Object.entries(remembered)) {
           if (REMEMBER_EXCLUDE_KEYS.has(k)) continue;
+          // 「其他参数」里可能已有生成节点时写入的自定义 jar（--jars / -C）：
+          // 生成值优先，不被上一次提交记忆下来的旧「其他参数」覆盖
+          if (k === 'others' && merged.others) continue;
           merged[k] = typeof v === 'boolean' ? v : String(v);
         }
         if (preservedOthers) merged.others = preservedOthers;
@@ -1293,17 +1296,15 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
       mappingWithDatasource.taskParams = updatedParams;
     }
 
-    // 拼装 Spark 提交命令的「其他参数(others)」：--jars（依赖） + 用户手填命令 +（仅生产）OpenLineage 参数。
-    // 注意 --jars 与血缘参数同处一个字段，所以环境闸门**只掐血缘那一段**，
-    // 不能把整块跳过 —— 否则非生产环境提交会连自定义 jar 一起丢掉。
+    // 拼装 Spark 提交命令的「其他参数(others)」：用户手填命令（含生成节点时写入的自定义 jar `--jars`）
+    // +（仅生产）OpenLineage 参数。注意血缘与用户内容同处一个字段，所以环境闸门**只掐血缘那一段**，
+    // 不能把整块跳过 —— 否则非生产环境提交会连自定义 jar / 用户命令一起丢掉。
     if (mappingWithDatasource.taskType === 'SPARK') {
       const updatedParams = { ...mappingWithDatasource.taskParams };
       const existingOthers = ((updatedParams.others as string) || '').replace(/\r?\n/g, ' ').trim();
-      // 自定义 jar 通过 --jars 跟随提交（仅 SPARK）：路径为 {basePath}/{jarPath}。
-      // 在提交时动态拼接，避免 --jars 污染弹窗「其他参数」输入框（该输入框仅承载用户手填命令）
-      const jarsArg = buildJarsArg((savedConfig?.dependencies || []).filter(d => d.source === 'custom'));
+      // 自定义 jar 的 `--jars` 已在生成任务节点时写入 others（见 schedulerMapping.applyCustomJarsToOthers），
+      // 这里不再重复拼接，只补上（仅生产）OpenLineage 那一段。
       const segments: string[] = [];
-      if (jarsArg) segments.push(`--jars ${jarsArg}`);
       if (existingOthers) segments.push(existingOthers);
 
       // OpenLineage 血缘参数：拼装与两道闸门（环境硬闸门 + 文件级 lineage.enabled）都在

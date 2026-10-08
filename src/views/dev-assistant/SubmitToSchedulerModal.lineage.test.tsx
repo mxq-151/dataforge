@@ -191,15 +191,19 @@ describe('SubmitToSchedulerModal — 血缘参数只在生产环境提交', () =
     expect(String(params.others || '').toLowerCase()).not.toContain('openlineage');
   });
 
-  it('非生产环境不注入血缘，但自定义依赖的 --jars 仍然照拼（闸门只掐血缘那一段）', async () => {
+  it('非生产环境不注入血缘；「其他参数」里节点生成时写入的自定义 jar 原样保留、不重复拼接', async () => {
     const dsApi = makeDsApi();
-    renderModal(dsApi, { savedConfig: CUSTOM_JAR_CONFIG });
+    // `--jars` 现在由生成任务节点时写入 others（见 schedulerMapping.applyCustomJarsToOthers），
+    // 提交阶段只补血缘那一段 —— 这里用带 jar 的 others 模拟生成结果，并传 savedConfig 证明不会重复拼一次
+    const jarArg = '--jars /resources/jars/mysql-connector-8.0.33.jar';
+    renderModal(dsApi, { others: jarArg, savedConfig: CUSTOM_JAR_CONFIG });
 
     fireEvent.click(envRadio('gray'));
     const params = await submitAndGetSparkParams(dsApi);
 
     const others = String(params.others || '');
-    expect(others).toContain('--jars /resources/jars/mysql-connector-8.0.33.jar');
+    expect(others).toContain(jarArg);
+    expect(others.match(/--jars/g)).toHaveLength(1);
     expect(others.toLowerCase()).not.toContain('openlineage');
   });
 
