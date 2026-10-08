@@ -667,7 +667,10 @@ export function useSqlCompletion(params?: UseSqlCompletionParams) {
     if (!monacoInstance) return;
 
     completionProviderRef.current = monacoInstance.languages.registerCompletionItemProvider('sql', {
-      triggerCharacters: [' ', '.', ','],
+      // 触发字符不含空格：空格曾被登记为触发字符，导致在编辑器内按空格时补全弹窗
+      // 被触发/抢占，表现为「无法输入空格」。保留 . 与 , 即可覆盖库名/字段补全场景；
+      // 输入过程中仍有 quickSuggestions 兜底，不影响正常补全。
+      triggerCharacters: ['.', ','],
       provideCompletionItems: (model: any, position: any) => {
         const { dataSources = [], tables = [] } = paramsRef.current || {};
         const word = model.getWordUntilPosition(position);
