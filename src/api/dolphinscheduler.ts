@@ -450,7 +450,7 @@ export function createRealDolphinSchedulerApi(apiUrl: string, token: string): Do
           warningType: params.warningType || 'NONE',
           warningGroupId: String(params.warningGroupId ?? 0),
           runMode: 'RUN_MODE_SERIAL',
-          processInstancePriority: params.processInstancePriority || 'MEDIUM',
+          workflowInstancePriority: params.processInstancePriority || 'MEDIUM',
           workerGroup: params.workerGroup || 'default',
           dryRun: String(params.dryRun ?? 0),
         };
@@ -461,7 +461,7 @@ export function createRealDolphinSchedulerApi(apiUrl: string, token: string): Do
           formData.tenantCode = params.tenantCode;
         }
         if (params.startParams && params.startParams.length > 0) {
-          formData.startParamsList = JSON.stringify(
+          formData.startParams = JSON.stringify(
             params.startParams
               .filter(p => p && p.key)
               .map(p => ({ prop: p.key, direct: 'IN', type: 'VARCHAR', value: p.value || '' })),
