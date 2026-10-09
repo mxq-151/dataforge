@@ -2,18 +2,19 @@
  * 数据质量面板（一级入口「数据质量」）
  *
  * ── 页签就绪度 ──────────────────────────────────────────────
- * 六个页签全部接入真实接口：
+ * 三个页签全部接入真实接口：
  * - 质量大盘  GET /quality/overview
  * - 规则配置  /quality/rule*（左树取自 DataSourceProvider 缓存的元数据）
- * - 质检任务  /quality/task*
- * - 运行记录  GET /quality/run、/run/{id}、/run/{id}/results
- * - 告警订阅  /quality/alert
  * - 规则模板  /quality/template*（内置模板只读 + 自定义模板 CRUD + SQL 预览），见 TemplateTab
  *
  * 接口不可达时各页签在自己的空态/错误态里呈现原因，而不是白屏或空表格。
  *
- * 「运行记录」分两层：列表（listRuns）只看摘要，选中一行后再拉实例详情（getRun）
- * 与规则级结果（listRunResults）—— 调度实例号、结束时间与各项统计只有详情接口才有。
+ * ── 已移除的页签 ────────────────────────────────────────────
+ * 「质检任务」「运行记录」「告警订阅」三个页签及其整条链路（dq_task / dq_task_rule_rel /
+ * dq_run_instance / dq_alert_log / dq_alert_subscription）已从前后端一并删除，服务端不再
+ * 提供 /quality/task*、/quality/run 的查询接口与 /quality/alert*。
+ * 规则级校验结果仍保留为「结果留痕」（dq_rule_result，已去掉运行实例关联）——
+ * 它是「行数波动 / 行数环比」试跑基线与规则覆盖率的支撑，见 DqResultService。
  *
  * ── 与提示词契约的关系 ──────────────────────────────────────
  * 7 类规则类型与处置方式的取值都取自 types/quality，不得在本文件内出现
@@ -21,25 +22,14 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import {
-  LayoutDashboard,
-  ListChecks,
-  ScrollText,
-  ClipboardList,
-  History,
-  Bell,
-  CircleAlert,
-  RefreshCw,
-} from 'lucide-react';
-import type { QualityOverviewVO, QualityRunInstanceVO, QualityRuleResultVO } from '../../types/quality';
+import { LayoutDashboard, ListChecks, ScrollText, CircleAlert, RefreshCw } from 'lucide-react';
+import type { QualityOverviewVO } from '../../types/quality';
 import { qualityApi } from '../../api/quality';
 import RuleTab from './RuleTab';
-import TaskTab from './TaskTab';
-import AlertTab from './AlertTab';
 import TemplateTab from './TemplateTab';
 import './DataQualityPanel.css';
 
-type TabId = 'overview' | 'ruleByTable' | 'template' | 'task' | 'run' | 'alert';
+type TabId = 'overview' | 'ruleByTable' | 'template';
 
 interface TabDef {
   id: TabId;
@@ -51,9 +41,6 @@ const TABS: TabDef[] = [
   { id: 'overview', label: '质量大盘', icon: <LayoutDashboard size={14} /> },
   { id: 'ruleByTable', label: '规则配置', icon: <ListChecks size={14} /> },
   { id: 'template', label: '规则模板', icon: <ScrollText size={14} /> },
-  { id: 'task', label: '质检任务', icon: <ClipboardList size={14} /> },
-  { id: 'run', label: '运行记录', icon: <History size={14} /> },
-  { id: 'alert', label: '告警订阅', icon: <Bell size={14} /> },
 ];
 
 /** 每个页签在接口就绪前要告知用户的能力清单（内容与设计文档一致） */
@@ -83,32 +70,6 @@ const TAB_PLAN: Record<TabId, { title: string; items: string[] }> = {
       '内置模板：即 7 类规则类型，与智能体提示词同源，只读',
       '自定义模板：维护校验 SQL 模板，但仍需归属 7 类之一',
       '模板参数渲染为方言 SQL 预览',
-    ],
-  },
-  task: {
-    title: '质检任务',
-    items: [
-      '规则集：把一组规则组织为一次执行计划',
-      '触发方式：调度触发（关联工作流与节点）/ 手动触发',
-      '任务级处置策略：阻断下游或仅告警',
-      '启停与手动执行',
-    ],
-  },
-  run: {
-    title: '运行记录',
-    items: [
-      '运行实例：批次、触发来源、调度实例号、起止时间、统计',
-      '规则级结果：规则名 / 校验对象 / 阈值 / 实际值 / 是否通过',
-      '执行 SQL 与异常明细，便于定位与修复',
-      '一键跳转对应的调度实例详情',
-    ],
-  },
-  alert: {
-    title: '告警订阅',
-    items: [
-      '按任务订阅：命中哪些校验结果时告警（橙色 / 红色 / 校验失败）',
-      '接收人与渠道配置',
-      '告警发送记录与失败原因',
     ],
   },
 };
@@ -199,7 +160,6 @@ const OverviewTab: React.FC = () => {
         <StatCard value={String(ov.coveredTableCount ?? 0)} label="已配置规则表数" />
         <StatCard value={String(ov.targetTableCount ?? 0)} label="应配置核心表数" />
         <StatCard value={String(ov.enabledRuleCount ?? 0)} label="启用规则数" />
-        <StatCard value={String(ov.blockCount ?? 0)} label="阻断次数" />
       </div>
       <div className="dq-section">
         <h4 className="dq-section__title">TOP 质量问题表</h4>
@@ -232,160 +192,6 @@ const OverviewTab: React.FC = () => {
   );
 };
 
-/** 校验结果状态的中文名 —— 与 types/quality 的 QualityCheckStatus 一一对应 */
-const CHECK_STATUS_LABEL: Record<string, string> = {
-  PASS: '通过',
-  WARN: '橙色异常',
-  ERROR: '红色异常',
-  FAILED: '校验失败',
-};
-
-/** 运行记录 */
-const RunTab: React.FC = () => {
-  const { status, data } = useApiProbe<{ records: QualityRunInstanceVO[] }>(
-    () => qualityApi.listRuns({ current: 1, size: 20 })
-  );
-  const [selected, setSelected] = useState<number | null>(null);
-  const results = useApiProbe<QualityRuleResultVO[]>(
-    () => (selected ? qualityApi.listRunResults(selected) : Promise.resolve({ data: [] as QualityRuleResultVO[] })),
-    [selected]
-  );
-  // 实例详情：列表只带摘要，调度实例号 / 结束时间 / 各项统计要单独查（GET /quality/run/{id}）
-  const runDetail = useApiProbe<QualityRunInstanceVO | null>(
-    () => (selected ? qualityApi.getRun(selected) : Promise.resolve({ data: null })),
-    [selected]
-  );
-
-  if (status === 'unavailable') {
-    return <TabPlaceholder tab="run" reason="服务端 /api/quality/run 尚未接入，运行记录暂不可用。" />;
-  }
-  if (status === 'loading') {
-    return <div className="dq-loading">加载中…</div>;
-  }
-
-  const records = data?.records ?? [];
-  if (records.length === 0) {
-    return <TabPlaceholder tab="run" reason="暂无运行实例。质检任务执行后会在此展示每次校验的规则级结果。" />;
-  }
-
-  return (
-    <div className="dq-runs">
-      <table className="dq-table">
-        <thead>
-          <tr>
-            <th>任务</th>
-            <th>批次</th>
-            <th>触发</th>
-            <th>状态</th>
-            <th>开始时间</th>
-            <th>异常 / 失败</th>
-          </tr>
-        </thead>
-        <tbody>
-          {records.map(r => (
-            <tr
-              key={r.id}
-              className={selected === r.id ? 'dq-table__row--active' : undefined}
-              onClick={() => setSelected(r.id === selected ? null : r.id)}
-            >
-              <td>{r.taskName}</td>
-              <td>{r.batchNo}</td>
-              <td>{r.triggerType === 'MANUAL' ? '手动' : '调度'}</td>
-              <td>{r.status}</td>
-              <td>{r.startTime}</td>
-              <td>
-                {r.errorCount} / {r.failedCount}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {selected !== null && (
-        <>
-          <div className="dq-section">
-            <h4 className="dq-section__title">运行实例详情</h4>
-            {runDetail.status === 'unavailable' ? (
-              <p className="dq-muted">实例详情接口 GET /api/quality/run/{'{id}'} 尚未接入。</p>
-            ) : runDetail.status === 'loading' ? (
-              <p className="dq-muted">加载中…</p>
-            ) : runDetail.data ? (
-              <table className="dq-table">
-                <thead>
-                  <tr>
-                    <th>任务</th>
-                    <th>批次</th>
-                    <th>触发</th>
-                    <th>调度实例号</th>
-                    <th>开始时间</th>
-                    <th>结束时间</th>
-                    <th>状态</th>
-                    <th>检查记录</th>
-                    <th>未通过</th>
-                    <th>通过 / 橙色 / 红色 / 失败</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td className="dq-table__strong">{runDetail.data.taskName}</td>
-                    <td>{runDetail.data.batchNo}</td>
-                    <td>{runDetail.data.triggerType === 'MANUAL' ? '手动' : '调度'}</td>
-                    <td>{runDetail.data.scheduleInstanceId ?? '—'}</td>
-                    <td>{runDetail.data.startTime || '—'}</td>
-                    <td>{runDetail.data.endTime || '—'}</td>
-                    <td>{runDetail.data.status}</td>
-                    <td>{runDetail.data.checkRecordCount}</td>
-                    <td>{runDetail.data.failRecordCount}</td>
-                    <td>
-                      {runDetail.data.passCount} / {runDetail.data.warnCount} / {runDetail.data.errorCount} /{' '}
-                      {runDetail.data.failedCount}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            ) : (
-              <p className="dq-muted">暂无实例详情。</p>
-            )}
-          </div>
-
-          <div className="dq-section">
-            <h4 className="dq-section__title">规则级结果</h4>
-            {results.status === 'unavailable' ? (
-              <p className="dq-muted">结果明细接口尚未接入。</p>
-            ) : results.status === 'loading' ? (
-              <p className="dq-muted">加载中…</p>
-            ) : (results.data?.length ?? 0) === 0 ? (
-              <p className="dq-muted">该次运行暂无规则级结果。</p>
-            ) : (
-              <table className="dq-table">
-                <thead>
-                  <tr>
-                    <th>规则名</th>
-                    <th>校验对象</th>
-                    <th>阈值</th>
-                    <th>实际值</th>
-                    <th>是否通过</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {results.data!.map(item => (
-                    <tr key={item.id}>
-                      <td>{item.ruleName}</td>
-                      <td>{item.checkObject}</td>
-                      <td>{item.threshold}</td>
-                      <td>{item.actualValue}</td>
-                      <td>{CHECK_STATUS_LABEL[item.status] ?? item.status}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </>
-      )}
-    </div>
-  );
-};
-
 const DataQualityPanel: React.FC = () => {
   const [active, setActive] = useState<TabId>('overview');
   const [probeSeq, setProbeSeq] = useState(0);
@@ -396,14 +202,8 @@ const DataQualityPanel: React.FC = () => {
         return <OverviewTab key={`ov-${probeSeq}`} />;
       case 'template':
         return <TemplateTab key={`tpl-${probeSeq}`} />;
-      case 'run':
-        return <RunTab key={`run-${probeSeq}`} />;
       case 'ruleByTable':
         return <RuleTab key={`rule-${probeSeq}`} />;
-      case 'task':
-        return <TaskTab key={`task-${probeSeq}`} />;
-      case 'alert':
-        return <AlertTab key={`alert-${probeSeq}`} />;
       default:
         return null;
     }
@@ -414,9 +214,7 @@ const DataQualityPanel: React.FC = () => {
       <header className="dq-panel__header">
         <div>
           <h2 className="dq-panel__title">数据质量</h2>
-          <p className="dq-panel__subtitle">
-            规则模板 · 监控规则 · 质检任务 · 运行记录 · 告警订阅 —— 规则类型与全链路术语同源
-          </p>
+          <p className="dq-panel__subtitle">质量大盘 · 规则配置 · 规则模板 —— 规则类型与全链路术语同源</p>
         </div>
         <button className="dq-iconbtn" onClick={() => setProbeSeq(n => n + 1)} aria-label="重新加载">
           <RefreshCw size={14} />

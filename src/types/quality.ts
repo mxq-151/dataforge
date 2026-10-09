@@ -15,6 +15,13 @@
  *   必须同时跑 opencodeInstructions.test.ts 与 qualityContract.test.ts。
  * - 规则类型固定为 7 类。自定义校验 SQL 也必须归属其中一类（自定义体现在
  *   SQL 模板而非类型），否则覆盖率统计会失去口径 —— 见 QualityTemplateKind。
+ *
+ * ── 已移除的类型 ────────────────────────────────────────────
+ * 「质检任务」「运行记录」「告警订阅」三条链路（dq_task / dq_task_rule_rel /
+ * dq_run_instance / dq_alert_log / dq_alert_subscription）已从前后端删除，
+ * 对应的 QualityTaskVO / QualityRunInstanceVO / QualityAlertLogVO /
+ * QualityAlertSubscriptionVO 与 QualityTriggerType / QualityRunStatus 一并移除。
+ * 规则级校验结果（QualityRuleResultVO）保留：它是试跑与资产目录质量摘要的载体。
  */
 
 /** 规则类型的校验对象范围：单表字段级 / 单表表级 / 跨表两表比对 */
@@ -87,12 +94,6 @@ export type QualityCompareMode = 'EQ' | 'NE' | 'GT' | 'GTE' | 'LT' | 'LTE';
 
 /** 校验结果状态：通过 / 橙色异常（超警告阈值）/ 红色异常（超错误阈值）/ 校验失败（SQL 未跑通） */
 export type QualityCheckStatus = 'PASS' | 'WARN' | 'ERROR' | 'FAILED';
-
-/** 质检任务运行实例状态 */
-export type QualityRunStatus = 'RUNNING' | 'SUCCESS' | 'FAILED';
-
-/** 质检任务触发方式 */
-export type QualityTriggerType = 'SCHEDULE' | 'MANUAL';
 
 /** 规则模板 */
 export interface QualityRuleTemplateVO {
@@ -167,58 +168,9 @@ export interface QualityRuleRegisterVO {
   created: boolean;
 }
 
-/** 质检任务（一组规则的执行计划） */
-export interface QualityTaskVO {
-  id: number;
-  taskName: string;
-  ownerName: string;
-  description: string;
-  /** 监控对象表 */
-  datasourceId: number | null;
-  datasourceName: string;
-  databaseName: string;
-  tableName: string;
-  triggerType: QualityTriggerType;
-  /** 调度触发时关联的调度项目编码 / 工作流编码 / 节点名 */
-  projectCode: string;
-  workflowCode: number | null;
-  workflowName: string;
-  nodeName: string;
-  /** 任务级默认处置策略，规则未单独设置时生效 */
-  disposePolicy: QualityDisposeMode;
-  enabled: boolean;
-  createTime: string;
-  updateTime: string;
-}
-
-/** 质检任务运行实例 */
-export interface QualityRunInstanceVO {
-  id: number;
-  taskId: number;
-  taskName: string;
-  /** 本次校验的业务批次，如 20260917 */
-  batchNo: string;
-  triggerType: QualityTriggerType;
-  /** 调度触发时对应的调度实例号，用于跳转调度实例详情 */
-  scheduleInstanceId: number | null;
-  startTime: string;
-  endTime: string;
-  status: QualityRunStatus;
-  /** 检查记录总数 */
-  checkRecordCount: number;
-  /** 未通过记录总数 */
-  failRecordCount: number;
-  passCount: number;
-  warnCount: number;
-  errorCount: number;
-  /** SQL 未跑通的规则数，与「校验不通过」区分 */
-  failedCount: number;
-}
-
 /** 规则级校验结果 —— 对应提示词「校验输出须可定位」的五个要素 */
 export interface QualityRuleResultVO {
   id: number;
-  runId: number;
   ruleId: number | null;
   /** 规则名 */
   ruleName: string;
@@ -249,58 +201,11 @@ export interface QualityOverviewVO {
   /** 规则总数 / 启用数 */
   ruleCount: number;
   enabledRuleCount: number;
-  /** 近 N 日通过率趋势 */
-  passRateTrend: Array<{ statDate: string; passRate: number; failCount: number }>;
-  /** TOP 质量问题表 */
+  /** TOP 质量问题表（窗口内未通过的规则级结果按表聚合） */
   topProblemTables: Array<{
     databaseName: string;
     tableName: string;
     failCount: number;
     ownerName: string;
   }>;
-  /** 强规则阻断次数 */
-  blockCount: number;
-}
-
-/**
- * 告警记录（站内告警箱）。
- *
- * 「站内记录」渠道（INBOX）落 `dq_alert_log` 即送达，所以这张表本身就是可用的告警箱。
- *
- * 别把两个状态搞混：
- * - `status` 是**投递状态**（SENT 已送达 / PENDING 待发 / FAILED 投递失败），衡量"通知发出去了没有"；
- * - `checkStatus` 是**触发状态**（WARN / ERROR / FAILED），衡量"因为什么触发"。
- *   后者不在告警表里，服务端按 runId + ruleId 回校验结果表取出来。
- */
-export interface QualityAlertLogVO {
-  id: number;
-  runId: number;
-  taskId: number;
-  /** 任务名（服务端由 taskId 反查） */
-  taskName: string;
-  ruleId: number | null;
-  ruleName: string;
-  /** 渠道编码：INBOX / EMAIL / WEBHOOK */
-  channel: string;
-  receiver: string;
-  /** 投递状态：SENT 已送达 / PENDING 待发 / FAILED 投递失败 */
-  status: string;
-  /** 投递失败或未投递的原因；已送达时为空 */
-  failReason: string;
-  /** 实际送达时间；待发记录为空 */
-  sendTime: string;
-  /** 触发本次告警的校验结果状态：WARN / ERROR / FAILED */
-  checkStatus: string;
-}
-
-/** 告警订阅 */
-export interface QualityAlertSubscriptionVO {
-  id: number;
-  taskId: number;
-  taskName: string;
-  /** 触发告警的结果状态集合，逗号分隔，如 ERROR,FAILED */
-  notifyOn: string;
-  channels: string;
-  receivers: string;
-  enabled: boolean;
 }

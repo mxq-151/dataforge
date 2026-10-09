@@ -440,7 +440,7 @@ const RuleTab: React.FC = () => {
   const handleDelete = (row: QualityRuleVO) => {
     setConfirm({
       visible: true,
-      message: `确定要删除规则「${row.ruleName}」吗？已引用该规则的质检任务会失去这条校验。`,
+      message: `确定要删除规则「${row.ruleName}」吗？历史校验结果留痕会保留，但规则不再出现在规则清单里。`,
       onConfirm: async () => {
         try {
           await qualityApi.deleteRule(row.id);

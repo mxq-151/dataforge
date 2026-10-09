@@ -237,14 +237,6 @@
   white-space: nowrap;
 }
 
-.dq-table__row--active td {
-  background-color: #094771;
-}
-
-.dq-runs .dq-table tbody tr {
-  cursor: pointer;
-}
-
 /* ── 提示条与标记 ── */
 .dq-notice {
   display: flex;
@@ -263,22 +255,6 @@
 .dq-notice svg {
   flex-shrink: 0;
   margin-top: 2px;
-}
-
-.dq-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.dq-chip {
-  display: inline-block;
-  padding: 3px 9px;
-  background-color: #2d2d2d;
-  border: 1px solid #3c3c3c;
-  border-radius: 10px;
-  color: #cccccc;
-  font-size: 12px;
 }
 
 /* ── 工具条与控件 ── */

@@ -743,12 +743,9 @@ const AppContent: React.FC = () => {
           {isTabVisible('dataLineage') && visitedTabs.has('dataLineage') && <DataLineagePanel marquezApiUrl={config.marquezApiUrl} jumpTarget={lineageJumpTarget} />}
         </div>
         <div className={`app__view-container ${activeTab === 'dataQuality' ? 'app__view-container--active' : ''}`}>
-          {isTabVisible('dataQuality') && visitedTabs.has('dataQuality') && (
-            // 质检任务的「调度触发」要选调度项目/工作流/节点，需与调度管理同源注入 DS 客户端
-            <DolphinSchedulerProvider apiUrl={config.dolphinSchedulerApiUrl} token={config.dolphinSchedulerToken}>
-              <DataQualityPanel />
-            </DolphinSchedulerProvider>
-          )}
+          {/* 质量面板已不依赖调度客户端：原先注入 DS 只为「质检任务」页签选调度项目/工作流/节点，
+              该页签及其整条链路已删除，DS 客户端在调度管理面板里单独注入即可。 */}
+          {isTabVisible('dataQuality') && visitedTabs.has('dataQuality') && <DataQualityPanel />}
         </div>
         <div className={`app__view-container ${activeTab === 'assetCatalog' ? 'app__view-container--active' : ''}`}>
           {isTabVisible('assetCatalog') && visitedTabs.has('assetCatalog') && (

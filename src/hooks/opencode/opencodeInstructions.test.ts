@@ -317,15 +317,16 @@ describe('规则登记规范', () => {
     expect(DATA_ARCHITECT_INSTRUCTIONS).not.toContain('规则登记规范');
   });
 
-  it('登记可顺带挂任务，且说清不挂任务的后果', () => {
+  it('登记不再涉及"挂质检任务"（该链路已下线，不得再指导智能体去挂）', () => {
     const prompt = DATA_DEV_ENGINEER_INSTRUCTIONS;
 
-    expect(prompt).toContain('可选字段 taskId');
-    // 后果要写出来，否则 S3 不会认为这一步重要
-    expect(prompt).toContain('不挂任务的规则在平台里是"孤儿"');
-    expect(prompt).toContain('告警订阅也订不到它');
-    // 拿不到任务 ID 时的兜底（平台侧概念，程序无从发现）
-    expect(prompt).toContain('并在交付汇报里提示"需人工在质检任务页签挂载"');
+    // 质检任务 / 运行记录 / 告警订阅三个页签及其整条服务端链路已删除，
+    // 提示词里若还留着 taskId 指引，模型会去填一个平台根本不认的字段。
+    expect(prompt).not.toContain('taskId');
+    expect(prompt).not.toContain('质检任务页签');
+    expect(prompt).not.toContain('告警订阅');
+    // 登记的核心语义（幂等 + 取回 ruleId）必须保留
+    expect(prompt).toContain('data.ruleId 即该规则的平台 ID');
   });
 });
 

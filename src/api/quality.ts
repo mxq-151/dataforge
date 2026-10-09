@@ -3,14 +3,19 @@
  *
  * ── 路径约定 ────────────────────────────────────────────────
  * 服务端 context-path 为 /api，控制器声明不含 /api 前缀，因此这里统一写 /api/quality/...。
- * 既有结果接口 /api/quality/check-result/* 保留兼容，新链路走 /api/quality/rule|task|run/*。
+ * 既有结果接口 /api/quality/check-result/* 保留兼容，新链路走 /api/quality/rule|template/*。
+ *
+ * ── 已移除的链路 ────────────────────────────────────────────
+ * 质检任务（/quality/task*）、运行记录（/quality/run 的查询接口）与告警订阅（/quality/alert*）
+ * 已随「质检任务 / 运行记录 / 告警订阅」三个页签一并删除，前端不再有对应调用。
+ *
+ * 结果回传（POST /quality/run/report）**保留**：它不是页签功能，而是 S3 侧校验程序写
+ * 「结果留痕」（dq_rule_result）的唯一入口；路径沿用历史值，以免已部署环境的
+ * DATAFORGE_QUALITY_REPORT_URL 失效。
  *
  * ── 错误处理约定 ────────────────────────────────────────────
  * 本模块统一传 suppressError: true —— 不触发全局 toast，由调用方（面板）在自己的
  * 空态/错误态里呈现。原因是质量面板的数据源较多，多个接口同时失败时全局 toast 会刷屏。
- *
- * ⚠ 接口尚未在服务端实现时（当前第一批只建表），调用会抛错，面板需按「待接入」处理，
- * 不得让异常冒泡导致白屏。
  */
 
 import { request } from './index';
@@ -19,31 +24,21 @@ import type {
   QualityRuleTemplateVO,
   QualityRuleVO,
   QualityRuleRegisterVO,
-  QualityTaskVO,
-  QualityRunInstanceVO,
   QualityRuleResultVO,
   QualityOverviewVO,
-  QualityAlertSubscriptionVO,
-  QualityAlertLogVO,
-  QualityTriggerType,
 } from '../types/quality';
 
 export type {
   QualityRuleTemplateVO,
   QualityRuleVO,
   QualityRuleRegisterVO,
-  QualityTaskVO,
-  QualityRunInstanceVO,
   QualityRuleResultVO,
   QualityOverviewVO,
-  QualityAlertSubscriptionVO,
-  QualityAlertLogVO,
 };
 
 /** 创建/更新入参：由面板收集，字段与 VO 对齐（id 仅更新时必填） */
 export type QualityRuleSaveDTO = Omit<QualityRuleVO, 'id' | 'createTime' | 'updateTime'> & { id?: number };
 export type QualityTemplateSaveDTO = Omit<QualityRuleTemplateVO, 'id'> & { id?: number };
-export type QualityTaskSaveDTO = Omit<QualityTaskVO, 'id' | 'createTime' | 'updateTime'> & { id?: number };
 
 export interface QualityRuleListParams {
   current?: number;
@@ -56,16 +51,6 @@ export interface QualityRuleListParams {
   enabled?: boolean;
   /** 规则名精确匹配（非模糊）：登记前查「这条规则在不在平台」用得上 */
   ruleName?: string;
-}
-
-export interface QualityRunListParams {
-  current?: number;
-  size?: number;
-  taskId?: number;
-  batchNo?: string;
-  status?: string;
-  startDate?: string;
-  endDate?: string;
 }
 
 /** 把可选参数压成查询串，跳过 undefined / null / 空串 */
@@ -154,7 +139,7 @@ export const qualityApi = {
     return request<ApiResponse<null>>(`${BASE}/rule/${id}`, { method: 'DELETE', suppressError: true });
   },
 
-  /** 规则试跑：不落运行实例，只回结果，用于保存前验证阈值是否合理 */
+  /** 规则试跑：不落结果，只回结果，用于保存前验证阈值是否合理 */
   async testRunRule(payload: { ruleId?: number; rule?: QualityRuleSaveDTO; batchNo?: string }) {
     return request<ApiResponse<QualityRuleResultVO>>(`${BASE}/rule/test-run`, {
       method: 'POST',
@@ -182,7 +167,7 @@ export const qualityApi = {
    * 界面侧的批量导入（RuleTab）仍走 `createRule` / `batchCreateRulesByTemplate`：
    * 那两条面向「人工确认后落库」，语义是新建而非登记。
    */
-  async registerRule(data: QualityRuleSaveDTO & { taskId?: number }): Promise<ApiResponse<QualityRuleRegisterVO>> {
+  async registerRule(data: QualityRuleSaveDTO): Promise<ApiResponse<QualityRuleRegisterVO>> {
     return request<ApiResponse<QualityRuleRegisterVO>>(`${BASE}/rule/register`, {
       method: 'POST',
       body: JSON.stringify(data),
@@ -190,77 +175,20 @@ export const qualityApi = {
     });
   },
 
-  // ── 质检任务 ──────────────────────────────────────────────
+  // ── 结果回传（程序调用，非界面） ──────────────────────────
 
-  async listTasks(params: { current?: number; size?: number; keyword?: string; triggerType?: QualityTriggerType; enabled?: boolean } = {}) {
-    return request<ApiResponse<PageResult<QualityTaskVO>>>(`${BASE}/task`, {
-      params: toQuery(params as Record<string, unknown>),
-      suppressError: true,
-    });
-  },
-
-  async createTask(data: QualityTaskSaveDTO): Promise<ApiResponse<null>> {
-    return request<ApiResponse<null>>(`${BASE}/task`, {
-      method: 'POST',
-      body: JSON.stringify(data),
-      suppressError: true,
-    });
-  },
-
-  async updateTask(data: QualityTaskSaveDTO): Promise<ApiResponse<null>> {
-    return request<ApiResponse<null>>(`${BASE}/task`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-      suppressError: true,
-    });
-  },
-
-  async deleteTask(id: number): Promise<ApiResponse<null>> {
-    return request<ApiResponse<null>>(`${BASE}/task/${id}`, { method: 'DELETE', suppressError: true });
-  },
-
-  async listTaskRules(taskId: number) {
-    return request<ApiResponse<QualityRuleVO[]>>(`${BASE}/task/${taskId}/rules`, { suppressError: true });
-  },
-
-  /** 手动触发：返回运行实例 id，用于随后轮询运行结果 */
-  async runTask(taskId: number): Promise<ApiResponse<number>> {
-    return request<ApiResponse<number>>(`${BASE}/task/${taskId}/run`, { method: 'POST', suppressError: true });
-  },
-
-  async setTaskEnabled(taskId: number, enabled: boolean): Promise<ApiResponse<null>> {
-    return request<ApiResponse<null>>(`${BASE}/task/${taskId}/enable`, {
-      method: 'POST',
-      params: { enabled: String(enabled) },
-      suppressError: true,
-    });
-  },
-
-  // ── 运行记录 ──────────────────────────────────────────────
-
-  async listRuns(params: QualityRunListParams = {}) {
-    return request<ApiResponse<PageResult<QualityRunInstanceVO>>>(`${BASE}/run`, {
-      params: toQuery(params as Record<string, unknown>),
-      suppressError: true,
-    });
-  },
-
-  async getRun(id: number): Promise<ApiResponse<QualityRunInstanceVO>> {
-    return request<ApiResponse<QualityRunInstanceVO>>(`${BASE}/run/${id}`, { suppressError: true });
-  },
-
-  /** 规则级结果：满足提示词「规则名/校验对象/阈值/实际值/是否通过」五要素 */
-  async listRunResults(runId: number): Promise<ApiResponse<QualityRuleResultVO[]>> {
-    return request<ApiResponse<QualityRuleResultVO[]>>(`${BASE}/run/${runId}/results`, { suppressError: true });
-  },
-
-  /** 结果上报入口：S3 侧校验任务回传结果用（程序调用，非界面） */
-  async reportRun(payload: {
+  /**
+   * 结果上报入口：S3 侧校验任务回传结果用。
+   *
+   * 落「校验结果留痕」（dq_rule_result）。这是「行数波动 / 行数环比」试跑基线与
+   * 资产目录质量摘要的数据来源，因此即使运行实例链路已移除，这个入口仍保留。
+   * 路径沿用历史的 /quality/run/report，避免已部署环境的环境变量失效。
+   */
+  async reportResult(payload: {
     datasourceId?: number;
     datasourceName: string;
     databaseName: string;
     tableName: string;
-    batchNo: string;
     ruleName: string;
     /**
      * 平台规则 ID。可选，但**能拿到就一定要传**：
@@ -271,9 +199,9 @@ export const qualityApi = {
     checkObject?: string;
     threshold?: string;
     actualValue?: string;
+    /** 原始度量值（行数类=当期行数）；不传时按 actualValue 留痕 */
+    metricValue?: string;
     passed: boolean;
-    checkRecordCount?: number;
-    failRecordCount?: number;
     failDetail?: string;
     /** 本次**实际执行**的校验 SQL：模板会改版，留下它才能事后核对口径 */
     execSql?: string;
@@ -285,39 +213,11 @@ export const qualityApi = {
     });
   },
 
-  // ── 大盘与告警 ────────────────────────────────────────────
+  // ── 大盘 ──────────────────────────────────────────────────
 
-  async getOverview(params: { startDate?: string; endDate?: string; projectCode?: string } = {}) {
+  async getOverview(params: { startDate?: string; endDate?: string } = {}) {
     return request<ApiResponse<QualityOverviewVO>>(`${BASE}/overview`, {
       params: toQuery(params),
-      suppressError: true,
-    });
-  },
-
-  async listAlertSubscriptions(params: { current?: number; size?: number; taskId?: number } = {}) {
-    return request<ApiResponse<PageResult<QualityAlertSubscriptionVO>>>(`${BASE}/alert`, {
-      params: toQuery(params as Record<string, unknown>),
-      suppressError: true,
-    });
-  },
-
-  async saveAlertSubscription(data: Omit<QualityAlertSubscriptionVO, 'id' | 'taskName'> & { id?: number }) {
-    return request<ApiResponse<null>>(`${BASE}/alert`, {
-      method: 'POST',
-      body: JSON.stringify(data),
-      suppressError: true,
-    });
-  },
-
-  /**
-   * 站内告警箱：分页查告警记录。
-   *
-   * 「站内记录」渠道落库即送达，Webhook 的投递结果（SENT / FAILED + 原因）也落在这里，
-   * 因此这一张表就是可用的告警箱。
-   */
-  async listAlertLogs(params: { current?: number; size?: number; taskId?: number; channel?: string; status?: string } = {}) {
-    return request<ApiResponse<PageResult<QualityAlertLogVO>>>(`${BASE}/alert/log`, {
-      params: toQuery(params as Record<string, unknown>),
       suppressError: true,
     });
   },

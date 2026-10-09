@@ -229,7 +229,7 @@ const QualityTab: React.FC<{ tableId: number }> = ({ tableId }) => {
         {data.lastRunStatus ? ` · ${data.lastRunStatus}` : ''}
       </p>
       <p className="ac-muted">
-        规则的配置与运行明细在「数据质量」模块维护，此处只读汇总；阻断下游由质检任务作为调度节点实现。
+        规则的配置与校验明细在「数据质量」模块维护，此处只读汇总；阻断下游由质量校验任务作为调度节点实现。
       </p>
     </div>
   );
