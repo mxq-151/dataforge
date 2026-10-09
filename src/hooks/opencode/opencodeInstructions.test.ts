@@ -346,3 +346,116 @@ describe('回传的表级权限约定', () => {
     expect(DATA_ARCHITECT_INSTRUCTIONS).not.toContain('无权读取的表会被拒绝登记结果');
   });
 });
+
+/**
+ * 质检任务粒度 —— 一张被校验表一个质检程序。
+ *
+ * 历史问题：提示词只说"质检任务与处理任务分离、独立成文件"，没定粒度，模型把整个业务域的
+ * 全部规则写进一个质检程序 —— 一个任务挂了多个上游、失败域糊在一起、重跑要整批重跑，
+ * 程序名也无法对应到任何一张表。粒度必须由提示词定死，不能靠模型自行领会。
+ */
+describe('质检任务粒度 — 一张被校验表一个质检程序', () => {
+  it('S3 声明粒度、归属依据与禁止项', () => {
+    const prompt = DATA_DEV_ENGINEER_INSTRUCTIONS;
+
+    expect(prompt).toContain('一张被校验表 = 一个质检程序');
+    // 归属依据：规则的校验对象所属表，而不是规则类型 / 分层 / 业务域
+    expect(prompt).toContain('不是规则类型，也不是分层或业务域');
+    expect(prompt).toContain('禁止把所有表、所有规则塞进同一个质检程序');
+    // 跨表对账规则必须有明确归属，否则模型会为它单建一个"共享"校验程序
+    expect(prompt).toContain('归入其左侧主表所在的质检程序');
+    expect(prompt).toContain('禁止把校验逻辑写进数据处理程序内部');
+  });
+
+  it('S3 给出可推导的程序名与调度挂载方式', () => {
+    const prompt = DATA_DEV_ENGINEER_INSTRUCTIONS;
+
+    expect(prompt).toContain('{分层}_{业务域}_{实体描述}_check_{执行周期}');
+    expect(prompt).toContain('dwd_trade_order_check_d.sql');
+    // 一个处理任务产出多张表时拆多个质检任务，而不是堆上游依赖到一个任务上
+    expect(prompt).toContain('@依赖 只写该处理任务');
+    expect(prompt).toContain('拆出多个质检任务');
+  });
+
+  it('自检清单覆盖质检粒度，避免产出后再被用户发现', () => {
+    expect(DATA_DEV_ENGINEER_INSTRUCTIONS).toContain('质检粒度：');
+  });
+
+  it('S2 与 S3 的拆分原则都写明质检粒度（设计端不得把规则堆成一个任务）', () => {
+    for (const prompt of [DATA_ARCHITECT_INSTRUCTIONS, DATA_DEV_ENGINEER_INSTRUCTIONS]) {
+      expect(prompt).toContain('一张被校验表对应一个质检任务');
+    }
+  });
+
+  it('S2 规则清单要求按表分组连续书写（解析器遇非表格行即中止）', () => {
+    const prompt = DATA_ARCHITECT_INSTRUCTIONS;
+
+    expect(prompt).toContain('表格必须是一张连续表格');
+    expect(prompt).toContain('按"库.表"分组连续书写');
+  });
+
+  it('回传"不单开节点"的约束不会被读成"把多张表合并进一个程序"', () => {
+    expect(DATA_DEV_ENGINEER_INSTRUCTIONS).toContain('不给回传单开节点');
+  });
+});
+
+/**
+ * 数据分类分级口径 —— 分级档位与分类枚举必须写死。
+ *
+ * 历史问题：提示词只给了「如 cla:用户信息-一般」一个例子，没定档位。模型每次自造一套
+ * （"机密/内部/公开"、"一般1级"），三份产物对不上，资产侧统计不出分级分布；更糟的是
+ * 旧口径要求"敏感字段不得低于重要"，而 GB/T 43697-2024 明确"仅影响组织自身或公民个体的
+ * 数据一般不作为重要数据"—— 把个人信息抬成重要数据会触发重要数据目录报备与风险评估义务。
+ * 因此：分级只有三档、分类只有六类、个人信息归一般数据、脱敏作为独立维度强制要求。
+ */
+describe('数据分类分级口径 — 三档分级 + 六类分类', () => {
+  const GRADES = ['核心数据', '重要数据', '一般数据'];
+  const CATEGORIES = '个人信息 / 业务数据 / 经营数据 / 公共数据 / 运维数据 / 其他';
+
+  it.each(STAGES)('$id 提示词带上了共享的分类分级口径', ({ prompt }) => {
+    expect(prompt).toContain('## 数据分类分级口径（全链路统一，GB/T 43697-2024）');
+    for (const grade of GRADES) {
+      expect(prompt, `缺少分级档位: ${grade}`).toContain(grade);
+    }
+    expect(prompt).toContain(CATEGORIES);
+    // 档位必须写死：既不额外造档，也不再细分小级
+    expect(prompt).toContain('禁止自造档位、禁止再细分小级');
+  });
+
+  it('S2 给出固定标注写法 cla:{分类}-{分级} 与可抄的示例', () => {
+    const prompt = DATA_ARCHITECT_INSTRUCTIONS;
+
+    expect(prompt).toContain('cla:{分类}-{分级}');
+    expect(prompt).toContain('cla:个人信息-一般数据');
+    // 表级与字段级都要标，不能只标一处
+    expect(prompt).toContain('表级写在表注释尾部，字段级写在字段注释尾部');
+  });
+
+  it('个人信息默认一般数据，且明确"不得靠抬高分级代替脱敏"', () => {
+    const prompt = DATA_ARCHITECT_INSTRUCTIONS;
+
+    expect(prompt).toContain('默认归"一般数据"');
+    expect(prompt).toContain('不得靠抬高分级代替脱敏');
+    expect(prompt).toContain('脱敏与分级是两件事');
+    // 已废除的旧口径不得残留：它会把个人信息抬成重要数据
+    expect(prompt).not.toContain('不得低于"重要"');
+  });
+
+  it('S3 把 cla: 标记落到脱敏实现与自检里', () => {
+    const prompt = DATA_DEV_ENGINEER_INSTRUCTIONS;
+
+    expect(prompt).toContain('cla: 分类分级标记与脱敏建议实现脱敏');
+    expect(prompt).toContain('分类分级落地：');
+  });
+
+  it('旁路角色的安全原则自带档位，不引用它们拿不到的口径章节', () => {
+    // S1/S2/S3 之外的提示词（超管、数据分析师）只拿到 SECURITY_PRINCIPLES，
+    // 里面若写"见数据分类分级口径"会指向一个不存在的章节。
+    for (const role of ['SUPER_ADMIN', 'DATA_ANALYST']) {
+      const prompt = getDeveloperInstructions(role, 'u', 'dev-assistant');
+      expect(prompt).toContain('分级固定为核心数据 / 重要数据 / 一般数据三档');
+      expect(prompt).not.toContain('## 数据分类分级口径');
+      expect(prompt).not.toContain('见"数据分类分级口径"');
+    }
+  });
+});
