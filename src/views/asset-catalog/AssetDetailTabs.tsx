@@ -3,7 +3,7 @@
  *
  * ── 定位 ────────────────────────────────────────────────────
  * 资产目录详情要回答「这表是什么、谁负责、能不能用、质量如何、影响谁」。其中
- * 「概览」由宿主面板提供（它持有 detail / 生命周期等写状态），本组件负责其余页签，
+ * 「概览」由宿主面板提供（它持有 detail 与治理编辑入口），本组件负责其余页签，
  * 每个页签各自探测自己的接口 —— 一个页签不可用不影响其它页签。
  *
  * ── 页签与接口对应 ──────────────────────────────────────────
@@ -50,7 +50,7 @@ const TAB_LABELS: Array<{ id: AssetDetailTabId; label: string }> = [
 interface AssetDetailTabsProps {
   tableId: number;
   detail: AssetTableDetailVO;
-  /** 概览页签内容由宿主面板提供（它持有 detail 与生命周期写状态） */
+  /** 概览页签内容由宿主面板提供（它持有 detail 与治理编辑入口） */
   overviewContent: React.ReactNode;
 }
 

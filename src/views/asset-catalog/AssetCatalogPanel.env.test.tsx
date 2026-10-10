@@ -132,6 +132,26 @@ vi.mock('../../api/assetCatalog', () => ({
   },
 }));
 
+// 概览页签的负责人下拉会探测系统用户列表；本文件不涉及负责人，返回空即可
+vi.mock('../../api/systemUser', () => ({
+  systemUserApi: {
+    getUserList: vi.fn(async () => ({
+      code: 200,
+      data: { records: [], total: 0, current: 1, size: 200 },
+    })),
+  },
+}));
+
+// 负责人存的是租户编码，下拉还需租户列表做 userId → tenantCode 映射
+vi.mock('../../api/systemTenant', () => ({
+  tenantApi: {
+    getList: vi.fn(async () => ({
+      code: 200,
+      data: { records: [], total: 0, current: 1, size: 200 },
+    })),
+  },
+}));
+
 const renderPanel = () =>
   render(
     <ToastProvider>

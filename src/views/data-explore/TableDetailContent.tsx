@@ -47,29 +47,35 @@ export interface TableDetailData {
 
 interface TableDetailContentProps {
   detail: TableDetailData;
-  /** 基础信息之后的入口专属动作（如资产目录的「修改生命周期」）；数据探索不传 */
-  infoActions?: React.ReactNode;
 }
 
-const TableDetailContent: React.FC<TableDetailContentProps> = ({ detail, infoActions }) => (
+const TableDetailContent: React.FC<TableDetailContentProps> = ({ detail }) => (
   <>
     <section className="table-detail-modal__info">
       <div className="table-detail-modal__info-row">
         <div className="table-detail-modal__info-item">
           <span className="table-detail-modal__label">存储引擎</span>
-          <span className="table-detail-modal__value">{detail.storageEngine || '-'}</span>
+          <span className="table-detail-modal__value" title={detail.storageEngine || ''}>
+            {detail.storageEngine || '-'}
+          </span>
         </div>
         <div className="table-detail-modal__info-item">
           <span className="table-detail-modal__label">存储格式</span>
-          <span className="table-detail-modal__value">{detail.storageFormat || '-'}</span>
+          <span className="table-detail-modal__value" title={detail.storageFormat || ''}>
+            {detail.storageFormat || '-'}
+          </span>
         </div>
         <div className="table-detail-modal__info-item">
           <span className="table-detail-modal__label">压缩方式</span>
-          <span className="table-detail-modal__value">{detail.compression ?? '-'}</span>
+          <span className="table-detail-modal__value" title={detail.compression ?? ''}>
+            {detail.compression ?? '-'}
+          </span>
         </div>
         <div className="table-detail-modal__info-item">
           <span className="table-detail-modal__label">表注释</span>
-          <span className="table-detail-modal__value">{detail.tableComment || '-'}</span>
+          <span className="table-detail-modal__value" title={detail.tableComment || ''}>
+            {detail.tableComment || '-'}
+          </span>
         </div>
       </div>
 
@@ -93,8 +99,6 @@ const TableDetailContent: React.FC<TableDetailContentProps> = ({ detail, infoAct
           </span>
         </div>
       </div>
-
-      {infoActions && <div className="table-detail-modal__info-actions">{infoActions}</div>}
     </section>
 
     <section className="table-detail-modal__columns">

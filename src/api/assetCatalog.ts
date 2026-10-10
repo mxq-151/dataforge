@@ -246,11 +246,23 @@ export interface AssetInventoryVO {
   totalTables: number;
   totalSizeBytes: number;
   totalColumns: number;
-  byLayer: Array<{ layerCode: string; tableCount: number; sizeBytes: number }>;
-  byDomain: Array<{ domainCode: string; tableCount: number; sizeBytes: number }>;
+  /** 质检规划覆盖率（0~1，当前范围）；无「应配置质检规则」的表时为 null */
+  qualityCoverageRate: number | null;
+  byLayer: Array<{
+    layerCode: string;
+    tableCount: number;
+    sizeBytes: number;
+    /** 该分层的质检规划覆盖率（0~1）；无应配置表时为 null */
+    qualityCoverageRate: number | null;
+  }>;
+  byDomain: Array<{
+    domainCode: string;
+    tableCount: number;
+    sizeBytes: number;
+    /** 该业务域（数仓）的质检规划覆盖率（0~1）；无应配置表时为 null */
+    qualityCoverageRate: number | null;
+  }>;
   byDatasource: Array<{ datasourceId: number; datasourceName: string; tableCount: number }>;
-  /** 命名不合规、未标注等需治理的总数 */
-  unclassifiedCount: number;
 }
 
 // ── 资产概况（盘点看板）──────────────────────────────────────
@@ -483,7 +495,7 @@ export const assetCatalogApi = {
    * 盘点概况。可按「数仓名称（→ domainCode，即规范视角的业务域）」或「数仓分层（→ layerCode）」收窄：
    * 两者都不传 = 当前环境全量；同时传 = 该业务域下该分层。
    * 注意：domainCode ≠ projectCode（后者是调度项目编码，如 test_project）。
-   * 选中层级下推服务端，保证「表总数 / 字段总数 / 占用空间 / 未分类表」四项口径一致。
+   * 选中层级下推服务端，保证「表总数 / 字段总数 / 占用空间 / 质检规划覆盖率」四项口径一致。
    */
   async getInventoryOverview(
     params: { projectCode?: string; domainCode?: string; layerCode?: string; env?: AssetEnvCode } = {}

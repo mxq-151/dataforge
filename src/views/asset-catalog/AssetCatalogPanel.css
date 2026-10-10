@@ -509,6 +509,22 @@
   margin-top: 0;
 }
 
+/* 基础信息：前三列（存储引擎 / 存储格式 / 压缩方式 / 热冷保留天数等短字段）收窄 30%，
+   把富余宽度让给表注释与存储位置这两个长文本字段 */
+.ac-main__body .table-detail-modal__info-row {
+  grid-template-columns: 0.7fr 0.7fr 0.7fr 1.9fr;
+}
+
+/* 所有信息框统一为单行固定高度，超长文本以省略号截断（完整值见 title 提示） */
+.ac-main__body .table-detail-modal__value {
+  display: block;
+  height: 24px;
+  line-height: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .ac-main__body .table-detail-modal__columns-table-wrapper {
   flex: none;
   min-height: 0;
@@ -531,76 +547,29 @@
   color: #ffffff;
 }
 
-/* ── 生命周期修改弹窗 ── */
-.ac-modal-overlay {
-  position: fixed;
-  inset: 0;
+/* ── 治理编辑器：只读查看态（编辑入口按钮在 ac-inlinebar 内）── */
+.ac-readonly-row {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  background-color: rgba(0, 0, 0, 0.55);
-  z-index: 1000;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
-.ac-modal {
-  display: flex;
-  flex-direction: column;
-  width: 480px;
-  max-width: calc(100vw - 48px);
-  max-height: calc(100vh - 80px);
-  min-width: 0;
-  background-color: #252526;
-  border: 1px solid #3c3c3c;
-  border-radius: 6px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
-}
-
-.ac-modal__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px;
-  border-bottom: 1px solid #3c3c3c;
-}
-
-.ac-modal__title {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: #ffffff;
-}
-
-.ac-modal__close {
-  background: none;
-  border: none;
-  color: #858585;
-  font-size: 18px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.ac-modal__close:hover {
-  color: #ffffff;
-}
-
-.ac-modal__body {
+.ac-readonly-item {
   flex: 1;
-  min-height: 0;
-  overflow: auto;
-  padding: 14px 16px;
+  min-width: 120px;
 }
 
-.ac-modal__body .ac-muted {
-  margin-top: 0;
-  margin-bottom: 14px;
+.ac-readonly-label {
+  display: block;
+  margin-bottom: 6px;
+  color: #a9a9a9;
+  font-size: 12.5px;
 }
 
-.ac-modal__footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 12px 16px;
-  border-top: 1px solid #3c3c3c;
+.ac-readonly-value {
+  color: #cccccc;
+  font-size: 12.5px;
+  word-break: break-all;
 }
 
 .ac-form-row {
@@ -1152,6 +1121,43 @@
   margin-top: 12px;
 }
 
+/* 区块之间的分割线：与上方「基础信息」区块之间、以及各治理区块之间 */
+.ac-section--divided {
+  border-top: 1px solid #3c3c3c;
+  padding-top: 14px;
+}
+
+/* 区块标题右侧的操作图标（编辑 / 保存 / 取消） */
+.ac-section__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.ac-section__iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px;
+  background: none;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  color: #cccccc;
+  cursor: pointer;
+}
+
+.ac-section__iconbtn:hover:not(:disabled) {
+  background-color: #37373d;
+  border-color: #4c4c4c;
+  color: #ffffff;
+}
+
+.ac-section__iconbtn:disabled {
+  color: #5a5a5a;
+  cursor: not-allowed;
+}
+
 .ac-section__hint {
   margin-left: 8px;
   color: #858585;
@@ -1220,6 +1226,12 @@
 }
 
 /* ── 标签选择（整体替换语义）── */
+.ac-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .ac-chips--selectable {
   display: flex;
   flex-wrap: wrap;
@@ -1235,6 +1247,11 @@
   font-size: 12px;
   font-family: inherit;
   cursor: pointer;
+}
+
+/* 只读展示的标签：不可点 */
+.ac-chip--static {
+  cursor: default;
 }
 
 .ac-chip--on {

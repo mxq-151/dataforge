@@ -167,11 +167,6 @@
   word-break: normal;
 }
 
-/* 基础信息之后的入口专属动作（资产目录的「修改生命周期」等） */
-.table-detail-modal__info-actions {
-  margin-top: 10px;
-}
-
 .table-detail-modal__columns {
   flex: 1;
   display: flex;

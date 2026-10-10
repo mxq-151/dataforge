@@ -53,7 +53,6 @@ import {
   CircleAlert,
   Info,
   Tag,
-  Pencil,
   Library,
   LayoutDashboard,
   ScrollText,
@@ -64,7 +63,6 @@ import type {
   AssetEnvCode,
   AssetHealthIssueVO,
   AssetInventoryVO,
-  AssetLifecycleVO,
   AssetSearchHit,
   AssetSearchResult,
   AssetSearchType,
@@ -72,14 +70,12 @@ import type {
   CatalogTreeNode,
   CatalogViewMode,
 } from '../../api/assetCatalog';
-import { useToast } from '../../components/Toast';
 import { useProbe } from './useProbe';
 import AssetEnvSwitch, { ASSET_ENV_COLOR, assetEnvLabel } from './AssetEnvSwitch';
 import AssetOverviewTab from './AssetOverviewTab';
 import AssetDetailTabs from './AssetDetailTabs';
 import AssetGovernanceEditor from './AssetGovernanceEditor';
 import TemplateTab from '../data-quality/TemplateTab';
-import TableDetailContent from '../data-explore/TableDetailContent';
 import type { TableDetailData } from '../data-explore/TableDetailContent';
 import './AssetCatalogPanel.css';
 
@@ -115,31 +111,6 @@ const HEALTH_ITEMS = [
 
 type ProbeState<T> = { status: 'loading' | 'ok' | 'unavailable'; data: T | null };
 
-/** 生命周期编辑表单：以字符串承载输入，提交前统一校验（避免输入中途被 number 化截断） */
-interface LifecycleForm {
-  hotDays: string;
-  coldDays: string;
-  keepDays: string;
-}
-
-/** 生命周期三档校验：正整数天数，且热 ≤ 冷 ≤ 保留（与 table_metadata 的列语义一致） */
-function validateLifecycle(form: LifecycleForm): { value?: AssetLifecycleVO; error?: string } {
-  const parseDays = (raw: string, label: string): number | string => {
-    const text = raw.trim();
-    if (!/^\d+$/.test(text) || Number(text) <= 0) return `${label}须为大于 0 的整数天数`;
-    return Number(text);
-  };
-  const hot = parseDays(form.hotDays, '热数据天数');
-  if (typeof hot === 'string') return { error: hot };
-  const cold = parseDays(form.coldDays, '冷数据天数');
-  if (typeof cold === 'string') return { error: cold };
-  const keep = parseDays(form.keepDays, '保留天数');
-  if (typeof keep === 'string') return { error: keep };
-  if (hot > cold) return { error: '热数据天数不得大于冷数据天数' };
-  if (cold > keep) return { error: '冷数据天数不得大于保留天数' };
-  return { value: { hotDays: hot, coldDays: cold, keepDays: keep } };
-}
-
 /** 字节数 → 人类可读（与资产概况保持一致的口径） */
 function formatBytes(bytes: number | null | undefined): string {
   if (bytes == null || !Number.isFinite(bytes)) return '—';
@@ -148,6 +119,12 @@ function formatBytes(bytes: number | null | undefined): string {
   const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
   const value = bytes / 1024 ** i;
   return `${value >= 100 ? value.toFixed(0) : value.toFixed(2)} ${units[i]}`;
+}
+
+/** 比率（0~1）→ 百分比字符串；无定义（null）显示「—」 */
+function formatRate(rate: number | null | undefined): string {
+  if (rate == null || !Number.isFinite(rate)) return '—';
+  return `${(rate * 100).toFixed(1)}%`;
 }
 
 /** 检索命中的资产类型 → 中文名 */
@@ -534,11 +511,15 @@ const GovernanceSection: React.FC<{
               </div>
               <div className="ac-detailstat">
                 <span
-                  className={`ac-detailstat__value ${overview.data.unclassifiedCount > 0 ? 'ac-detailstat__value--warn' : ''}`}
+                  className={`ac-detailstat__value ${
+                    overview.data.qualityCoverageRate != null && overview.data.qualityCoverageRate < 1
+                      ? 'ac-detailstat__value--warn'
+                      : ''
+                  }`}
                 >
-                  {overview.data.unclassifiedCount}
+                  {formatRate(overview.data.qualityCoverageRate)}
                 </span>
-                <span className="ac-detailstat__label">未分类表</span>
+                <span className="ac-detailstat__label">质检规划覆盖率</span>
               </div>
             </div>
             {/* 收窄到单个分层时该分布只剩一行、表数与占用空间必然等于上方汇总，属重复信息，不展示 */}
@@ -549,6 +530,7 @@ const GovernanceSection: React.FC<{
                     <th>分层</th>
                     <th>表数</th>
                     <th>占用空间</th>
+                    <th>质检规划覆盖率</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -557,6 +539,7 @@ const GovernanceSection: React.FC<{
                       <td className="ac-table__strong">{layer.layerCode || '未分类'}</td>
                       <td>{layer.tableCount}</td>
                       <td>{formatBytes(layer.sizeBytes)}</td>
+                      <td>{formatRate(layer.qualityCoverageRate)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -686,7 +669,6 @@ const GovernanceSection: React.FC<{
 // ── 主面板 ──────────────────────────────────────────────────
 
 const AssetCatalogPanel: React.FC = () => {
-  const toast = useToast();
   const [activeTab, setActiveTab] = useState<AssetTabId>('overview');
   const [view, setView] = useState<CatalogViewMode>('engine');
   const [keyword, setKeyword] = useState('');
@@ -697,9 +679,6 @@ const AssetCatalogPanel: React.FC = () => {
   const [detail, setDetail] = useState<ProbeState<AssetTableDetailVO>>({ status: 'loading', data: null });
   const [detailReload, setDetailReload] = useState(0);
   const [refreshTick, setRefreshTick] = useState(0);
-  const [lifecycleForm, setLifecycleForm] = useState<LifecycleForm | null>(null);
-  const [lifecycleError, setLifecycleError] = useState('');
-  const [savingLifecycle, setSavingLifecycle] = useState(false);
 
   // 右栏视图 + 检索驱动参数
   const [mainView, setMainView] = useState<MainView>('detail');
@@ -780,14 +759,12 @@ const AssetCatalogPanel: React.FC = () => {
   /**
    * 切换环境（模块级）：换的是「看哪一套」，因此原先选中的表不再属于当前环境，必须清掉，
    * 否则右栏会停留在「不属于当前环境的表」上，看起来像越权可见。
-   * 目录树展开态与未提交的生命周期编辑同样清空。
+   * 目录树展开态同样清空。
    */
   const changeEnv = (next: AssetEnvCode) => {
     setEnv(next);
     setSelected(null);
     setExpanded(new Set());
-    setLifecycleForm(null);
-    setLifecycleError('');
   };
 
   /**
@@ -799,11 +776,9 @@ const AssetCatalogPanel: React.FC = () => {
     setView(next);
     setSelected(null);
     setExpanded(new Set());
-    setLifecycleForm(null);
-    setLifecycleError('');
   };
 
-  // 选中表即拉取资产详情（生命周期的回显载体）。失败降级到 unavailable，不弹全局错误
+  // 选中表即拉取资产详情（概览与治理编辑的回显载体）。失败降级到 unavailable，不弹全局错误
   useEffect(() => {
     if (!selectedTableId) return;
     let cancelled = false;
@@ -858,9 +833,6 @@ const AssetCatalogPanel: React.FC = () => {
   const handleSelect = (node: CatalogTreeNode) => {
     setSelected(node);
     setMainView('detail');
-    // 换表时关闭未提交的生命周期编辑，避免把 A 表的值带到 B 表
-    setLifecycleForm(null);
-    setLifecycleError('');
   };
 
   const submitSearch = () => {
@@ -876,8 +848,6 @@ const AssetCatalogPanel: React.FC = () => {
     if (!node) return;
     setSelected(node);
     setMainView('detail');
-    setLifecycleForm(null);
-    setLifecycleError('');
   };
 
   const reloadAll = () => {
@@ -885,61 +855,15 @@ const AssetCatalogPanel: React.FC = () => {
     if (selectedTableId) setDetailReload(n => n + 1);
   };
 
-  const openLifecycleEditor = () => {
-    if (!detail.data) return;
-    setLifecycleError('');
-    setLifecycleForm({
-      hotDays: detail.data.hotDays != null ? String(detail.data.hotDays) : '',
-      coldDays: detail.data.coldDays != null ? String(detail.data.coldDays) : '',
-      keepDays: detail.data.keepDays != null ? String(detail.data.keepDays) : '',
-    });
-  };
-
-  const submitLifecycle = async () => {
-    if (!selectedTableId || !lifecycleForm) return;
-    const checked = validateLifecycle(lifecycleForm);
-    if (checked.error || !checked.value) {
-      setLifecycleError(checked.error ?? '生命周期参数不合法');
-      return;
-    }
-    setSavingLifecycle(true);
-    try {
-      await assetCatalogApi.updateLifecycle(selectedTableId, checked.value);
-      // 写成功后就地回填，不整页重拉：目录树与详情的其余字段不受影响
-      setDetail(prev => (prev.data ? { status: 'ok', data: { ...prev.data, ...checked.value } } : prev));
-      setLifecycleForm(null);
-      setLifecycleError('');
-      toast.info(`${selected?.databaseName ? `${selected.databaseName}.` : ''}${selected?.tableName ?? ''} 的生命周期已更新`);
-    } catch (e) {
-      toast.error(`生命周期更新失败：${e instanceof Error ? e.message : String(e)}`);
-    } finally {
-      setSavingLifecycle(false);
-    }
-  };
-
-  /** 概览页签内容：基础信息 + 生命周期 + 治理写操作（由 AssetGovernanceEditor 提供） */
-  const overviewContent = detail.data ? (
-    <>
-      {tableDetail && (
-        <TableDetailContent
-          detail={tableDetail}
-          infoActions={
-            <div className="ac-actions">
-              <button className="ac-btn" type="button" onClick={openLifecycleEditor}>
-                <Pencil size={13} />
-                <span>修改生命周期</span>
-              </button>
-              <span className="ac-muted">
-                热数据为高频访问期、冷数据为低频保留期，超过保留天数的数据可被归档或淘汰；
-                修改仅作用于本表的存储治理口径，不改变数据本身。
-              </span>
-            </div>
-          }
-        />
-      )}
-      <AssetGovernanceEditor detail={detail.data} onSaved={() => setDetailReload(n => n + 1)} />
-    </>
-  ) : null;
+  /** 概览页签内容：基础信息（含生命周期编辑）+ 治理写操作，均由 AssetGovernanceEditor 提供 */
+  const overviewContent =
+    detail.data && tableDetail ? (
+      <AssetGovernanceEditor
+        detail={detail.data}
+        tableDetail={tableDetail}
+        onSaved={() => setDetailReload(n => n + 1)}
+      />
+    ) : null;
 
   const mainBody = (() => {
     if (mainView === 'search') {
@@ -1170,74 +1094,6 @@ const AssetCatalogPanel: React.FC = () => {
 
             <div className="ac-main__body">{mainBody}</div>
           </main>
-        </div>
-      )}
-
-      {/* ── 生命周期修改弹窗（写操作，成败都用 toast 收口）── */}
-      {lifecycleForm && detail.data && (
-        <div className="ac-modal-overlay">
-          <div className="ac-modal">
-            <div className="ac-modal__header">
-              <h3 className="ac-modal__title">
-                修改生命周期 · {selected?.databaseName}.{selected?.tableName}
-              </h3>
-              <button className="ac-modal__close" type="button" aria-label="关闭" onClick={() => setLifecycleForm(null)}>
-                ×
-              </button>
-            </div>
-            <div className="ac-modal__body">
-              <p className="ac-muted">
-                生命周期控制该表数据的存储分层与保留期限，须满足「热数据天数 ≤ 冷数据天数 ≤ 保留天数」。
-              </p>
-              <div className="ac-form-row">
-                <div className="ac-form-group">
-                  <label htmlFor="ac-lifecycle-hot">
-                    热数据天数 <span className="ac-required">*</span>
-                  </label>
-                  <input
-                    id="ac-lifecycle-hot"
-                    className="ac-input"
-                    inputMode="numeric"
-                    value={lifecycleForm.hotDays}
-                    onChange={e => setLifecycleForm({ ...lifecycleForm, hotDays: e.target.value })}
-                  />
-                </div>
-                <div className="ac-form-group">
-                  <label htmlFor="ac-lifecycle-cold">
-                    冷数据天数 <span className="ac-required">*</span>
-                  </label>
-                  <input
-                    id="ac-lifecycle-cold"
-                    className="ac-input"
-                    inputMode="numeric"
-                    value={lifecycleForm.coldDays}
-                    onChange={e => setLifecycleForm({ ...lifecycleForm, coldDays: e.target.value })}
-                  />
-                </div>
-                <div className="ac-form-group">
-                  <label htmlFor="ac-lifecycle-keep">
-                    保留天数 <span className="ac-required">*</span>
-                  </label>
-                  <input
-                    id="ac-lifecycle-keep"
-                    className="ac-input"
-                    inputMode="numeric"
-                    value={lifecycleForm.keepDays}
-                    onChange={e => setLifecycleForm({ ...lifecycleForm, keepDays: e.target.value })}
-                  />
-                </div>
-              </div>
-              {lifecycleError && <p className="ac-form-error">{lifecycleError}</p>}
-            </div>
-            <div className="ac-modal__footer">
-              <button className="ac-btn ac-btn--ghost" type="button" onClick={() => setLifecycleForm(null)}>
-                取消
-              </button>
-              <button className="ac-btn" type="button" disabled={savingLifecycle} onClick={submitLifecycle}>
-                {savingLifecycle ? '提交中…' : '确定'}
-              </button>
-            </div>
-          </div>
         </div>
       )}
     </div>
