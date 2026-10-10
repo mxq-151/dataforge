@@ -19,22 +19,25 @@
  * - 库表树与表详情内容与数据探索共用同一组件（DBTableBrowser / TableDetailContent）
  *
  * ── 主区视图 ────────────────────────────────────────────────
- * 右栏有三种互斥视图，由用户动作切换：
- * - detail：选中一张表后的详情（概览 + 8 个能力页签，见 AssetDetailTabs）
+ * 右栏有两种互斥视图，由用户动作切换：
+ * - detail：选中一张表后的详情（概览 + 能力页签，见 AssetDetailTabs）
  * - search：提交检索后的结果列表（表 / 字段 / 指标三类，服务端已按权限过滤）
- * - bookmark：我的收藏列表
+ *
+ * ── 环境切换（模块级，两个页签共用）─────────────────────────
+ * 页签条右侧是**模块级**环境切换器（生产 / 灰度 / 测试，默认生产），切换后本模块**全部内容**重新取数：
+ * - 资产概况：五块看板图表（含①的项目排行与占比环形图）；
+ * - 资产目录：目录树、检索（表 / 字段 / 联想）、检索结果、治理项（资产盘点 / 治理项 / 标注缺口）。
+ * 之所以做成模块级而非各页签一个：环境是「这一屏看的是哪一套数据」的全局前提，
+ * 两个页签若各持一个状态，切页签时环境会悄悄变回默认值，用户很容易把「测试库的空结果」
+ * 当成「没有数据」。切换器状态由本面板持有，`AssetOverviewTab` 是受控组件（只接 env、不持状态）。
+ * 环境作为查询参数下推服务端（由服务端按库名后缀解析，前端不自行猜测环境），
+ * 因此越权表不会因为换环境而出现 —— 环境只缩小「看哪一套」，不改变权限边界。
  *
  * ── 接口接线 ────────────────────────────────────────────────
  * 目录树 / 详情 / 生命周期 → 本文件；治理写操作（负责人、分类、标签、刷新元数据）
- * → AssetGovernanceEditor；详情各能力页签 → AssetDetailTabs；档案检索 / 收藏 / 治理项
- * 三个列表视图 → 本文件内的 SearchResultPane / BookmarkPane / GovernanceSection。
+ * → AssetGovernanceEditor；详情各能力页签 → AssetDetailTabs；档案检索 / 治理项
+ * 两个列表视图 → 本文件内的 SearchResultPane / GovernanceSection。
  * 读失败按区块降级为「不可用 + 能力清单」，写失败才用 toast 提示。
- *
- * ── 埋点 ────────────────────────────────────────────────────
- * 选中表记 browse、打开数据预览记 read、新增收藏记 bookmark，走 POST /asset/access。
- * 埋点属非关键路径：任何失败静默降级，不阻塞交互，也不提示用户。
- * 说明：/access 服务端要求 assetId 非空，因此「检索」这个没有具体资产的动作不上报，
- * 避免写入 assetId=0 的脏埋点。
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -46,8 +49,6 @@ import {
   ChevronDown,
   RefreshCw,
   Table2,
-  Star,
-  Bookmark,
   CircleAlert,
   Info,
   Link2,
@@ -56,10 +57,10 @@ import {
   Library,
   LayoutDashboard,
 } from 'lucide-react';
-import { assetCatalogApi } from '../../api/assetCatalog';
+import { assetCatalogApi, DEFAULT_ASSET_ENV } from '../../api/assetCatalog';
 import type {
   AnnotationGapSummary,
-  AssetAccessType,
+  AssetEnvCode,
   AssetHealthIssueVO,
   AssetInventoryVO,
   AssetLifecycleVO,
@@ -70,9 +71,9 @@ import type {
   CatalogTreeNode,
   CatalogViewMode,
 } from '../../api/assetCatalog';
-import type { PageResult } from '../../api/types';
 import { useToast } from '../../components/Toast';
 import { useProbe } from './useProbe';
+import AssetEnvSwitch, { ASSET_ENV_COLOR, assetEnvLabel } from './AssetEnvSwitch';
 import AssetOverviewTab from './AssetOverviewTab';
 import AssetDetailTabs from './AssetDetailTabs';
 import AssetGovernanceEditor from './AssetGovernanceEditor';
@@ -96,11 +97,10 @@ const MODULE_TABS: Array<{ id: AssetTabId; label: string; icon: React.ReactNode 
   { id: 'catalog', label: '资产目录', icon: <Library size={14} /> },
 ];
 
-/** 右栏视图：详情 / 检索结果 / 收藏列表 */
-type MainView = 'detail' | 'search' | 'bookmark';
+/** 右栏视图：详情 / 检索结果 */
+type MainView = 'detail' | 'search';
 
 const SEARCH_PAGE_SIZE = 10;
-const BOOKMARK_PAGE_SIZE = 20;
 
 /** 治理项口径：全部可核查，不引入加权评分 */
 const HEALTH_ITEMS = [
@@ -323,17 +323,18 @@ const Pager: React.FC<{
 
 const SearchResultPane: React.FC<{
   keyword: string;
+  env: AssetEnvCode;
   onOpenTable: (hit: AssetSearchHit) => void;
-}> = ({ keyword, onOpenTable }) => {
+}> = ({ keyword, env, onOpenTable }) => {
   const [page, setPage] = useState(1);
   const { status, data } = useProbe<AssetSearchResult>(
-    () => assetCatalogApi.search({ keyword, current: page, size: SEARCH_PAGE_SIZE }),
-    [keyword, page]
+    () => assetCatalogApi.search({ keyword, current: page, size: SEARCH_PAGE_SIZE, env }),
+    [keyword, page, env]
   );
 
   useEffect(() => {
     setPage(1);
-  }, [keyword]);
+  }, [keyword, env]);
 
   if (status === 'loading') return <div className="ac-loading">检索中…</div>;
   if (status === 'unavailable')
@@ -400,100 +401,28 @@ const SearchResultPane: React.FC<{
   );
 };
 
-// ── 收藏列表 ────────────────────────────────────────────────
-
-const BookmarkPane: React.FC<{
-  onOpenTable: (hit: AssetSearchHit) => void;
-  onChanged: () => void;
-}> = ({ onOpenTable, onChanged }) => {
-  const toast = useToast();
-  const [page, setPage] = useState(1);
-  const [version, setVersion] = useState(0);
-  const { status, data } = useProbe<PageResult<AssetSearchHit>>(
-    () => assetCatalogApi.listBookmarks({ current: page, size: BOOKMARK_PAGE_SIZE }),
-    [page, version]
-  );
-
-  const remove = async (hit: AssetSearchHit) => {
-    try {
-      await assetCatalogApi.removeBookmark({ assetType: hit.assetType, assetId: hit.id });
-      toast.info('已取消收藏');
-      setVersion(n => n + 1);
-      onChanged();
-    } catch (e) {
-      toast.error(`取消收藏失败：${e instanceof Error ? e.message : String(e)}`);
-    }
-  };
-
-  if (status === 'loading') return <div className="ac-loading">加载中…</div>;
-  if (status === 'unavailable')
-    return (
-      <PaneUnavailable
-        title="我的收藏"
-        apiPath="/api/asset/bookmark"
-        items={['当前用户收藏的表 / 字段 / 指标', '一键取消收藏']}
-      />
-    );
-
-  const records = data?.records ?? [];
-  if (records.length === 0) {
-    return (
-      <div className="ac-placeholder">
-        <div className="ac-placeholder__head">
-          <Bookmark size={14} />
-          <span>还没有收藏任何资产。</span>
-        </div>
-        <p className="ac-placeholder__lead">在表详情右上角点「收藏」，即可把常用表固定到这里。</p>
-      </div>
-    );
-  }
-
-  return (
-    <>
-      <ul className="ac-hitlist">
-        {records.map(hit => (
-          <li key={`${hit.assetType}-${hit.id}-${hit.subtitle}`}>
-            <div className="ac-hit ac-hit--row">
-              <button
-                type="button"
-                className="ac-hit__main"
-                disabled={hit.assetType === 'indicator'}
-                onClick={() => onOpenTable(hit)}
-              >
-                <span className={`ac-hit__type ac-hit__type--${hit.assetType}`}>{HIT_TYPE_LABEL[hit.assetType]}</span>
-                <span className="ac-hit__title">{hit.title}</span>
-                <span className="ac-hit__subtitle">{hit.subtitle}</span>
-              </button>
-              <button className="ac-btn ac-btn--ghost" type="button" onClick={() => remove(hit)}>
-                取消收藏
-              </button>
-            </div>
-          </li>
-        ))}
-      </ul>
-      <Pager
-        current={page}
-        size={BOOKMARK_PAGE_SIZE}
-        total={data?.total ?? 0}
-        onChange={setPage}
-      />
-    </>
-  );
-};
-
 // ── 治理项（未选中表时的盘点看板）───────────────────────────
 
-const GovernanceSection: React.FC = () => {
-  const overview = useProbe<AssetInventoryVO>(() => assetCatalogApi.getInventoryOverview(), []);
-  const health = useProbe<AssetHealthIssueVO[]>(() => assetCatalogApi.getInventoryHealth(), []);
-  const gaps = useProbe<AnnotationGapSummary>(() => assetCatalogApi.getAnnotationGaps({ current: 1, size: 200 }), []);
+const GovernanceSection: React.FC<{ env: AssetEnvCode }> = ({ env }) => {
+  const overview = useProbe<AssetInventoryVO>(
+    () => assetCatalogApi.getInventoryOverview({ env }),
+    [env]
+  );
+  const health = useProbe<AssetHealthIssueVO[]>(
+    () => assetCatalogApi.getInventoryHealth({ env }),
+    [env]
+  );
+  const gaps = useProbe<AnnotationGapSummary>(
+    () => assetCatalogApi.getAnnotationGaps({ current: 1, size: 200, env }),
+    [env]
+  );
 
   return (
     <>
       <section className="ac-section">
         <h4 className="ac-section__title">
           <Library size={13} />
-          <span>资产盘点</span>
+          <span>资产盘点 · {assetEnvLabel(env)}</span>
         </h4>
         {overview.status === 'loading' && <div className="ac-loading">加载中…</div>}
         {overview.status === 'unavailable' && (
@@ -550,7 +479,7 @@ const GovernanceSection: React.FC = () => {
       <section className="ac-section">
         <h4 className="ac-section__title">
           <Tag size={13} />
-          <span>治理项</span>
+          <span>治理项 · {assetEnvLabel(env)}</span>
         </h4>
         <p className="ac-muted">
           治理项只做可核查计数，不引入加权评分 —— 每个治理项都能追到具体对象。口径：
@@ -601,7 +530,7 @@ const GovernanceSection: React.FC = () => {
       <section className="ac-section">
         <h4 className="ac-section__title">
           <Info size={13} />
-          <span>元数据标注缺口</span>
+          <span>元数据标注缺口 · {assetEnvLabel(env)}</span>
         </h4>
         <p className="ac-muted">
           复用既有接口 /api/metadata/annotation-gaps（由服务端按调用者的表权限过滤），
@@ -683,21 +612,14 @@ const AssetCatalogPanel: React.FC<AssetCatalogPanelProps> = ({ onNavigateToLinea
   const [lifecycleError, setLifecycleError] = useState('');
   const [savingLifecycle, setSavingLifecycle] = useState(false);
 
-  // 右栏视图 + 检索/收藏的驱动参数
+  // 右栏视图 + 检索驱动参数
   const [mainView, setMainView] = useState<MainView>('detail');
   const [searchKeyword, setSearchKeyword] = useState('');
-  const [savingBookmark, setSavingBookmark] = useState(false);
+
+  /** 当前环境：模块级状态，两个页签共用（切换即两个页签的全部内容一起重取）；默认生产 */
+  const [env, setEnv] = useState<AssetEnvCode>(DEFAULT_ASSET_ENV);
 
   const selectedTableId = selected?.nodeKind === 'table' ? selected.tableMetadataId ?? null : null;
-
-  /** 埋点：非关键路径，任何失败静默降级（含接口未部署的环境） */
-  const track = (items: Array<{ assetType: AssetSearchType; assetId: number; accessType: AssetAccessType; keyword?: string }>) => {
-    try {
-      void assetCatalogApi.reportAccess(items);
-    } catch {
-      /* 埋点失败静默降级 */
-    }
-  };
 
   /**
    * 详情聚合体 → 表详情统一形态。
@@ -731,12 +653,12 @@ const AssetCatalogPanel: React.FC<AssetCatalogPanelProps> = ({ onNavigateToLinea
     };
   }, [detail]);
 
-  // 目录树按视角探测：接口未接入时落到 unavailable，由 TreePlaceholder 呈现能力清单
+  // 目录树按「视角 + 环境」探测：接口未接入时落到 unavailable，由 TreePlaceholder 呈现能力清单
   useEffect(() => {
     let cancelled = false;
     setTree({ status: 'loading', data: null });
     assetCatalogApi
-      .getCatalogTree({ view })
+      .getCatalogTree({ view, env })
       .then(res => {
         if (!cancelled) setTree({ status: 'ok', data: res?.data ?? [] });
       })
@@ -746,7 +668,20 @@ const AssetCatalogPanel: React.FC<AssetCatalogPanelProps> = ({ onNavigateToLinea
     return () => {
       cancelled = true;
     };
-  }, [view, refreshTick]);
+  }, [view, refreshTick, env]);
+
+  /**
+   * 切换环境（模块级）：换的是「看哪一套」，因此原先选中的表不再属于当前环境，必须清掉，
+   * 否则右栏会停留在「不属于当前环境的表」上，看起来像越权可见。
+   * 目录树展开态与未提交的生命周期编辑同样清空。
+   */
+  const changeEnv = (next: AssetEnvCode) => {
+    setEnv(next);
+    setSelected(null);
+    setExpanded(new Set());
+    setLifecycleForm(null);
+    setLifecycleError('');
+  };
 
   // 选中表即拉取资产详情（生命周期的回显载体）。失败降级到 unavailable，不弹全局错误
   useEffect(() => {
@@ -777,7 +712,7 @@ const AssetCatalogPanel: React.FC<AssetCatalogPanelProps> = ({ onNavigateToLinea
     let cancelled = false;
     const timer = setTimeout(() => {
       assetCatalogApi
-        .suggest(text)
+        .suggest(text, env)
         .then(res => {
           if (!cancelled) setSuggestions(res?.data ?? []);
         })
@@ -789,7 +724,7 @@ const AssetCatalogPanel: React.FC<AssetCatalogPanelProps> = ({ onNavigateToLinea
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [keyword]);
+  }, [keyword, env]);
 
   const toggle = (key: string) => {
     setExpanded(prev => {
@@ -806,9 +741,6 @@ const AssetCatalogPanel: React.FC<AssetCatalogPanelProps> = ({ onNavigateToLinea
     // 换表时关闭未提交的生命周期编辑，避免把 A 表的值带到 B 表
     setLifecycleForm(null);
     setLifecycleError('');
-    if (node.nodeKind === 'table' && node.tableMetadataId) {
-      track([{ assetType: 'table', assetId: node.tableMetadataId, accessType: 'browse' }]);
-    }
   };
 
   const submitSearch = () => {
@@ -826,33 +758,6 @@ const AssetCatalogPanel: React.FC<AssetCatalogPanelProps> = ({ onNavigateToLinea
     setMainView('detail');
     setLifecycleForm(null);
     setLifecycleError('');
-    if (node.tableMetadataId) {
-      track([{ assetType: 'table', assetId: node.tableMetadataId, accessType: 'browse' }]);
-    }
-  };
-
-  const toggleBookmark = async () => {
-    const d = detail.data;
-    if (!d || !selectedTableId) return;
-    setSavingBookmark(true);
-    try {
-      if (d.bookmarked) {
-        await assetCatalogApi.removeBookmark({ assetType: 'table', assetId: selectedTableId });
-      } else {
-        await assetCatalogApi.addBookmark({
-          assetType: 'table',
-          assetId: selectedTableId,
-          tableMetadataId: selectedTableId,
-        });
-        track([{ assetType: 'table', assetId: selectedTableId, accessType: 'bookmark' }]);
-      }
-      setDetail(prev => (prev.data ? { status: 'ok', data: { ...prev.data, bookmarked: !prev.data.bookmarked } } : prev));
-      toast.info(d.bookmarked ? '已取消收藏' : '已收藏');
-    } catch (e) {
-      toast.error(`${d.bookmarked ? '取消收藏' : '收藏'}失败：${e instanceof Error ? e.message : String(e)}`);
-    } finally {
-      setSavingBookmark(false);
-    }
   };
 
   const reloadAll = () => {
@@ -943,10 +848,14 @@ const AssetCatalogPanel: React.FC<AssetCatalogPanelProps> = ({ onNavigateToLinea
 
   const mainBody = (() => {
     if (mainView === 'search') {
-      return <SearchResultPane key={`search-${searchKeyword}-${refreshTick}`} keyword={searchKeyword} onOpenTable={openFromHit} />;
-    }
-    if (mainView === 'bookmark') {
-      return <BookmarkPane key={`bm-${refreshTick}`} onOpenTable={openFromHit} onChanged={reloadAll} />;
+      return (
+        <SearchResultPane
+          key={`search-${searchKeyword}-${refreshTick}-${env}`}
+          keyword={searchKeyword}
+          env={env}
+          onOpenTable={openFromHit}
+        />
+      );
     }
     if (selectedTableId) {
       return (
@@ -978,7 +887,6 @@ const AssetCatalogPanel: React.FC<AssetCatalogPanelProps> = ({ onNavigateToLinea
                 detail={detail.data}
                 overviewContent={overviewContent}
                 onNavigateToLineage={onNavigateToLineage}
-                onAccess={type => track([{ assetType: 'table', assetId: detail.data!.id, accessType: type }])}
               />
               {lineageAction}
             </>
@@ -993,34 +901,43 @@ const AssetCatalogPanel: React.FC<AssetCatalogPanelProps> = ({ onNavigateToLinea
           <span>
             从左侧目录树选择一张表，或在上方检索定位。选中后右栏提供概览（含负责人、分类、标签、生命周期）
             与指标 / 产出任务 / 数据质量 / 使用记录 / 数据预览 / 使用说明 / 血缘等页签。
+            目录树、检索与下方治理项均只统计「{assetEnvLabel(env)}」环境。
           </span>
         </div>
         {lineageAction}
-        <GovernanceSection />
+        <GovernanceSection env={env} />
       </>
     );
   })();
 
   return (
     <div className="ac-module">
-      <nav className="ac-module__tabs" role="tablist">
-        {MODULE_TABS.map(t => (
-          <button
-            key={t.id}
-            type="button"
-            role="tab"
-            aria-selected={activeTab === t.id}
-            className={`ac-module__tab ${activeTab === t.id ? 'ac-module__tab--active' : ''}`}
-            onClick={() => setActiveTab(t.id)}
-          >
-            {t.icon}
-            <span>{t.label}</span>
-          </button>
-        ))}
-      </nav>
+      {/* 页签条右侧是模块级环境切换器：两个页签共用，切它即切换两处全部内容 */}
+      <div className="ac-module__bar">
+        <nav className="ac-module__tabs" role="tablist">
+          {MODULE_TABS.map(t => (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === t.id}
+              className={`ac-module__tab ${activeTab === t.id ? 'ac-module__tab--active' : ''}`}
+              onClick={() => setActiveTab(t.id)}
+            >
+              {t.icon}
+              <span>{t.label}</span>
+            </button>
+          ))}
+        </nav>
+        <AssetEnvSwitch
+          value={env}
+          onChange={changeEnv}
+          hint="两个页签共用"
+        />
+      </div>
 
       {activeTab === 'overview' ? (
-        <AssetOverviewTab />
+        <AssetOverviewTab env={env} />
       ) : (
         <div className="ac-panel">
           {/* ── 左栏：搜索 + 视角 + 目录树 ── */}
@@ -1089,10 +1006,11 @@ const AssetCatalogPanel: React.FC<AssetCatalogPanelProps> = ({ onNavigateToLinea
                 <div className="ac-placeholder">
                   <div className="ac-placeholder__head">
                     <CircleAlert size={14} />
-                    <span>当前视角下没有可访问的资产。</span>
+                    <span>「{assetEnvLabel(env)}」环境下当前视角没有可访问的资产。</span>
                   </div>
                   <p className="ac-placeholder__lead">
-                    若确认库中已有表，请检查元数据是否已同步，以及当前角色的库表权限。
+                    若确认库中已有表，请检查元数据是否已同步、库名是否带上 _prod / _gray / _test 环境后缀，
+                    以及当前角色的库表权限。
                   </p>
                 </div>
               )}
@@ -1110,52 +1028,32 @@ const AssetCatalogPanel: React.FC<AssetCatalogPanelProps> = ({ onNavigateToLinea
                   />
                 ))}
             </div>
-
-            <div className="ac-side__footer">
-              <button
-                className={`ac-side__link ${mainView === 'bookmark' ? 'ac-side__link--active' : ''}`}
-                type="button"
-                onClick={() => setMainView('bookmark')}
-              >
-                <Bookmark size={12} />
-                <span>我的收藏</span>
-              </button>
-            </div>
           </aside>
 
-          {/* ── 右栏：详情 / 检索结果 / 收藏 ── */}
+          {/* ── 右栏：详情 / 检索结果 ── */}
           <main className="ac-main">
             <header className="ac-main__header">
               <div>
                 <h2 className="ac-main__title">
                   {mainView === 'search'
                     ? `检索「${searchKeyword}」`
-                    : mainView === 'bookmark'
-                      ? '我的收藏'
-                      : selected
-                        ? selected.label
-                        : '资产详情'}
+                    : selected
+                      ? selected.label
+                      : '资产详情'}
                 </h2>
                 <p className="ac-main__subtitle">
                   {mainView !== 'detail'
-                    ? '检索与收藏结果由服务端按库表权限过滤'
+                    ? '检索结果由服务端按库表权限过滤，并限定在当前环境'
                     : selected
                       ? `${selected.databaseName ?? ''}${selected.tableName ? `.${selected.tableName}` : ''}`
                       : '从左侧目录树选择一张表，或直接检索定位'}
                 </p>
               </div>
               <div className="ac-main__tools">
-                {mainView === 'detail' && detail.status === 'ok' && detail.data && (
-                  <button
-                    className={`ac-btn ac-btn--ghost ${detail.data.bookmarked ? 'ac-btn--on' : ''}`}
-                    type="button"
-                    disabled={savingBookmark}
-                    onClick={toggleBookmark}
-                  >
-                    <Star size={13} />
-                    <span>{detail.data.bookmarked ? '已收藏' : '收藏'}</span>
-                  </button>
-                )}
+                <span className="ac-main__env" title="当前环境，由左栏切换器控制">
+                  <span className="ac-envswitch__dot" style={{ background: ASSET_ENV_COLOR[env] }} />
+                  {assetEnvLabel(env)}
+                </span>
                 {mainView !== 'detail' && (
                   <button className="ac-btn ac-btn--ghost" type="button" onClick={() => setMainView('detail')}>
                     返回详情

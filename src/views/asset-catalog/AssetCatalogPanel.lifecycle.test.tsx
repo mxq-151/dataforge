@@ -55,12 +55,7 @@ const h = vi.hoisted(() => {
     partitionColumns: [],
     lastModifyTime: '',
     syncTime: '',
-    browseCount30d: 0,
-    readCount30d: 0,
-    bookmarkCount: 0,
-    lastAccessTime: '',
     healthIssueCount: 0,
-    bookmarked: false,
     columns: [],
     tags: [],
   };
@@ -86,10 +81,6 @@ const h = vi.hoisted(() => {
     // ── 「资产目录」页签挂载后会被触达的接口（本文件不断言其行为，只保证不抛错）──
     search: vi.fn(async () => ({ code: 200, data: { tables: [], columns: [], indicators: [], total: 0 } })),
     suggest: vi.fn(async () => ({ code: 200, data: [] })),
-    listBookmarks: vi.fn(async () => ({ code: 200, data: { records: [], total: 0, size: 20, current: 1, pages: 0 } })),
-    addBookmark: vi.fn(async () => ({ code: 200, data: null })),
-    removeBookmark: vi.fn(async () => ({ code: 200, data: null })),
-    reportAccess: vi.fn(async () => ({ code: 200, data: null })),
     getInventoryOverview: vi.fn(async () => ({ code: 200, data: null })),
     getInventoryHealth: vi.fn(async () => ({ code: 200, data: [] })),
     getAnnotationGaps: vi.fn(async () => ({ code: 200, data: null })),
@@ -102,7 +93,6 @@ const h = vi.hoisted(() => {
     getTableIndicators: vi.fn(async () => ({ code: 200, data: [] })),
     getTableProducers: vi.fn(async () => ({ code: 200, data: [] })),
     getTableQuality: vi.fn(async () => ({ code: 200, data: null })),
-    getTableUsage: vi.fn(async () => ({ code: 200, data: null })),
     previewTable: vi.fn(async () => ({ code: 200, data: { columns: [], rows: [] } })),
     getTableDoc: vi.fn(async () => ({ code: 200, data: null })),
     saveTableDoc: vi.fn(async () => ({ code: 200, data: null })),
@@ -113,6 +103,14 @@ const h = vi.hoisted(() => {
 });
 
 vi.mock('../../api/assetCatalog', () => ({
+  // 面板与环境切换器都从该模块读环境定义：整体替换时必须一并提供，
+  // 否则 AssetEnvSwitch 取不到 ASSET_ENV_OPTIONS 会直接抛错（默认环境的生产态也依赖它渲染）。
+  ASSET_ENV_OPTIONS: [
+    { value: 'prod', label: '生产' },
+    { value: 'gray', label: '灰度' },
+    { value: 'test', label: '测试' },
+  ],
+  DEFAULT_ASSET_ENV: 'prod',
   assetCatalogApi: {
     getCatalogTree: () => h.api.getCatalogTree(),
     getTableDetail: (id: number) => h.api.getTableDetail(id),
@@ -125,10 +123,6 @@ vi.mock('../../api/assetCatalog', () => ({
 
     search: (params: unknown) => h.api.search(params),
     suggest: (keyword: string) => h.api.suggest(keyword),
-    listBookmarks: (params: unknown) => h.api.listBookmarks(params),
-    addBookmark: (payload: unknown) => h.api.addBookmark(payload),
-    removeBookmark: (params: unknown) => h.api.removeBookmark(params),
-    reportAccess: (items: unknown) => h.api.reportAccess(items),
     getInventoryOverview: (params?: unknown) => h.api.getInventoryOverview(params),
     getInventoryHealth: () => h.api.getInventoryHealth(),
     getAnnotationGaps: (params?: unknown) => h.api.getAnnotationGaps(params),
@@ -141,7 +135,6 @@ vi.mock('../../api/assetCatalog', () => ({
     getTableIndicators: (id: number) => h.api.getTableIndicators(id),
     getTableProducers: (id: number) => h.api.getTableProducers(id),
     getTableQuality: (id: number) => h.api.getTableQuality(id),
-    getTableUsage: (id: number, params: unknown) => h.api.getTableUsage(id, params),
     previewTable: (id: number, params: unknown) => h.api.previewTable(id, params),
     getTableDoc: (id: number) => h.api.getTableDoc(id),
     saveTableDoc: (id: number, content: string) => h.api.saveTableDoc(id, content),
@@ -255,16 +248,5 @@ describe('AssetCatalogPanel 生命周期', () => {
 
     await waitFor(() => expect(screen.getByText('修改生命周期')).toBeTruthy());
     expect(h.api.getTableDetail).toHaveBeenCalledTimes(2);
-  });
-
-  it('选中表后上报一次 browse 埋点', async () => {
-    renderPanel();
-    await selectTable();
-
-    await waitFor(() =>
-      expect(h.api.reportAccess).toHaveBeenCalledWith([
-        { assetType: 'table', assetId: 1, accessType: 'browse' },
-      ])
-    );
   });
 });

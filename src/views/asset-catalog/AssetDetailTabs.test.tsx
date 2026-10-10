@@ -42,14 +42,6 @@ const h = vi.hoisted(() => {
         problemRuleCount: 2,
       },
     })),
-    getTableUsage: vi.fn(async () => ({
-      code: 200,
-      data: {
-        browseTrend: [{ statDate: '2026-10-05', browseCount: 3, readCount: 1 }],
-        topColumns: [{ columnName: 'amt', hotScore: 4, hitCount: 9 }],
-        topReaders: [{ userName: '李四', readCount: 5 }],
-      },
-    })),
     previewTable: vi.fn(async () => ({
       code: 200,
       data: { columns: ['id', 'amt'], rows: [['1', '100']] },
@@ -77,7 +69,6 @@ vi.mock('../../api/assetCatalog', () => ({
     getTableIndicators: (id: number) => h.api.getTableIndicators(id),
     getTableProducers: (id: number) => h.api.getTableProducers(id),
     getTableQuality: (id: number) => h.api.getTableQuality(id),
-    getTableUsage: (id: number, params: unknown) => h.api.getTableUsage(id, params),
     previewTable: (id: number, params: unknown) => h.api.previewTable(id, params),
     getTableDoc: (id: number) => h.api.getTableDoc(id),
     saveTableDoc: (id: number, content: string) => h.api.saveTableDoc(id, content),
@@ -95,14 +86,13 @@ const detail = {
   techOwner: '',
 } as unknown as AssetTableDetailVO;
 
-const renderTabs = (onAccess?: (t: 'browse' | 'read') => void) =>
+const renderTabs = () =>
   render(
     <ToastProvider>
       <AssetDetailTabs
         tableId={1}
         detail={detail}
         overviewContent={<div>概览内容占位</div>}
-        onAccess={onAccess}
       />
     </ToastProvider>
   );
@@ -152,23 +142,12 @@ describe('AssetDetailTabs 页签接线', () => {
     expect(screen.getByText('2')).toBeTruthy();
   });
 
-  it('使用记录页签按 usage 接口渲染趋势与字段热度', async () => {
+  it('数据预览按 preview 接口渲染列头', async () => {
     renderTabs();
-    await openTab('使用记录');
-
-    await waitFor(() => expect(screen.getByText('2026-10-05')).toBeTruthy());
-    expect(h.api.getTableUsage).toHaveBeenCalledWith(1, { days: 30 });
-    expect(screen.getByText('李四')).toBeTruthy();
-  });
-
-  it('数据预览按 preview 接口渲染列头，并上报一次 read 埋点', async () => {
-    const onAccess = vi.fn();
-    renderTabs(onAccess);
     await openTab('数据预览');
 
     await waitFor(() => expect(screen.getByText('amt')).toBeTruthy());
     expect(h.api.previewTable).toHaveBeenCalledWith(1, { limit: 20 });
-    await waitFor(() => expect(onAccess).toHaveBeenCalledWith('read'));
   });
 
   it('使用说明可编辑并保存（PUT /table/{id}/doc）', async () => {

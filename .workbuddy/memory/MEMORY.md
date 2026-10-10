@@ -9,7 +9,7 @@
   `dataforge`、`dataforge-server` 是两个独立仓库。
 - **同一文件多处编辑必须串行**（并行 Edit 互相抹掉）；查并发写者 `find src -mmin -8`。
 - macOS：`grep "a\|b"` 静默失败须 `grep -E`；zsh 下 `--include` 报 no matches，改用 Grep 工具。
-- **回归基线（2026-10-09）**：前端 **67 文件 / 1130 例**；后端关心类 **74 例全过**。
+- **回归基线（2026-10-10）**：前端 **69 文件 / 1141 例**；后端关心类 **118 例全过**（2026-10-09 为 67/1130、74）。
   load 7~10 时 `waitFor` 超时属误报。
 - 动后端先 `export JAVA_HOME=/opt/homebrew/opt/openjdk@17; /opt/homebrew/bin/mvn -o -q compile`。
 - 后端只跑关心的类：`mvn -o test -Dtest='DqRuleApiContractTest,DqResultServiceReportTest,DqRuleRegisterTest,DqOverviewApiContractTest,QualityRuleTypeContractTest,DqSqlBuilderMatrixTest,AssetCatalogApiContractTest' -DfailIfNoTests=false`
@@ -62,6 +62,41 @@
 - **元数据缺失已可观测**：`MetadataAnnotationGapService` + `MetadataSyncAlertService`。勿再写「静默滞后」。
 - **提交有环境维度**：prod/gray/test（默认 test），**血缘只在 prod 注入**（硬闸门
   `deployEnv.ts::shouldInjectLineage`）；拼装处 `src/utils/lineageParams.ts`（两入口共用）。
+- **sticky 表头别被「表格自身的滚动容器」吃掉**（2026-10-10 修复资产概况）：
+  `position: sticky` 只认**最近的滚动容器**。`.ac-table` 为做圆角带了 `overflow: hidden`，
+  表格自身就成了那个容器 → 表头被锚在表格里、跟着内容滚走（实测偏移 -119px）。
+  修法：在滚动容器内还原为非滚动盒子 `.ac-ov-scroll .ac-table { overflow: visible; border-radius: 0; }`
+  （`border-collapse: collapse` **与此无关**，实测单独改它无效，别乱动）。
+  **同类排查**：写 `sticky` 前先确认「sticky 元素 → 最近的滚动祖先」之间没有 `overflow: hidden/auto` 的表格/盒子；
+  全仓已有 13 处 `position: sticky`，`.exec-tabs__table` 那类是干净的。
+- **本机可用真实浏览器做布局验证**（2026-10-10 起）：playwright 1.58.2 在 `/Users/mxq/node_modules`，
+  浏览器已在 `~/Library/Caches/ms-playwright`（chromium-1228）。跑法：
+  `NODE_PATH=/Users/mxq/node_modules /opt/homebrew/bin/node x.js`（`file://` 加载页面，
+  引用**项目里的真实 CSS**，`getBoundingClientRect()` 量偏移）。别只靠「读 CSS 猜」。
+- **改后端代码后必须热更新容器，否则前端「看起来没生效」**（2026-10-10 踩过）：
+  接口打 `localhost:8082` = 容器 `dataforge-allinone` 里的 jar。正常路径
+  `dataforge-server/build/hot-update-dataforge-server.sh`（mvn package → docker cp → restart）；
+  **更温和**：`docker cp <fatjar> dataforge-allinone:/opt/dataforge/dataforge-server.jar` +
+  `docker exec dataforge-allinone supervisorctl restart dataforge-server`（不动 PG/DS/Marquez）。
+  ⚠️ **本 agent shell 里 `mvn package` 的 repackage 必失败**（`Unable to rename …jar.original`，
+  `target/` 下 rename 被拒；classifier / 预置 `.original` 都绕不开）→ 把源码 rsync 到 `/tmp/dfbuild-src`
+  再 `mvn -o -q -DskipTests package`，然后在 `/tmp` 取 fat jar。用户自己的终端没这问题。
+  ⚠️ 登录接口要求**加密密码**，curl 登不进去（默认账号 admin/123456）；验证后端行为走 psql 或 UI。
+- **运行态数据只有测试环境**：`table_metadata` 仅 `*_olist_test` + `test_db`（38 张 test 后缀表，gray/prod 各 0）
+  ⇒ 环境切到生产/灰度时看板为空是**正确结果**，不是没切换。
+- **资产管理按环境切换（2026-10-10）**：环境是**模块级**维度——切换器挂在资产管理模块的**页签条右侧**
+  （`AssetCatalogPanel` 持有 state，`AssetOverviewTab` 是受控组件只接 `env`），切一次即让
+  **资产概况五块看板图表 + 资产目录的树/检索/治理项/收藏一起重取**。默认生产
+  （`ASSET_ENV_OPTIONS = DEPLOY_ENV_OPTIONS`，`DEFAULT_ASSET_ENV='prod'` ≠ `DEFAULT_DEPLOY_ENV='test'`）。
+  环境解析唯一实现 = 后端 `common/utils/DeployEnvParser`（原 `AssetEnvParser`，已迁移，metadata 模块也用）；
+  `matches` 语义：env 空=不过滤、脏值按不过滤、**解析不出环境的名称在显式过滤时被排除**。
+  过滤依据两套后缀：**表类 = 库名**、**任务类（top-compute/task-delay）= 工作流名**。过滤一律在权限之后。
+  `/inventory/env-project` 不收窄（前端要全库分母算占比）。指标无环境维度，`/search` 的指标命中不受 env 影响。
+  `/bookmark` 指定 env 时走内存分页（先分页后过滤会错位）。标注缺口 env 下推 SQL：
+  `LIKE '%!_prod' ESCAPE '!'`（`_` 必转义；用 `!` 避开反斜杠方言差异）。
+  **坑**：`LambdaQueryWrapper.select(lambda...)` 构造期即解析列名，纯单测会抛 `can not find lambda cache`
+  —— 只取几列时用 `QueryWrapper.select("col1","col2")`。**坑**：整体替换 `api/assetCatalog` 的测试 mock
+  必须补 `ASSET_ENV_OPTIONS` / `DEFAULT_ASSET_ENV`（切换器依赖）。
 - **资产分类不人工维护**：表名规范 `{分层}_{业务域}_{实体描述}_{刷新周期}` ⇒ 分层与业务域可确定性解析；
   失败即「未分类」并自动成为治理项。
 - **两条安全闸门**：校验 SQL 下发前必过 `SqlPermissionRewriter`；资产目录的树/检索/详情必须服务端 fail-close

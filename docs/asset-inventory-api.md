@@ -44,6 +44,10 @@
 
 环境（`env`）统一取值 `prod | gray | test`，由服务端按库名规范 `{分层}_{业务域}_{环境}` 解析（环境后缀仅 `_prod / _gray / _test`），**前端不自行猜测环境**，避免生产库被误判为测试库。
 
+> **2026-10-10 补充：env 已从「响应字段」升级为「查询参数」。** 资产管理模块（资产概况 + 资产目录）
+> 改为**按环境切换全部内容**，因此下列接口以及目录树 / 检索 / 建议 / 收藏 / 标注缺口
+> 都接受可选的 `env` 查询参数。取值与过滤口径见文末「六、环境维度」。不传 `env` 时行为与改造前一致（全环境）。
+
 ---
 
 ## 三、接口详情
@@ -78,14 +82,16 @@ GET /api/asset/inventory/env-project
 | `tableCount` | number | 该环境 × 项目下的表数量 |
 | `sizeBytes` | number | 占用空间（字节） |
 
-**口径**：粒度即「环境 × 项目」一行。前端就地聚合出生产 / 灰度 / 测试三张汇总卡与全库合计，**无需单独提供环境汇总接口**。
+**口径**：粒度即「环境 × 项目」一行，**固定返回全环境**（不接 `env` 参数）。前端用它做两件事：
+① 筛出所选环境的项目排行；② 用全环境合计作分母，算出「所选环境占全库空间比例」。
+若本接口也按环境收窄，占比就失去了分母，因此这里刻意不收窄。
 
 ---
 
 ### 2. 访问频率 / 占用空间 TOP 100 表
 
 ```
-GET /api/asset/inventory/top-assets?sortBy=access&limit=100
+GET /api/asset/inventory/top-assets?sortBy=access&limit=100&env=prod
 ```
 
 **查询参数**：
@@ -94,6 +100,7 @@ GET /api/asset/inventory/top-assets?sortBy=access&limit=100
 |---|---|---|---|
 | `sortBy` | enum | `access` | `access`=按访问频率；`size`=按占用空间 |
 | `limit` | number | `100` | 条数上限 |
+| `env` | enum | 不传=全环境 | `prod` / `gray` / `test`，按库名后缀过滤 |
 
 **响应 `data`**：数组
 
@@ -128,7 +135,7 @@ GET /api/asset/inventory/top-assets?sortBy=access&limit=100
 ### 3. 计算资源 / 运行时长 TOP 50 任务
 
 ```
-GET /api/asset/inventory/top-compute?sortBy=resource&limit=50
+GET /api/asset/inventory/top-compute?sortBy=resource&limit=50&env=gray
 ```
 
 **查询参数**：
@@ -137,6 +144,7 @@ GET /api/asset/inventory/top-compute?sortBy=resource&limit=50
 |---|---|---|---|
 | `sortBy` | enum | `resource` | `resource`=按消耗计算资源；`duration`=按运行时长 |
 | `limit` | number | `50` | 条数上限 |
+| `env` | enum | 不传=全环境 | `prod` / `gray` / `test`，按**工作流名后缀**过滤 |
 
 **响应 `data`**：数组
 
@@ -172,14 +180,15 @@ GET /api/asset/inventory/top-compute?sortBy=resource&limit=50
 ### 4. 任务延迟率（YARN）
 
 ```
-GET /api/asset/inventory/task-delay?days=30
+GET /api/asset/inventory/task-delay?days=30&env=test
 ```
 
 **查询参数**：
 
-| 参数 | 类型 | 默认 |
-|---|---|---|
-| `days` | number | `30` |
+| 参数 | 类型 | 默认 | 说明 |
+|---|---|---|---|
+| `days` | number | `30` | 统计窗口天数 |
+| `env` | enum | 不传=全环境 | `prod` / `gray` / `test`，按**工作流名后缀**过滤 |
 
 **响应 `data`**：对象
 
@@ -212,7 +221,7 @@ GET /api/asset/inventory/task-delay?days=30
 ### 5. 数据大小增长率突增表清单
 
 ```
-GET /api/asset/inventory/size-growth?growthPercent=10&minSizeBytes=10737418240
+GET /api/asset/inventory/size-growth?growthPercent=10&minSizeBytes=10737418240&env=prod
 ```
 
 **查询参数**：
@@ -221,6 +230,7 @@ GET /api/asset/inventory/size-growth?growthPercent=10&minSizeBytes=10737418240
 |---|---|---|---|
 | `growthPercent` | number | `10` | 增长率阈值（百分比） |
 | `minSizeBytes` | number | `10737418240` | 当前大小下限（= 10GB，字节） |
+| `env` | enum | 不传=全环境 | `prod` / `gray` / `test`，按库名后缀过滤 |
 
 **响应 `data`**：数组
 
@@ -269,15 +279,15 @@ GET /api/asset/inventory/size-growth?growthPercent=10&minSizeBytes=10737418240
 
 ---
 
-## 五、附：资产模块其余待实现接口（既有契约，非本次新增）
+## 五、附：资产模块其余接口（既有契约）
 
-以下接口前端已声明但服务端尚未部署，列出供整体排期。除 `PUT /api/asset/table/{id}/lifecycle`（**已接通，当前唯一写能力**）外，其余均为待接入：
+以下为本文档聚焦的 5 个接口之外的既有契约，列出供整体排期与对照（**不在本次环境维度改造的新增范围内，但同样接受 `env`，见第六节**）：
 
 | 分组 | 接口 |
 |---|---|
 | 目录与检索 | `GET /catalog/tree`、`GET /search`、`GET /suggest` |
 | 表详情 | `GET /table/{id}`、`GET /table/{id}/usage`、`/producers`、`/indicators`、`/quality`、`/preview` |
-| 表治理（写） | `PUT /table/{id}/owner`、`/category`、`/tags`、`GET|PUT /table/{id}/doc`、`GET /table/{id}/doc/history`、`POST /table/{id}/refresh` |
+| 表治理（写） | `PUT /table/{id}/owner`、`/category`、`/tags`、`/lifecycle`、`GET|PUT /table/{id}/doc`、`GET /table/{id}/doc/history`、`POST /table/{id}/refresh` |
 | 收藏 / 标签 / 分类 | `GET|POST|DELETE /bookmark`、`GET /tag`、`GET /category` |
 | 埋点与盘点 | `POST /access`、`GET /inventory/overview`、`GET /inventory/health`、`GET /api/metadata/annotation-gaps` |
 
@@ -286,3 +296,41 @@ GET /api/asset/inventory/size-growth?growthPercent=10&minSizeBytes=10737418240
 **补充（表详情一致性）**：`GET /api/asset/table/{id}` 的响应需包含 `compression`（压缩方式，可为 null），
 与 `GET /api/metadata/tables` 同列。资产目录的表详情与数据探索模块共用同一份渲染
 （`src/views/data-explore/TableDetailContent.tsx`），字段缺一会直接显示为 `-`。
+
+---
+
+## 六、环境维度（env 查询参数）
+
+> 背景：资产管理模块的「资产概况」与「资产目录」改为**按环境切换全部内容**。
+> 环境切换器是**模块级**的：挂在资产管理模块的页签条右侧，「资产概况」与「资产目录」共用同一个选中环境
+> （生产 / 灰度 / 测试，**默认生产**）。切换一次即让两个页签下的**全部内容**重取 ——
+> 资产概况的五块看板图表（含①的项目排行与占比环形图）与资产目录的目录树 / 检索 / 治理项 / 收藏一起切。
+
+### 6.1 接受 `env` 的接口
+
+| 接口 | 过滤依据 | 说明 |
+|---|---|---|
+| `GET /api/asset/catalog/tree` | 库名后缀 | 环境在权限过滤之后生效，父节点计数与可见子节点一致 |
+| `GET /api/asset/search` | 库名后缀 | **只对表 / 字段生效**；指标是定义级资产，无环境维度，不受 `env` 影响 |
+| `GET /api/asset/suggest` | 库名后缀 | 输入建议只返回表名 |
+| `GET /api/asset/bookmark` | 被收藏对象所属库 | 指标收藏无环境维度，始终返回；指定环境时改走内存分页（保证 totals 与页码一致） |
+| `GET /api/asset/inventory/overview` / `health` / `top-assets` / `size-growth` | 库名后缀 | 表类资产看板 |
+| `GET /api/asset/inventory/top-compute` / `task-delay` | **工作流名后缀** | 提交调度时环境拼在工作流名末尾（`olist_code_ods` + test → `olist_code_ods_test`），与库名后缀是同一套约定 |
+| `GET /api/metadata/annotation-gaps` | 库名后缀 | 环境条件下推到 SQL（`LIKE '%!_prod' ESCAPE '!'`），与 `limit` 截断同层，避免截断到别的环境的表 |
+| `GET /api/asset/inventory/env-project` | — | **不接受 `env`**：前端需要全环境明细来计算「所选环境占全库空间比例」 |
+
+### 6.2 取值与判定口径（唯一实现：`common/utils/DeployEnvParser`）
+
+| 入参 | 行为 |
+|---|---|
+| 不传 / 空串 | 不过滤，返回全环境（与改造前一致） |
+| `prod` / `gray` / `test`（大小写不敏感） | 只返回该环境 |
+| 非法值（如 `production`） | 按「不过滤」处理，**不清空结果** |
+| 对象名称解析不出环境（如库名 `dwd_trade`、`test_db`） | 显式过滤时被排除 —— 「不知道是什么环境」不等于「属于所选环境」 |
+
+### 6.3 与权限的关系
+
+环境只缩小「看哪一套」，**不改变权限边界**：所有过滤都在服务端权限过滤（`sys_table_permission` fail-close）**之后**执行，
+越权表不会因为切换环境而出现。前端只透传 `env`，不自行从库名推断环境。
+
+

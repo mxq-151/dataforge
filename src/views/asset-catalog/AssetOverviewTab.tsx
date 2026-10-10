@@ -5,7 +5,7 @@
  * 资产目录回答「这张表是什么」，本页签回答「资产盘子有多大、谁在花资源」——
  * 面向治理与成本，以图表为主呈现五块看板：
  *   1) 按环境（生产/灰度/测试）× 项目的表数量与占用空间
- *   2) 访问频率 / 占用空间 TOP 100 表
+ *   2) 占用空间 TOP 100 表
  *   3) 消耗计算资源 / 运行时长 TOP 50 任务
  *   4) 任务延迟率（主要针对 YARN 任务）
  *   5) 数据大小增长率突增（> 10% 且 > 10GB）表
@@ -14,12 +14,22 @@
  * - 图表用 ECharts，暗色主题与模块基准一致（#1e1e1e / #252526 / #007acc）。
  * - 排行榜类看板「图 + 清单」并存：图表取前 12 条做趋势判读，完整清单在卡片内滚动查看，
  *   既不丢需求里的「前 100 / 前 50 清单」，也避免 100 条柱子糊成一团。
- * - 环境配色全局统一：生产蓝 / 灰度橙 / 测试绿，跨图表语义一致。
+ * - 环境配色全局统一：生产蓝 / 灰度橙 / 测试绿，切换器与图表共用同一份常量
+ *   （`AssetEnvSwitch.tsx` 的 ASSET_ENV_COLOR），跨图表语义一致。
+ *
+ * ── 环境切换（本页签的全部图表都随环境切换）──────────────────
+ * 环境是**模块级**的（切换器在 AssetCatalogPanel 的页签条右侧），本页签只接收 `env` 作为受控入参，
+ * 不自持状态 —— 这样「资产概况」与「资产目录」永远是同一个环境，切页签不会悄悄变回默认值。
+ * 五块看板图表**全部**按所选环境取数：
+ * - ① 资产规模：只统计所选环境，并给出该环境占全库空间的比例（占比需要分母，
+ *   因此这一块仍取「按环境×项目」的全量结果再筛出所选环境）；
+ * - ② / ③ / ④ / ⑤：环境作为查询参数下推服务端，由服务端过滤；
+ *   任务类看板（③④）的环境取自**工作流名后缀**，与库名后缀是同一套约定。
  *
  * ── 口径与边界 ──────────────────────────────────────────────
  * - 环境由服务端按库名规范 {分层}_{业务域}_{环境} 解析（后缀仅 _prod/_gray/_test），
  *   前端不自行猜测环境，避免把生产库误判为测试库。
- * - 排序维度（访问频率/占用空间、计算资源/运行时长）与阈值通过 query 下推服务端，
+ * - 排序维度（计算资源/运行时长）与阈值通过 query 下推服务端，
  *   前端不做全量拉取后再本地排序 —— 排行应为服务端口径。
  * - 本页签只读：不做任何写操作。
  *
@@ -40,9 +50,9 @@ import type {
   AssetTaskSortBy,
   AssetTopAssetVO,
   AssetTopComputeTaskVO,
-  AssetTopSortBy,
 } from '../../api/assetCatalog';
 import { useProbe } from './useProbe';
+import { ASSET_ENV_COLOR, assetEnvLabel } from './AssetEnvSwitch';
 import './AssetCatalogPanel.css';
 
 /** TOP 清单条数上限：与需求一致（表 100 / 任务 50） */
@@ -51,7 +61,7 @@ const TOP_TASK_LIMIT = 50;
 /** 突增阈值：增长率 > 10% 且当前大小 > 10GB */
 const GROWTH_PERCENT = 10;
 const GROWTH_MIN_BYTES = 10 * 1024 ** 3;
-/** 访问量 / 延迟率的统计窗口（天） */
+/** 延迟率统计窗口（天） */
 const WINDOW_DAYS = 30;
 /** 排行榜图表展示条数：榜单仍完整落表，图表只取头部避免柱子过密 */
 const CHART_TOP_N = 12;
@@ -68,14 +78,26 @@ const TOOLTIP = {
   textStyle: { color: TEXT, fontSize: 12 },
 } as const;
 
-/** 环境语义配色：生产蓝 / 灰度橙 / 测试绿，跨图表统一 */
-const ENV_COLOR: Record<AssetEnvCode, string> = { prod: '#4FC3F7', gray: '#FFB74D', test: '#81C784' };
-const ENV_LABEL: Record<AssetEnvCode, string> = { prod: '生产', gray: '灰度', test: '测试' };
-/** 环境汇总与排序的固定次序：生产 → 灰度 → 测试 */
-const ENV_ORDER: AssetEnvCode[] = ['prod', 'gray', 'test'];
+/** 卡片标题统一带环境后缀，避免「这一屏看的是哪个环境」需要回头找切换器 */
+function withEnv(title: string, env: AssetEnvCode): string {
+  return `${title} · ${assetEnvLabel(env)}`;
+}
 
-function envLabel(env: AssetEnvCode): string {
-  return ENV_LABEL[env] ?? env;
+/** 环境后缀（`prod` → `_prod`）：用于空态里点明「本环境靠什么后缀识别」 */
+function envSuffix(env: AssetEnvCode): string {
+  return `_${env}`;
+}
+
+/**
+ * 空态文案。
+ *
+ * 只说「暂无数据」会被误读成「环境没切换成功」——环境是**按名称后缀**识别的，
+ * 库里没有带该后缀的库/工作流时，空就是正确结果。因此这里把判定依据一并写出来，
+ * 让用户一眼能分清「切错了」和「本来就没有」。
+ */
+function envEmptyText(env: AssetEnvCode, scope: 'table' | 'task', tail?: string): string {
+  const subject = scope === 'table' ? '库名' : '工作流名';
+  return `「${assetEnvLabel(env)}」环境下暂无${tail ?? '数据'}（未找到${subject}以 ${envSuffix(env)} 结尾的${scope === 'table' ? '库' : '任务'}）。`;
 }
 
 /** 字节数 → 人类可读，保留 2 位小数（大数值降为整数，避免长串） */
@@ -194,35 +216,7 @@ function rankBarOption(
   };
 }
 
-/** 环境 × 项目分组柱状图（表数量） */
-function envProjectBarOption(
-  projects: string[],
-  series: Array<{ name: string; color: string; data: number[] }>
-): echarts.EChartsOption {
-  return {
-    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, ...TOOLTIP },
-    legend: { top: 0, right: 0, icon: 'roundRect', itemWidth: 10, itemHeight: 10, textStyle: { color: TEXT, fontSize: 12 } },
-    grid: { left: 8, right: 16, top: 40, bottom: 8, containLabel: true },
-    xAxis: {
-      type: 'category',
-      data: projects,
-      axisLabel: { color: AXIS_LABEL, interval: 0, rotate: projects.length > 4 ? 20 : 0, width: 96, overflow: 'truncate' },
-      axisLine: { lineStyle: { color: '#555' } },
-      axisTick: { show: false },
-    },
-    yAxis: { type: 'value', axisLabel: { color: AXIS_LABEL }, splitLine: { lineStyle: { color: SPLIT_LINE } } },
-    series: series.map(s => ({
-      name: s.name,
-      type: 'bar',
-      barMaxWidth: 22,
-      barGap: '20%',
-      itemStyle: { color: s.color, borderRadius: [4, 4, 0, 0] },
-      data: s.data,
-    })),
-  };
-}
-
-/** 环形占比图（占用空间按环境拆分） */
+/** 环形占比图（所选环境占用空间 vs 其余环境） */
 function donutOption(parts: Array<{ name: string; value: number; color: string }>): echarts.EChartsOption {
   return {
     tooltip: { trigger: 'item', ...TOOLTIP, formatter: (p: any) => `${p.name}<br/>${formatBytes(p.value)}（${p.percent}%）` },
@@ -277,7 +271,7 @@ function delayGaugeOption(percent: number): echarts.EChartsOption {
   };
 }
 
-/** 卡片的排序维度切换（访问频率/占用空间、计算资源/运行时长共用） */
+/** 卡片的排序维度切换（计算资源/运行时长） */
 const SortToggle = <T extends string>({
   value,
   onChange,
@@ -367,68 +361,57 @@ const ListTable: React.FC<{ head: React.ReactNode; children: React.ReactNode; to
   </>
 );
 
-// ── ① 按环境 × 项目的资产规模 ────────────────────────────
+// ── ① 所选环境的资产规模 ─────────────────────────────────
 
-const EnvProjectSection: React.FC = () => {
+const EnvProjectSection: React.FC<{ env: AssetEnvCode }> = ({ env }) => {
+  // 取全量（所有环境）：占比口径需要分母，接口仍返回按环境×项目的完整明细
   const { status, data } = useProbe<AssetEnvProjectStatVO[]>(() => assetCatalogApi.getInventoryByEnvProject());
   const rows = (data ?? []) as AssetEnvProjectStatVO[];
 
-  // 环境汇总由明细聚合得出，避免为「同一份数据的两种粒度」再开一个接口
-  const summary = useMemo(
-    () =>
-      ENV_ORDER.map(env => {
-        const scoped = rows.filter(r => r.env === env);
-        return {
-          env,
-          tableCount: scoped.reduce((sum, r) => sum + (r.tableCount ?? 0), 0),
-          sizeBytes: scoped.reduce((sum, r) => sum + (r.sizeBytes ?? 0), 0),
-        };
-      }),
-    [rows]
-  );
-  const totalTables = summary.reduce((sum, s) => sum + s.tableCount, 0);
-  const totalSize = summary.reduce((sum, s) => sum + s.sizeBytes, 0);
-  const projectCount = new Set(rows.map(r => r.projectCode || r.projectName)).size;
+  // 所选环境的明细；环境识别不出来（库名不合规范）的库不在任何环境里，不会出现在本页
+  const scoped = useMemo(() => rows.filter(r => r.env === env), [rows, env]);
 
-  const projects = useMemo(
-    () => Array.from(new Set(rows.map(r => r.projectName || r.projectCode))).slice(0, 8),
-    [rows]
-  );
+  const tableCount = scoped.reduce((sum, r) => sum + (r.tableCount ?? 0), 0);
+  const sizeBytes = scoped.reduce((sum, r) => sum + (r.sizeBytes ?? 0), 0);
+  const totalSize = rows.reduce((sum, r) => sum + (r.sizeBytes ?? 0), 0);
+  const projectCount = new Set(scoped.map(r => r.projectCode || r.projectName)).size;
+  const share = totalSize > 0 ? sizeBytes / totalSize : 0;
+
+  /** 项目维度排行：同一项目可能按多条记录返回（不同环境/数据源），这里已收敛到所选环境 */
+  const projectItems = useMemo(() => {
+    const byProject = new Map<string, number>();
+    for (const row of scoped) {
+      const name = row.projectName || row.projectCode || '未归属项目';
+      byProject.set(name, (byProject.get(name) ?? 0) + (row.tableCount ?? 0));
+    }
+    return Array.from(byProject, ([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+  }, [scoped]);
 
   const barOption = useMemo(
     () =>
-      envProjectBarOption(
-        projects,
-        ENV_ORDER.map(env => ({
-          name: envLabel(env),
-          color: ENV_COLOR[env],
-          data: projects.map(p =>
-            rows
-              .filter(r => (r.projectName || r.projectCode) === p && r.env === env)
-              .reduce((sum, r) => sum + (r.tableCount ?? 0), 0)
-          ),
-        }))
+      rankBarOption(
+        projectItems,
+        (v: number) => String(v),
+        ASSET_ENV_COLOR[env],
+        (v: number) => `${assetEnvLabel(env)}环境 ${v} 张表`
       ),
-    [projects, rows]
+    [projectItems, env]
   );
 
   const donut = useMemo(
     () =>
-      donutOption(
-        ENV_ORDER.map(env => ({
-          name: envLabel(env),
-          value: summary.find(s => s.env === env)?.sizeBytes ?? 0,
-          color: ENV_COLOR[env],
-        }))
-      ),
-    [summary]
+      donutOption([
+        { name: `${assetEnvLabel(env)} 占用空间`, value: sizeBytes, color: ASSET_ENV_COLOR[env] },
+        { name: '其余环境', value: Math.max(0, totalSize - sizeBytes), color: '#555555' },
+      ]),
+    [env, sizeBytes, totalSize]
   );
 
   return (
     <Card
       icon={<HardDrive size={14} />}
-      title="① 按环境与项目的资产规模"
-      hint="环境由库名规范 {分层}_{业务域}_{环境} 解析（_prod / _gray / _test），生产、灰度、测试三套环境库同构。"
+      title={withEnv('① 资产规模', env)}
+      hint={`环境由库名规范 {分层}_{业务域}_{环境} 解析（_prod / _gray / _test），本卡片只统计「${assetEnvLabel(env)}」环境的资产；环形图给出该环境占用空间占全库的比例。`}
     >
       {status === 'loading' && <Loading />}
       {status === 'unavailable' && (
@@ -437,22 +420,22 @@ const EnvProjectSection: React.FC = () => {
           items={['按环境（生产/灰度/测试）汇总的表数量与占用空间', '环境内按项目下钻的表数量与占用空间', '全库合计表数量与占用空间']}
         />
       )}
-      {status === 'ok' && rows.length === 0 && <Empty text="暂无已纳管的资产。" />}
-      {status === 'ok' && rows.length > 0 && (
+      {status === 'ok' && scoped.length === 0 && <Empty text={envEmptyText(env, 'table', '已纳管的资产')} />}
+      {status === 'ok' && scoped.length > 0 && (
         <>
           <div className="ac-ov-stats">
-            <Stat value={String(totalTables)} unit="表" label="资产总量" />
-            <Stat value={formatBytes(totalSize)} label="占用空间合计" />
+            <Stat value={String(tableCount)} unit="表" label={`${assetEnvLabel(env)}环境资产`} />
+            <Stat value={formatBytes(sizeBytes)} label="占用空间" />
             <Stat value={String(projectCount)} unit="个" label="涉及项目" />
-            <Stat value={String(summary.filter(s => s.tableCount > 0).length)} unit="个" label="已启用环境" />
+            <Stat value={formatRate(share)} label="占全库空间" />
           </div>
           <div className="ac-ov-cols">
             <div>
-              <p className="ac-ov-subtitle">环境 × 项目 表数量</p>
-              <EChart option={barOption} height={260} />
+              <p className="ac-ov-subtitle">各项目表数量（{assetEnvLabel(env)}）</p>
+              {projectItems.length > 0 ? <EChart option={barOption} height={260} /> : <Empty text="该项目维度暂无数据。" />}
             </div>
             <div>
-              <p className="ac-ov-subtitle">各环境占用空间占比</p>
+              <p className="ac-ov-subtitle">该环境占用空间占比</p>
               <EChart option={donut} height={260} />
             </div>
           </div>
@@ -462,52 +445,40 @@ const EnvProjectSection: React.FC = () => {
   );
 };
 
-// ── ② 访问频率 / 占用空间 TOP 100 表 ─────────────────────
+// ── ② 占用空间 TOP 100 表 ────────────────────────────────
 
-const TopAssetsSection: React.FC = () => {
-  const [sortBy, setSortBy] = useState<AssetTopSortBy>('access');
+const TopAssetsSection: React.FC<{ env: AssetEnvCode }> = ({ env }) => {
   const { status, data } = useProbe<AssetTopAssetVO[]>(
-    () => assetCatalogApi.getTopAssets({ sortBy, limit: TOP_ASSET_LIMIT }),
-    [sortBy]
+    () => assetCatalogApi.getTopAssets({ limit: TOP_ASSET_LIMIT, env }),
+    [env]
   );
   const rows = (data ?? []) as AssetTopAssetVO[];
 
-  const isAccess = sortBy === 'access';
   const option = useMemo(
     () =>
       rankBarOption(
-        rows.map(r => ({ name: `${r.databaseName}.${r.tableName}`, value: isAccess ? r.accessCount30d : r.sizeBytes })),
-        isAccess ? (v: number) => String(v) : formatBytes,
-        isAccess ? '#4FC3F7' : '#BA68C8',
-        isAccess ? (v: number) => `${v} 次访问` : (v: number) => `占用 ${formatBytes(v)}`
+        rows.map(r => ({ name: `${r.databaseName}.${r.tableName}`, value: r.sizeBytes })),
+        formatBytes,
+        '#BA68C8',
+        (v: number) => `占用 ${formatBytes(v)}`
       ),
-    [rows, isAccess]
+    [rows]
   );
 
   return (
     <Card
       icon={<Activity size={14} />}
-      title={`② 热门与占空间 TOP ${TOP_ASSET_LIMIT} 表`}
-      hint={`按所选维度从高到低排序；访问频率为近 ${WINDOW_DAYS} 天访问次数（T+1 汇总）。`}
-      actions={
-        <SortToggle
-          value={sortBy}
-          onChange={setSortBy}
-          options={[
-            { value: 'access', label: '按访问频率' },
-            { value: 'size', label: '按占用空间' },
-          ]}
-        />
-      }
+      title={withEnv(`② 占空间 TOP ${TOP_ASSET_LIMIT} 表`, env)}
+      hint={`仅统计「${assetEnvLabel(env)}」环境；按占用空间从高到低排序。`}
     >
       {status === 'loading' && <Loading />}
       {status === 'unavailable' && (
         <CardPlaceholder
           reason="服务端 /api/asset/inventory/top-assets 尚未接入，TOP 表清单暂不可用。"
-          items={['按访问频率（近 30 天访问次数）排序的前 100 张表', '按占用空间排序的前 100 张表', '含环境、项目、负责人']}
+          items={['按占用空间排序的前 100 张表', '含环境、项目、负责人']}
         />
       )}
-      {status === 'ok' && rows.length === 0 && <Empty text="暂无数据。" />}
+      {status === 'ok' && rows.length === 0 && <Empty text={envEmptyText(env, 'table')} />}
       {status === 'ok' && rows.length > 0 && (
         <>
           <EChart option={option} height={320} />
@@ -519,7 +490,6 @@ const TopAssetsSection: React.FC = () => {
                 <th>表</th>
                 <th>环境</th>
                 <th>项目</th>
-                <th className="ac-num">访问次数</th>
                 <th className="ac-num">占用空间</th>
                 <th>负责人</th>
               </tr>
@@ -531,9 +501,8 @@ const TopAssetsSection: React.FC = () => {
                 <td className="ac-table__strong">
                   {row.databaseName}.{row.tableName}
                 </td>
-                <td>{envLabel(row.env)}</td>
+                <td>{assetEnvLabel(row.env)}</td>
                 <td>{row.projectName || row.projectCode || '—'}</td>
-                <td className="ac-num">{row.accessCount30d ?? '—'}</td>
                 <td className="ac-num">{formatBytes(row.sizeBytes)}</td>
                 <td>{row.ownerName || '—'}</td>
               </tr>
@@ -547,11 +516,11 @@ const TopAssetsSection: React.FC = () => {
 
 // ── ③ 消耗计算资源 / 运行时长 TOP 50 任务 ────────────────
 
-const TopComputeSection: React.FC = () => {
+const TopComputeSection: React.FC<{ env: AssetEnvCode }> = ({ env }) => {
   const [sortBy, setSortBy] = useState<AssetTaskSortBy>('resource');
   const { status, data } = useProbe<AssetTopComputeTaskVO[]>(
-    () => assetCatalogApi.getTopComputeTasks({ sortBy, limit: TOP_TASK_LIMIT }),
-    [sortBy]
+    () => assetCatalogApi.getTopComputeTasks({ sortBy, limit: TOP_TASK_LIMIT, env }),
+    [sortBy, env]
   );
   const rows = (data ?? []) as AssetTopComputeTaskVO[];
 
@@ -570,8 +539,8 @@ const TopComputeSection: React.FC = () => {
   return (
     <Card
       icon={<Cpu size={14} />}
-      title={`③ 资源消耗与耗时 TOP ${TOP_TASK_LIMIT} 任务`}
-      hint="计算资源按 CPU 核·小时计（图表口径）；表格同时给出内存 GB·小时与执行次数。"
+      title={withEnv(`③ 资源消耗与耗时 TOP ${TOP_TASK_LIMIT} 任务`, env)}
+      hint={`仅统计「${assetEnvLabel(env)}」环境（环境取自工作流名后缀，与库名后缀同一套约定）；计算资源按 CPU 核·小时计（图表口径），表格同时给出内存 GB·小时与执行次数。`}
       actions={
         <SortToggle
           value={sortBy}
@@ -590,7 +559,7 @@ const TopComputeSection: React.FC = () => {
           items={['按消耗计算资源（CPU / 内存）排序的前 50 个任务', '按运行时长排序的前 50 个任务', '含工作流、节点、任务类型与执行次数']}
         />
       )}
-      {status === 'ok' && rows.length === 0 && <Empty text="暂无数据。" />}
+      {status === 'ok' && rows.length === 0 && <Empty text={envEmptyText(env, 'task', '任务运行记录')} />}
       {status === 'ok' && rows.length > 0 && (
         <>
           <EChart option={option} height={320} />
@@ -633,8 +602,11 @@ const TopComputeSection: React.FC = () => {
 
 // ── ④ 任务延迟率（YARN）───────────────────────────────────
 
-const DelayRateSection: React.FC = () => {
-  const { status, data } = useProbe<AssetTaskDelayVO>(() => assetCatalogApi.getTaskDelayRate({ days: WINDOW_DAYS }));
+const DelayRateSection: React.FC<{ env: AssetEnvCode }> = ({ env }) => {
+  const { status, data } = useProbe<AssetTaskDelayVO>(
+    () => assetCatalogApi.getTaskDelayRate({ days: WINDOW_DAYS, env }),
+    [env]
+  );
   const summary = data as AssetTaskDelayVO | null;
 
   const percent = summary ? (summary.delayRate ?? 0) * 100 : 0;
@@ -654,8 +626,8 @@ const DelayRateSection: React.FC = () => {
   return (
     <Card
       icon={<Timer size={14} />}
-      title="④ 任务延迟率"
-      hint={`延迟口径：任务实际开始时间晚于计划开始时间；以 YARN 任务为主，统计窗口近 ${WINDOW_DAYS} 天。`}
+      title={withEnv('④ 任务延迟率', env)}
+      hint={`仅统计「${assetEnvLabel(env)}」环境（环境取自工作流名后缀）；延迟口径：任务实际开始时间晚于计划开始时间，以 YARN 任务为主，统计窗口近 ${WINDOW_DAYS} 天。`}
     >
       {status === 'loading' && <Loading />}
       {status === 'unavailable' && (
@@ -664,7 +636,7 @@ const DelayRateSection: React.FC = () => {
           items={['整体延迟率与延迟任务数 / 总任务数', '按 YARN 队列拆分的延迟分布', '与调度运行记录对齐的统计窗口']}
         />
       )}
-      {status === 'ok' && !summary && <Empty text="暂无任务运行记录。" />}
+      {status === 'ok' && !summary && <Empty text={envEmptyText(env, 'task', '任务运行记录')} />}
       {status === 'ok' && summary && (
         <>
           <div className="ac-ov-stats">
@@ -691,9 +663,15 @@ const DelayRateSection: React.FC = () => {
 
 // ── ⑤ 数据大小增长率突增表 ───────────────────────────────
 
-const SizeGrowthSection: React.FC = () => {
-  const { status, data } = useProbe<AssetSizeGrowthVO[]>(() =>
-    assetCatalogApi.getSizeGrowthAnomalies({ growthPercent: GROWTH_PERCENT, minSizeBytes: GROWTH_MIN_BYTES })
+const SizeGrowthSection: React.FC<{ env: AssetEnvCode }> = ({ env }) => {
+  const { status, data } = useProbe<AssetSizeGrowthVO[]>(
+    () =>
+      assetCatalogApi.getSizeGrowthAnomalies({
+        growthPercent: GROWTH_PERCENT,
+        minSizeBytes: GROWTH_MIN_BYTES,
+        env,
+      }),
+    [env]
   );
   const rows = (data ?? []) as AssetSizeGrowthVO[];
 
@@ -711,8 +689,8 @@ const SizeGrowthSection: React.FC = () => {
   return (
     <Card
       icon={<TrendingUp size={14} />}
-      title="⑤ 数据大小突增表"
-      hint={`筛选口径：增长率 > ${GROWTH_PERCENT}% 且当前大小 > ${formatBytes(GROWTH_MIN_BYTES)}，用于发现异常膨胀的表。`}
+      title={withEnv('⑤ 数据大小突增表', env)}
+      hint={`仅统计「${assetEnvLabel(env)}」环境；筛选口径：增长率 > ${GROWTH_PERCENT}% 且当前大小 > ${formatBytes(GROWTH_MIN_BYTES)}，用于发现异常膨胀的表。`}
     >
       {status === 'loading' && <Loading />}
       {status === 'unavailable' && (
@@ -721,7 +699,7 @@ const SizeGrowthSection: React.FC = () => {
           items={['增长率 > 10% 且当前大小 > 10GB 的表清单', '含上期/本期大小、增长量与增长率', '按增长率从高到低排序']}
         />
       )}
-      {status === 'ok' && rows.length === 0 && <Empty text="没有符合阈值的表。" />}
+      {status === 'ok' && rows.length === 0 && <Empty text={envEmptyText(env, 'table', '符合阈值的表')} />}
       {status === 'ok' && rows.length > 0 && (
         <>
           <EChart option={option} height={320} />
@@ -746,7 +724,7 @@ const SizeGrowthSection: React.FC = () => {
                 <td className="ac-table__strong">
                   {row.databaseName}.{row.tableName}
                 </td>
-                <td>{envLabel(row.env)}</td>
+                <td>{assetEnvLabel(row.env)}</td>
                 <td>{row.projectName || '—'}</td>
                 <td className="ac-num">{formatBytes(row.previousSizeBytes)}</td>
                 <td className="ac-num">{formatBytes(row.currentSizeBytes)}</td>
@@ -761,20 +739,26 @@ const SizeGrowthSection: React.FC = () => {
   );
 };
 
-const AssetOverviewTab: React.FC = () => (
+/**
+ * 资产概况页签。
+ *
+ * `env` 由宿主持有（模块级切换器），本组件是受控的：env 变则五块看板一起重取，
+ * 不在这里保存任何环境状态。
+ */
+const AssetOverviewTab: React.FC<{ env: AssetEnvCode }> = ({ env }) => (
   <div className="ac-ov">
     <div className="ac-notice">
       <CircleAlert size={14} />
       <span>
-        资产概况按 src/api/assetCatalog.ts 的 /api/asset/inventory/* 契约接入，五个看板各自独立探测：
-        接口未部署时仅该看板降级为能力清单，不影响其余看板。
+        以下五块看板全部只统计「{assetEnvLabel(env)}」环境（环境由服务端按库名后缀 _prod / _gray / _test 解析），
+        切换右上角环境即整体重取。五块看板各自独立探测：接口未部署时仅该看板降级为能力清单，不影响其余看板。
       </span>
     </div>
-    <EnvProjectSection />
-    <TopAssetsSection />
-    <TopComputeSection />
-    <DelayRateSection />
-    <SizeGrowthSection />
+    <EnvProjectSection env={env} />
+    <TopAssetsSection env={env} />
+    <TopComputeSection env={env} />
+    <DelayRateSection env={env} />
+    <SizeGrowthSection env={env} />
   </div>
 );
 

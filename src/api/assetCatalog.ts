@@ -19,7 +19,8 @@
  */
 
 import { request } from './index';
-import type { ApiResponse, PageResult } from './types';
+import type { ApiResponse } from './types';
+import { DEPLOY_ENV_OPTIONS, type DeployEnv } from '../utils/deployEnv';
 
 /** 目录视角：引擎视角（数据源→库→表）与规范视角（分层→业务域→表） */
 export type CatalogViewMode = 'engine' | 'convention';
@@ -112,15 +113,8 @@ export interface AssetTableDetailVO {
   partitionColumns: string[];
   lastModifyTime: string;
   syncTime: string;
-  // 使用热度（T+1 汇总）
-  browseCount30d: number;
-  readCount30d: number;
-  bookmarkCount: number;
-  lastAccessTime: string;
   /** 治理项计数，非加权评分 */
   healthIssueCount: number;
-  /** 当前登录用户是否已收藏 */
-  bookmarked: boolean;
   columns: AssetColumnVO[];
   tags: AssetTagVO[];
 }
@@ -148,8 +142,6 @@ export interface AssetColumnVO {
   nullable: boolean;
   ordinalPosition: number;
   securityLevel: string;
-  /** 字段热度星级 0~5 */
-  hotScore: number;
 }
 
 export interface AssetTagVO {
@@ -201,13 +193,6 @@ export interface AnnotationGapSummary {
       isPartition: number;
     }>;
   }>;
-}
-
-/** 使用记录（热度趋势 + 字段热度） */
-export interface AssetUsageVO {
-  browseTrend: Array<{ statDate: string; browseCount: number; readCount: number }>;
-  topColumns: Array<{ columnName: string; hotScore: number; hitCount: number }>;
-  topReaders: Array<{ userName: string; readCount: number }>;
 }
 
 /** 产出任务（代理查询 DolphinScheduler） */
@@ -272,9 +257,26 @@ export interface AssetInventoryVO {
 //
 // 环境口径与库名规范同源：库名 {分层}_{业务域}_{环境}，环境后缀仅限 _prod/_gray/_test，
 // 故 env 由服务端按库名解析，前端不自行猜测，避免「生产库被当测试库」这类误判。
+//
+// 环境是资产管理模块的**切换维度**：资产概况与资产目录两处都按选中环境取全部内容，
+// 因此下列接口统一接受可选的 env 参数（不传 = 全环境，兼容既有调用）。
 
 /** 环境码：生产 / 灰度 / 测试（与库名后缀 _prod/_gray/_test 一一对应） */
-export type AssetEnvCode = 'prod' | 'gray' | 'test';
+export type AssetEnvCode = DeployEnv;
+
+/**
+ * 环境切换器的取值与中文名：直接复用提交调度的环境定义，
+ * 保证「库里叫什么环境」与「界面上叫什么环境」只有一处来源。
+ */
+export const ASSET_ENV_OPTIONS: readonly { value: AssetEnvCode; label: string }[] = DEPLOY_ENV_OPTIONS;
+
+/**
+ * 资产管理默认环境：生产。
+ *
+ * 与提交调度的默认值（测试，见 `DEFAULT_DEPLOY_ENV`）刻意不同 ——
+ * 那是「写」的默认（选风险最低的一档），这里是「看」的默认（先看真实盘子）。
+ */
+export const DEFAULT_ASSET_ENV: AssetEnvCode = 'prod';
 
 /** 按环境与项目聚合的表数量与占用空间 */
 export interface AssetEnvProjectStatVO {
@@ -285,9 +287,6 @@ export interface AssetEnvProjectStatVO {
   sizeBytes: number;
 }
 
-/** TOP 资产清单排序维度：访问频率 / 占用空间 */
-export type AssetTopSortBy = 'access' | 'size';
-
 export interface AssetTopAssetVO {
   tableMetadataId: number;
   databaseName: string;
@@ -295,8 +294,6 @@ export interface AssetTopAssetVO {
   env: AssetEnvCode;
   projectCode: string;
   projectName: string;
-  /** 近 30 天访问次数（访问频率榜口径） */
-  accessCount30d: number;
   sizeBytes: number;
   ownerName: string;
 }
@@ -344,9 +341,6 @@ export interface AssetSizeGrowthVO {
   growthRate: number;
 }
 
-/** 埋点上报项：浏览与读取分开统计 */
-export type AssetAccessType = 'browse' | 'read' | 'bookmark' | 'query';
-
 const BASE = '/api/asset';
 
 function toQuery(params: Record<string, unknown>): Record<string, string> {
@@ -359,16 +353,16 @@ function toQuery(params: Record<string, unknown>): Record<string, string> {
 }
 
 export const assetCatalogApi = {
-  /** 目录树。view=convention 时返回「分层→业务域→表」的规范视角 */
-  async getCatalogTree(params: { view?: CatalogViewMode; datasourceId?: number; databaseName?: string; keyword?: string } = {}) {
+  /** 目录树。view=convention 时返回「分层→业务域→表」的规范视角；env 按库名后缀过滤 */
+  async getCatalogTree(params: { view?: CatalogViewMode; datasourceId?: number; databaseName?: string; keyword?: string; env?: AssetEnvCode } = {}) {
     return request<ApiResponse<CatalogTreeNode[]>>(`${BASE}/catalog/tree`, {
-      params: toQuery({ view: params.view ?? 'engine', datasourceId: params.datasourceId, databaseName: params.databaseName, keyword: params.keyword }),
+      params: toQuery({ view: params.view ?? 'engine', datasourceId: params.datasourceId, databaseName: params.databaseName, keyword: params.keyword, env: params.env }),
       suppressError: true,
     });
   },
 
-  /** 统一检索：表 / 字段 / 指标三类，服务端已按权限过滤 */
-  async search(params: { keyword: string; types?: AssetSearchType[]; current?: number; size?: number; layerCode?: string; domainCode?: string }) {
+  /** 统一检索：表 / 字段 / 指标三类，服务端已按权限过滤；env 只对表 / 字段生效（指标无环境维度） */
+  async search(params: { keyword: string; types?: AssetSearchType[]; current?: number; size?: number; layerCode?: string; domainCode?: string; env?: AssetEnvCode }) {
     return request<ApiResponse<AssetSearchResult>>(`${BASE}/search`, {
       params: toQuery({
         keyword: params.keyword,
@@ -377,25 +371,19 @@ export const assetCatalogApi = {
         size: params.size,
         layerCode: params.layerCode,
         domainCode: params.domainCode,
+        env: params.env,
       }),
       suppressError: true,
     });
   },
 
-  async suggest(keyword: string) {
-    return request<ApiResponse<string[]>>(`${BASE}/suggest`, { params: { keyword }, suppressError: true });
+  async suggest(keyword: string, env?: AssetEnvCode) {
+    return request<ApiResponse<string[]>>(`${BASE}/suggest`, { params: toQuery({ keyword, env }), suppressError: true });
   },
 
   /** 资产详情聚合：基础信息 + 字段 + 分区 + 分类标签 */
   async getTableDetail(id: number) {
     return request<ApiResponse<AssetTableDetailVO>>(`${BASE}/table/${id}`, { suppressError: true });
-  },
-
-  async getTableUsage(id: number, params: { days?: number } = {}) {
-    return request<ApiResponse<AssetUsageVO>>(`${BASE}/table/${id}/usage`, {
-      params: toQuery({ days: params.days ?? 30 }),
-      suppressError: true,
-    });
   },
 
   /** 产出任务：服务端代理查询 DolphinScheduler，不在服务端落副本 */
@@ -479,30 +467,7 @@ export const assetCatalogApi = {
     return request<ApiResponse<null>>(`${BASE}/table/${id}/refresh`, { method: 'POST', suppressError: true });
   },
 
-  // ── 收藏与标签 ────────────────────────────────────────────
-
-  async listBookmarks(params: { current?: number; size?: number } = {}) {
-    return request<ApiResponse<PageResult<AssetSearchHit>>>(`${BASE}/bookmark`, {
-      params: toQuery(params as Record<string, unknown>),
-      suppressError: true,
-    });
-  },
-
-  async addBookmark(payload: { assetType: AssetSearchType; assetId: number; tableMetadataId?: number }) {
-    return request<ApiResponse<null>>(`${BASE}/bookmark`, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-      suppressError: true,
-    });
-  },
-
-  async removeBookmark(params: { assetType: AssetSearchType; assetId: number }) {
-    return request<ApiResponse<null>>(`${BASE}/bookmark`, {
-      method: 'DELETE',
-      params: toQuery(params as Record<string, unknown>),
-      suppressError: true,
-    });
-  },
+  // ── 标签 ──────────────────────────────────────────────────
 
   async listTags() {
     return request<ApiResponse<AssetTagVO[]>>(`${BASE}/tag`, { suppressError: true });
@@ -512,33 +477,20 @@ export const assetCatalogApi = {
     return request<ApiResponse<AssetCategoryVO[]>>(`${BASE}/category`, { suppressError: true });
   },
 
-  // ── 埋点与盘点 ────────────────────────────────────────────
+  // ── 盘点 ──────────────────────────────────────────────────
 
-  /**
-   * 访问埋点上报。属非关键路径：失败静默不提示，不阻塞任何交互。
-   * 注意写入独立轻量表 asset_access_log，不写 operation_audit_log（避免淹没真实操作留痕）。
-   */
-  async reportAccess(items: Array<{ assetType: AssetSearchType; assetId: number; accessType: AssetAccessType; keyword?: string }>): Promise<void> {
-    try {
-      await request<ApiResponse<null>>(`${BASE}/access`, {
-        method: 'POST',
-        body: JSON.stringify({ items }),
-        suppressError: true,
-      });
-    } catch {
-      /* 埋点失败静默降级 */
-    }
-  },
-
-  async getInventoryOverview(params: { projectCode?: string } = {}) {
+  async getInventoryOverview(params: { projectCode?: string; env?: AssetEnvCode } = {}) {
     return request<ApiResponse<AssetInventoryVO>>(`${BASE}/inventory/overview`, {
-      params: toQuery(params),
+      params: toQuery(params as Record<string, unknown>),
       suppressError: true,
     });
   },
 
-  async getInventoryHealth() {
-    return request<ApiResponse<AssetHealthIssueVO[]>>(`${BASE}/inventory/health`, { suppressError: true });
+  async getInventoryHealth(params: { env?: AssetEnvCode } = {}) {
+    return request<ApiResponse<AssetHealthIssueVO[]>>(`${BASE}/inventory/health`, {
+      params: toQuery(params as Record<string, unknown>),
+      suppressError: true,
+    });
   },
 
   // ── 资产概况（盘点看板）──────────────────────────────────
@@ -548,43 +500,44 @@ export const assetCatalogApi = {
     return request<ApiResponse<AssetEnvProjectStatVO[]>>(`${BASE}/inventory/env-project`, { suppressError: true });
   },
 
-  /** 访问频率 / 占用空间 TOP 资产（默认 100 条） */
-  async getTopAssets(params: { sortBy: AssetTopSortBy; limit?: number }) {
+  /** 占用空间 TOP 资产（默认 100 条）；env 按库名后缀过滤 */
+  async getTopAssets(params: { limit?: number; env?: AssetEnvCode } = {}) {
     return request<ApiResponse<AssetTopAssetVO[]>>(`${BASE}/inventory/top-assets`, {
-      params: toQuery({ sortBy: params.sortBy, limit: params.limit ?? 100 }),
+      params: toQuery({ limit: params.limit ?? 100, env: params.env }),
       suppressError: true,
     });
   },
 
-  /** 消耗计算资源 / 运行时长 TOP 任务（默认 50 条） */
-  async getTopComputeTasks(params: { sortBy: AssetTaskSortBy; limit?: number }) {
+  /** 消耗计算资源 / 运行时长 TOP 任务（默认 50 条）；env 按工作流名后缀过滤 */
+  async getTopComputeTasks(params: { sortBy: AssetTaskSortBy; limit?: number; env?: AssetEnvCode }) {
     return request<ApiResponse<AssetTopComputeTaskVO[]>>(`${BASE}/inventory/top-compute`, {
-      params: toQuery({ sortBy: params.sortBy, limit: params.limit ?? 50 }),
+      params: toQuery({ sortBy: params.sortBy, limit: params.limit ?? 50, env: params.env }),
       suppressError: true,
     });
   },
 
-  /** 任务延迟率（主要针对 YARN 任务） */
-  async getTaskDelayRate(params: { days?: number } = {}) {
+  /** 任务延迟率（主要针对 YARN 任务）；env 按工作流名后缀过滤 */
+  async getTaskDelayRate(params: { days?: number; env?: AssetEnvCode } = {}) {
     return request<ApiResponse<AssetTaskDelayVO>>(`${BASE}/inventory/task-delay`, {
-      params: toQuery({ days: params.days ?? 30 }),
+      params: toQuery({ days: params.days ?? 30, env: params.env }),
       suppressError: true,
     });
   },
 
-  /** 数据大小增长率突增表：默认 增长率 > 10% 且当前大小 > 10GB */
-  async getSizeGrowthAnomalies(params: { growthPercent?: number; minSizeBytes?: number } = {}) {
+  /** 数据大小增长率突增表：默认 增长率 > 10% 且当前大小 > 10GB；env 按库名后缀过滤 */
+  async getSizeGrowthAnomalies(params: { growthPercent?: number; minSizeBytes?: number; env?: AssetEnvCode } = {}) {
     return request<ApiResponse<AssetSizeGrowthVO[]>>(`${BASE}/inventory/size-growth`, {
       params: toQuery({
         growthPercent: params.growthPercent ?? 10,
         minSizeBytes: params.minSizeBytes ?? 10 * 1024 ** 3,
+        env: params.env,
       }),
       suppressError: true,
     });
   },
 
-  /** 元数据标注缺口：既有接口，作为治理项之一接入健康度 */
-  async getAnnotationGaps(params: { current?: number; size?: number } = {}) {
+  /** 元数据标注缺口：既有接口，作为治理项之一接入健康度；env 按库名后缀过滤 */
+  async getAnnotationGaps(params: { current?: number; size?: number; env?: AssetEnvCode } = {}) {
     return request<ApiResponse<AnnotationGapSummary>>(`/api/metadata/annotation-gaps`, {
       params: toQuery(params as Record<string, unknown>),
       suppressError: true,

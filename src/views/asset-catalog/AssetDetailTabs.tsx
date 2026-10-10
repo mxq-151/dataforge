@@ -12,7 +12,6 @@
  * | 指标     | GET /asset/table/{id}/indicators       |
  * | 产出任务 | GET /asset/table/{id}/producers        |
  * | 数据质量 | GET /asset/table/{id}/quality          |
- * | 使用记录 | GET /asset/table/{id}/usage            |
  * | 数据预览 | GET /asset/table/{id}/preview          |
  * | 使用说明 | GET/PUT /asset/table/{id}/doc、/doc/history |
  * | 血缘     | 不重新实现，跳转数据血缘模块（Marquez） |
@@ -24,14 +23,13 @@
  */
 
 import { useEffect, useState } from 'react';
-import { CircleAlert, ExternalLink, RefreshCw, Save, Star } from 'lucide-react';
+import { CircleAlert, ExternalLink, RefreshCw, Save } from 'lucide-react';
 import { assetCatalogApi } from '../../api/assetCatalog';
 import type {
   AssetIndicatorVO,
   AssetProducerVO,
   AssetQualitySummaryVO,
   AssetTableDetailVO,
-  AssetUsageVO,
 } from '../../api/assetCatalog';
 import { useProbe } from './useProbe';
 import { useToast } from '../../components/Toast';
@@ -41,7 +39,6 @@ export type AssetDetailTabId =
   | 'indicator'
   | 'producer'
   | 'quality'
-  | 'usage'
   | 'preview'
   | 'doc'
   | 'permission'
@@ -52,7 +49,6 @@ const TAB_LABELS: Array<{ id: AssetDetailTabId; label: string }> = [
   { id: 'indicator', label: '指标' },
   { id: 'producer', label: '产出任务' },
   { id: 'quality', label: '数据质量' },
-  { id: 'usage', label: '使用记录' },
   { id: 'preview', label: '数据预览' },
   { id: 'doc', label: '使用说明' },
   { id: 'permission', label: '权限' },
@@ -66,8 +62,6 @@ interface AssetDetailTabsProps {
   overviewContent: React.ReactNode;
   /** 跳转数据血缘（namespace=库名，datasetName=表名，与既有联动范式一致） */
   onNavigateToLineage?: (target: { namespace: string; datasetName: string }) => void;
-  /** 读取失败时统一降级文案用的接口路径提示 */
-  onAccess?: (accessType: 'browse' | 'read') => void;
 }
 
 /** 页签级不可用占位：说明哪个接口没通 + 该页签将提供什么 */
@@ -235,142 +229,17 @@ const QualityTab: React.FC<{ tableId: number }> = ({ tableId }) => {
   );
 };
 
-// ── 使用记录 ────────────────────────────────────────────────
-
-const UsageTab: React.FC<{ tableId: number }> = ({ tableId }) => {
-  const { status, data } = useProbe<AssetUsageVO>(
-    () => assetCatalogApi.getTableUsage(tableId, { days: 30 }),
-    [tableId]
-  );
-
-  if (status === 'loading') return <TabLoading />;
-  if (status === 'unavailable')
-    return (
-      <TabUnavailable
-        apiPath={`/api/asset/table/${tableId}/usage`}
-        items={['浏览与读取趋势（按日汇总，T+1）', '字段热度明细（星级与命中次数）', '读取 TOP 人员']}
-      />
-    );
-  if (!data) return <EmptyText text="暂无使用记录。" />;
-
-  const trend = data.browseTrend ?? [];
-  const maxTrend = trend.reduce((max, p) => Math.max(max, p.browseCount + p.readCount), 0) || 1;
-
-  return (
-    <>
-      <section className="ac-section ac-section--tight">
-        <h4 className="ac-section__title">浏览 / 读取趋势</h4>
-        {trend.length === 0 ? (
-          <EmptyText text="暂无趋势数据。" />
-        ) : (
-          <table className="ac-table">
-            <thead>
-              <tr>
-                <th>日期</th>
-                <th>浏览</th>
-                <th>读取</th>
-                <th>占比</th>
-              </tr>
-            </thead>
-            <tbody>
-              {trend.map(point => (
-                <tr key={point.statDate}>
-                  <td>{point.statDate}</td>
-                  <td>{point.browseCount}</td>
-                  <td>{point.readCount}</td>
-                  <td>
-                    <span
-                      className="ac-bar"
-                      style={{ width: `${Math.round(((point.browseCount + point.readCount) / maxTrend) * 100)}%` }}
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
-
-      <section className="ac-section ac-section--tight">
-        <h4 className="ac-section__title">字段热度</h4>
-        {(data.topColumns ?? []).length === 0 ? (
-          <EmptyText text="暂无字段热度数据。" />
-        ) : (
-          <table className="ac-table">
-            <thead>
-              <tr>
-                <th>字段</th>
-                <th>热度</th>
-                <th>命中次数</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.topColumns.map(col => (
-                <tr key={col.columnName}>
-                  <td className="ac-table__strong">{col.columnName}</td>
-                  <td>
-                    <span className="ac-stars" aria-label={`热度 ${col.hotScore} 星`}>
-                      {Array.from({ length: 5 }, (_, i) => (
-                        <Star
-                          key={i}
-                          size={11}
-                          className={i < col.hotScore ? 'ac-star--on' : 'ac-star--off'}
-                        />
-                      ))}
-                    </span>
-                  </td>
-                  <td>{col.hitCount}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
-
-      <section className="ac-section ac-section--tight">
-        <h4 className="ac-section__title">读取 TOP 人员</h4>
-        {(data.topReaders ?? []).length === 0 ? (
-          <EmptyText text="暂无读取人员数据。" />
-        ) : (
-          <table className="ac-table">
-            <thead>
-              <tr>
-                <th>人员</th>
-                <th>读取次数</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.topReaders.map(reader => (
-                <tr key={reader.userName}>
-                  <td className="ac-table__strong">{reader.userName}</td>
-                  <td>{reader.readCount}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
-    </>
-  );
-};
-
 // ── 数据预览 ────────────────────────────────────────────────
 
 const PREVIEW_LIMITS = [20, 50, 100];
 
-const PreviewTab: React.FC<{ tableId: number; onAccess?: (t: 'read') => void }> = ({ tableId, onAccess }) => {
+const PreviewTab: React.FC<{ tableId: number }> = ({ tableId }) => {
   const [limit, setLimit] = useState(PREVIEW_LIMITS[0]);
   const [reload, setReload] = useState(0);
   const { status, data } = useProbe<{ columns: string[]; rows: Array<Array<string | null>> }>(
     () => assetCatalogApi.previewTable(tableId, { limit }),
     [tableId, limit, reload]
   );
-
-  // 打开预览即视为一次「读取」行为，用于热度统计
-  useEffect(() => {
-    if (status === 'ok') onAccess?.('read');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, reload]);
 
   return (
     <>
@@ -608,7 +477,6 @@ const AssetDetailTabs: React.FC<AssetDetailTabsProps> = ({
   detail,
   overviewContent,
   onNavigateToLineage,
-  onAccess,
 }) => {
   const [active, setActive] = useState<AssetDetailTabId>('overview');
 
@@ -631,11 +499,8 @@ const AssetDetailTabs: React.FC<AssetDetailTabsProps> = ({
     case 'quality':
       body = <QualityTab tableId={tableId} />;
       break;
-    case 'usage':
-      body = <UsageTab tableId={tableId} />;
-      break;
     case 'preview':
-      body = <PreviewTab tableId={tableId} onAccess={onAccess} />;
+      body = <PreviewTab tableId={tableId} />;
       break;
     case 'doc':
       body = <DocTab tableId={tableId} />;
