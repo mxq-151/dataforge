@@ -10,6 +10,15 @@ import type { StorageConfig } from '../../../api/fileExplorer';
 import { fetchProjectList, type ProjectInfo } from '../../../api/devProject';
 import { useToast } from '../../../components/Toast';
 import MultiSelect from './MultiSelect';
+import {
+  isWholeDatabaseSelection,
+  wholeDatabaseSelection,
+  supportsWholeDatabase,
+  splitPerTableNames,
+  describeTableSelection,
+  validateTableSelection,
+  normalizeScopeSelection,
+} from '../../../utils/tablePermissionScope';
 
 const SCOPE_MAP: Record<number, string> = { 1: '整表', 2: '指定字段', 3: '指定行', 4: '组合' };
 const SCOPE_TAG_MAP: Record<number, string> = { 1: 'info', 2: 'warning', 3: 'danger', 4: '' };
@@ -190,7 +199,7 @@ const PermissionManageTab: React.FC = () => {
   const filteredTableData = useMemo(() => {
     let result = [...tableData];
     if (tableFilter.datasourceName) result = result.filter(item => item.datasourceName === tableFilter.datasourceName);
-    if (tableFilter.keyword) { const kw = tableFilter.keyword.toLowerCase(); result = result.filter(item => item.permissionName?.toLowerCase().includes(kw) || item.tableNames?.some(n => n.toLowerCase().includes(kw))); }
+    if (tableFilter.keyword) { const kw = tableFilter.keyword.toLowerCase(); result = result.filter(item => item.permissionName?.toLowerCase().includes(kw) || item.tableNames?.some(n => n.toLowerCase().includes(kw)) || describeTableSelection(item.tableNames).toLowerCase().includes(kw)); }
     return result;
   }, [tableData, tableFilter]);
 
@@ -344,10 +353,19 @@ const PermissionManageTab: React.FC = () => {
     return tableList.filter(t => t.databaseName === tableForm.databaseName);
   }, [tableList, tableForm.databaseName]);
 
+  // 「整库授权」：tableNames 记为 '*'，与后端 DataAccessPermissionService 的匹配口径一致，
+  // 因此不需要枚举该库下的全部表名，也不需要后端改动。
+  const wholeDatabase = isWholeDatabaseSelection(tableForm.tableNames);
+  const scopeAllowsWholeDb = supportsWholeDatabase(tableForm.permissionScope);
+  // 列白名单 / 行过滤 SQL 都按真实表名落子表，整库占位符不参与这两类配置
+  const perTableNames = useMemo(() => splitPerTableNames(tableForm.tableNames), [tableForm.tableNames]);
+
   // 编辑模式下，表列表加载完成后通过 tableName 匹配修正 tableMetadataIds
   // （后端存储的 tableMetadataId 与表列表接口返回的 TableInfo.id 可能不一致）
   useEffect(() => {
     if (!tableForm.id || !tableForm.tableNames?.length || !tableList.length) return;
+    // 整库授权的占位符 '*' 不是真实表名，反查必然落空，直接跳过（勾选状态由整库开关承载）
+    if (isWholeDatabaseSelection(tableForm.tableNames)) return;
     const matchedIds = tableForm.tableNames
       .map(name => {
         const found = tableList.find(t => t.tableName === name);
@@ -507,9 +525,13 @@ const PermissionManageTab: React.FC = () => {
     if (!tableForm.permissionName) { toast.warning('请填写权限名称'); return; }
     if (!tableForm.datasourceName) { toast.warning('请选择数据源'); return; }
     if (!tableForm.databaseName) { toast.warning('请选择数据库'); return; }
-    if (!tableForm.tableNames || tableForm.tableNames.length === 0) { toast.warning('请选择库表'); return; }
+    const rangeError = validateTableSelection({
+      permissionScope: tableForm.permissionScope,
+      tableNames: tableForm.tableNames,
+    });
+    if (rangeError) { toast.warning(rangeError); return; }
     if ((tableForm.permissionScope === 2 || tableForm.permissionScope === 4)) {
-      const noColumnTables = tableForm.tableNames.filter(n => !(tableForm.columnPermissions[n]?.length));
+      const noColumnTables = perTableNames.filter(n => !(tableForm.columnPermissions[n]?.length));
       if (noColumnTables.length > 0) {
         toast.warning(`表「${noColumnTables[0]}」未选择列，已选择「指定字段」权限范围时每张表至少需选择一列`);
         return;
@@ -518,7 +540,7 @@ const PermissionManageTab: React.FC = () => {
     if (tableForm.permissionScope === 3 || tableForm.permissionScope === 4) {
       setRowFilterErrors({});
       const errors: Record<string, string> = {};
-      for (const tableName of tableForm.tableNames) {
+      for (const tableName of perTableNames) {
         const sql = tableForm.rowFilterSql[tableName] || '';
         if (!sql.trim()) { errors[tableName] = '请填写行过滤条件'; continue; }
         const validation = validateRowFilterSql(sql);
@@ -762,7 +784,13 @@ const PermissionManageTab: React.FC = () => {
                     <td>{row.permissionName}</td>
                     <td>{row.datasourceName || '-'}</td>
                     <td><code className="sys-mgmt__code">{row.databaseName || '-'}</code></td>
-                    <td>{row.tableNames?.map(n => <span key={n} className="sys-mgmt__tag sys-mgmt__tag--info" style={{ margin: '1px' }}>{n}</span>) || <span style={{ color: '#666' }}>-</span>}</td>
+                    <td>
+                      {row.tableNames?.length
+                        ? (isWholeDatabaseSelection(row.tableNames)
+                          ? <span className="sys-mgmt__tag sys-mgmt__tag--success" style={{ margin: '1px' }}>全部表</span>
+                          : row.tableNames.map(n => <span key={n} className="sys-mgmt__tag sys-mgmt__tag--info" style={{ margin: '1px' }}>{n}</span>))
+                        : <span style={{ color: '#666' }}>-</span>}
+                    </td>
                     <td><span className={`sys-mgmt__tag sys-mgmt__tag--${SCOPE_TAG_MAP[row.permissionScope] || 'info'}`}>{SCOPE_MAP[row.permissionScope] || '未知'}</span></td>
                     <td>
                       {row.canSelect === 1 && <span className="sys-mgmt__tag sys-mgmt__tag--success" style={{ margin: '1px' }}>查询</span>}
@@ -917,17 +945,41 @@ const PermissionManageTab: React.FC = () => {
                 <div className="sys-mgmt__form-group"><label>选择数据库</label><select className="sys-mgmt__select" value={tableForm.databaseName || ''} onChange={e => setTableForm(f => ({ ...f, databaseName: e.target.value, tableNames: [], tableMetadataIds: [] }))}><option value="">请选择数据库</option>{databaseOptions.map(db => <option key={db} value={db}>{db}</option>)}</select></div>
               </div>
               <div className="sys-mgmt__form-group"><label>选择库表</label>
+                <label className={`sys-mgmt__whole-db-row${scopeAllowsWholeDb ? '' : ' sys-mgmt__whole-db-row--disabled'}`}>
+                  <input
+                    type="checkbox"
+                    checked={wholeDatabase}
+                    disabled={!scopeAllowsWholeDb}
+                    onChange={e => setTableForm(f => ({
+                      ...f,
+                      tableNames: e.target.checked ? wholeDatabaseSelection() : [],
+                      tableMetadataIds: [],
+                    }))}
+                  />
+                  全部表（整库授权）
+                  <span style={{ color: '#808080' }}>— 按 “*” 匹配该库所有表，含后续新增的表</span>
+                </label>
                 <MultiSelect
                   options={filteredTableList.map(t => ({ value: t.id!, label: t.tableName, tag: t.tableType }))}
                   selectedValues={tableForm.tableMetadataIds || []}
+                  disabled={wholeDatabase}
+                  enableSelectAll
                   onChange={ids => {
                     const selectedNames = ids
                       .map(id => tableList.find(t => t.id === id)?.tableName)
                       .filter(Boolean) as string[];
                     setTableForm(f => ({ ...f, tableMetadataIds: ids, tableNames: selectedNames }));
                   }}
-                  placeholder={tableForm.selectedDatasourceId ? (filteredTableList.length === 0 ? '暂无库表数据' : '请选择库表') : '请先选择数据源'}
+                  placeholder={wholeDatabase
+                    ? '已选择全部表（整库）'
+                    : tableForm.selectedDatasourceId ? (filteredTableList.length === 0 ? '暂无库表数据' : '请选择库表') : '请先选择数据源'}
                 />
+                {wholeDatabase && (
+                  <div className="sys-mgmt__whole-db-hint">已授权该库全部表，无需逐张勾选。</div>
+                )}
+                {!scopeAllowsWholeDb && (
+                  <div className="sys-mgmt__whole-db-hint">「指定字段」「指定行」「组合」需逐张选择库表 —— 列白名单与行过滤条件按具体表名存放。</div>
+                )}
               </div>
               <div className="sys-mgmt__form-group"><label>CRUD权限</label>
                 <div className="sys-mgmt__checkbox-group">
@@ -944,14 +996,22 @@ const PermissionManageTab: React.FC = () => {
                     const next = { ...f, permissionScope: scope };
                     if (scope !== 2 && scope !== 4) next.columnPermissions = {};
                     if (scope !== 3 && scope !== 4) next.rowFilterSql = {};
+                    // 切到不支持整库的范围时，'*' 配不出列白名单/行过滤，清空选择让用户重新逐张挑表
+                    const normalized = normalizeScopeSelection({
+                      permissionScope: scope,
+                      tableNames: next.tableNames,
+                      tableMetadataIds: next.tableMetadataIds,
+                    });
+                    next.tableNames = normalized.tableNames;
+                    next.tableMetadataIds = normalized.tableMetadataIds;
                     return next;
                   });
                   if (scope !== 3 && scope !== 4) setRowFilterErrors({});
                 }} />{v}</label>)}</div></div>
-              {(tableForm.permissionScope === 2 || tableForm.permissionScope === 4) && (tableForm.tableNames.length === 0 ? (
+              {(tableForm.permissionScope === 2 || tableForm.permissionScope === 4) && (perTableNames.length === 0 ? (
                 <div className="sys-mgmt__form-group"><label>选择列 <span className="sys-mgmt__required">*</span></label><div style={{ color: '#888', fontSize: 12 }}>请先在上方选择库表</div></div>
               ) : (
-                tableForm.tableNames.map(tableName => {
+                perTableNames.map(tableName => {
                   const cols = columnsByTable[tableName] || [];
                   const hasCols = cols.length > 0;
                   return (
@@ -959,6 +1019,7 @@ const PermissionManageTab: React.FC = () => {
                       <MultiSelect
                         options={cols.map(c => ({ value: c, label: c }))}
                         selectedValues={tableForm.columnPermissions[tableName] || []}
+                        enableSelectAll
                         onChange={ids => setTableForm(f => ({ ...f, columnPermissions: { ...f.columnPermissions, [tableName]: ids as string[] } }))}
                         placeholder={columnsLoading ? '列加载中...' : (hasCols ? '请选择列' : '暂无列数据')}
                       />
@@ -966,10 +1027,10 @@ const PermissionManageTab: React.FC = () => {
                   );
                 })
               ))}
-              {(tableForm.permissionScope === 3 || tableForm.permissionScope === 4) && (tableForm.tableNames.length === 0 ? (
+              {(tableForm.permissionScope === 3 || tableForm.permissionScope === 4) && (perTableNames.length === 0 ? (
                 <div className="sys-mgmt__form-group"><label>行过滤SQL <span className="sys-mgmt__required">*</span></label><div style={{ color: '#888', fontSize: 12 }}>请先在上方选择库表</div></div>
               ) : (
-                tableForm.tableNames.map(tableName => {
+                perTableNames.map(tableName => {
                   const sqlValue = tableForm.rowFilterSql[tableName] || '';
                   const error = rowFilterErrors[tableName];
                   return (
