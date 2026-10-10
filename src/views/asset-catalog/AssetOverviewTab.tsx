@@ -22,7 +22,8 @@
  * 不自持状态 —— 这样「资产概况」与「资产目录」永远是同一个环境，切页签不会悄悄变回默认值。
  * 五块看板图表**全部**按所选环境取数：
  * - ① 资产规模：只统计所选环境，并给出该环境占全库空间的比例（占比需要分母，
- *   因此这一块仍取「按环境×项目」的全量结果再筛出所选环境）；
+ *   因此这一块仍取「按环境×项目」的全量结果再筛出所选环境）；本卡片另附「质量规则覆盖」
+ *   四个指标（规则覆盖率 / 已配置规则表数 / 应配置核心表数 / 启用规则数），跨环境汇总、不受 env 影响；
  * - ② / ③ / ④ / ⑤：环境作为查询参数下推服务端，由服务端过滤；
  *   任务类看板（③④）的环境取自**工作流名后缀**，与库名后缀是同一套约定。
  *
@@ -42,6 +43,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import * as echarts from 'echarts';
 import { CircleAlert, Activity, HardDrive, Cpu, Timer, TrendingUp } from 'lucide-react';
 import { assetCatalogApi } from '../../api/assetCatalog';
+import { qualityApi } from '../../api/quality';
+import type { QualityOverviewVO } from '../../types/quality';
 import type {
   AssetEnvCode,
   AssetEnvProjectStatVO,
@@ -364,8 +367,9 @@ const ListTable: React.FC<{ head: React.ReactNode; children: React.ReactNode; to
 // ── ① 所选环境的资产规模 ─────────────────────────────────
 
 const EnvProjectSection: React.FC<{ env: AssetEnvCode }> = ({ env }) => {
-  // 取全量（所有环境）：占比口径需要分母，接口仍返回按环境×项目的完整明细
   const { status, data } = useProbe<AssetEnvProjectStatVO[]>(() => assetCatalogApi.getInventoryByEnvProject());
+  // 质量规则覆盖跨环境汇总、与 env 无关，由本卡片独立探测
+  const quality = useProbe<QualityOverviewVO>(() => qualityApi.getOverview(), []);
   const rows = (data ?? []) as AssetEnvProjectStatVO[];
 
   // 所选环境的明细；环境识别不出来（库名不合规范）的库不在任何环境里，不会出现在本页
@@ -429,6 +433,19 @@ const EnvProjectSection: React.FC<{ env: AssetEnvCode }> = ({ env }) => {
             <Stat value={String(projectCount)} unit="个" label="涉及项目" />
             <Stat value={formatRate(share)} label="占全库空间" />
           </div>
+          {/* 质量规则覆盖：原「质量概览」卡片的四个指标并入本卡片，与规模放在一起看「有多少资产、覆盖得怎么样」。
+              跨环境汇总、不随环境切换；接口未接入/加载中时该组指标不展示，不影响本卡片的规模指标。 */}
+          {quality.status === 'ok' && quality.data && (
+            <>
+              <p className="ac-ov-subtitle">质量规则覆盖（跨环境汇总，不随环境切换）</p>
+              <div className="ac-ov-stats">
+                <Stat value={formatRate(quality.data.ruleCoverage)} label="规则覆盖率" />
+                <Stat value={String(quality.data.coveredTableCount)} unit="表" label="已配置规则表数" />
+                <Stat value={String(quality.data.targetTableCount)} unit="表" label="应配置核心表数" />
+                <Stat value={String(quality.data.enabledRuleCount)} unit="条" label="启用规则数" />
+              </div>
+            </>
+          )}
           <div className="ac-ov-cols">
             <div>
               <p className="ac-ov-subtitle">各项目表数量（{assetEnvLabel(env)}）</p>
@@ -750,8 +767,9 @@ const AssetOverviewTab: React.FC<{ env: AssetEnvCode }> = ({ env }) => (
     <div className="ac-notice">
       <CircleAlert size={14} />
       <span>
-        以下五块看板全部只统计「{assetEnvLabel(env)}」环境（环境由服务端按库名后缀 _prod / _gray / _test 解析），
-        切换右上角环境即整体重取。五块看板各自独立探测：接口未部署时仅该看板降级为能力清单，不影响其余看板。
+        以下五块资产 / 成本看板全部只统计「{assetEnvLabel(env)}」环境（环境由服务端按库名后缀 _prod / _gray / _test 解析），
+        切换右上角环境即整体重取；「① 资产规模」中的质量规则覆盖跨环境汇总，不随环境切换。
+        各看板独立探测：接口未部署时仅该看板降级为能力清单，不影响其余看板。
       </span>
     </div>
     <EnvProjectSection env={env} />

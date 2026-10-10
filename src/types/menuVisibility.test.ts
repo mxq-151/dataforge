@@ -106,9 +106,8 @@ describe('一级菜单 —— 视图挂载与布局类完整', () => {
   });
 });
 
-describe('一级菜单 —— 本次新增的两个入口', () => {
-  it('数据质量与资产目录的权限码固定为 data_quality / asset_catalog', () => {
-    expect(MENU_CODE_MAP.dataQuality).toBe('data_quality');
+describe('一级菜单 —— 资产目录入口', () => {
+  it('资产目录的权限码固定为 asset_catalog', () => {
     expect(MENU_CODE_MAP.assetCatalog).toBe('asset_catalog');
   });
 
@@ -116,6 +115,5 @@ describe('一级菜单 —— 本次新增的两个入口', () => {
     // 该约定在服务端授权种子里落地，这里只固化「码存在且未被改名」这一前提，
     // 避免后续有人改名后服务端种子与前端取码不一致。
     expect(FIRST_LEVEL_MENU_CODES).toContain('asset_catalog');
-    expect(FIRST_LEVEL_MENU_CODES).toContain('data_quality');
   });
 });

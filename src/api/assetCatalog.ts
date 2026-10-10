@@ -479,14 +479,23 @@ export const assetCatalogApi = {
 
   // ── 盘点 ──────────────────────────────────────────────────
 
-  async getInventoryOverview(params: { projectCode?: string; env?: AssetEnvCode } = {}) {
+  /**
+   * 盘点概况。可按「数仓名称（→ domainCode，即规范视角的业务域）」或「数仓分层（→ layerCode）」收窄：
+   * 两者都不传 = 当前环境全量；同时传 = 该业务域下该分层。
+   * 注意：domainCode ≠ projectCode（后者是调度项目编码，如 test_project）。
+   * 选中层级下推服务端，保证「表总数 / 字段总数 / 占用空间 / 未分类表」四项口径一致。
+   */
+  async getInventoryOverview(
+    params: { projectCode?: string; domainCode?: string; layerCode?: string; env?: AssetEnvCode } = {}
+  ) {
     return request<ApiResponse<AssetInventoryVO>>(`${BASE}/inventory/overview`, {
       params: toQuery(params as Record<string, unknown>),
       suppressError: true,
     });
   },
 
-  async getInventoryHealth(params: { env?: AssetEnvCode } = {}) {
+  /** 治理项清单；env 按库名后缀过滤，domainCode / layerCode 与盘点同口径收窄（规范视角选中项） */
+  async getInventoryHealth(params: { env?: AssetEnvCode; domainCode?: string; layerCode?: string } = {}) {
     return request<ApiResponse<AssetHealthIssueVO[]>>(`${BASE}/inventory/health`, {
       params: toQuery(params as Record<string, unknown>),
       suppressError: true,
@@ -536,8 +545,10 @@ export const assetCatalogApi = {
     });
   },
 
-  /** 元数据标注缺口：既有接口，作为治理项之一接入健康度；env 按库名后缀过滤 */
-  async getAnnotationGaps(params: { current?: number; size?: number; env?: AssetEnvCode } = {}) {
+  /** 元数据标注缺口：既有接口，作为治理项之一接入健康度；env 按库名后缀过滤，domainCode / layerCode 同口径收窄 */
+  async getAnnotationGaps(
+    params: { current?: number; size?: number; env?: AssetEnvCode; domainCode?: string; layerCode?: string } = {}
+  ) {
     return request<ApiResponse<AnnotationGapSummary>>(`/api/metadata/annotation-gaps`, {
       params: toQuery(params as Record<string, unknown>),
       suppressError: true,

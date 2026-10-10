@@ -10,24 +10,20 @@
  * | 页签     | 接口                                   |
  * | -------- | -------------------------------------- |
  * | 指标     | GET /asset/table/{id}/indicators       |
- * | 产出任务 | GET /asset/table/{id}/producers        |
  * | 数据质量 | GET /asset/table/{id}/quality          |
  * | 数据预览 | GET /asset/table/{id}/preview          |
  * | 使用说明 | GET/PUT /asset/table/{id}/doc、/doc/history |
- * | 血缘     | 不重新实现，跳转数据血缘模块（Marquez） |
  * | 权限     | 无独立端点：权限在服务端 fail-close 生效，此处只读说明 |
  *
  * ── 边界 ────────────────────────────────────────────────────
  * - 数据预览必然过服务端列权限与脱敏，前端不做任何兜底过滤（否则越权数据已到达客户端）。
- * - 血缘不在本组件重复实现：与右栏既有约定一致，点按钮跳「数据血缘」模块。
  */
 
 import { useEffect, useState } from 'react';
-import { CircleAlert, ExternalLink, RefreshCw, Save } from 'lucide-react';
+import { CircleAlert, RefreshCw, Save } from 'lucide-react';
 import { assetCatalogApi } from '../../api/assetCatalog';
 import type {
   AssetIndicatorVO,
-  AssetProducerVO,
   AssetQualitySummaryVO,
   AssetTableDetailVO,
 } from '../../api/assetCatalog';
@@ -37,22 +33,18 @@ import { useToast } from '../../components/Toast';
 export type AssetDetailTabId =
   | 'overview'
   | 'indicator'
-  | 'producer'
   | 'quality'
   | 'preview'
   | 'doc'
-  | 'permission'
-  | 'lineage';
+  | 'permission';
 
 const TAB_LABELS: Array<{ id: AssetDetailTabId; label: string }> = [
   { id: 'overview', label: '概览' },
   { id: 'indicator', label: '指标' },
-  { id: 'producer', label: '产出任务' },
   { id: 'quality', label: '数据质量' },
   { id: 'preview', label: '数据预览' },
   { id: 'doc', label: '使用说明' },
   { id: 'permission', label: '权限' },
-  { id: 'lineage', label: '血缘' },
 ];
 
 interface AssetDetailTabsProps {
@@ -60,8 +52,6 @@ interface AssetDetailTabsProps {
   detail: AssetTableDetailVO;
   /** 概览页签内容由宿主面板提供（它持有 detail 与生命周期写状态） */
   overviewContent: React.ReactNode;
-  /** 跳转数据血缘（namespace=库名，datasetName=表名，与既有联动范式一致） */
-  onNavigateToLineage?: (target: { namespace: string; datasetName: string }) => void;
 }
 
 /** 页签级不可用占位：说明哪个接口没通 + 该页签将提供什么 */
@@ -128,52 +118,6 @@ const IndicatorTab: React.FC<{ tableId: number }> = ({ tableId }) => {
   );
 };
 
-// ── 产出任务 ────────────────────────────────────────────────
-
-const ProducerTab: React.FC<{ tableId: number }> = ({ tableId }) => {
-  const { status, data } = useProbe<AssetProducerVO[]>(
-    () => assetCatalogApi.getTableProducers(tableId),
-    [tableId]
-  );
-
-  if (status === 'loading') return <TabLoading />;
-  if (status === 'unavailable')
-    return (
-      <TabUnavailable
-        apiPath={`/api/asset/table/${tableId}/producers`}
-        items={['写入该表的调度工作流与节点（服务端代理查询 DolphinScheduler，不落副本）', '负责人 / 调度周期 / 最近一次运行状态与时间']}
-      />
-    );
-  if (!data || data.length === 0) return <EmptyText text="该表暂无产出任务（可能由人工或非调度链路上游写入）。" />;
-
-  return (
-    <table className="ac-table">
-      <thead>
-        <tr>
-          <th>工作流</th>
-          <th>节点</th>
-          <th>负责人</th>
-          <th>调度周期</th>
-          <th>最近状态</th>
-          <th>最近运行</th>
-        </tr>
-      </thead>
-      <tbody>
-        {data.map(item => (
-          <tr key={`${item.workflowCode}-${item.nodeName}`}>
-            <td className="ac-table__strong">{item.workflowName}</td>
-            <td>{item.nodeName}</td>
-            <td>{item.ownerName || '-'}</td>
-            <td>{item.scheduleCycle || '-'}</td>
-            <td>{item.lastRunState || '-'}</td>
-            <td>{item.lastRunTime || '-'}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-};
-
 // ── 数据质量（跨模块读质量模块）────────────────────────────
 
 const QualityTab: React.FC<{ tableId: number }> = ({ tableId }) => {
@@ -223,7 +167,7 @@ const QualityTab: React.FC<{ tableId: number }> = ({ tableId }) => {
         {data.lastRunStatus ? ` · ${data.lastRunStatus}` : ''}
       </p>
       <p className="ac-muted">
-        规则的配置与校验明细在「数据质量」模块维护，此处只读汇总；阻断下游由质量校验任务作为调度节点实现。
+        规则的校验结果在此只读汇总；校验模板在「资产管理 → 规则模板」维护，阻断下游由质量校验任务作为调度节点实现。
       </p>
     </div>
   );
@@ -445,39 +389,9 @@ const PermissionTab: React.FC<{ detail: AssetTableDetailVO }> = ({ detail }) => 
   </div>
 );
 
-// ── 血缘（跳转，不重复实现）─────────────────────────────────
-
-const LineageTab: React.FC<{
-  detail: AssetTableDetailVO;
-  onNavigateToLineage?: (target: { namespace: string; datasetName: string }) => void;
-}> = ({ detail, onNavigateToLineage }) => (
-  <div className="ac-section ac-section--tight">
-    <p className="ac-muted">
-      血缘不在本面板重复实现：权威在 Marquez，数据血缘模块已有完整表级 / 字段级视图。
-      点击下方按钮按「库名 + 表名」定位到对应数据集。
-    </p>
-    <button
-      className="ac-btn"
-      type="button"
-      disabled={!detail.tableName}
-      onClick={() =>
-        onNavigateToLineage?.({ namespace: detail.databaseName ?? '', datasetName: detail.tableName })
-      }
-    >
-      <ExternalLink size={13} />
-      <span>打开数据血缘</span>
-    </button>
-  </div>
-);
-
 // ── 页签条 ──────────────────────────────────────────────────
 
-const AssetDetailTabs: React.FC<AssetDetailTabsProps> = ({
-  tableId,
-  detail,
-  overviewContent,
-  onNavigateToLineage,
-}) => {
+const AssetDetailTabs: React.FC<AssetDetailTabsProps> = ({ tableId, detail, overviewContent }) => {
   const [active, setActive] = useState<AssetDetailTabId>('overview');
 
   // 换表时回到概览：否则会带着 A 表的页签落到 B 表上
@@ -493,9 +407,6 @@ const AssetDetailTabs: React.FC<AssetDetailTabsProps> = ({
     case 'indicator':
       body = <IndicatorTab tableId={tableId} />;
       break;
-    case 'producer':
-      body = <ProducerTab tableId={tableId} />;
-      break;
     case 'quality':
       body = <QualityTab tableId={tableId} />;
       break;
@@ -507,9 +418,6 @@ const AssetDetailTabs: React.FC<AssetDetailTabsProps> = ({
       break;
     case 'permission':
       body = <PermissionTab detail={detail} />;
-      break;
-    case 'lineage':
-      body = <LineageTab detail={detail} onNavigateToLineage={onNavigateToLineage} />;
       break;
     default:
       body = null;

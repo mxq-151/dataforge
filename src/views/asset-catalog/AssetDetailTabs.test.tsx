@@ -7,14 +7,13 @@ import type { AssetTableDetailVO } from '../../api/assetCatalog';
 /**
  * 资产详情页签测试。
  *
- * 覆盖「页签 ↔ 接口」的接线本身：概览由宿主注入、指标 / 产出任务 / 数据质量 /
- * 使用记录 / 数据预览 / 使用说明各自探各自的口，读失败降级为「接口未接入 + 能力清单」。
- * 血缘页签不重复实现（只跳转），权限页签无独立端点（只读说明），两者不在此断言。
+ * 覆盖「页签 ↔ 接口」的接线本身：概览由宿主注入、指标 / 数据质量 / 数据预览 /
+ * 使用说明各自探各自的口，读失败降级为「接口未接入 + 能力清单」。
+ * 权限页签无独立端点（只读说明），不在此断言。
  */
 
 const h = vi.hoisted(() => {
   const state = {
-    producersFail: false,
     docContent: '初始说明',
     saved: null as { id: number; content: string } | null,
   };
@@ -26,10 +25,6 @@ const h = vi.hoisted(() => {
         { id: 11, code: 'IND_ORDER_AMT', name: '订单金额', topic: '交易', businessOwner: '张三', fieldName: 'amt' },
       ],
     })),
-    getTableProducers: vi.fn(async () => {
-      if (state.producersFail) throw new Error('调度系统不可达');
-      return { code: 200, data: [] };
-    }),
     getTableQuality: vi.fn(async () => ({
       code: 200,
       data: {
@@ -67,7 +62,6 @@ const h = vi.hoisted(() => {
 vi.mock('../../api/assetCatalog', () => ({
   assetCatalogApi: {
     getTableIndicators: (id: number) => h.api.getTableIndicators(id),
-    getTableProducers: (id: number) => h.api.getTableProducers(id),
     getTableQuality: (id: number) => h.api.getTableQuality(id),
     previewTable: (id: number, params: unknown) => h.api.previewTable(id, params),
     getTableDoc: (id: number) => h.api.getTableDoc(id),
@@ -102,7 +96,6 @@ const openTab = async (name: string) => {
 };
 
 beforeEach(() => {
-  h.state.producersFail = false;
   h.state.docContent = '初始说明';
   h.state.saved = null;
 });
@@ -121,16 +114,6 @@ describe('AssetDetailTabs 页签接线', () => {
     await waitFor(() => expect(screen.getByText('IND_ORDER_AMT')).toBeTruthy());
     expect(h.api.getTableIndicators).toHaveBeenCalledWith(1);
     expect(screen.getByText('订单金额')).toBeTruthy();
-  });
-
-  it('产出任务接口失败时降级为「接口未接入 + 能力清单」', async () => {
-    h.state.producersFail = true;
-    renderTabs();
-    await openTab('产出任务');
-
-    await waitFor(() =>
-      expect(screen.getByText(/服务端 \/api\/asset\/table\/1\/producers 尚未接入/)).toBeTruthy()
-    );
   });
 
   it('数据质量页签渲染规则数与未通过规则数', async () => {

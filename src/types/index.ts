@@ -15,7 +15,7 @@ export interface FileNode {
   path: string;
 }
 
-export type ActiveTab = 'devAssist' | 'dataExplore' | 'indicatorManagement' | 'knowledgeBase' | 'fileBrowser' | 'scheduleManagement' | 'dataLineage' | 'dataQuality' | 'assetCatalog' | 'systemManagement' | 'settings';
+export type ActiveTab = 'devAssist' | 'dataExplore' | 'indicatorManagement' | 'knowledgeBase' | 'fileBrowser' | 'scheduleManagement' | 'dataLineage' | 'assetCatalog' | 'systemManagement' | 'settings';
 
 /**
  * 一级菜单 TabId → 后端权限码 的映射。
@@ -33,7 +33,6 @@ export const MENU_CODE_MAP: Record<string, string> = {
   fileBrowser: 'file_browser',
   scheduleManagement: 'schedule_management',
   dataLineage: 'data_lineage',
-  dataQuality: 'data_quality',
   assetCatalog: 'asset_catalog',
   systemManagement: 'system_management',
   settings: 'settings',

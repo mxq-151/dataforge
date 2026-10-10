@@ -2,10 +2,11 @@
  * 资产管理面板（一级入口「资产目录」）
  *
  * ── 页签 ────────────────────────────────────────────────────
- * 两个模块级页签：
- * - 资产概况：盘子与成本（环境×项目规模、访问/空间 TOP100、资源/耗时 TOP50、
- *   任务延迟率、数据大小突增），见 AssetOverviewTab，默认落在本页签；
- * - 资产目录：找数认数（目录树 + 检索 + 表详情），本文件承载。
+ * 三个模块级页签（后一个由「数据质量」模块并入）：
+ * - 资产概况：盘子与成本（环境×项目规模 + 质量规则覆盖四个指标、访问/空间 TOP100、
+ *   资源/耗时 TOP50、任务延迟率、数据大小突增），见 AssetOverviewTab，默认落在本页签；
+ * - 资产目录：找数认数（目录树 + 检索 + 表详情），本文件承载；
+ * - 规则模板：内置/自定义校验 SQL 模板维护，见 TemplateTab（原数据质量模块）。
  *
  * ── 定位 ────────────────────────────────────────────────────
  * 资产目录是「人」侧的元数据调研入口，与智能体侧的元数据代理接口 /metadata/agent 对位。
@@ -15,7 +16,6 @@
  * ── 与数据探索的边界（刻意并存，不重复建设）──────────────────
  * - 数据探索：取数即席查询（我要查数、我要写 SQL）
  * - 资产目录：治理视角的浏览与检索（含负责人、分类、质量、使用热度）
- * - 血缘不重复实现：详情「血缘」页签跳数据血缘模块（Marquez 客户端）
  * - 库表树与表详情内容与数据探索共用同一组件（DBTableBrowser / TableDetailContent）
  *
  * ── 主区视图 ────────────────────────────────────────────────
@@ -23,13 +23,14 @@
  * - detail：选中一张表后的详情（概览 + 能力页签，见 AssetDetailTabs）
  * - search：提交检索后的结果列表（表 / 字段 / 指标三类，服务端已按权限过滤）
  *
- * ── 环境切换（模块级，两个页签共用）─────────────────────────
- * 页签条右侧是**模块级**环境切换器（生产 / 灰度 / 测试，默认生产），切换后本模块**全部内容**重新取数：
+ * ── 环境切换（模块级，资产概况与资产目录共用）───────────────
+ * 页签条右侧是**模块级**环境切换器（生产 / 灰度 / 测试，默认生产），切换后**资产概况与资产目录**重新取数：
  * - 资产概况：五块看板图表（含①的项目排行与占比环形图）；
  * - 资产目录：目录树、检索（表 / 字段 / 联想）、检索结果、治理项（资产盘点 / 治理项 / 标注缺口）。
  * 之所以做成模块级而非各页签一个：环境是「这一屏看的是哪一套数据」的全局前提，
  * 两个页签若各持一个状态，切页签时环境会悄悄变回默认值，用户很容易把「测试库的空结果」
  * 当成「没有数据」。切换器状态由本面板持有，`AssetOverviewTab` 是受控组件（只接 env、不持状态）。
+ * 「规则模板」与库表环境无关，展示该切换器时隐藏。
  * 环境作为查询参数下推服务端（由服务端按库名后缀解析，前端不自行猜测环境），
  * 因此越权表不会因为换环境而出现 —— 环境只缩小「看哪一套」，不改变权限边界。
  *
@@ -51,11 +52,11 @@ import {
   Table2,
   CircleAlert,
   Info,
-  Link2,
   Tag,
   Pencil,
   Library,
   LayoutDashboard,
+  ScrollText,
 } from 'lucide-react';
 import { assetCatalogApi, DEFAULT_ASSET_ENV } from '../../api/assetCatalog';
 import type {
@@ -77,25 +78,26 @@ import AssetEnvSwitch, { ASSET_ENV_COLOR, assetEnvLabel } from './AssetEnvSwitch
 import AssetOverviewTab from './AssetOverviewTab';
 import AssetDetailTabs from './AssetDetailTabs';
 import AssetGovernanceEditor from './AssetGovernanceEditor';
+import TemplateTab from '../data-quality/TemplateTab';
 import TableDetailContent from '../data-explore/TableDetailContent';
 import type { TableDetailData } from '../data-explore/TableDetailContent';
 import './AssetCatalogPanel.css';
 
-interface AssetCatalogPanelProps {
-  /** 跳转到数据血缘：与指标管理的既有联动范式一致（namespace=项目编码，datasetName=表名） */
-  onNavigateToLineage?: (target: { namespace: string; datasetName: string }) => void;
-}
-
 /**
- * 模块级页签：资产概况（盘子与成本）在前，资产目录（找数认数）在后。
+ * 模块级页签：资产概况（盘子与成本，含质量规则覆盖）、资产目录（找数认数）在前，
+ * 规则模板（由「数据质量」模块并入）追加在后。
  * 默认落在「资产概况」，作为进入资产管理的第一屏。
  */
-type AssetTabId = 'overview' | 'catalog';
+type AssetTabId = 'overview' | 'catalog' | 'template';
 
 const MODULE_TABS: Array<{ id: AssetTabId; label: string; icon: React.ReactNode }> = [
   { id: 'overview', label: '资产概况', icon: <LayoutDashboard size={14} /> },
   { id: 'catalog', label: '资产目录', icon: <Library size={14} /> },
+  { id: 'template', label: '规则模板', icon: <ScrollText size={14} /> },
 ];
+
+/** 环境维度只作用于「资产概况 / 资产目录」，规则模板与环境无关 */
+const ENV_SCOPED_TABS: AssetTabId[] = ['overview', 'catalog'];
 
 /** 右栏视图：详情 / 检索结果 */
 type MainView = 'detail' | 'search';
@@ -172,6 +174,74 @@ function hitToTableNode(hit: AssetSearchHit): CatalogTreeNode | null {
   };
 }
 
+/**
+ * 规范视角层级重排：服务端返回「数仓分层 → 业务域 → 表」，这里重排为
+ * 「数仓名称（业务域）→ 数仓分层 → 表」——先看是哪座数仓，再看它的各个分层。
+ * 只做结构重排与计数重算，表节点原样透传；若接口返回的结构不含「分层」节点（如只返回到表），
+ * 则原样保留，不强改。
+ */
+function regroupConventionTree(nodes: CatalogTreeNode[]): CatalogTreeNode[] {
+  if (!nodes.some(node => node.nodeKind === 'layer')) return nodes;
+
+  // 与后端 TableNameConventionParser.UNCLASSIFIED_LAYER 对齐：解析失败的表统一用这个占位码。
+  // 「未识别业务域」节点服务端会把 domainCode 置空，这里要补回占位码，否则下推筛选会命中 0 张表。
+  const unclassifiedCode = '__unclassified';
+
+  // 数仓名称（业务域）→ 分层 → 表
+  const domains = new Map<
+    string,
+    { label: string; layers: Map<string, { label: string; layerCode: string; tables: CatalogTreeNode[] }> }
+  >();
+  const passthrough: CatalogTreeNode[] = [];
+
+  for (const node of nodes) {
+    if (node.nodeKind !== 'layer') {
+      passthrough.push(node);
+      continue;
+    }
+    for (const domain of node.children ?? []) {
+      if (domain.nodeKind === 'table') continue;
+      const tables = (domain.children ?? []).filter(child => child.nodeKind === 'table');
+      const domainCode =
+        domain.domainCode ||
+        tables[0]?.domainCode ||
+        (domain.unclassified ? unclassifiedCode : domain.label);
+      let group = domains.get(domainCode);
+      if (!group) {
+        group = { label: domain.label, layers: new Map() };
+        domains.set(domainCode, group);
+      }
+      const layerCode =
+        node.layerCode || tables[0]?.layerCode || (node.unclassified ? unclassifiedCode : node.label);
+      const bucket = group.layers.get(layerCode) ?? { label: node.label, layerCode, tables: [] };
+      bucket.tables.push(...tables);
+      group.layers.set(layerCode, bucket);
+    }
+  }
+
+  const regrouped: CatalogTreeNode[] = [...domains.entries()].map(([domainCode, group]) => {
+    const layerNodes: CatalogTreeNode[] = [...group.layers.entries()].map(([layerCode, bucket]) => ({
+      key: `convention:${domainCode}:${layerCode}`,
+      label: bucket.label,
+      nodeKind: 'layer' as const,
+      layerCode,
+      domainCode,
+      assetCount: bucket.tables.length,
+      children: bucket.tables,
+    }));
+    return {
+      key: `convention:${domainCode}`,
+      label: group.label,
+      nodeKind: 'domain' as const,
+      domainCode,
+      assetCount: layerNodes.reduce((sum, layer) => sum + (layer.assetCount ?? 0), 0),
+      children: layerNodes,
+    };
+  });
+
+  return [...regrouped, ...passthrough];
+}
+
 const TreePlaceholder: React.FC<{ view: CatalogViewMode }> = ({ view }) => (
   <div className="ac-placeholder">
     <div className="ac-placeholder__head">
@@ -190,7 +260,7 @@ const TreePlaceholder: React.FC<{ view: CatalogViewMode }> = ({ view }) => (
         </>
       ) : (
         <>
-          <li>分层（ODS/DWD/DWS/ADS/DIM/DQC/TMP）→ 业务域 → 表</li>
+          <li>数仓名称（业务域）→ 分层（ODS/DWD/DWS/ADS/DIM/DQC/TMP）→ 表</li>
           <li>分层与业务域由表名规范解析，无需人工维护分类树</li>
           <li>解析失败的表归入「未分类」，并自动成为治理项</li>
         </>
@@ -403,18 +473,35 @@ const SearchResultPane: React.FC<{
 
 // ── 治理项（未选中表时的盘点看板）───────────────────────────
 
-const GovernanceSection: React.FC<{ env: AssetEnvCode }> = ({ env }) => {
+const GovernanceSection: React.FC<{
+  env: AssetEnvCode;
+  /** 选中「数仓名称」时收窄到该业务域（数仓名称即规范视角的业务域，不是调度项目编码） */
+  domainCode?: string;
+  /** 选中「分层」时收窄到该业务域下的该分层 */
+  layerCode?: string;
+  /** 选中层级的中文名，仅用于标题提示（未收窄时不传） */
+  scopeLabel?: string;
+}> = ({ env, domainCode, layerCode, scopeLabel }) => {
+  // 空值不塞进参数，保证「未收窄」时仍然是干净的 { env }（也便于测试断言）
+  const scope = useMemo(() => {
+    const params: { env: AssetEnvCode; domainCode?: string; layerCode?: string } = { env };
+    if (domainCode) params.domainCode = domainCode;
+    if (layerCode) params.layerCode = layerCode;
+    return params;
+  }, [env, domainCode, layerCode]);
+
+  // 盘点 / 治理项 / 标注缺口三块共用同一份收窄参数，选中树节点时一起重取，口径保持一致
   const overview = useProbe<AssetInventoryVO>(
-    () => assetCatalogApi.getInventoryOverview({ env }),
-    [env]
+    () => assetCatalogApi.getInventoryOverview(scope),
+    [scope]
   );
   const health = useProbe<AssetHealthIssueVO[]>(
-    () => assetCatalogApi.getInventoryHealth({ env }),
-    [env]
+    () => assetCatalogApi.getInventoryHealth(scope),
+    [scope]
   );
   const gaps = useProbe<AnnotationGapSummary>(
-    () => assetCatalogApi.getAnnotationGaps({ current: 1, size: 200, env }),
-    [env]
+    () => assetCatalogApi.getAnnotationGaps({ ...scope, current: 1, size: 200 }),
+    [scope]
   );
 
   return (
@@ -422,7 +509,9 @@ const GovernanceSection: React.FC<{ env: AssetEnvCode }> = ({ env }) => {
       <section className="ac-section">
         <h4 className="ac-section__title">
           <Library size={13} />
-          <span>资产盘点 · {assetEnvLabel(env)}</span>
+          <span>
+            资产盘点{scopeLabel ? ` · ${scopeLabel}` : ''} · {assetEnvLabel(env)}
+          </span>
         </h4>
         {overview.status === 'loading' && <div className="ac-loading">加载中…</div>}
         {overview.status === 'unavailable' && (
@@ -452,7 +541,8 @@ const GovernanceSection: React.FC<{ env: AssetEnvCode }> = ({ env }) => {
                 <span className="ac-detailstat__label">未分类表</span>
               </div>
             </div>
-            {(overview.data.byLayer ?? []).length > 0 && (
+            {/* 收窄到单个分层时该分布只剩一行、表数与占用空间必然等于上方汇总，属重复信息，不展示 */}
+            {(overview.data.byLayer ?? []).length > 1 && (
               <table className="ac-table">
                 <thead>
                   <tr>
@@ -595,7 +685,7 @@ const GovernanceSection: React.FC<{ env: AssetEnvCode }> = ({ env }) => {
 
 // ── 主面板 ──────────────────────────────────────────────────
 
-const AssetCatalogPanel: React.FC<AssetCatalogPanelProps> = ({ onNavigateToLineage }) => {
+const AssetCatalogPanel: React.FC = () => {
   const toast = useToast();
   const [activeTab, setActiveTab] = useState<AssetTabId>('overview');
   const [view, setView] = useState<CatalogViewMode>('engine');
@@ -603,7 +693,6 @@ const AssetCatalogPanel: React.FC<AssetCatalogPanelProps> = ({ onNavigateToLinea
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<CatalogTreeNode | null>(null);
-  const [usedNavigator, setUsedNavigator] = useState(false);
   const [tree, setTree] = useState<ProbeState<CatalogTreeNode[]>>({ status: 'loading', data: null });
   const [detail, setDetail] = useState<ProbeState<AssetTableDetailVO>>({ status: 'loading', data: null });
   const [detailReload, setDetailReload] = useState(0);
@@ -620,6 +709,21 @@ const AssetCatalogPanel: React.FC<AssetCatalogPanelProps> = ({ onNavigateToLinea
   const [env, setEnv] = useState<AssetEnvCode>(DEFAULT_ASSET_ENV);
 
   const selectedTableId = selected?.nodeKind === 'table' ? selected.tableMetadataId ?? null : null;
+
+  /**
+   * 盘点概况的收窄范围（规范视角下有效）：
+   * - 选中「数仓名称」（domain 节点）→ 按 domainCode 收窄到该业务域；
+   * - 选中「分层」（layer 节点）→ 再叠加 layerCode；
+   * - 其它情况（未选 / 引擎视角的库表节点）→ 不收窄，保持环境全量。
+   * 选中变化时下推服务端重取，四项盘点指标口径一致。
+   */
+  const inventoryScope = useMemo<{ domainCode?: string; layerCode?: string }>(() => {
+    if (selected?.nodeKind === 'domain') return { domainCode: selected.domainCode };
+    if (selected?.nodeKind === 'layer') {
+      return { domainCode: selected.domainCode, layerCode: selected.layerCode };
+    }
+    return {};
+  }, [selected]);
 
   /**
    * 详情聚合体 → 表详情统一形态。
@@ -660,7 +764,10 @@ const AssetCatalogPanel: React.FC<AssetCatalogPanelProps> = ({ onNavigateToLinea
     assetCatalogApi
       .getCatalogTree({ view, env })
       .then(res => {
-        if (!cancelled) setTree({ status: 'ok', data: res?.data ?? [] });
+        if (cancelled) return;
+        const raw = res?.data ?? [];
+        // 规范视角把服务端的「分层 → 业务域」重排为「数仓名称 → 分层」；引擎视角保持原样
+        setTree({ status: 'ok', data: view === 'convention' ? regroupConventionTree(raw) : raw });
       })
       .catch(() => {
         if (!cancelled) setTree({ status: 'unavailable', data: null });
@@ -677,6 +784,19 @@ const AssetCatalogPanel: React.FC<AssetCatalogPanelProps> = ({ onNavigateToLinea
    */
   const changeEnv = (next: AssetEnvCode) => {
     setEnv(next);
+    setSelected(null);
+    setExpanded(new Set());
+    setLifecycleForm(null);
+    setLifecycleError('');
+  };
+
+  /**
+   * 切换目录视角：两套树的节点 key 不同，旧选中项在新树里已不存在，
+   * 必须清掉，否则右栏会停在一个「当前树里并不存在」的节点上（盘点收窄也会跟着串味）。
+   */
+  const changeView = (next: CatalogViewMode) => {
+    if (next === view) return;
+    setView(next);
     setSelected(null);
     setExpanded(new Set());
     setLifecycleForm(null);
@@ -797,31 +917,6 @@ const AssetCatalogPanel: React.FC<AssetCatalogPanelProps> = ({ onNavigateToLinea
     }
   };
 
-  /** 血缘联动入口：详情页签与未选中态共用，避免两处重复渲染 */
-  const lineageAction = (
-    <div className="ac-actions">
-      <button
-        className="ac-btn"
-        type="button"
-        disabled={!selected}
-        onClick={() => {
-          if (!selected?.tableName) return;
-          setUsedNavigator(true);
-          onNavigateToLineage?.({
-            namespace: selected.databaseName ?? '',
-            datasetName: selected.tableName,
-          });
-        }}
-      >
-        <Link2 size={13} />
-        <span>查看数据血缘</span>
-      </button>
-      <span className="ac-muted">
-        {usedNavigator ? '已跳转到数据血缘。' : '血缘不在本面板重复实现，复用数据血缘模块。'}
-      </span>
-    </div>
-  );
-
   /** 概览页签内容：基础信息 + 生命周期 + 治理写操作（由 AssetGovernanceEditor 提供） */
   const overviewContent = detail.data ? (
     <>
@@ -881,15 +976,11 @@ const AssetCatalogPanel: React.FC<AssetCatalogPanelProps> = ({ onNavigateToLinea
           )}
 
           {detail.status === 'ok' && detail.data && (
-            <>
-              <AssetDetailTabs
-                tableId={detail.data.id}
-                detail={detail.data}
-                overviewContent={overviewContent}
-                onNavigateToLineage={onNavigateToLineage}
-              />
-              {lineageAction}
-            </>
+            <AssetDetailTabs
+              tableId={detail.data.id}
+              detail={detail.data}
+              overviewContent={overviewContent}
+            />
           )}
         </>
       );
@@ -900,19 +991,25 @@ const AssetCatalogPanel: React.FC<AssetCatalogPanelProps> = ({ onNavigateToLinea
           <Info size={14} />
           <span>
             从左侧目录树选择一张表，或在上方检索定位。选中后右栏提供概览（含负责人、分类、标签、生命周期）
-            与指标 / 产出任务 / 数据质量 / 使用记录 / 数据预览 / 使用说明 / 血缘等页签。
+            与指标 / 数据质量 / 数据预览 / 使用说明 / 权限等页签。
             目录树、检索与下方治理项均只统计「{assetEnvLabel(env)}」环境。
           </span>
         </div>
-        {lineageAction}
-        <GovernanceSection env={env} />
+        <GovernanceSection
+          env={env}
+          domainCode={inventoryScope.domainCode}
+          layerCode={inventoryScope.layerCode}
+          scopeLabel={
+            inventoryScope.domainCode || inventoryScope.layerCode ? selected?.label : undefined
+          }
+        />
       </>
     );
   })();
 
   return (
     <div className="ac-module">
-      {/* 页签条右侧是模块级环境切换器：两个页签共用，切它即切换两处全部内容 */}
+      {/* 页签条右侧是模块级环境切换器：仅作用于资产概况 / 资产目录，切它即切换这两处全部内容 */}
       <div className="ac-module__bar">
         <nav className="ac-module__tabs" role="tablist">
           {MODULE_TABS.map(t => (
@@ -929,15 +1026,21 @@ const AssetCatalogPanel: React.FC<AssetCatalogPanelProps> = ({ onNavigateToLinea
             </button>
           ))}
         </nav>
-        <AssetEnvSwitch
-          value={env}
-          onChange={changeEnv}
-          hint="两个页签共用"
-        />
+        {ENV_SCOPED_TABS.includes(activeTab) && (
+          <AssetEnvSwitch
+            value={env}
+            onChange={changeEnv}
+            hint="资产概况 / 资产目录共用"
+          />
+        )}
       </div>
 
       {activeTab === 'overview' ? (
         <AssetOverviewTab env={env} />
+      ) : activeTab === 'template' ? (
+        <div className="dq-panel__body">
+          <TemplateTab />
+        </div>
       ) : (
         <div className="ac-panel">
           {/* ── 左栏：搜索 + 视角 + 目录树 ── */}
@@ -983,7 +1086,7 @@ const AssetCatalogPanel: React.FC<AssetCatalogPanelProps> = ({ onNavigateToLinea
                 role="tab"
                 aria-selected={view === 'engine'}
                 className={`ac-viewbtn ${view === 'engine' ? 'ac-viewbtn--active' : ''}`}
-                onClick={() => setView('engine')}
+                onClick={() => changeView('engine')}
               >
                 <Database size={12} />
                 <span>引擎视角</span>
@@ -992,7 +1095,7 @@ const AssetCatalogPanel: React.FC<AssetCatalogPanelProps> = ({ onNavigateToLinea
                 role="tab"
                 aria-selected={view === 'convention'}
                 className={`ac-viewbtn ${view === 'convention' ? 'ac-viewbtn--active' : ''}`}
-                onClick={() => setView('convention')}
+                onClick={() => changeView('convention')}
               >
                 <Layers size={12} />
                 <span>规范视角</span>

@@ -1,5 +1,5 @@
 /**
- * 规则模板页签（数据质量 → 规则模板）
+ * 规则模板页签（资产管理 → 规则模板）
  *
  * ── 与「规则类型」的关系 ────────────────────────────────────
  * 内置模板即 types/quality 的 7 类规则类型，由平台预置、**只读**（服务端 assertCustom 拒绝修改内置模板）。
@@ -35,6 +35,7 @@ import { QUALITY_RULE_TYPES, getQualityRuleType } from '../../types/quality';
 import { fetchAllDataSources, fetchTablesByDataSourceId } from '../../api/datasource';
 import type { DataSource, TableInfo } from '../../api/datasource';
 import { useToast } from '../../components/Toast';
+import './DataQualityPanel.css';
 
 const PAGE_SIZE = 10;
 

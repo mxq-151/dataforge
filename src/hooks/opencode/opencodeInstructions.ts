@@ -137,7 +137,7 @@ const LAYERING_SPEC = `
 - DWS 汇总层：按主题域面向分析场景做轻度/高度汇总，宽表化并控制冗余
 - ADS 应用层：面向具体报表/接口/应用的结果数据，可被直接消费，对应 S1 的"数据输出方式"
 - DIM 维度层：统一维度主数据；缓慢变化维（SCD Type2）必须包含 start_date、end_date、is_current 三个字段
-- DQC 质量层：质量规则定义与稽核结果存储
+- DQC 质量层：数据质量校验程序（质检任务）的归属层；规则定义与校验结果不落数仓表，统一登记/回传平台
 - TMP 临时层：任务内中间结果，用完即弃
 - 依赖约束：严格自下而上单向依赖（ODS → DWD → DWS/DIM → ADS），禁止反向依赖、禁止同层循环依赖
 - 禁止跨层跳跃引用（DWS/ADS 不得直连 ODS），确有需要须经由 DWD
@@ -146,7 +146,7 @@ const LAYERING_SPEC = `
 /** 表名命名规范（S2 与 S3 共用） */
 const TABLE_NAMING_CONVENTIONS = `
 ## 表名命名规范
-- 库名和表按分层命名作为前缀（ods_/dws_/dwd_/ads_/dim_/dqc_）
+- 库名和表按分层命名作为前缀（ods_/dws_/dwd_/ads_/dim_）
 - 表名、库名一律使用小写字母与下划线，禁止使用大写字母或驼峰
 - 表名格式：{分层}_{业务域}_{实体描述}_{刷新周期}，如 dws_trade_order_d
 - 刷新周期后缀：见"刷新周期与时效口径"中的统一枚举（d/h/w/m/y/r/f）
@@ -459,7 +459,7 @@ ${DATABASE_ENV_SPEC}
 
 ## 文档与 DDL 命名规范
 - 设计文档输出到 docs 目录，文件名：{业务名称}_数仓设计.md，{业务名称} 须与需求文档一致
-- DDL 按数仓分层拆分文件输出到 ddls 目录，文件名：{分层}_ddl.sql，如 ods_ddl.sql、dwd_ddl.sql、dws_ddl.sql、ads_ddl.sql、dim_ddl.sql、dqc_ddl.sql
+- DDL 按数仓分层拆分文件输出到 ddls 目录，文件名：{分层}_ddl.sql，如 ods_ddl.sql、dwd_ddl.sql、dws_ddl.sql、ads_ddl.sql、dim_ddl.sql
 - 同一文件内的多张表用注释分隔，并注明"库名.表名"
 - 目标文件已存在时增量追加，不得覆盖已有内容
 
@@ -705,7 +705,8 @@ ${QUALITY_TEMPLATE_TOOL_SPEC}
 - 登记失败（平台不可达、规则未通过平台校验等）不阻塞开发：捕获异常、记录日志后继续实现，回传时 ruleId 留空由平台按规则名反查兜底，但必须在交付汇报里列出未登记成功的规则
 
 ## 质检结果回传规范（强约束）
-校验任务除了算出结果，还必须把每条规则的校验结果回传平台——平台的校验结果留痕（质量大盘与"行数波动 / 行数环比"的基线）全部依赖这份回传，只落自己的结果表等于平台看不到校验：
+校验任务除了算出结果，还必须把每条规则的校验结果回传平台——平台的校验结果留痕（质量大盘与"行数波动 / 行数环比"的基线）全部依赖这份回传：
+- 规则定义与校验结果**只**通过平台登记/回传（规则登记 /api/quality/rule/register、结果回传 /api/quality/run/report）；**禁止在数仓内建质量规则表或质量结果表**，DQC 层只承载质检程序本身
 - 接口：POST {平台地址}/api/quality/run/report，Content-Type: application/json，每条规则回传一次
 - 平台地址与访问令牌由运行环境注入，程序读取环境变量 DATAFORGE_QUALITY_REPORT_URL 与 DATAFORGE_QUALITY_REPORT_TOKEN；禁止把地址、令牌、账号硬编码进代码或代码头
 - 回传字段（字段名逐字使用，不得改写、不得另起同义名）：

@@ -3,11 +3,12 @@
  *
  * ── 路径约定 ────────────────────────────────────────────────
  * 服务端 context-path 为 /api，控制器声明不含 /api 前缀，因此这里统一写 /api/quality/...。
- * 既有结果接口 /api/quality/check-result/* 保留兼容，新链路走 /api/quality/rule|template/*。
+ * 规则/模板走 /api/quality/rule|template/*，结果留痕走 /api/quality/run/report。
  *
  * ── 已移除的链路 ────────────────────────────────────────────
  * 质检任务（/quality/task*）、运行记录（/quality/run 的查询接口）与告警订阅（/quality/alert*）
  * 已随「质检任务 / 运行记录 / 告警订阅」三个页签一并删除，前端不再有对应调用。
+ * 历史结果表接口 /quality/check-result/*（data_quality_check_result）已被 dq_rule_result 取代，一并移除。
  *
  * 结果回传（POST /quality/run/report）**保留**：它不是页签功能，而是 S3 侧校验程序写
  * 「结果留痕」（dq_rule_result）的唯一入口；路径沿用历史值，以免已部署环境的
@@ -164,8 +165,8 @@ export const qualityApi = {
    * 规则名退化为展示字段——改名不再断开链路。判定键是「规则名 + 库 + 表」，
    * 与 `/quality/run/report` 的服务端反查口径一致；已登记则原样返回既有记录（不覆盖）。
    *
-   * 界面侧的批量导入（RuleTab）仍走 `createRule` / `batchCreateRulesByTemplate`：
-   * 那两条面向「人工确认后落库」，语义是新建而非登记。
+   * 面向「人工确认后落库」的规则维护仍走 `createRule` / `batchCreateRulesByTemplate`：
+   * 那两条语义是新建而非登记。
    */
   async registerRule(data: QualityRuleSaveDTO): Promise<ApiResponse<QualityRuleRegisterVO>> {
     return request<ApiResponse<QualityRuleRegisterVO>>(`${BASE}/rule/register`, {
