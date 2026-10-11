@@ -4,7 +4,9 @@
 
 ## 命令与环境
 - vitest/tsc/vite 一律 `env -u NODE_OPTIONS`（否则 jsdom 导入 0.5s→96s）。
-- **git 写操作不在本 agent shell 跑**（报成功却不落地），只读安全。`dataforge`/`dataforge-server` 两仓库。
+- **git 写操作「报成功却不落地」已不成立**（2026-10-12 实测：tag 建删、`branch -f`、`checkout -B`、`push --force-with-lease` 到 Gitee 全部真实生效）。动手前用临时 tag 建删+读回现场判定，别默认放弃执行。`dataforge`/`dataforge-server` 两仓库（远端 Gitee `mxq-151`，分支分别 master/main）。
+- **本 agent shell 起不了这个 Electron 应用**：shell 有 OS 级沙箱 ⇒ Electron `sandbox initialization failed` + GPU 进程崩溃到 `GPU process isn't usable` + SIGTRAP，sidecar 的 `sandbox-exec` 也被拒；`dangerouslyDisableSandbox` **同样无效**。另 `ELECTRON_RUN_AS_NODE=1` 被注入（须 `env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS`，否则 electron 以 Node 模式跑并报 `whenReady` undefined）。⇒ **桌面端「真实运行验证」只能请用户做**；想让用户带调试端口起：开关必须在 app 路径**之后**（`electron . --remote-debugging-port=9222`）。
+- **渲染进程日志不落盘**：`console.log` 只进 DevTools 与界面日志面板；`main.log` 仅有 sidecar（`[agent-log]`，UTC 时间戳）与主进程日志。要渲染进程证据得挂临时探针写盘（见 `src/dev/diagStream.ts` 模式，输出 `/tmp/dataforge-renderer.log`）。
 - 同一文件多处编辑**串行**（并行 Edit 互相抹掉）；查并发写者 `find src -mmin -8`。
 - macOS：`grep "a\|b"` 静默失败→用 `grep -E`；zsh `--include` 报 no matches→用 Grep 工具。
 - 回归基线（2026-10-11）：前端 **71 文件/1155 例**；后端关心类 **118 例全过**；load 7~10 时 `waitFor` 超时属误报。
@@ -27,6 +29,8 @@
 - **x6 画布在 jsdom 下不可渲染**：只 mock `../dag/DagCanvas`；含 `useToast` 须包 `ToastProvider`。
 - 提示词类 UI 不用原生 `title`（延迟 0.5~1s）→ 零延迟自定义 tooltip（面板内 `position:fixed`）。流式文本逐字增长不进 `messages`（走 ref + `subscribePartText`）。
 - 开发助手切任务类型**不新建会话**；**数据探索例外**——`newSession()` 同时承担「新建时间戳工作目录」。
+- **数据探索「会话=独立工作目录」的目录不可被自动启动改写**（2026-10-12 定因）：`App.tsx` 两个 slot 的自动启动 effect（`if (!connected && !starting) start()`）会在 `setWorkingDirectory` 的瞬时 `connected=false` 窗口触发，而无 cwd 的 `start()` 目标是模块**基础目录** ⇒ 覆盖会话目录、SSE 事件被目录过滤全丢（症状：回复不上屏，切走再切回才看到）。两条不变量：① `start()` 无 cwd 且已连接 ⇒ 空操作（含 `connected` 判断，别挡住崩溃后重连）；② 目录切换全程持有 `starting` 闸门（`beginStartBusy()` 计数），且必须在 `doDisconnect()` **之前**同步置位，让 `connected=false` 与 `starting=true` 同批提交。
+- **该模块的回归测试必须把 `start()` 放在 `await setWorkingDirectory()` 之后**：实测抢跑发生在切换**完成之后** ~13ms，并发调用的写法落在闸门有效窗口内，会「测试通过但真实链路照样坏」（b8b2ee5 就是这么误判的）。
 - **改一级菜单三连锁**：① `ActiveTab`/`MENU_CODE_MAP`/`App.tsx::FIRST_LEVEL_TAB_IDS` 同批改；② `FIRST_LEVEL_MENU_CODES` 由 MENU_CODE_MAP 派生；③ 菜单种子**只在 `sql/testdata/*.sql`**。
 - **单文件提交调度 = 依赖只增不删**：任务已存在 → 只更新节点内容、依赖边不动不重排；新增节点 → 原有边全保留，仅按 `@依赖` **补齐**（前置复用/补建 `前置依赖_{任务名}`，按 `projectCode|definitionCode|depTaskCode` 去重）。实现 `addMissingWorkflowDependencies()`（`utils/schedulerMapping.ts`），**不是** `reconcileWorkflowDependencies`（丢 target 入边 + 清孤儿 DEPENDENT，只给文件夹链路）。环校验只在「本轮真加了边」时跑。别再引入「扫全部本地代码后重建」的单文件路径。
 

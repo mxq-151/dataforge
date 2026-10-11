@@ -281,6 +281,30 @@ function useOpencodeClientImpl(
   // 用 ref 而非 state：state 异步生效，ref 立即同步。
   const startingRef = useRef(false);
 
+  // ── 连接建立 / 工作目录切换 共用闸门 ──
+  // App 层两个 slot（DevAssistantClientSlot / DataExploreClientSlot）都有「自动启动连接」
+  // 的 effect：`if (!backend.connected && !backend.starting) start()`。
+  // 而 setWorkingDirectory（数据探索切会话）内部必须先 doDisconnect（connected 瞬时 false）
+  // 再重建连接 —— 这个窗口正是该 effect 的触发条件。用计数而非布尔，是因为 start() 与
+  // setWorkingDirectory() 可能交错，最后一个结束才放开闸门；提前放开就会让那个 effect
+  // 抢跑 start()（不带 cwd ⇒ 目标是模块基础目录），把刚切到的会话目录覆盖掉。
+  const startBusyDepthRef = useRef(0);
+  const beginStartBusy = useCallback((): (() => void) => {
+    startBusyDepthRef.current += 1;
+    startingRef.current = true;
+    setStarting(true);
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      startBusyDepthRef.current = Math.max(0, startBusyDepthRef.current - 1);
+      if (startBusyDepthRef.current === 0) {
+        startingRef.current = false;
+        setStarting(false);
+      }
+    };
+  }, []);
+
   // ── 当前激活的 LLM 模型（运行时切换，覆盖服务端默认配置） ──
   const [activeLLMModel, setActiveLLMModelState] = useState<{ providerID: string; modelID: string } | null>(null);
   // ── 任务类型（覆盖 roleType，决定系统指令） ──
@@ -737,12 +761,6 @@ function useOpencodeClientImpl(
   // 跟踪是否正在取消订阅
   const unsubscribeRef = useRef<(() => void) | null>(null);
 
-  // 用 ref 跟踪当前工作目录，供 subscribe 使用
-  const directoryRef = useRef<string | null>(currentDirectory);
-  useEffect(() => {
-    directoryRef.current = currentDirectory;
-  }, [currentDirectory]);
-
   // ── 客户端连接管理 ──
 
   /** 断开当前客户端连接 */
@@ -814,18 +832,24 @@ function useOpencodeClientImpl(
     }
   }, [backend, addLog]);
 
-  // 连接成功后自动订阅事件
+  // 连接成功后自动订阅事件。
+  //
+  // 依赖必须同时包含「客户端实例」与「工作目录」，不能只看 connected：
+  // - 数据探索是「会话 = 独立工作目录」，切会话会重建客户端并换目录。若 setConnected(false)
+  //   与其后的 setConnected(true) 被 React 合并进同一次提交（connected 前后都是 true），
+  //   只依赖 connected 的 effect 不会重跑；而切换逻辑已先 abort 旧订阅 ⇒ 旧订阅已断、
+  //   新订阅没建，本模块从此收不到任何 SSE 事件。
+  // - 订阅目录必须与「事件目录」严格相等（useOpencodeEvents 按目录过滤，不相等即整条丢弃），
+  //   所以这里用 currentDirectory 而非 ref 快照，确保订阅与最新目录在同一次提交里生效。
   useEffect(() => {
-    if (connected && clientRef.current) {
-      unsubscribeRef.current?.();
-      unsubscribeRef.current = subscribe(clientRef.current, directoryRef.current);
-    }
+    if (!connected || !client) return;
+    unsubscribeRef.current?.();
+    unsubscribeRef.current = subscribe(client, currentDirectory);
     return () => {
       unsubscribeRef.current?.();
       unsubscribeRef.current = null;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connected, subscribe]);
+  }, [connected, client, currentDirectory, subscribe]);
 
   // ── 监听 sidecar 进程崩溃事件 ──
   // 后端在 sidecar 运行中退出（崩溃/被杀）时通过主进程事件通知前端。
@@ -898,14 +922,30 @@ function useOpencodeClientImpl(
   const start = useCallback(async (cwd?: string) => {
     const dir = cwd ?? directory ?? null;
 
+    // ── 语义守卫：无 cwd 的 start() 只表示「确保已连接」，不得改写已确定的目录 ──
+    // App 层自动启动 effect 调用的正是无 cwd 的 start()（见 beginStartBusy 注释）。
+    // 若此时已有存活客户端，说明已经连上了某个目录 —— 直接返回。
+    // 否则会把数据探索刚切到的会话目录（individual/{ts}）覆盖回模块基础目录
+    // （individual/）。而该会话的 SSE 事件是发往会话目录的，前端按「事件目录 == 订阅
+    // 目录」过滤（useOpencodeEvents.ts；子代理会话共享父目录，故不能改按 sessionID 过滤）
+    // ⇒ 事件被整条丢弃：用户消息有本地回显、智能体回复永不上屏，切到别的会话再切回来
+    // （loadSession 直读服务端）才看得到。
+    // 实测（2026-10-12 00:35 渲染进程日志）：会话目录连接完成仅 13ms 后，基础目录的
+    // 客户端就把它覆盖掉了。
+    // 条件必须含 connected：sidecar 崩溃时 connected=false 但 clientRef 仍在，那种情况
+    // 需要走正常流程重连，不能被这里挡掉。
+    if (!cwd && clientRef.current && connected) {
+      console.log('[agent-client] start() 跳过：已连接且未指定目录，保持不变:', currentDirectory);
+      return;
+    }
+
     // 幂等锁：必须在任何 await 之前设置，否则 StrictMode 双挂载的第二次 effect
     // 会在第一次 await 期间通过检查并发调用 start()。
     // 用 ref 而非 state：ref 赋值同步立即生效，state 异步批处理来不及更新。
     if (startingRef.current) {
       return;
     }
-    startingRef.current = true;
-    setStarting(true);
+    const releaseStartBusy = beginStartBusy();
 
     try {
       // 先确保服务进程已启动（使用返回值避免闭包中的旧 serverReady 快照）
@@ -936,10 +976,9 @@ function useOpencodeClientImpl(
       setError(msg);
       addLog({ source: 'stderr', text: msg, timestamp: new Date(), level: 'error' });
     } finally {
-      startingRef.current = false;
-      setStarting(false);
+      releaseStartBusy();
     }
-  }, [backend, directory, connected, currentDirectory, doDisconnect, resetState, clearCurrentSession, connectWithDirectory]);
+  }, [backend, directory, connected, currentDirectory, doDisconnect, resetState, clearCurrentSession, connectWithDirectory, beginStartBusy]);
 
   /**
    * 切换 OpenCode 工作目录（重建客户端连接）。
@@ -960,20 +999,36 @@ function useOpencodeClientImpl(
       return;
     }
 
-    // 断开旧连接，重建客户端
-    unsubscribeRef.current?.();
-    unsubscribeRef.current = null;
-    resetState();
-    clearCurrentSession();
-    doDisconnect();
+    // ── 切换全程持有「连接建立中」闸门 ──
+    // 下面的 doDisconnect() 会把 connected 瞬时置为 false。若不同时把 starting 置为 true，
+    // App 层「进入 tab 自动启动连接」的 effect（if (!connected && !starting) start()）就会
+    // 在这个窗口抢跑：它调用的 start() 不带 cwd ⇒ 目标是模块基础目录 individual/，与本次
+    // 要切到的会话目录 individual/{ts} 互相覆盖，谁后完成谁生效。基础目录一旦胜出，该会话
+    // 的 SSE 事件被目录过滤全部丢弃 ⇒ 智能体回复不上屏（详见 start() 里的语义守卫注释）。
+    // 关键：必须在 doDisconnect 之前同步置位，使 connected=false 与 starting=true 落在
+    // 同一次提交里 —— 否则那个 effect 闭包里读到的 starting 仍是 false，照样抢跑。
+    const releaseStartBusy = beginStartBusy();
+    console.log('[agent-client] 切换工作目录开始:', currentDirectory, '→', newCwd);
 
-    // 确保服务可用
-    if (!backend.serverReady) {
-      await backend.start();
+    try {
+      // 断开旧连接，重建客户端
+      unsubscribeRef.current?.();
+      unsubscribeRef.current = null;
+      resetState();
+      clearCurrentSession();
+      doDisconnect();
+
+      // 确保服务可用
+      if (!backend.serverReady) {
+        await backend.start();
+      }
+
+      await connectWithDirectory(newCwd);
+      console.log('[agent-client] 切换工作目录完成:', newCwd);
+    } finally {
+      releaseStartBusy();
     }
-
-    await connectWithDirectory(newCwd);
-  }, [currentDirectory, addLog, resetState, clearCurrentSession, doDisconnect, backend, connectWithDirectory]);
+  }, [currentDirectory, addLog, resetState, clearCurrentSession, doDisconnect, backend, connectWithDirectory, beginStartBusy]);
 
   // 包装 chat 方法，自动传入 client
   const sendMessage = useCallback(async (line: string) => {

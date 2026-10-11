@@ -6,6 +6,10 @@ import { loader } from "@monaco-editor/react";
 import { ensureVscodeApiStarted } from "./services/lsp/bootstrapVscode";
 import { registerAllTextmateLanguages } from "./services/textmate";
 import { startPeriodicReporting } from "./api/report";
+import { installDiagStream } from "./dev/diagStream";
+
+// 临时诊断：把渲染进程关键日志落盘（排查「数据探索回复不上屏」用，排查完删除本行与本文件）
+installDiagStream();
 
 // 使用「真正的 VS Code 编辑器」(@codingame/monaco-vscode-editor-api) 作为 Monaco 实例，
 // 而不是自带一份轻量 monaco。这与 VS Code 完全一致，也是 monaco-languageclient
