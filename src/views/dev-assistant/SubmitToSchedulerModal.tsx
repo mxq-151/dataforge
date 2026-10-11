@@ -3,10 +3,10 @@ import { X, Send, Loader2, FolderKanban, GitBranch, CheckCircle, AlertTriangle, 
 import type { DolphinSchedulerApi, DSProject, DSWorkflowDefinition, DSTaskType, DSDataSource, DSWorkerGroup, DSEnvironment, DSWorkflowTaskNode } from '../../types/dolphinscheduler';
 import { TASK_TYPE_LABELS, ReleaseState, Priority, parseReleaseState } from '../../types/dolphinscheduler';
 import type { CodeFileMapping, SavedConfig, ValidationError } from '../../utils/schedulerMapping';
-import { buildWorkflowFromCodeFile, validateSubmission, getAvailableTaskTypes, mapCodeFileToTask, sanitizeDsName, validateYarnJobName, buildDependentTaskNode, parseDependencyHeader, reconcileWorkflowDependencies, findDependencyCycle, dependentNodeName, layoutWorkflowByDependency, type ResolvedDependency, type HeaderDependency } from '../../utils/schedulerMapping';
+import { buildWorkflowFromCodeFile, validateSubmission, getAvailableTaskTypes, mapCodeFileToTask, sanitizeDsName, validateYarnJobName, buildDependentTaskNode, addMissingWorkflowDependencies, findDependencyCycle, dependentNodeName, layoutWorkflowByDependency, type ResolvedDependency, type HeaderDependency } from '../../utils/schedulerMapping';
 import { type CompileResult } from '../../services/compileService';
 import { unifiedCompile } from '../../services/unifiedCompile';
-import { validateFileHeader, parseFileHeader } from '../../utils/fileHeader';
+import { validateFileHeader } from '../../utils/fileHeader';
 import { splitPath, getBaseName } from '../../utils/pathUtils';
 import { useToast } from '../../components/Toast';
 import DeployEnvRadio from './DeployEnvRadio';
@@ -949,55 +949,6 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
     [dsApi, selectedProjectCode, projects, buildProjectTaskIndex],
   );
 
-  /**
-   * 递归扫描本地项目目录下全部代码文件的代码头 @依赖 声明，
-   * 返回 sanitizeDsName(任务名) -> 依赖声明列表。本地文件是依赖关系的唯一事实来源，
-   * 供提交时与工作流全量节点/边对比后整体重建依赖关系（任务逐个提交也能得到正确的全局依赖图）。
-   */
-  const scanLocalHeaderDependencies = useCallback(
-    async (): Promise<Map<string, HeaderDependency[]>> => {
-      const result = new Map<string, HeaderDependency[]>();
-      if (!rootPath) return result;
-      try {
-        const { readDir, readFile } = await import('../../bridge/fs');
-        const CODE_EXTS = new Set(['sql', 'hql', 'py', 'sh', 'bash', 'java', 'scala']);
-        const walk = async (dir: string, depth: number): Promise<void> => {
-          if (depth > 10) return;
-          let entries;
-          try {
-            entries = await readDir(dir);
-          } catch {
-            return;
-          }
-          for (const entry of entries) {
-            const child = dir.endsWith('/') ? `${dir}${entry.name}` : `${dir}/${entry.name}`;
-            if (entry.isDirectory) {
-              // 跳过隐藏目录（.git 等）与构建产物目录
-              if (entry.name.startsWith('.') || ['node_modules', 'target', 'dist', 'build'].includes(entry.name)) continue;
-              await walk(child, depth + 1);
-            } else if (entry.isFile) {
-              const ext = entry.name.includes('.') ? (entry.name.split('.').pop() || '').toLowerCase() : '';
-              if (!CODE_EXTS.has(ext)) continue;
-              try {
-                const bytes = await readFile(child);
-                const text = new TextDecoder('utf-8').decode(bytes);
-                const header = parseFileHeader(text);
-                const deps = parseDependencyHeader(header?.dependency);
-                const taskName = sanitizeDsName(entry.name.replace(/\.[^.]+$/, ''));
-                if (taskName && !result.has(taskName)) result.set(taskName, deps);
-              } catch { /* 跳过不可读文件 */ }
-            }
-          }
-        };
-        await walk(rootPath, 0);
-      } catch (e) {
-        console.warn('[SubmitToSchedulerModal] 本地代码头依赖扫描失败，仅按当前文件重建:', e);
-      }
-      return result;
-    },
-    [rootPath],
-  );
-
   useEffect(() => {
     if (workflowCheckTimerRef.current) {
       clearTimeout(workflowCheckTimerRef.current);
@@ -1471,44 +1422,48 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
             ? taskNodes.map((n, i) => (i === existingIndex ? newNode : n))
             : [...taskNodes, newNode];
 
-          // ====== 依赖关系重建 ======
-          // 任务是一个个提交的、没有全局视角：每次提交拉取工作流全量节点与依赖边，
-          // 与本地文件代码头 @依赖 对比后整体重建，确保 A->B、C->D 不会被串成 A->B->C->D，
-          // 且各任务的跨工作流前置依赖使用专属 DEPENDENT 节点（前置依赖_{任务名}）互不覆盖
-          const localHeaderDeps = await scanLocalHeaderDependencies();
-          // 本次提交文件以编辑器实时内容为准（磁盘内容可能未保存）
-          localHeaderDeps.set(sanitizedTaskName, currentMapping?.headerDependencies || []);
+          // ====== 依赖关系：只增不删 ======
+          // 单个文件提交调度时不得改动工作流已有的依赖关系：
+          // - 本次任务在工作流中**已存在**（existingIndex >= 0）：只更新该节点自身内容，依赖边一律原样保留；
+          // - 本次任务为**新增节点**（existingIndex < 0）：工作流全部原有依赖边照旧，仅按代码头 @依赖
+          //   补上尚不存在的依赖边（同工作流前置任务直接连边；跨工作流前置任务补专属 DEPENDENT 节点
+          //   「前置依赖_{任务名}」）。
+          let updatedNodes = nodesAfterMain;
+          let updatedEdges = edges;
 
-          const resolvedLabels = new Map<string, ResolvedDependency>();
-          resolvedDeps.forEach(r => resolvedLabels.set(r.label, r));
+          if (existingIndex < 0) {
+            const resolvedLabels = new Map<string, ResolvedDependency>();
+            resolvedDeps.forEach(r => resolvedLabels.set(r.label, r));
 
-          const recon = await reconcileWorkflowDependencies({
-            nodes: nodesAfterMain,
-            edges,
-            localHeaderDeps,
-            mainTaskName: sanitizedTaskName,
-            resolvedLabels,
-            resolveExternalDeps,
-            allocateCode: () => nextCode++,
-            nextSlot,
-          });
-          if (recon.warnings.length > 0) {
-            recon.warnings.forEach(w => console.warn('[SubmitToSchedulerModal] 依赖重建:', w));
+            const added = await addMissingWorkflowDependencies({
+              nodes: nodesAfterMain,
+              edges,
+              mainTaskName: sanitizedTaskName,
+              declaredDeps: currentMapping?.headerDependencies || [],
+              resolvedLabels,
+              resolveExternalDeps,
+              allocateCode: () => nextCode++,
+              nextSlot,
+            });
+            if (added.warnings.length > 0) {
+              added.warnings.forEach(w => console.warn('[SubmitToSchedulerModal] 依赖新增:', w));
+            }
+            updatedNodes = added.nodes;
+            updatedEdges = added.edges;
+
+            if (added.addedEdges.length > 0) {
+              console.log('[SubmitToSchedulerModal] 新增依赖:', added.addedEdges);
+              // 仅在本轮确实新增了边时校验无环，避免代码头声明了循环依赖导致整次更新失败
+              const cycle = findDependencyCycle(updatedNodes, updatedEdges);
+              if (cycle) {
+                throw new Error(`新增的依赖关系存在环（${cycle.join(' -> ')}），请检查代码头 @依赖 声明`);
+              }
+            }
+
+            // 仅在本次确实新增了节点时才做分层布局（前置节点总在依赖节点左侧、拉开过近/重叠节点）；
+            // 已有任务只用新自身内容时图结构未变，不重排全图坐标，避免连带改动其他节点
+            layoutWorkflowByDependency(updatedNodes, updatedEdges);
           }
-          console.log('[SubmitToSchedulerModal] 依赖重建摘要:', recon.rebuilt);
-
-          // 重建后校验依赖图无环，避免代码头声明了循环依赖导致整次更新失败
-          const cycle = findDependencyCycle(recon.nodes, recon.edges);
-          if (cycle) {
-            throw new Error(`重建后的依赖关系存在环（${cycle.join(' -> ')}），请检查代码头 @依赖 声明`);
-          }
-
-          const updatedNodes = recon.nodes;
-          const updatedEdges = recon.edges;
-
-          // 提交前按依赖关系分层布局：前置节点（含 DEPENDENT 前置依赖节点）总在依赖节点左侧，
-          // 数据流自左向右，并自动拉开历史遗留的过近/重叠节点
-          layoutWorkflowByDependency(updatedNodes, updatedEdges);
 
           await dsApi.workflowDefinition.update(selectedProjectCode, selectedWorkflowCode, {
             name: workflowDefinition.name,
@@ -1611,7 +1566,7 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
     deployEnv, fileName, codeContent,
     canSubmitSchedule, canSubmitProd,
     currentMapping, scanHeaderDependencyTasks, persistRememberNow,
-    resolveExternalDeps, scanLocalHeaderDependencies,
+    resolveExternalDeps,
   ]);
 
   if (!visible) return null;
@@ -1809,7 +1764,7 @@ const SubmitToSchedulerModal: React.FC<SubmitToSchedulerModalProps> = ({
                     ))}
                   </div>
                   <div className="submit-scheduler__deps-hint">
-                    提交时将根据代码头 @依赖 创建前置依赖任务，等待以上任务完成后运行
+                    提交新增任务时按代码头 @依赖 补齐前置依赖（不修改工作流已有依赖关系），等待以上任务完成后运行
                   </div>
                 </div>
               )}

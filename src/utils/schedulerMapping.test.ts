@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildJarsArg, mapCodeFileToTask, type SavedConfig, reconcileWorkflowDependencies, findDependencyCycle, dependentNodeName, layoutWorkflowByDependency, GRID_START_X, GRID_START_Y, GRID_GAP_X, GRID_GAP_Y, type HeaderDependency } from './schedulerMapping';
+import { buildJarsArg, mapCodeFileToTask, type SavedConfig, reconcileWorkflowDependencies, addMissingWorkflowDependencies, buildDependentTaskNode, findDependencyCycle, dependentNodeName, layoutWorkflowByDependency, GRID_START_X, GRID_START_Y, GRID_GAP_X, GRID_GAP_Y, type HeaderDependency } from './schedulerMapping';
 import type { DSWorkflowTaskNode, DSWorkflowEdge } from '../types/dolphinscheduler';
 
 function mkNode(code: number, name: string, taskType = 'SPARK'): DSWorkflowTaskNode {
@@ -506,5 +506,116 @@ describe('mapCodeFileToTask — @程序参数 落到节点「主参数」', () =
     const mapping = mapCodeFileToTask('a.sql', sql);
     expect(mapping.taskType).toBe('SQL');
     expect('mainArgs' in mapping.taskParams).toBe(false);
+  });
+});
+
+/**
+ * 单文件提交调度的依赖语义：**只增不删**。
+ * 工作流既有的节点与依赖边全部原样保留，仅补上本次任务代码头 @依赖 声明且尚不存在的依赖。
+ */
+describe('addMissingWorkflowDependencies — 单文件提交只增不删', () => {
+  const alloc = () => { let c = 100; return () => c++; };
+
+  it('保留工作流全部原有边（含与本任务无关的边与旧入边），仅补缺失的声明依赖', async () => {
+    const nodes = [mkNode(1, 'A'), mkNode(2, 'B'), mkNode(3, 'C'), mkNode(4, 'D')];
+    // A->B 与本次无关；C->D 是 D 的旧入边（与代码头声明不一致）——两者都必须保留
+    const edges = [edge(1, 2), edge(3, 4)];
+
+    const res = await addMissingWorkflowDependencies({
+      nodes, edges, mainTaskName: 'D',
+      declaredDeps: mkLocalDeps({ D: 'A' }).get('D')!,
+      resolvedLabels: new Map(), resolveExternalDeps: mkResolver(new Map()),
+      allocateCode: alloc(), nextSlot: () => ({ x: 0, y: 0 }),
+    });
+
+    expect(res.edges).toContainEqual(edge(1, 2));
+    expect(res.edges).toContainEqual(edge(3, 4));
+    expect(res.edges).toContainEqual(edge(1, 4));
+    expect(res.addedEdges).toEqual([{ source: 'A', target: 'D' }]);
+    expect(res.warnings).toEqual([]);
+    expect(res.nodes.map(n => n.code)).toEqual([1, 2, 3, 4]);
+  });
+
+  it('声明的前置依赖边已存在时不重复添加', async () => {
+    const res = await addMissingWorkflowDependencies({
+      nodes: [mkNode(1, 'A'), mkNode(4, 'D')], edges: [edge(1, 4)], mainTaskName: 'D',
+      declaredDeps: mkLocalDeps({ D: 'A' }).get('D')!,
+      resolvedLabels: new Map(), resolveExternalDeps: mkResolver(new Map()),
+      allocateCode: alloc(), nextSlot: () => ({ x: 0, y: 0 }),
+    });
+
+    expect(res.edges).toEqual([edge(1, 4)]);
+    expect(res.addedEdges).toEqual([]);
+  });
+
+  it('跨工作流依赖补建专属「前置依赖_{任务名}」节点及其出边', async () => {
+    const res = await addMissingWorkflowDependencies({
+      nodes: [mkNode(4, 'D')], edges: [], mainTaskName: 'D',
+      declaredDeps: mkLocalDeps({ D: 'proj.ext_task' }).get('D')!,
+      resolvedLabels: new Map(),
+      resolveExternalDeps: mkResolver(new Map([['ext_task', 777]])),
+      allocateCode: () => 100,
+      nextSlot: () => ({ x: 10, y: 20 }),
+    });
+
+    const depNode = res.nodes.find(n => n.taskType === 'DEPENDENT')!;
+    expect(depNode.name).toBe(dependentNodeName('D'));
+    expect(depNode.code).toBe(100);
+    expect(depNode.x).toBe(10);
+    expect(res.edges).toEqual([{ id: 'e_100_4', sourceCode: 100, targetCode: 4 }]);
+    expect(res.warnings).toEqual([]);
+  });
+
+  it('已有专属前置依赖节点时只并入新声明的前置任务，保留原条目与节点属性', async () => {
+    const oldDep = buildDependentTaskNode(
+      [{ projectCode: 1, definitionCode: 900, taskCode: 500, taskName: 'old', label: 'proj.old' }],
+      100, 30, 40, dependentNodeName('D'),
+    );
+
+    const res = await addMissingWorkflowDependencies({
+      nodes: [mkNode(4, 'D'), oldDep], edges: [edge(100, 4)], mainTaskName: 'D',
+      declaredDeps: mkLocalDeps({ D: 'proj.new_task' }).get('D')!,
+      resolvedLabels: new Map(),
+      resolveExternalDeps: mkResolver(new Map([['new_task', 888]])),
+      allocateCode: () => 999,
+      nextSlot: () => ({ x: 0, y: 0 }),
+    });
+
+    expect(res.nodes).toHaveLength(2);
+    const merged = res.nodes.find(n => n.taskType === 'DEPENDENT')!;
+    expect(merged.code).toBe(100);
+    expect(merged.x).toBe(30);
+    const items = (JSON.parse(merged.taskParams) as {
+      dependence: { dependTaskList: { dependItemList: { depTaskCode: number }[] }[] };
+    }).dependence.dependTaskList[0].dependItemList;
+    expect(items.map(i => i.depTaskCode).sort((a, b) => a - b)).toEqual([500, 888]);
+    expect(res.edges).toEqual([edge(100, 4)]);
+    expect(res.addedEdges).toEqual([]);
+  });
+
+  it('前置任务在调度系统中不存在时只告警，不建立依赖', async () => {
+    const res = await addMissingWorkflowDependencies({
+      nodes: [mkNode(4, 'D')], edges: [], mainTaskName: 'D',
+      declaredDeps: mkLocalDeps({ D: 'proj.missing' }).get('D')!,
+      resolvedLabels: new Map(), resolveExternalDeps: mkResolver(new Map()),
+      allocateCode: alloc(), nextSlot: () => ({ x: 0, y: 0 }),
+    });
+
+    expect(res.warnings).toHaveLength(1);
+    expect(res.warnings[0]).toContain('proj.missing');
+    expect(res.nodes).toHaveLength(1);
+    expect(res.edges).toEqual([]);
+  });
+
+  it('自依赖声明只告警并忽略', async () => {
+    const res = await addMissingWorkflowDependencies({
+      nodes: [mkNode(4, 'D')], edges: [], mainTaskName: 'D',
+      declaredDeps: mkLocalDeps({ D: 'D' }).get('D')!,
+      resolvedLabels: new Map(), resolveExternalDeps: mkResolver(new Map()),
+      allocateCode: alloc(), nextSlot: () => ({ x: 0, y: 0 }),
+    });
+
+    expect(res.warnings[0]).toContain('自身');
+    expect(res.edges).toEqual([]);
   });
 });

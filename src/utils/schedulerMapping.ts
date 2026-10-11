@@ -487,6 +487,176 @@ export async function reconcileWorkflowDependencies(
 }
 
 /**
+ * 依赖关系「只增不删」上下文：开发助手模块**单个文件提交调度**时使用。
+ *
+ * 与 reconcileWorkflowDependencies 的区别——本函数**绝不删除、也不改写工作流已有的任何一条依赖边**，
+ * 也不触碰其他任务节点，只按本次提交文件代码头 @依赖 补上尚不存在的依赖：
+ * - 同工作流前置任务：补一条 源任务 -> 本次任务 的边（已存在则跳过）；
+ * - 跨工作流/跨项目前置任务：补一个本次任务专属的 DEPENDENT 节点（前置依赖_{任务名}）及其出边。
+ * 「已有节点只改自身内容」由调用方保证：本次提交任务在工作流中已存在时，调用方直接不调用本函数。
+ */
+export interface WorkflowDependencyAddContext {
+  /** 工作流节点（已包含本次提交的新增任务） */
+  nodes: DSWorkflowTaskNode[];
+  /** 工作流现有边（原样保留，只增不删） */
+  edges: DSWorkflowEdge[];
+  /** 本次提交任务名（sanitizeDsName 后） */
+  mainTaskName: string;
+  /** 本次提交文件代码头 @依赖 声明 */
+  declaredDeps: HeaderDependency[];
+  /** 已解析并校验通过的前置依赖（label -> 解析结果） */
+  resolvedLabels: Map<string, ResolvedDependency>;
+  /** 按需解析其余跨工作流/跨项目前置任务 */
+  resolveExternalDeps: (labels: Set<string>) => Promise<Map<string, ResolvedDependency>>;
+  /** 分配新节点 code（须大于工作流现有全部 code） */
+  allocateCode: () => number;
+  /** 分配新节点网格槽位坐标 */
+  nextSlot: () => { x: number; y: number };
+}
+
+export interface WorkflowDependencyAddResult {
+  nodes: DSWorkflowTaskNode[];
+  edges: DSWorkflowEdge[];
+  /** 告警（前置任务不存在、自依赖等），不阻断提交 */
+  warnings: string[];
+  /** 本次新增的依赖边（source/target 为任务显示名），供日志与提示 */
+  addedEdges: { source: string; target: string }[];
+}
+
+/**
+ * 向工作流追加本次提交任务代码头 @依赖 声明的依赖（只增不删）。
+ *
+ * 工作流既有的节点与依赖边全部原样保留，仅补上尚不存在的依赖边 / 专属前置依赖节点；
+ * 声明的前置任务在调度系统中不存在时只告警、不建立依赖。
+ */
+export async function addMissingWorkflowDependencies(
+  ctx: WorkflowDependencyAddContext,
+): Promise<WorkflowDependencyAddResult> {
+  const warnings: string[] = [];
+  const addedEdges: { source: string; target: string }[] = [];
+  const nodes: DSWorkflowTaskNode[] = ctx.nodes.map(n => ({ ...n }));
+  const edges: DSWorkflowEdge[] = ctx.edges.map(e => ({ ...e }));
+
+  const nameOf = (n: DSWorkflowTaskNode) => sanitizeDsName(n.name);
+  const labelOf = (d: HeaderDependency) => [d.projectCode, d.taskName].filter(Boolean).join('.');
+
+  const target = nodes.find(n => n.taskType !== 'DEPENDENT' && nameOf(n) === ctx.mainTaskName);
+  if (!target) {
+    warnings.push(`工作流中未找到任务「${ctx.mainTaskName}」，未新增任何依赖`);
+    return { nodes, edges, warnings, addedEdges };
+  }
+
+  const hasEdge = (sourceCode: number, targetCode: number) =>
+    edges.some(e => e.sourceCode === sourceCode && e.targetCode === targetCode);
+  const addEdge = (sourceCode: number, targetCode: number, sourceName: string, targetName: string) => {
+    if (hasEdge(sourceCode, targetCode)) return;
+    edges.push({ id: `e_${sourceCode}_${targetCode}`, sourceCode, targetCode });
+    addedEdges.push({ source: sourceName, target: targetName });
+  };
+
+  const nodeByName = new Map<string, DSWorkflowTaskNode>();
+  for (const n of nodes) {
+    if (!nodeByName.has(nameOf(n))) nodeByName.set(nameOf(n), n);
+  }
+
+  // 1. 同工作流前置任务：直接补边；其余收集为跨工作流依赖
+  const externalDeps: HeaderDependency[] = [];
+  for (const dep of ctx.declaredDeps || []) {
+    const depName = sanitizeDsName(dep.taskName);
+    if (!depName) continue;
+    if (depName === nameOf(target)) {
+      warnings.push(`任务「${target.name}」的代码头 @依赖 声明了自身，已忽略该依赖`);
+      continue;
+    }
+    const src = nodeByName.get(depName);
+    if (src && src.taskType !== 'DEPENDENT') {
+      addEdge(src.code, target.code, src.name, target.name);
+    } else {
+      externalDeps.push(dep);
+    }
+  }
+
+  // 2. 跨工作流/跨项目前置任务：复用本次任务的专属 DEPENDENT 节点（只增不删地并入新声明的前置任务）
+  if (externalDeps.length > 0) {
+    const resolutions = new Map(ctx.resolvedLabels);
+    const missingLabels = [...new Set(externalDeps.map(labelOf))].filter(l => !resolutions.has(l));
+    if (missingLabels.length > 0) {
+      try {
+        const external = await ctx.resolveExternalDeps(new Set(missingLabels));
+        external.forEach((v, k) => resolutions.set(k, v));
+      } catch { /* 解析失败时按未找到处理 */ }
+    }
+
+    const resolved: ResolvedDependency[] = [];
+    for (const dep of externalDeps) {
+      const label = labelOf(dep);
+      const hit = resolutions.get(label);
+      if (hit) resolved.push(hit);
+      else warnings.push(`任务「${target.name}」的前置任务「${label}」在调度项目中不存在，未建立该依赖`);
+    }
+
+    if (resolved.length > 0) {
+      const dn = dependentNodeName(target.name);
+      const existingIdx = nodes.findIndex(n => n.taskType === 'DEPENDENT' && nameOf(n) === dn);
+      let depNode: DSWorkflowTaskNode;
+      if (existingIdx >= 0) {
+        // 复用既有专属节点：只并入新声明的前置任务，保留原参数、code 与坐标
+        depNode = mergeDependentTaskParams(nodes[existingIdx], resolved);
+        nodes[existingIdx] = depNode;
+      } else {
+        const pos = ctx.nextSlot();
+        depNode = buildDependentTaskNode(resolved, ctx.allocateCode(), pos.x, pos.y, dn);
+        nodes.push(depNode);
+      }
+      addEdge(depNode.code, target.code, depNode.name, target.name);
+    }
+  }
+
+  // 只剔除悬空边（引用了不存在节点的边），不影响任何有效依赖关系
+  const codes = new Set(nodes.map(n => n.code));
+  const validEdges = edges.filter(e => codes.has(e.sourceCode) && codes.has(e.targetCode));
+
+  return { nodes, edges: validEdges, warnings, addedEdges };
+}
+
+/**
+ * 将新解析出的前置任务并入已有 DEPENDENT 节点的 dependItemList（按 项目/工作流/任务 code 去重）：
+ * 仅追加缺失条目，保留原参数（轮询间隔、失败策略等）与节点 code / 坐标不变。
+ * 原参数不可解析时按新依赖整体重建节点内容（仍保留 code 与坐标）。
+ */
+function mergeDependentTaskParams(node: DSWorkflowTaskNode, items: ResolvedDependency[]): DSWorkflowTaskNode {
+  let parsed: DSDependentTaskParams | null = null;
+  try {
+    parsed = JSON.parse(node.taskParams || '{}') as DSDependentTaskParams;
+  } catch {
+    parsed = null;
+  }
+  const groups = parsed?.dependence?.dependTaskList;
+  if (!parsed || !Array.isArray(groups) || groups.length === 0) {
+    return { ...buildDependentTaskNode(items, node.code, node.x, node.y, node.name), id: node.id, version: node.version };
+  }
+  const seen = new Set<string>();
+  for (const g of groups) {
+    for (const it of g.dependItemList || []) {
+      seen.add(`${it.projectCode}|${it.definitionCode}|${it.depTaskCode}`);
+    }
+  }
+  const fresh = items.filter(d => !seen.has(`${d.projectCode}|${d.definitionCode}|${d.taskCode}`));
+  if (fresh.length === 0) return node;
+  groups[0].dependItemList = [
+    ...(groups[0].dependItemList || []),
+    ...fresh.map(d => ({
+      projectCode: d.projectCode,
+      definitionCode: d.definitionCode,
+      depTaskCode: d.taskCode,
+      cycle: 'day' as const,
+      dateValue: 'today',
+    })),
+  ];
+  return { ...node, taskParams: JSON.stringify(parsed) };
+}
+
+/**
  * 检测工作流依赖关系中的环（按节点 code 深度优先搜索）。
  * 返回构成环的任务名路径（如 ['A', 'B', 'A']），无环时返回 null。
  */
