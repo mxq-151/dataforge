@@ -111,6 +111,29 @@ const HEALTH_ITEMS = [
 
 type ProbeState<T> = { status: 'loading' | 'ok' | 'unavailable'; data: T | null };
 
+/** 已知数仓分层（与后端 TableNameConventionParser 对齐） */
+const KNOWN_LAYERS = new Set(['ods', 'dwd', 'dws', 'ads', 'dim', 'dqc', 'tmp']);
+/** 库名可能带的部署环境后缀，剥离后才能取到「分层_业务域」两段 */
+const ENV_SUFFIXES = new Set(['prod', 'gray', 'test']);
+
+/**
+ * 从引擎视角的「库」节点推导盘点收窄范围（分层 + 业务域）。
+ *
+ * 库名遵循表名规范的库级形态 `{分层}_{业务域}[_{环境}]`：先剥掉环境后缀，再取前两段即可
+ * 得到分层与业务域 —— 与规范视角选中「分层」节点时的下推口径一致。
+ * 服务端若已在节点上给出 layerCode/domainCode，则直接采用（不重复解析）。
+ */
+function scopeFromDatabaseNode(node: CatalogTreeNode): { domainCode?: string; layerCode?: string } {
+  if (node.layerCode || node.domainCode) {
+    return { layerCode: node.layerCode, domainCode: node.domainCode };
+  }
+  const parts = (node.databaseName ?? '').toLowerCase().split('_').filter(Boolean);
+  const core = ENV_SUFFIXES.has(parts[parts.length - 1] ?? '') ? parts.slice(0, -1) : parts;
+  const [layerCode, domainCode] = core;
+  if (!layerCode || !domainCode || !KNOWN_LAYERS.has(layerCode)) return {};
+  return { layerCode, domainCode };
+}
+
 /** 字节数 → 人类可读（与资产概况保持一致的口径） */
 function formatBytes(bytes: number | null | undefined): string {
   if (bytes == null || !Number.isFinite(bytes)) return '—';
@@ -687,17 +710,19 @@ const AssetCatalogPanel: React.FC = () => {
   const selectedTableId = selected?.nodeKind === 'table' ? selected.tableMetadataId ?? null : null;
 
   /**
-   * 盘点概况的收窄范围（规范视角下有效）：
-   * - 选中「数仓名称」（domain 节点）→ 按 domainCode 收窄到该业务域；
-   * - 选中「分层」（layer 节点）→ 再叠加 layerCode；
-   * - 其它情况（未选 / 引擎视角的库表节点）→ 不收窄，保持环境全量。
+   * 盘点概况的收窄范围（分层 + 业务域）：
+   * - 规范视角：选中「数仓名称」（domain 节点）→ 按 domainCode；选中「分层」（layer 节点）→ 再叠加 layerCode；
+   * - 引擎视角：选中「库」（database 节点）→ 按库名解析出分层与业务域，效果与规范视角选中分层一致；
+   * - 其它情况（未选 / 数据源节点 / 表节点）→ 不收窄，保持环境全量。
    * 选中变化时下推服务端重取，四项盘点指标口径一致。
    */
   const inventoryScope = useMemo<{ domainCode?: string; layerCode?: string }>(() => {
-    if (selected?.nodeKind === 'domain') return { domainCode: selected.domainCode };
-    if (selected?.nodeKind === 'layer') {
+    if (!selected) return {};
+    if (selected.nodeKind === 'domain') return { domainCode: selected.domainCode };
+    if (selected.nodeKind === 'layer') {
       return { domainCode: selected.domainCode, layerCode: selected.layerCode };
     }
+    if (selected.nodeKind === 'database') return scopeFromDatabaseNode(selected);
     return {};
   }, [selected]);
 

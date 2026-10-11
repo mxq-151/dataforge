@@ -24,6 +24,15 @@ const h = vi.hoisted(() => {
     tableName: 'dwd_trade_order_d',
   };
 
+  // 引擎视角的「库」节点：库名遵循 {分层}_{业务域}_{环境}，用于验证选中库时的收窄
+  const dbNode = {
+    key: 'db:7:dwd_trade_prod',
+    label: 'dwd_trade_prod',
+    nodeKind: 'database' as const,
+    datasourceId: 7,
+    databaseName: 'dwd_trade_prod',
+  };
+
   const detail = {
     id: 1,
     datasourceId: 7,
@@ -60,7 +69,7 @@ const h = vi.hoisted(() => {
   };
 
   const api = {
-    getCatalogTree: vi.fn(async () => ({ code: 200, data: [tableNode] })),
+    getCatalogTree: vi.fn(async () => ({ code: 200, data: [dbNode, tableNode] })),
     getTableDetail: vi.fn(async () => ({ code: 200, data: detail })),
     // 概况页签（面板默认页签）挂载即探测的 5 个接口，统一空数据
     getInventoryByEnvProject: vi.fn(async () => ({ code: 200, data: [] })),
@@ -194,6 +203,29 @@ describe('AssetCatalogPanel 环境切换', () => {
     expect(h.api.getInventoryHealth).toHaveBeenCalledWith({ env: 'prod' });
     expect(h.api.getAnnotationGaps).toHaveBeenCalledWith({ current: 1, size: 200, env: 'prod' });
     expect(screen.getByText('资产盘点 · 生产')).toBeTruthy();
+  });
+
+  it('引擎视角选中「库」时，概览按库名解析出的分层与业务域收窄（与规范视角一致）', async () => {
+    renderPanel();
+    openCatalogTab();
+    await waitFor(() => expect(h.api.getCatalogTree).toHaveBeenCalled());
+
+    h.api.getInventoryOverview.mockClear();
+    fireEvent.click(await screen.findByText('dwd_trade_prod'));
+
+    // 库名 dwd_trade_prod → 剥离环境后缀后得 分层 dwd + 业务域 trade
+    await waitFor(() =>
+      expect(h.api.getInventoryOverview).toHaveBeenCalledWith({
+        env: 'prod',
+        domainCode: 'trade',
+        layerCode: 'dwd',
+      })
+    );
+    expect(h.api.getInventoryHealth).toHaveBeenCalledWith({
+      env: 'prod',
+      domainCode: 'trade',
+      layerCode: 'dwd',
+    });
   });
 
   it('切换环境后重新取数，并清掉已选中的表（避免右栏停留在不属于当前环境的表）', async () => {
