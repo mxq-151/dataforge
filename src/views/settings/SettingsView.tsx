@@ -630,7 +630,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                 <div className="logs-empty">
                   <FileText size={48} strokeWidth={1} />
                   <p>暂无运行日志</p>
-                  <span>启动 OpenCode 服务后，日志将在此显示</span>
+                  <span>启动 Agent 服务后，日志将在此显示</span>
                 </div>
               ) : (
                 <div className="logs-list">
@@ -759,7 +759,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                     { openai: 'gpt-4o', deepseek: 'deepseek-chat', 'deepseek-relay': 'deepseek-chat', doubao: 'doubao-pro-32k', qwen: 'qwen-plus', zhipu: 'glm-4', gemini: 'gemini-2.0-flash', ollama: 'llama3', 'lm-studio': 'local-model' }[llmDraft.providerID] || '自定义模型 ID'
                   }
                 />
-                <span className="settings-field__hint">对应 OpenCode 中的 modelID</span>
+                <span className="settings-field__hint">对应 Agent 中的 modelID</span>
               </div>
               <div className="settings-field">
                 <label className="settings-field__label">API 密钥</label>

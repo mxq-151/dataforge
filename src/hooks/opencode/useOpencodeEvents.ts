@@ -515,7 +515,7 @@ export function useOpencodeEvents(
           reasoning: number;
           cache: { read: number; write: number };
         };
-        console.log('[opencode-events] loadHistory tokens from info.tokens:', {
+        console.log('[agent-events] loadHistory tokens from info.tokens:', {
           id: info.id?.slice(0, 8),
           input: tokens.input,
           output: tokens.output,
@@ -557,7 +557,7 @@ export function useOpencodeEvents(
               cache: { read: number; write: number };
             } | undefined;
             if (tokens) {
-              console.log('[opencode-events] loadHistory tokens from step-finish (fallback):', {
+              console.log('[agent-events] loadHistory tokens from step-finish (fallback):', {
                 id: (entry.info as any).id?.slice(0, 8),
                 input: tokens.input,
                 output: tokens.output,
@@ -586,7 +586,7 @@ export function useOpencodeEvents(
       }
     }
     const total = cumInput + cumOutput + cumReasoning;
-    console.log('[opencode-events] loadHistory contextUsage result:', {
+    console.log('[agent-events] loadHistory contextUsage result:', {
       lastInput,
       lastOutput,
       lastReasoning,
@@ -630,12 +630,12 @@ export function useOpencodeEvents(
     // 双方目录样本，便于一眼看出是否是目录比对不一致。
     /** 诊断输出：同时进控制台（DevTools）与应用内日志面板 */
     const emitDiag = (title: string, detail: string, level: 'info' | 'warn' | 'error' = 'info') => {
-      const line = `[opencode-events] ${title} — ${detail}`;
+      const line = `[agent-events] ${title} — ${detail}`;
       if (level === 'warn') console.warn(line);
       else if (level === 'error') console.error(line);
       else console.log(line);
       try {
-        addLog({ source: 'opencode', text: `${title}：${detail}`, timestamp: new Date(), level });
+        addLog({ source: 'agent', text: `${title}：${detail}`, timestamp: new Date(), level });
       } catch { /* 日志不可用不影响主流程 */ }
     };
 
@@ -680,7 +680,7 @@ export function useOpencodeEvents(
           }
           if (busyRef.current) {
             addLog({
-              source: 'opencode',
+              source: 'agent',
               text: '事件流已重连，正在恢复思考状态...',
               timestamp: new Date(),
               level: 'info',
@@ -690,7 +690,7 @@ export function useOpencodeEvents(
             const recoveryTimer = setTimeout(() => {
               if (busyRef.current && !abortController.signal.aborted) {
                 addLog({
-                  source: 'opencode',
+                  source: 'agent',
                   text: '重连后未收到会话状态更新，已清除执行状态（思考可能在断连时已结束）',
                   timestamp: new Date(),
                   level: 'warn',
@@ -712,7 +712,7 @@ export function useOpencodeEvents(
             if (abortController.signal.aborted) break;
             // 心跳超时标记：主动跳出 for await，进入重连
             if (sse.consumeHeartbeatTimeout()) {
-              console.warn('[opencode-events] 心跳超时，主动中断当前 SSE 流');
+              console.warn('[agent-events] 心跳超时，主动中断当前 SSE 流');
               break;
             }
             // GlobalEvent = { directory, payload: Event }
@@ -765,7 +765,7 @@ export function useOpencodeEvents(
           if (wasBusy) {
             // 思考过程被意外中断：这是用户感知最强的问题
             addLog({
-              source: 'opencode',
+              source: 'agent',
               text: '思考过程意外中断（事件流断开），正在尝试重连以恢复...',
               timestamp: new Date(),
               level: 'error',
@@ -778,7 +778,7 @@ export function useOpencodeEvents(
             setBusyLabel(undefined);
             setRetry(null);
             addLog({
-              source: 'opencode',
+              source: 'agent',
               text: '事件流断开，正在重连...',
               timestamp: new Date(),
               level: 'warn',
@@ -790,9 +790,9 @@ export function useOpencodeEvents(
             return;
           }
 
-          console.error('[opencode-events] SSE error:', err?.message || err);
+          console.error('[agent-events] SSE error:', err?.message || err);
           addLog({
-            source: 'opencode',
+            source: 'agent',
             text: `事件流错误: ${err?.message || String(err)}`,
             timestamp: new Date(),
             level: 'error',
@@ -832,7 +832,7 @@ export function useOpencodeEvents(
     run().catch((err) => {
       if (abortController.signal.aborted) return;
       addLog({
-        source: 'opencode',
+        source: 'agent',
         text: `事件流未捕获异常: ${err instanceof Error ? err.message : String(err)}`,
         timestamp: new Date(),
         level: 'error',
@@ -893,7 +893,7 @@ export function useOpencodeEvents(
       internalMessageIds.current.add(messageId);
       setMessages(prev => prev.filter(m => m.info.id !== messageId));
       addLog({
-        source: 'opencode',
+        source: 'agent',
         text: `已过滤 sub-agent 内部消息 (${messageId.slice(0, 8)}...)`,
         timestamp: new Date(),
         level: 'debug',
@@ -902,7 +902,7 @@ export function useOpencodeEvents(
       // 是真实用户消息，标记为已确认并锁定（后续 part 更新不再重新检查）
       confirmedUserMessageIds.current.add(messageId);
       addLog({
-        source: 'opencode',
+        source: 'agent',
         text: `已确认真实用户消息 (${messageId.slice(0, 8)}...)`,
         timestamp: new Date(),
         level: 'debug',
@@ -1005,7 +1005,7 @@ export function useOpencodeEvents(
       case 'session.error':
         // EventSessionError.properties = { sessionID?, error? }
         addLog({
-          source: 'opencode',
+          source: 'agent',
           text: `会话错误: ${props.error?.data?.message || props.error?.name || '未知错误'}`,
           timestamp: new Date(),
           level: 'error',
@@ -1034,7 +1034,7 @@ export function useOpencodeEvents(
           ratio: 0,
         }));
         addLog({
-          source: 'opencode',
+          source: 'agent',
           text: '会话历史已压缩，进度条已重置',
           timestamp: new Date(),
           level: 'info',
@@ -1059,7 +1059,7 @@ export function useOpencodeEvents(
             reasoning: number;
             cache: { read: number; write: number };
           };
-          console.log('[opencode-events] SSE message.updated tokens:', {
+          console.log('[agent-events] SSE message.updated tokens:', {
             id: info.id?.slice(0, 8),
             input: msgTokens.input,
             output: msgTokens.output,

@@ -48,7 +48,7 @@ export async function startOpencodeAfterLogin(backendHost: string, username?: st
     await invoke<string>('start_opencode_after_login');
   } catch (err) {
     // 启动失败不阻塞登录流程，仅打印警告
-    console.warn('[opencode] 登录后启动失败:', err);
+    console.warn('[agent] 登录后启动失败:', err);
   }
 }
 

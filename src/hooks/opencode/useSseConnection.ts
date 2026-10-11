@@ -58,7 +58,7 @@ export function useSseConnection(): SseConnection {
       if (!isActive()) return;
       const elapsed = Date.now() - lastEventTimeRef.current;
       if (elapsed > HEARTBEAT_TIMEOUT_MS) {
-        console.warn(`[opencode-events] 心跳超时 ${elapsed}ms，主动断开 SSE 流以触发重连`);
+        console.warn(`[agent-events] 心跳超时 ${elapsed}ms，主动断开 SSE 流以触发重连`);
         // 不能直接 abort 整个重连循环，只置标记让 for await 主动跳出进入重连
         heartbeatAbortFlagRef.current = true;
       }

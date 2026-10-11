@@ -223,7 +223,7 @@ export interface RetryState {
 // ─── 日志条目 ────────────────────────────────────────────────────
 
 export interface LogEntry {
-  source: 'stdout' | 'stderr' | 'opencode';
+  source: 'stdout' | 'stderr' | 'agent';
   text: string;
   timestamp: Date;
   level?: string;

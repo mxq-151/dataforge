@@ -139,7 +139,7 @@ function useOpencodeBackendImpl(options: UseOpencodeBackendOptions): UseOpencode
       await globalWaitingPromise;
       const ready = globalServerDetected;
       setServerReady(ready);
-      return { ready, error: ready ? null : 'OpenCode 服务连接超时，请检查服务状态' };
+      return { ready, error: ready ? null : 'Agent 服务连接超时，请检查服务状态' };
     }
 
     setError(null);
@@ -152,7 +152,7 @@ function useOpencodeBackendImpl(options: UseOpencodeBackendOptions): UseOpencode
         return { ready: true, error: null };
       }
       addLog({
-        source: 'opencode',
+        source: 'agent',
         text: '服务进程之前已就绪但健康检查失败，重新等待...',
         timestamp: new Date(),
         level: 'warn',
@@ -161,8 +161,8 @@ function useOpencodeBackendImpl(options: UseOpencodeBackendOptions): UseOpencode
     }
 
     addLog({
-      source: 'opencode',
-      text: '正在等待 OpenCode 服务就绪（由 Rust 后端自动启动）...',
+      source: 'agent',
+      text: '正在等待 Agent 服务就绪（由 Rust 后端自动启动）...',
       timestamp: new Date(),
       level: 'info',
     });
@@ -178,7 +178,7 @@ function useOpencodeBackendImpl(options: UseOpencodeBackendOptions): UseOpencode
           setServerReady(true);
           addLog({
             source: 'stdout',
-            text: 'OpenCode 服务已就绪',
+            text: 'Agent 服务已就绪',
             timestamp: new Date(),
             level: 'info',
           });
@@ -186,7 +186,7 @@ function useOpencodeBackendImpl(options: UseOpencodeBackendOptions): UseOpencode
         }
         if (attempt % 5 === 0) {
           addLog({
-            source: 'opencode',
+            source: 'agent',
             text: `等待服务就绪 ${attempt}/${maxRetries}...`,
             timestamp: new Date(),
             level: 'warn',
@@ -195,7 +195,7 @@ function useOpencodeBackendImpl(options: UseOpencodeBackendOptions): UseOpencode
         await new Promise(r => setTimeout(r, 2000));
       }
 
-      const msg = 'OpenCode 服务连接超时，请检查服务状态';
+      const msg = 'Agent 服务连接超时，请检查服务状态';
       addLog({ source: 'stderr', text: msg, timestamp: new Date(), level: 'error' });
       setError(msg);
     })();
@@ -209,15 +209,15 @@ function useOpencodeBackendImpl(options: UseOpencodeBackendOptions): UseOpencode
     }
 
     // 等待完成后，从全局变量读取最终状态（避免闭包中的旧 serverReady/error 快照）
-    return { ready: globalServerDetected, error: globalServerDetected ? null : 'OpenCode 服务连接超时，请检查服务状态' };
+    return { ready: globalServerDetected, error: globalServerDetected ? null : 'Agent 服务连接超时，请检查服务状态' };
   }, [serverReady, healthCheck, addLog, serverUrl]);
 
   const stop = useCallback(() => {
     globalServerDetected = false;
     setServerReady(false);
     addLog({
-      source: 'opencode',
-      text: 'OpenCode 服务已停止',
+      source: 'agent',
+      text: 'Agent 服务已停止',
       timestamp: new Date(),
       level: 'info',
     });

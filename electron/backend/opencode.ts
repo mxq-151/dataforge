@@ -164,7 +164,7 @@ async function killProcessOnPort(port: number): Promise<void> {
     for (const pid of pids.split('\n')) {
       const p = pid.trim();
       if (p) {
-        console.log(`[opencode] 强制终止占用端口 ${port} 的进程 PID ${p}`);
+        console.log(`[agent] 强制终止占用端口 ${port} 的进程 PID ${p}`);
         try { process.kill(Number(p), 'SIGKILL'); } catch { /* 忽略 */ }
       }
     }
@@ -174,7 +174,7 @@ async function killProcessOnPort(port: number): Promise<void> {
       if (line.includes(`:${port}`) && line.includes('LISTENING')) {
         const pid = line.trim().split(/\s+/).pop();
         if (pid) {
-          console.log(`[opencode] 强制终止占用端口 ${port} 的进程 PID ${pid}`);
+          console.log(`[agent] 强制终止占用端口 ${port} 的进程 PID ${pid}`);
           execSyncCapture('taskkill', ['/F', '/PID', pid]);
         }
       }
@@ -203,7 +203,7 @@ async function cleanupOpencodeDbLocks(cwd?: string): Promise<void> {
     if (!fs.existsSync(base)) continue;
     await walkAndRemoveLocks(base, () => { cleaned += 1; });
   }
-  if (cleaned > 0) console.log(`[opencode] 数据库锁清理完成，共删除 ${cleaned} 个锁文件`);
+  if (cleaned > 0) console.log(`[agent] 数据库锁清理完成，共删除 ${cleaned} 个锁文件`);
 }
 
 async function walkAndRemoveLocks(dir: string, onRemove: () => void): Promise<void> {
@@ -220,7 +220,7 @@ async function walkAndRemoveLocks(dir: string, onRemove: () => void): Promise<vo
     } else if (e.name.toLowerCase().endsWith('.lock')) {
       try {
         await fsp.rm(p, { force: true });
-        console.log(`[opencode] 已清理锁文件: ${p}`);
+        console.log(`[agent] 已清理锁文件: ${p}`);
         onRemove();
       } catch { /* 忽略 */ }
     }
@@ -440,7 +440,7 @@ function bwrapUsable(bwrap: string): boolean {
 function makeSpawnSpec(config: OpenCodeServerConfig, noSandbox = false): SpawnSpec {
   const bin = resolveOpencodeBin();
   if (!bin) {
-    throw new Error('无法解析 opencode 二进制路径（请确认已安装 opencode 或在 resources/binaries 下放置）');
+    throw new Error('无法解析 agent 二进制路径（请确认已安装 agent 或在 resources/binaries 下放置）');
   }
   // AI 助手始终在沙箱中执行（无需用户配置）。
   // 开发逃生阀：DATAFORGE_DISABLE_SANDBOX=1 跳过沙箱（受限终端/调试环境使用，桌面正常启动不受影响）。
@@ -468,10 +468,10 @@ function makeSpawnSpec(config: OpenCodeServerConfig, noSandbox = false): SpawnSp
         '--',
         bin,
       ];
-      console.log(`[opencode] 沙箱模式启动: sandbox-exec -f ${profile} -- ${bin}`);
+      console.log(`[agent] 沙箱模式启动: sandbox-exec -f ${profile} -- ${bin}`);
       return { exe: 'sandbox-exec', args, sandboxed: true };
     }
-    console.warn(`[opencode] 警告: 沙箱 profile 不存在 (${profile})，回退非沙箱启动`);
+    console.warn(`[agent] 警告: 沙箱 profile 不存在 (${profile})，回退非沙箱启动`);
   } else if (process.platform === 'linux' && wantSandbox) {
     const bwrap = '/usr/bin/bwrap';
     if (fs.existsSync(bwrap) && bwrapUsable(bwrap)) {
@@ -490,14 +490,14 @@ function makeSpawnSpec(config: OpenCodeServerConfig, noSandbox = false): SpawnSp
           fs.mkdirSync(dir, { recursive: true });
           args.push('--bind', dir, dir);
         } catch {
-          console.warn(`[opencode] 忽略不可用的沙箱绑定目录: ${dir}`);
+          console.warn(`[agent] 忽略不可用的沙箱绑定目录: ${dir}`);
         }
       }
       args.push('--', bin);
-      console.log(`[opencode] 沙箱模式启动: ${bwrap} ${args.join(' ')}`);
+      console.log(`[agent] 沙箱模式启动: ${bwrap} ${args.join(' ')}`);
       return { exe: bwrap, args, sandboxed: true };
     }
-    console.warn('[opencode] 警告: bubblewrap 不可用（未安装或内核命名空间受限），回退非沙箱启动');
+    console.warn('[agent] 警告: bubblewrap 不可用（未安装或内核命名空间受限），回退非沙箱启动');
   }
 
   return { exe: bin, args: [], sandboxed: false };
@@ -521,20 +521,20 @@ export async function startOpencodeServerCore(
   // ── 幂等性检查 ──
   if (childProc && childPid != null) {
     if (await healthCheck()) {
-      console.log('[opencode] 服务进程已在运行且健康，复用现有实例');
+      console.log('[agent] 服务进程已在运行且健康，复用现有实例');
       return SERVER_URL;
     }
-    console.warn('[opencode] 子句柄存在但健康检查失败，进程可能已崩溃，清理后重新启动...');
+    console.warn('[agent] 子句柄存在但健康检查失败，进程可能已崩溃，清理后重新启动...');
     await stopOpencodeServer();
   }
 
-  console.log(`[opencode] === 开始启动流程，目标 cwd: ${config.cwd ?? '(未设置)'} ===`);
+  console.log(`[agent] === 开始启动流程，目标 cwd: ${config.cwd ?? '(未设置)'} ===`);
   await stopOpencodeServer();
 
   await cleanupOpencodeDbLocks(config.cwd);
   await waitPortFree(SERVER_PORT, 2000);
   if (await isPortInUse(SERVER_PORT)) {
-    console.log('[opencode] 端口 4096 仍被占用，尝试强制清理...');
+    console.log('[agent] 端口 4096 仍被占用，尝试强制清理...');
     await killProcessOnPort(SERVER_PORT);
     await sleep(300);
     await waitPortFree(SERVER_PORT, 3000);
@@ -576,7 +576,7 @@ export async function startOpencodeServerCore(
   const sdkConfig = buildSdkConfig(config);
   const configContent = JSON.stringify(sdkConfig);
   env.OPENCODE_CONFIG_CONTENT = configContent;
-  console.log(`[opencode] OPENCODE_CONFIG_CONTENT = ${configContent}`);
+  console.log(`[agent] OPENCODE_CONFIG_CONTENT = ${configContent}`);
 
   // opencode serve 固定参数
   const serveArgs = [
@@ -589,7 +589,7 @@ export async function startOpencodeServerCore(
     'DEBUG',
   ];
 
-  console.log(`[opencode] 启动命令: ${opencodeExe} ${serveArgs.slice(0, -2).join(' ')} ...`);
+  console.log(`[agent] 启动命令: ${opencodeExe} ${serveArgs.slice(0, -2).join(' ')} ...`);
 
   const proc = spawn(opencodeExe, serveArgs, {
     cwd: spawnCwd,
@@ -600,7 +600,7 @@ export async function startOpencodeServerCore(
   childProc = proc;
   childPid = proc.pid ?? null;
 
-  console.log(`[opencode] sidecar 进程已 spawn, PID: ${proc.pid}`);
+  console.log(`[agent] sidecar 进程已 spawn, PID: ${proc.pid}`);
 
   // ── 就绪检测（stdout 出现 listening/ready，最长 15s）──
   const stderrLines: string[] = [];
@@ -609,7 +609,7 @@ export async function startOpencodeServerCore(
     return new Promise<boolean>((resolve) => {
       const onStdout = (d: Buffer) => {
         const line = d.toString('utf8');
-        console.log(`[opencode-out] ${line.trimEnd()}`);
+        console.log(`[agent-out] ${line.trimEnd()}`);
         if (line.includes('listening') || line.includes('ready')) {
           proc.stdout?.off('data', onStdout);
           resolve(true);
@@ -618,16 +618,16 @@ export async function startOpencodeServerCore(
       proc.stdout?.on('data', onStdout);
       proc.stderr?.on('data', (d: Buffer) => {
         const line = d.toString('utf8');
-        console.log(`[opencode-log] ${line.trimEnd()}`);
+        console.log(`[agent-log] ${line.trimEnd()}`);
         stderrLines.push(line);
         if (stderrLines.length > 500) stderrLines.shift();
       });
       proc.on('error', (err) => {
-        console.error('[opencode] 启动进程错误:', err);
+        console.error('[agent] 启动进程错误:', err);
         resolve(false);
       });
       proc.on('exit', (code, signal) => {
-        console.log(`[opencode] 进程已退出 (code=${code}, signal=${signal})`);
+        console.log(`[agent] 进程已退出 (code=${code}, signal=${signal})`);
         resolve(false);
       });
       setTimeout(() => resolve(false), 15_000);
@@ -652,28 +652,28 @@ export async function startOpencodeServerCore(
       // 沙箱包装导致启动失败时回退非沙箱重试，保证智能体可用（如 bwrap 命名空间受限、
       // 绑定目录异常等）。仅回退一次，重试再失败则报真实错误。
       const detail = stderrLines.length > 0 ? `\nstderr:\n${stderrLines.slice(-20).join('\n')}` : '';
-      console.warn(`[opencode] 沙箱模式启动失败，回退非沙箱模式重试${detail}`);
+      console.warn(`[agent] 沙箱模式启动失败，回退非沙箱模式重试${detail}`);
       await stopOpencodeServer();
       return startOpencodeServerCore(config, { noSandbox: true });
     }
     const detail = stderrLines.length > 0 ? `\nstderr:\n${stderrLines.join('\n')}` : '';
-    throw new Error(`OpenCode 服务器启动超时${detail}`);
+    throw new Error(`Agent 服务器启动超时${detail}`);
   }
 
-  console.log(`[opencode] 健康检查通过，服务已就绪: ${SERVER_URL}`);
+  console.log(`[agent] 健康检查通过，服务已就绪: ${SERVER_URL}`);
 
   // ── 后台监督：进程退出时通知前端 ──
   proc.on('exit', (code, signal) => {
     const detail = stderrLines.length > 0
-      ? `OpenCode 进程已退出 (code: ${code ?? '?'}, signal: ${signal ?? '?'})\nstderr:\n${stderrLines.join('\n')}`
-      : `OpenCode 进程已退出 (code: ${code ?? '?'}, signal: ${signal ?? '?'})`;
-    console.log(`[opencode] ${detail}`);
+      ? `Agent 进程已退出 (code: ${code ?? '?'}, signal: ${signal ?? '?'})\nstderr:\n${stderrLines.join('\n')}`
+      : `Agent 进程已退出 (code: ${code ?? '?'}, signal: ${signal ?? '?'})`;
+    console.log(`[agent] ${detail}`);
     emitToRenderer(getMainWindow(), 'opencode-process-terminated', detail);
     childProc = null;
     childPid = null;
   });
 
-  console.log(`[opencode] 服务器已启动，PID: ${proc.pid}，地址: ${SERVER_URL}`);
+  console.log(`[agent] 服务器已启动，PID: ${proc.pid}，地址: ${SERVER_URL}`);
   return SERVER_URL;
 }
 
@@ -683,11 +683,11 @@ export async function stopOpencodeServer(): Promise<void> {
   childProc = null;
   childPid = null;
   if (!proc || !proc.pid) {
-    console.log('[opencode] 没有运行中的服务器进程需要停止');
+    console.log('[agent] 没有运行中的服务器进程需要停止');
   }
 
   if (proc && proc.pid) {
-    console.log(`[opencode] 正在优雅终止服务器进程 PID ${proc.pid}...`);
+    console.log(`[agent] 正在优雅终止服务器进程 PID ${proc.pid}...`);
     try {
       proc.kill('SIGTERM');
     } catch {
@@ -697,7 +697,7 @@ export async function stopOpencodeServer(): Promise<void> {
     for (let i = 0; i < 50; i++) {
       await sleep(100);
       if (!(await isPortInUse(SERVER_PORT))) {
-        console.log('[opencode] 服务器进程已优雅退出（端口已释放）');
+        console.log('[agent] 服务器进程已优雅退出（端口已释放）');
         break;
       }
     }
@@ -707,7 +707,7 @@ export async function stopOpencodeServer(): Promise<void> {
   }
 
   if (await isPortInUse(SERVER_PORT)) {
-    console.log('[opencode] 端口 4096 仍被占用，尝试清理孤儿进程...');
+    console.log('[agent] 端口 4096 仍被占用，尝试清理孤儿进程...');
     await killProcessOnPort(SERVER_PORT);
     await sleep(500);
   }
@@ -718,24 +718,24 @@ export async function autoStartOpencode(): Promise<void> {
   try {
     const config = await loadServerConfig();
     if (!config.model) {
-      console.log('[opencode] 配置不完整（缺少 model），跳过自动启动');
+      console.log('[agent] 配置不完整（缺少 model），跳过自动启动');
       return;
     }
     if (!config.authToken) {
-      console.log('[opencode] 用户未登录（缺少 auth_token），跳过自动启动');
+      console.log('[agent] 用户未登录（缺少 auth_token），跳过自动启动');
       return;
     }
-    console.log(`[opencode] 从存储中读取到配置，尝试自动启动服务... (model: ${config.model})`);
+    console.log(`[agent] 从存储中读取到配置，尝试自动启动服务... (model: ${config.model})`);
     await startOpencodeServerCore(config);
-    console.log('[opencode] 自动启动成功');
+    console.log('[agent] 自动启动成功');
   } catch (e) {
-    console.warn(`[opencode] 自动启动失败: ${e instanceof Error ? e.message : String(e)}`);
+    console.warn(`[agent] 自动启动失败: ${e instanceof Error ? e.message : String(e)}`);
   }
 }
 
 /** 用户登录后启动（由前端 invoke）。先停旧进程，确保登录页新配置生效。 */
 export async function startOpencodeAfterLogin(): Promise<string> {
-  console.log('[opencode] 用户登录后尝试启动 opencode...');
+  console.log('[agent] 用户登录后尝试启动 agent...');
   const config = await loadServerConfig();
   if (!config.model) throw new Error('配置不完整（缺少 model）');
   if (!config.authToken) throw new Error('auth_token 不存在，请先登录');
@@ -743,7 +743,7 @@ export async function startOpencodeAfterLogin(): Promise<string> {
   // 先停后启，强制使用最新配置
   await stopOpencodeServer();
   await startOpencodeServerCore(config).catch((e) => {
-    console.warn(`[opencode] 登录后启动失败: ${e instanceof Error ? e.message : String(e)}`);
+    console.warn(`[agent] 登录后启动失败: ${e instanceof Error ? e.message : String(e)}`);
   });
   return '启动请求已提交';
 }

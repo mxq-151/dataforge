@@ -451,7 +451,7 @@ const AIBenchPage: React.FC = () => {
     <div className="ai-bench-page">
       <div className="ai-bench-page__side">
         <div className="ai-bench-page__title">
-          智能体对话（真实 MessageTimeline + useOpencodeEvents）
+          智能体对话（真实 MessageTimeline + useAgentEvents）
           <span className={`ai-bench-page__dot ${running ? 'is-running' : ''}`} />
         </div>
         <BenchProfiler id="ai-timeline" collectorRef={collectorRef}>

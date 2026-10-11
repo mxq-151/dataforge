@@ -527,7 +527,7 @@ function useOpencodeClientImpl(
         partID: change.partID,
       });
     } catch (err) {
-      console.warn('[opencode] 拒绝文件变更回退失败:', err);
+      console.warn('[agent] 拒绝文件变更回退失败:', err);
     }
   }, [fileChangesApproved, fileChangesRejected, messages, extractFileChangesFromMessages, currentSessionId, client]);
 
@@ -595,7 +595,7 @@ function useOpencodeClientImpl(
       saveSessionHistory(key, mapped);
       seededHistoryKeysRef.current.add(key);
     } catch (err) {
-      addLog({ source: 'opencode', text: `刷新任务列表失败: ${err instanceof Error ? err.message : String(err)}`, timestamp: new Date(), level: 'warn' });
+      addLog({ source: 'agent', text: `刷新任务列表失败: ${err instanceof Error ? err.message : String(err)}`, timestamp: new Date(), level: 'warn' });
     }
   }, [sessionHistoryKey, listSessions, mapSessionsToTasks, addLog]);
 
@@ -671,7 +671,7 @@ function useOpencodeClientImpl(
         const finalLimit = resolveContextLimit(limit, modelID);
         setContextLimit(finalLimit);
         addLog({
-          source: 'opencode',
+          source: 'agent',
           text: `模型 ${providerID}/${modelID} contextLimit=${finalLimit}（API=${limit}, 硬编码=${hardcodedLimit}, 第 ${attempt + 1} 次查询）`,
           timestamp: new Date(),
           level: 'info',
@@ -681,7 +681,7 @@ function useOpencodeClientImpl(
 
       lastReason = reason;
       addLog({
-        source: 'opencode',
+        source: 'agent',
         text: `第 ${attempt + 1}/${RETRY_DELAYS_MS.length} 次查询模型 ${providerID}/${modelID} 的 limit 未命中：${reason}`,
         timestamp: new Date(),
         level: 'warn',
@@ -692,7 +692,7 @@ function useOpencodeClientImpl(
     if (isCancelled()) return;
     setContextLimit(hardcodedLimit);
     addLog({
-      source: 'opencode',
+      source: 'agent',
       text: `未从 API 获得模型 ${providerID}/${modelID} 的 limit（${lastReason}），使用硬编码 fallback (${hardcodedLimit})`,
       timestamp: new Date(),
       level: 'warn',
@@ -767,7 +767,7 @@ function useOpencodeClientImpl(
           if (!(await fsModule.exists(dir))) {
             await fsModule.mkdir(dir, { recursive: true });
             addLog({
-              source: 'opencode',
+              source: 'agent',
               text: `工作目录不存在，已自动创建: ${dir}`,
               timestamp: new Date(),
               level: 'info',
@@ -775,7 +775,7 @@ function useOpencodeClientImpl(
           }
         } catch (e) {
           addLog({
-            source: 'opencode',
+            source: 'agent',
             text: `工作目录创建失败（可能已存在或无权限）: ${e instanceof Error ? e.message : String(e)}`,
             timestamp: new Date(),
             level: 'warn',
@@ -802,7 +802,7 @@ function useOpencodeClientImpl(
       console.log(`[OC][debug] connected working dir (module=${moduleId}, project=${projectId}):`, dir);
 
       addLog({
-        source: 'opencode',
+        source: 'agent',
         text: `客户端已连接${dir ? ` (工作目录: ${dir})` : ''}`,
         timestamp: new Date(),
         level: 'info',
@@ -836,16 +836,16 @@ function useOpencodeClientImpl(
     let cancelled = false;
     listen<string>('opencode-process-terminated', (event) => {
       if (cancelled) return;
-      const detail = event.payload || 'OpenCode 进程已退出';
+      const detail = event.payload || 'Agent 进程已退出';
       addLog({
         source: 'stderr',
-        text: `OpenCode 服务进程已退出：${detail}`,
+        text: `Agent 服务进程已退出：${detail}`,
         timestamp: new Date(),
         level: 'error',
       });
       // 标记连接断开：SSE 流会自动尝试重连，但 sidecar 已不在，重连会持续失败。
       // 设置 error 状态让 UI 显示明确错误，而非无限"正在重连"。
-      setError(`OpenCode 服务已停止：${detail}`);
+      setError(`Agent 服务已停止：${detail}`);
       setConnected(false);
       setReady(false);
       // 清除 busy 状态，避免 UI 卡在"正在思考"
@@ -948,7 +948,7 @@ function useOpencodeClientImpl(
     const newCwd = (cwd || '').trim();
     if (!newCwd) {
       addLog({
-        source: 'opencode',
+        source: 'agent',
         text: '切换工作目录失败: 路径为空（保持当前目录）',
         timestamp: new Date(),
         level: 'warn',
@@ -980,7 +980,7 @@ function useOpencodeClientImpl(
     if (!clientRef.current) {
       addLog({
         source: 'stderr',
-        text: '未连接 OpenCode 服务，无法发送消息',
+        text: '未连接 Agent 服务，无法发送消息',
         timestamp: new Date(),
         level: 'error',
       });
@@ -1040,7 +1040,7 @@ function useOpencodeClientImpl(
             await setWorkingDirectory(targetDir);
           }
         } catch (err) {
-          console.error('[useOpencodeClient] 通过对话新建数据探索目录失败:', err);
+          console.error('[agent-client] 通过对话新建数据探索目录失败:', err);
         }
       }
       try {
@@ -1066,8 +1066,8 @@ function useOpencodeClientImpl(
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        console.error('[opencode-client] session create failed:', err);
-        addLog({ source: 'opencode', text: `创建会话失败：${msg}`, timestamp: new Date(), level: 'error' });
+        console.error('[agent-client] session create failed:', err);
+        addLog({ source: 'agent', text: `创建会话失败：${msg}`, timestamp: new Date(), level: 'error' });
         return;
       }
     }
@@ -1094,7 +1094,7 @@ function useOpencodeClientImpl(
     // 界面表现为「发送后毫无反应」，是最难排查的一类故障。这里补上 catch 并落日志。
     const modelSnapshot = activeLLMModelRef.current ?? undefined;
     addLog({
-      source: 'opencode',
+      source: 'agent',
       text: `发送消息：session=${sessionId ?? '(将新建)'} 目录=${currentDirectory ?? '(未设置)'} 模型=${modelSnapshot ? modelSnapshot.providerID + '/' + modelSnapshot.modelID : '(默认)'} 长度=${line.length}`,
       timestamp: new Date(),
       level: 'info',
@@ -1103,7 +1103,7 @@ function useOpencodeClientImpl(
     sendChatMessage(clientRef.current, line, sessionId, modelSnapshot)
       .then((res) => {
         addLog({
-          source: 'opencode',
+          source: 'agent',
           text: `消息已提交（session=${sessionId ?? '新建'}，服务端返回=${res ?? 'ok'}）。若长时间无回复，请看是否有「未收到本目录事件」告警。`,
           timestamp: new Date(),
           level: 'info',
@@ -1111,9 +1111,9 @@ function useOpencodeClientImpl(
       })
       .catch((err: unknown) => {
         const msg = err instanceof Error ? err.message : String(err);
-        console.error('[useOpencodeClient] 发送消息失败:', err);
+        console.error('[agent-client] 发送消息失败:', err);
         addLog({
-          source: 'opencode',
+          source: 'agent',
           text: `发送消息失败：${msg}`,
           timestamp: new Date(),
           level: 'error',
@@ -1163,8 +1163,8 @@ function useOpencodeClientImpl(
   const handleCompressSession = useCallback(async (): Promise<{ success: boolean }> => {
     if (!clientRef.current || !currentSessionId) {
       addLog({
-        source: 'opencode',
-        text: '无法压缩：未连接 OpenCode 服务或未选择会话',
+        source: 'agent',
+        text: '无法压缩：未连接 Agent 服务或未选择会话',
         timestamp: new Date(),
         level: 'warn',
       });
@@ -1183,7 +1183,7 @@ function useOpencodeClientImpl(
       return result;
     } catch (err) {
       addLog({
-        source: 'opencode',
+        source: 'agent',
         text: `压缩异常: ${err instanceof Error ? err.message : String(err)}`,
         timestamp: new Date(),
         level: 'error',
@@ -1211,7 +1211,7 @@ function useOpencodeClientImpl(
         });
         bumpDeVersion();
       } catch (err) {
-        console.error('[useOpencodeClient] 新建数据探索会话失败:', err);
+        console.error('[agent-client] 新建数据探索会话失败:', err);
       }
     }
   }, [resetState, clearCurrentSession, isDataExplore, dataExploreService, setWorkingDirectory]);
@@ -1249,7 +1249,7 @@ function useOpencodeClientImpl(
       try {
         await dataExploreService.removeDir(dir);
       } catch (err) {
-        console.warn('[useOpencodeClient] 删除数据探索会话目录失败:', err);
+        console.warn('[agent-client] 删除数据探索会话目录失败:', err);
       }
     }
     setDataExploreDirs(prev => (prev || []).filter(d => d.dir !== dir));
@@ -1259,7 +1259,7 @@ function useOpencodeClientImpl(
         await deleteSession(clientRef.current, sid);
         setTasks(removeSessionHistoryEntry(sessionHistoryKey, sid));
       } catch (err) {
-        console.warn('[useOpencodeClient] 删除数据探索会话失败:', err);
+        console.warn('[agent-client] 删除数据探索会话失败:', err);
       }
     }
   }, [isDataExplore, dataExploreService, currentSessionId, clearCurrentSession, deleteSession, sessionHistoryKey]);
@@ -1329,7 +1329,7 @@ function useOpencodeClientImpl(
         setTodos(todosFromApi);
       }
     } catch (err) {
-      console.warn('[useOpencodeClient] Failed to load session todos:', err);
+      console.warn('[agent-client] Failed to load session todos:', err);
     }
 
     if (todosFromApi.length === 0 && entries.length > 0) {
@@ -1355,7 +1355,7 @@ function useOpencodeClientImpl(
           try {
             await dataExploreService.removeDir(dir);
           } catch (err) {
-            console.warn('[useOpencodeClient] 删除数据探索会话目录失败:', err);
+            console.warn('[agent-client] 删除数据探索会话目录失败:', err);
           }
         }
         setDataExploreDirs(prev => (prev || []).filter(d => d.dir !== dir));
@@ -1386,7 +1386,7 @@ function useOpencodeClientImpl(
       try {
         await c.session.update({ sessionID: sessionId, title: trimmed });
       } catch (err) {
-        addLog({ source: 'opencode', text: `重命名失败: ${err instanceof Error ? err.message : String(err)}`, timestamp: new Date(), level: 'warn' });
+        addLog({ source: 'agent', text: `重命名失败: ${err instanceof Error ? err.message : String(err)}`, timestamp: new Date(), level: 'warn' });
         refreshTasks(); // 回滚乐观更新
       }
     }

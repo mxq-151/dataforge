@@ -53,7 +53,7 @@ export function useOpencodeSessions(): UseOpencodeSessionsReturn {
       }
       return null;
     } catch (err) {
-      console.error('[useOpencodeSessions] newSession error:', err);
+      console.error('[agent-sessions] newSession error:', err);
       return null;
     }
   }, []);
@@ -109,7 +109,7 @@ export function useOpencodeSessions(): UseOpencodeSessionsReturn {
 
       return allEntries;
     } catch (err) {
-      console.error('[useOpencodeSessions] loadSession error:', err);
+      console.error('[agent-sessions] loadSession error:', err);
       return [];
     }
   }, []);
@@ -123,7 +123,7 @@ export function useOpencodeSessions(): UseOpencodeSessionsReturn {
       }
       return [];
     } catch (err) {
-      console.error('[useOpencodeSessions] listSessions error:', err);
+      console.error('[agent-sessions] listSessions error:', err);
       return [];
     }
   }, []);
@@ -137,7 +137,7 @@ export function useOpencodeSessions(): UseOpencodeSessionsReturn {
         setCurrentSessionParentID(null);
       }
     } catch (err) {
-      console.error('[useOpencodeSessions] deleteSession error:', err);
+      console.error('[agent-sessions] deleteSession error:', err);
     }
   }, [currentSessionId]);
 
@@ -157,7 +157,7 @@ export function useOpencodeSessions(): UseOpencodeSessionsReturn {
       }
       return [];
     } catch (err) {
-      console.error('[useOpencodeSessions] getSessionChildren error:', err);
+      console.error('[agent-sessions] getSessionChildren error:', err);
       return [];
     }
   }, []);

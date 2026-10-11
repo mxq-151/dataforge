@@ -78,11 +78,11 @@ async function deleteMessagesFromBoundary(
       const result = await client.session.deleteMessage({ sessionID, messageID: id });
       if (result.error) {
         failed++;
-        console.error('[useOpencodeChat] deleteMessage failed:', id, result.error);
+        console.error('[agent-chat] deleteMessage failed:', id, result.error);
       }
     } catch (err) {
       failed++;
-      console.error('[useOpencodeChat] deleteMessage exception:', id, err);
+      console.error('[agent-chat] deleteMessage exception:', id, err);
     }
   }
   if (failed > 0) {
@@ -112,10 +112,10 @@ export function useOpencodeChat(options: UseOpencodeChatOptions): UseOpencodeCha
   /** 上报错误到 UI 日志面板（如果 addLog 可用）+ console.error */
   const reportError = useCallback((label: string, err: unknown) => {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[useOpencodeChat] ${label}:`, err);
+    console.error(`[agent-chat] ${label}:`, err);
     if (addLog) {
       addLog({
-        source: 'opencode',
+        source: 'agent',
         text: `${label}: ${msg}`,
         timestamp: new Date(),
         level: 'error',
@@ -157,7 +157,7 @@ export function useOpencodeChat(options: UseOpencodeChatOptions): UseOpencodeCha
           throw new Error('Failed to create session: empty response');
         }
       } catch (err) {
-        console.error('[useOpencodeChat] Failed to create session:', err);
+        console.error('[agent-chat] Failed to create session:', err);
         throw err;
       }
     }
@@ -175,7 +175,7 @@ export function useOpencodeChat(options: UseOpencodeChatOptions): UseOpencodeCha
       const detail = err instanceof Error ? err.message : String(err);
       const status = (err as { status?: number } | null)?.status;
       console.error(
-        '[useOpencodeChat] Failed to send prompt:',
+        '[agent-chat] Failed to send prompt:',
         { sessionId, moduleId, roleType, hasSystem: !!systemInstructions, model, status, detail },
         err,
       );
@@ -299,7 +299,7 @@ export function useOpencodeChat(options: UseOpencodeChatOptions): UseOpencodeCha
     options?: { providerID?: string; modelID?: string }
   ): Promise<{ success: boolean }> => {
     if (!client || !currentSessionId) {
-      console.warn('[useOpencodeChat] sendSummarize skipped: client or sessionId missing');
+      console.warn('[agent-chat] sendSummarize skipped: client or sessionId missing');
       return { success: false };
     }
     try {
