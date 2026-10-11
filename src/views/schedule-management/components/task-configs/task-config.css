@@ -29,6 +29,14 @@
   margin-left: 8px;
 }
 
+/* 弹窗顶部「查看运行日志」入口，右对齐显示 */
+.tc-modal__log-btn {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .tc-modal__body {
   max-height: 600px;
   overflow-y: auto;

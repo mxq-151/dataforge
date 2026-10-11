@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { Terminal, Database, Code2, Zap, Globe, GitBranch, GitMerge, Shuffle, Waves, Container, Coffee, ArrowRightLeft, Cloud, Brain, Radio, Server, Network, X } from 'lucide-react';
+import { Terminal, Database, Code2, Zap, Globe, GitBranch, GitMerge, Shuffle, Waves, Container, Coffee, ArrowRightLeft, Cloud, Brain, Radio, Server, Network, X, Eye } from 'lucide-react';
 import type {
   DSWorkflowTaskNode, DSTaskType, DSWorkflowEdge,
   DSWorkerGroup, DSEnvironment, DolphinSchedulerApi,
@@ -61,6 +61,8 @@ interface TaskConfigModalProps {
   onSave: (task: DSWorkflowTaskNode, newEdges?: DSWorkflowEdge[]) => void;
   onClose: () => void;
   readonly?: boolean;
+  /** 只读查看任务详情时，在弹窗顶部展示「查看运行日志」入口（仅工作流实例详情传入） */
+  onViewLog?: () => void;
   /**
    * 「应用名称」自动生成上下文（`{project}.{workflow}.{task}`，见 utils/appName.ts）。
    * 仅提交入口（单文件 / 文件夹提交调度）传入 —— 此时应用名称只读、恒等于
@@ -78,7 +80,7 @@ function parseTaskParams(taskType: DSTaskType, taskParamsStr: string): Record<st
   return getDefaultTaskParams(taskType);
 }
 
-export default function TaskConfigModal({ task, allNodes, edges, workflowDefinitions, workerGroups, environments, api, onSave, onClose, readonly, appNameContext }: TaskConfigModalProps) {
+export default function TaskConfigModal({ task, allNodes, edges, workflowDefinitions, workerGroups, environments, api, onSave, onClose, readonly, onViewLog, appNameContext }: TaskConfigModalProps) {
   const [form, setForm] = useState<DSWorkflowTaskNode>({ ...task });
   const [taskParamsObj, setTaskParamsObj] = useState<Record<string, unknown>>(() =>
     parseTaskParams(form.taskType, form.taskParams)
@@ -153,6 +155,11 @@ export default function TaskConfigModal({ task, allNodes, edges, workflowDefinit
           {TASK_TYPE_ICONS[form.taskType]}
           <span>{readonly ? '任务详情' : '任务配置'} - {TASK_TYPE_LABELS[form.taskType]}</span>
           {readonly && <span className="wf-toolbar__readonly-badge">只读</span>}
+          {onViewLog && (
+            <button type="button" className="sm-btn sm-btn--ghost sm-btn--xs tc-modal__log-btn" onClick={onViewLog}>
+              <Eye size={12} /> 查看运行日志
+            </button>
+          )}
         </div>
 
         <div className="sm-modal__body tc-modal__body">

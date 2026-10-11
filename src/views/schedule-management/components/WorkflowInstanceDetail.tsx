@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   ArrowLeft, ZoomIn, ZoomOut, Maximize2, Move,
-  GitBranch, RefreshCw, Play, Pause, StopCircle, RotateCcw, Eye,
-  CheckCircle, Clock, User, HardDrive,
+  GitBranch, RefreshCw, Play, Pause, StopCircle, RotateCcw,
+  Clock, User, HardDrive,
 } from 'lucide-react';
 import { createRoot } from 'react-dom/client';
 import type { Root } from 'react-dom/client';
@@ -16,6 +16,7 @@ import TaskConfigModal from './task-configs/TaskConfigModal';
 import DagCanvas from '../dag/DagCanvas';
 import { buildGraph } from '../dag/useCustomCellBuilder';
 import { NODE, NODE_STATUS_MARKUP } from '../dag/dag-config';
+import { LogModal } from '../shared';
 import './WorkflowInstanceDetail.css';
 
 const WORKFLOW_STATUS_CONFIG: Record<number, { label: string; color: string; bgColor: string; isSpin?: boolean }> = {
@@ -103,7 +104,6 @@ interface WorkflowInstanceDetailProps {
   api: DolphinSchedulerApi;
   onBack: () => void;
   onExecute: (instance: DSWorkflowInstance, executeType: string) => void;
-  onForceSuccessTask: (task: DSTaskInstance) => void;
 }
 
 const WorkflowInstanceDetail: React.FC<WorkflowInstanceDetailProps> = ({
@@ -112,16 +112,13 @@ const WorkflowInstanceDetail: React.FC<WorkflowInstanceDetailProps> = ({
   api,
   onBack,
   onExecute,
-  onForceSuccessTask,
 }) => {
   const [taskInstances, setTaskInstances] = useState<DSTaskInstance[]>([]);
   const [nodes, setNodes] = useState<DSWorkflowTaskNode[]>([]);
   const [edges, setEdges] = useState<DSWorkflowEdge[]>([]);
   // 当前实例最新数据，定时刷新时更新（初始为传入的实例）
   const [curInstance, setCurInstance] = useState<DSWorkflowInstance>(instance);
-  const [selectedTaskCode, setSelectedTaskCode] = useState<number | null>(null);
   const [zoom, setZoom] = useState(1);
-  const [rightPanelTab, setRightPanelTab] = useState<'info' | 'tasks'>('info');
   const [logContent, setLogContent] = useState<string>('');
   const [logLoading, setLogLoading] = useState(false);
   const [logTaskId, setLogTaskId] = useState<number | null>(null);
@@ -286,36 +283,11 @@ const WorkflowInstanceDetail: React.FC<WorkflowInstanceDetailProps> = ({
     statusRootsRef.current.clear();
 
     graph.on('scale', ({ sx }) => setZoom(Math.round(sx * 100) / 100));
-    // 点击节点 → 联动右侧任务面板
+    // 点击节点 → 打开只读任务详情弹窗（内含「查看运行日志」入口）
     graph.on('node:click', ({ node }) => {
-      setSelectedTaskCode(Number(node.id));
-      setRightPanelTab('tasks');
-      graph.cleanSelection();
-      graph.select(node);
-    });
-    // 双击节点 → 只读查看任务配置
-    graph.on('node:dblclick', ({ node }) => {
       const data = node.getData() as { task?: DSWorkflowTaskNode } | undefined;
       if (data?.task) setViewingTaskNode(data.task);
     });
-    // 点击空白 → 取消选中
-    graph.on('blank:click', () => {
-      setSelectedTaskCode(null);
-      graph.cleanSelection();
-    });
-  }, []);
-
-  // 从右侧任务列表选中 → 联动画布节点高亮
-  const selectNodeByCode = useCallback((code: number) => {
-    setSelectedTaskCode(code);
-    setRightPanelTab('tasks');
-    const graph = graphRef.current;
-    if (!graph) return;
-    const cell = graph.getCellById(String(code));
-    if (cell) {
-      graph.cleanSelection();
-      graph.select(cell);
-    }
   }, []);
 
   // 回填 DAG 并叠加任务状态徽标（幂等：图已有节点时仅刷新状态）
@@ -352,36 +324,34 @@ const WorkflowInstanceDetail: React.FC<WorkflowInstanceDetailProps> = ({
     };
   }, []);
 
-  const handleViewLog = useCallback(async (task: DSTaskInstance) => {
-    setLogLoading(true);
-    setLogTaskId(task.id);
-    setLogContent('');
+  // 拉取任务日志；silent=true 时用于运行时定时静默刷新，不触发加载态、不清空旧内容
+  const fetchTaskLog = useCallback(async (taskId: number, projectCode: number, silent = false) => {
+    if (!silent) {
+      setLogLoading(true);
+      setLogContent('');
+    }
     try {
-      console.log('[WorkflowInstanceDetail] Fetching log for task:', task.id, 'projectCode:', task.projectCode);
-      const res = await api.taskInstance.log(task.projectCode, task.id);
-      console.log('[WorkflowInstanceDetail] Log response:', res);
+      const res = await api.taskInstance.log(projectCode, taskId);
       if (res.code === 0) {
         const logData = res.data as any;
         const logMessage = typeof logData === 'string'
           ? logData
           : logData?.message || '';
         setLogContent(logMessage || '暂无日志');
-        if (!logMessage) {
-          console.warn('[WorkflowInstanceDetail] Log data is empty for task:', task.id);
-        }
       } else {
-        const errorMsg = res.msg || `获取日志失败 (code: ${res.code})`;
-        console.error('[WorkflowInstanceDetail] Log fetch error:', errorMsg);
-        setLogContent(`错误: ${errorMsg}`);
+        setLogContent(`错误: ${res.msg || `获取日志失败 (code: ${res.code})`}`);
       }
     } catch (e: any) {
-      const errMsg = e.message || e.toString() || '未知错误';
-      console.error('[WorkflowInstanceDetail] Log fetch exception:', e);
-      setLogContent(`异常: ${errMsg}`);
+      setLogContent(`异常: ${e.message || e.toString() || '未知错误'}`);
     } finally {
-      setLogLoading(false);
+      if (!silent) setLogLoading(false);
     }
   }, [api]);
+
+  const handleViewLog = useCallback((task: DSTaskInstance) => {
+    setLogTaskId(task.id);
+    fetchTaskLog(task.id, task.projectCode);
+  }, [fetchTaskLog]);
 
   const handleZoomIn = () => graphRef.current?.zoom(0.1);
   const handleZoomOut = () => graphRef.current?.zoom(-0.1);
@@ -392,7 +362,18 @@ const WorkflowInstanceDetail: React.FC<WorkflowInstanceDetailProps> = ({
     graph.centerContent();
   };
 
-  const selectedTaskInstance = selectedTaskCode ? taskStatusMap.get(selectedTaskCode) : null;
+  // 当前弹窗对应的任务实例（用于弹窗顶部的「查看运行日志」）
+  const viewingTaskInstance = viewingTaskNode ? taskStatusMap.get(viewingTaskNode.code) : undefined;
+
+  // 日志所属任务实例：运行时每 2 秒静默刷新一次日志
+  const logTask = logTaskId != null ? taskInstances.find(t => t.id === logTaskId) : undefined;
+  const logTaskRunning = logTask?.state === TaskExecutionStatus.RUNNING_EXECUTION;
+  const logTaskProjectCode = logTask?.projectCode;
+  useEffect(() => {
+    if (logTaskId == null || !logTaskRunning || logTaskProjectCode == null) return;
+    const timer = setInterval(() => fetchTaskLog(logTaskId, logTaskProjectCode, true), 2000);
+    return () => clearInterval(timer);
+  }, [logTaskId, logTaskRunning, logTaskProjectCode, fetchTaskLog]);
 
   const statusCfg = WORKFLOW_STATUS_CONFIG[WORKFLOW_STATE_STRING_TO_ENUM[curInstance.state as unknown as string] ?? curInstance.state];
 
@@ -492,24 +473,8 @@ const WorkflowInstanceDetail: React.FC<WorkflowInstanceDetailProps> = ({
         </div>
 
         <div className="wi-detail__right-panel">
-          <div className="wi-panel__tabs">
-            <button
-              className={`wi-panel__tab ${rightPanelTab === 'info' ? 'wi-panel__tab--active' : ''}`}
-              onClick={() => setRightPanelTab('info')}
-            >
-              实例信息
-            </button>
-            <button
-              className={`wi-panel__tab ${rightPanelTab === 'tasks' ? 'wi-panel__tab--active' : ''}`}
-              onClick={() => setRightPanelTab('tasks')}
-            >
-              任务列表 ({taskInstances.length})
-            </button>
-          </div>
-
           <div className="wi-panel__content">
-            {rightPanelTab === 'info' && (
-              <div className="wi-info">
+            <div className="wi-info">
                 <div className="wi-info__section">
                   <h4 className="wi-info__title">基本信息</h4>
                   <div className="wi-info__row">
@@ -587,99 +552,10 @@ const WorkflowInstanceDetail: React.FC<WorkflowInstanceDetailProps> = ({
                     </div>
                   </div>
                 </div>
-              </div>
-            )}
-
-            {rightPanelTab === 'tasks' && (
-              <div className="wi-tasks">
-                {selectedTaskInstance && (
-                  <div className="wi-tasks__selected">
-                    <div className="wi-tasks__selected-header">
-                      <span className="wi-tasks__selected-name">{selectedTaskInstance.name}</span>
-                      <StatusBadge status={selectedTaskInstance.state} />
-                    </div>
-                    <div className="wi-tasks__selected-info">
-                      <div className="wi-info__row">
-                        <span className="wi-info__label">任务类型</span>
-                        <span className="sm-task-type">{selectedTaskInstance.taskType}</span>
-                      </div>
-                      <div className="wi-info__row">
-                        <span className="wi-info__label">开始时间</span>
-                        <span className="wi-info__value">{formatDateTime(selectedTaskInstance.startTime)}</span>
-                      </div>
-                      <div className="wi-info__row">
-                        <span className="wi-info__label">结束时间</span>
-                        <span className="wi-info__value">{formatDateTime(selectedTaskInstance.endTime)}</span>
-                      </div>
-                      <div className="wi-info__row">
-                        <span className="wi-info__label">耗时</span>
-                        <span className="wi-info__value">{selectedTaskInstance.duration || '-'}</span>
-                      </div>
-                      <div className="wi-info__row">
-                        <span className="wi-info__label">重试次数</span>
-                        <span className="wi-info__value">{selectedTaskInstance.retryTimes}</span>
-                      </div>
-                      <div className="wi-info__row">
-                        <span className="wi-info__label">Host</span>
-                        <span className="wi-info__value">{selectedTaskInstance.host || '-'}</span>
-                      </div>
-                    </div>
-                    <div className="wi-tasks__selected-actions">
-                      <button className="sm-btn sm-btn--ghost sm-btn--xs" onClick={() => handleViewLog(selectedTaskInstance)}>
-                        <Eye size={12} /> 查看日志
-                      </button>
-                      {(selectedTaskInstance.state === TaskExecutionStatus.FAILURE || selectedTaskInstance.state === TaskExecutionStatus.KILL || selectedTaskInstance.state === TaskExecutionStatus.NEED_FAULT_TOLERANCE) && (
-                        <button className="sm-btn sm-btn--warning sm-btn--xs" onClick={() => onForceSuccessTask(selectedTaskInstance)}>
-                          <CheckCircle size={12} /> 强制成功
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                <div className="wi-tasks__list">
-                  {taskInstances.map(task => {
-                    const cfg = TASK_STATUS_CONFIG[task.state];
-                    return (
-                      <div
-                        key={task.id}
-                        className={`wi-task-item ${selectedTaskCode === task.taskCode ? 'wi-task-item--selected' : ''}`}
-                        onClick={() => { selectNodeByCode(task.taskCode); }}
-                      >
-                        <span className="wi-task-item__indicator" style={{ backgroundColor: cfg?.color || '#555' }}></span>
-                        <span className="wi-task-item__name">{task.name}</span>
-                        <span className="wi-task-item__type">{task.taskType}</span>
-                        <span className="wi-task-item__duration">{task.duration || '-'}</span>
-                      </div>
-                    );
-                  })}
-                  {taskInstances.length === 0 && (
-                    <div className="wi-tasks__empty">暂无任务实例</div>
-                  )}
-                </div>
-              </div>
-            )}
+            </div>
           </div>
         </div>
       </div>
-
-      {logTaskId !== null && (
-        <div className="wi-log-panel">
-          <div className="wi-log-panel__header">
-            <span>任务日志</span>
-            <button className="sm-btn sm-btn--ghost sm-btn--xs" onClick={() => setLogTaskId(null)}>
-              ×
-            </button>
-          </div>
-          <div className="wi-log-panel__body">
-            {logLoading ? (
-              <div className="sm-loading">加载中...</div>
-            ) : (
-              <pre className="sm-log-content">{logContent || '暂无日志'}</pre>
-            )}
-          </div>
-        </div>
-      )}
 
       {viewingTaskNode && (
         <TaskConfigModal
@@ -692,23 +568,18 @@ const WorkflowInstanceDetail: React.FC<WorkflowInstanceDetailProps> = ({
           api={api}
           onSave={() => {}}
           onClose={() => setViewingTaskNode(null)}
+          onViewLog={viewingTaskInstance ? () => handleViewLog(viewingTaskInstance) : undefined}
           readonly
         />
+      )}
+
+      {/* 运行日志弹窗：置于任务详情弹窗之后，保证层级在其之上 */}
+      {logTaskId !== null && (
+        <LogModal log={logContent} loading={logLoading} onClose={() => setLogTaskId(null)} />
       )}
     </div>
   );
 };
-
-function StatusBadge({ status }: { status: number }) {
-  const cfg = TASK_STATUS_CONFIG[status];
-  if (!cfg) return <span className="sm-status-badge">未知</span>;
-  return (
-    <span className="sm-status-badge" style={{ color: cfg.color, backgroundColor: cfg.bgColor }}>
-      {cfg.isSpin && <RefreshCw size={10} className="sm-spin-icon" />}
-      {cfg.label}
-    </span>
-  );
-}
 
 /** 渲染在 x6 节点上方 foreignObject 内的任务状态徽标（复用 NODE_STATUS_COLORS 色值）。 */
 function TaskStatusBadge({ status }: { status: number }) {

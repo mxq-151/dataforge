@@ -911,7 +911,6 @@ const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
       api={api}
       onBack={() => setViewingWorkflowInstance(null)}
       onExecute={handleExecuteWorkflowInstance}
-      onForceSuccessTask={handleForceSuccessTask}
     />
   ) : viewingTaskInstance ? (
     <TaskInstanceDetailView
