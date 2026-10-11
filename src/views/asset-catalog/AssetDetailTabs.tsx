@@ -3,7 +3,7 @@
  *
  * ── 定位 ────────────────────────────────────────────────────
  * 资产目录详情要回答「这表是什么、谁负责、能不能用、质量如何、影响谁」。其中
- * 「概览」由宿主面板提供（它持有 detail 与治理编辑入口），本组件负责其余页签，
+ * 「概览」由宿主面板提供（它持有 detail / 生命周期等写状态），本组件负责其余页签，
  * 每个页签各自探测自己的接口 —— 一个页签不可用不影响其它页签。
  *
  * ── 页签与接口对应 ──────────────────────────────────────────
@@ -29,7 +29,6 @@ import type {
 } from '../../api/assetCatalog';
 import { useProbe } from './useProbe';
 import { useToast } from '../../components/Toast';
-import { getQualityRuleType, QUALITY_DISPOSE_MODES } from '../../types/quality';
 
 export type AssetDetailTabId =
   | 'overview'
@@ -51,7 +50,7 @@ const TAB_LABELS: Array<{ id: AssetDetailTabId; label: string }> = [
 interface AssetDetailTabsProps {
   tableId: number;
   detail: AssetTableDetailVO;
-  /** 概览页签内容由宿主面板提供（它持有 detail 与治理编辑入口） */
+  /** 概览页签内容由宿主面板提供（它持有 detail 与生命周期写状态） */
   overviewContent: React.ReactNode;
 }
 
@@ -121,12 +120,6 @@ const IndicatorTab: React.FC<{ tableId: number }> = ({ tableId }) => {
 
 // ── 数据质量（跨模块读质量模块）────────────────────────────
 
-/** 未通过记录的状态中文名；只用到两档：红色异常 / 校验失败 */
-const QUALITY_STATUS_LABELS: Record<string, string> = {
-  ERROR: '红色异常',
-  FAILED: '校验失败',
-};
-
 const QualityTab: React.FC<{ tableId: number }> = ({ tableId }) => {
   const { status, data } = useProbe<AssetQualitySummaryVO>(
     () => assetCatalogApi.getTableQuality(tableId),
@@ -142,12 +135,6 @@ const QualityTab: React.FC<{ tableId: number }> = ({ tableId }) => {
       />
     );
   if (!data) return <EmptyText text="暂无质量摘要。" />;
-
-  // 规则类型 / 处置方式的中文名只在 types/quality 定义一次，这里按编码映射，未知编码原样回显
-  const disposeLabel = (code: string) =>
-    QUALITY_DISPOSE_MODES.find(m => m.code === code)?.label ?? (code || '-');
-  const enabledRules = data.enabledRules ?? [];
-  const failedSamples = data.failedSamples ?? [];
 
   return (
     <div className="ac-section ac-section--tight">
@@ -179,74 +166,8 @@ const QualityTab: React.FC<{ tableId: number }> = ({ tableId }) => {
         最近一次校验：{data.lastRunTime || '-'}
         {data.lastRunStatus ? ` · ${data.lastRunStatus}` : ''}
       </p>
-
-      <hr className="ac-divider" />
-
-      <h4 className="ac-section__title">已启用质检规则</h4>
-      {enabledRules.length === 0 ? (
-        <EmptyText text="该表暂无已启用的质检规则。" />
-      ) : (
-        <table className="ac-table">
-          <thead>
-            <tr>
-              <th>规则名称</th>
-              <th>规则类型</th>
-              <th>校验字段</th>
-              <th>处置方式</th>
-              <th>负责人</th>
-            </tr>
-          </thead>
-          <tbody>
-            {enabledRules.map(rule => (
-              <tr key={rule.id}>
-                <td className="ac-table__strong">{rule.ruleName}</td>
-                <td>{getQualityRuleType(rule.ruleType)?.label ?? rule.ruleType ?? '-'}</td>
-                <td>{rule.columnName || '-'}</td>
-                <td>{disposeLabel(rule.disposeMode)}</td>
-                <td>{rule.ownerName || '-'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-
-      <hr className="ac-divider" />
-
-      <h4 className="ac-section__title">未通过质检记录样例</h4>
-      {failedSamples.length === 0 ? (
-        <EmptyText text="最近一次校验暂无未通过记录。" />
-      ) : (
-        <table className="ac-table">
-          <thead>
-            <tr>
-              <th>质检时间</th>
-              <th>质检规则</th>
-              <th>状态</th>
-              <th>完整数据样例</th>
-            </tr>
-          </thead>
-          <tbody>
-            {failedSamples.map(s => (
-              <tr key={s.id}>
-                <td className="ac-table__strong">{s.checkTime || '-'}</td>
-                <td>
-                  {s.ruleName || '-'}
-                  {s.ruleType ? `（${getQualityRuleType(s.ruleType)?.label ?? s.ruleType}）` : ''}
-                </td>
-                <td>{QUALITY_STATUS_LABELS[s.status] ?? s.status ?? '-'}</td>
-                <td>
-                  <pre className="ac-sample">{s.sample || '-'}</pre>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-
-      <hr className="ac-divider" />
-
       <p className="ac-muted">
-        规则的校验结果在此只读汇总；校验模板在「资产管理 → 规则模板」维护，阻断下游由质量校验任务作为调度节点实现。
+        规则的配置与校验明细在「数据质量」模块维护，此处只读汇总；阻断下游由质量校验任务作为调度节点实现。
       </p>
     </div>
   );
