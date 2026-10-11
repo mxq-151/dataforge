@@ -2,32 +2,41 @@
 
 > 只放「跨会话必须记住、忘掉就出错」的硬规则。历史过程见 `memory/YYYY-MM-DD.md`。
 
-## 命令与环境（必守）
+## 命令与环境
 
 - vitest / tsc / vite 一律 `env -u NODE_OPTIONS`（否则 jsdom 导入 0.5s→96s）。
-- **git 写操作不在本 agent shell 跑**（报成功却不落地，2026-09-15 曾写坏 `.git`）；只读安全。
+- **git 写操作不在本 agent shell 跑**（报成功却不落地，2026-09-15 写坏过 `.git`）；只读安全。
   `dataforge`、`dataforge-server` 是两个独立仓库。
 - **同一文件多处编辑必须串行**（并行 Edit 互相抹掉）；查并发写者 `find src -mmin -8`。
 - macOS：`grep "a\|b"` 静默失败须 `grep -E`；zsh 下 `--include` 报 no matches，改用 Grep 工具。
-- **回归基线（2026-10-10）**：前端 **69 文件 / 1141 例**；后端关心类 **118 例全过**（2026-10-09 为 67/1130、74）。
-  load 7~10 时 `waitFor` 超时属误报。
-- 动后端先 `export JAVA_HOME=/opt/homebrew/opt/openjdk@17; /opt/homebrew/bin/mvn -o -q compile`。
-- 后端只跑关心的类：`mvn -o test -Dtest='DqRuleApiContractTest,DqResultServiceReportTest,DqRuleRegisterTest,DqOverviewApiContractTest,QualityRuleTypeContractTest,DqSqlBuilderMatrixTest,AssetCatalogApiContractTest' -DfailIfNoTests=false`
-- mvn 在沙箱里因删不掉 `target/surefire*` 报「命令被拦截」——按 `BUILD SUCCESS` / `Tests run: N, Failures: 0` 判定。
+- **回归基线（2026-10-10）**：前端 **69 文件 / 1141 例**；后端关心类 **118 例全过**。load 7~10 时
+  `waitFor` 超时属误报。
+- 后端：`export JAVA_HOME=/opt/homebrew/opt/openjdk@17; mvn -o -q compile`；只跑关心类
+  `mvn -o test -Dtest='DqRuleApiContractTest,DqResultServiceReportTest,DqRuleRegisterTest,DqOverviewApiContractTest,QualityRuleTypeContractTest,DqSqlBuilderMatrixTest,AssetCatalogApiContractTest' -DfailIfNoTests=false`。
+  沙箱里 mvn 删不掉 `target/surefire*` 会报「命令被拦截」——按 `BUILD SUCCESS` / `Tests run: N, Failures: 0` 判定。
+- **本机可用真实浏览器做布局验证**：playwright 1.58.2 在 `/Users/mxq/node_modules`、chromium 在
+  `~/Library/Caches/ms-playwright`。跑法 `NODE_PATH=/Users/mxq/node_modules /opt/homebrew/bin/node x.js`
+  （`file://` + 项目真实 CSS，用 `getBoundingClientRect()` 量偏移）。**别只靠「读 CSS 猜」。**
+- **改后端后必须热更新容器**（否则前端「看起来没生效」）：`localhost:8082` = 容器 `dataforge-allinone` 里的 jar。
+  `docker cp <fatjar> dataforge-allinone:/opt/dataforge/dataforge-server.jar` +
+  `docker exec dataforge-allinone supervisorctl restart dataforge-server`。
+  ⚠️ 本 agent shell 里 `mvn package` 的 repackage 必失败（`Unable to rename …jar.original`）→ rsync 源码到
+  `/tmp/dfbuild-src` 再 `mvn -o -q -DskipTests package`。
+  ⚠️ 登录接口要**加密密码**，curl 登不进去；验证后端走 psql 或 UI。
 
 ## 模型上下文窗口
 
-- `deepseek-flash` = DeepSeek **V4.1** Flash，**1M**；判定里没有 v3/v4 字样，**只能显式列出**，否则掉进泛化
-  `deepseek`→128k。DeepSeek V4 系一律 1_000_000（非 1_048_576）。改判定须同步单测。
+- `deepseek-flash` = DeepSeek **V4.1** Flash，**1M**；判定里无 v3/v4 字样，**只能显式列出**，否则掉进泛化
+  `deepseek`→128k。DeepSeek V4 系一律 1_000_000。改判定须同步单测。
 - `GET /api/model` **必须带 location**；冷实例首次 `200 + data: []` ⇒ 必须重试。
-- sidecar 由 app 托管，应用一关端口即拒连（502/refused 属正常）。
+- sidecar 由 app 托管（opencode，127.0.0.1:4096）；应用一关端口即拒连（502/refused 属正常）。
 
-## 编码约定（要点）
+## 编码约定
 
 - 代码头三字段 `@程序参数`/`@资源参数`/`@任务参数`，**取值是真实值**。两消费面：运行弹窗只取参数名
   （`extractProgramParams`）、提交调度取取值落 `taskParams`（`headerTaskParams.ts`）。改字段名/语义须同步：
-  S3 提示词 → `parseFileHeader` → `HEADER_FIELDS` → 上述两处 → `PendingProgramRun` → `ProgramRunModal`/
-  `SubmitToSchedulerModal` → 6 个测试文件。调度侧「任务参数」是 DS 概念，别跟着改。
+  S3 提示词 → `parseFileHeader` → `HEADER_FIELDS` → 上述两处 → `PendingProgramRun` → 两个 Modal → 6 个测试文件。
+  调度侧「任务参数」是 DS 概念，别跟着改。
 - 工作流名**不 sanitize**、环境后缀**默认 test**；`_v{N}` 版本链已删；`mainJar` 不加必填校验。
 - 表单加必填项必须同步 `REQUIRED_PARAMS` 与单测。
 - **x6 画布在 jsdom 下不可渲染**：测编辑器内部交互只 mock `../dag/DagCanvas`；含 `useToast` 须包 `ToastProvider`。
@@ -35,10 +44,12 @@
 - 流式文本逐字增长不进 `messages`（走 ref + `subscribePartText`）。
 - 开发助手切任务类型**不新建会话**（system 逐轮下发）；**数据探索例外**——其 `newSession()` 同时承担
   「新建时间戳工作目录」，不能照搬改法。
+- **改一级菜单必查三连锁**：① `ActiveTab`/`MENU_CODE_MAP`/`App.tsx::FIRST_LEVEL_TAB_IDS` 同批改；
+  ② `FIRST_LEVEL_MENU_CODES` 由 MENU_CODE_MAP 派生；③ **菜单种子只在 `sql/testdata/*.sql`**。
 
 ## 删除 / 回滚闸门
 
-- 一切删除/回滚先过纯函数 `rollbackSafety.ts::assessRollbackSafety`；`root=null` 一律中止。
+- 一切删除/回滚先过 `rollbackSafety.ts::assessRollbackSafety`；`root=null` 一律中止。
 - 删除**走回收站**（`.dataforge-trash/` + manifest，须对 git 隐身），禁止直删；回收站≠备份。
 - 保留策略 30 天 / 50 批 / 2 GiB（最新 2 批不清理）：`trashRetention.ts` 决策、`trashCleanup.ts` 执行。
   **新增「移入回收站」入口必须接 `scheduleTrashRetention`**。
@@ -49,68 +60,103 @@
   不存产出任务副本（权威在 Marquez / DolphinScheduler）。
 - **租户不是数据隔离边界**（`sys_tenant_user` 1:1；资源表无 tenant_id）。
 - **权限已加固**：DML 检查 fail-close；行/列合并**取交集收紧**；约束在 **SQL 下发前改写**
-  （`SqlPermissionRewriter`），Spark/Flink/HBase 已纳入。残留：租户非隔离边界、权限只覆盖 SQL 代码类型
+  （`SqlPermissionRewriter`），Spark/Flink/HBase 已纳入。残留：租户非隔离、权限只覆盖 SQL 代码类型
   （Scala/Python/Jar 不享行列约束）、超管短路。
 - **列级脱敏是真实机制**（`full/idcard/phone/email/partial`，多角色取更严者），对智能体同样生效；
   但无敏感数据自动识别，规则全靠人工配。
-- **`cla:` 口径已写死**：分级**只三档** 核心/重要/一般（GB/T 43697-2024，无小级）；分类**只六类**
-  个人信息/业务数据/经营数据/公共数据/运维数据/其他；写法 `cla:{分类}-{分级}`（表/字段注释尾部）。
-  **个人信息默认「一般数据」**——旧口径「敏感字段不得低于重要」已废除（抬高会触发重要数据报备义务）；
-  脱敏是独立维度，不得靠抬分级代替。常量 `CLASSIFICATION_SPEC`，注入 S1/S2/S3。后端**无 `cla:` 解析器**。
-- **凭据落盘已加密**（Electron `safeStorage` 信封 `{"$dfenc":"v1"}`），旧明文读时兼容。残留：设置页需明文
+- **`cla:` 口径已写死**：分级**只三档** 核心/重要/一般（GB/T 43697-2024）；分类**只六类** 个人信息/业务数据/
+  经营数据/公共数据/运维数据/其他；写法 `cla:{分类}-{分级}`（表/字段注释尾部）。**个人信息默认「一般数据」**
+  ——旧口径「敏感字段不得低于重要」已废除；脱敏是独立维度，不得靠抬分级代替。常量 `CLASSIFICATION_SPEC`，
+  注入 S1/S2/S3。后端**无 `cla:` 解析器**。
+- **凭据落盘已加密**（Electron `safeStorage`，信封 `{"$dfenc":"v1"}`），旧明文读时兼容。残留：设置页需明文
   回填、无 keyring 的 Linux 降级明文、换机器解不开。导出走 `df:store:export` 剥离。
 - **元数据缺失已可观测**：`MetadataAnnotationGapService` + `MetadataSyncAlertService`。勿再写「静默滞后」。
-- **提交有环境维度**：prod/gray/test（默认 test），**血缘只在 prod 注入**（硬闸门
-  `deployEnv.ts::shouldInjectLineage`）；拼装处 `src/utils/lineageParams.ts`（两入口共用）。
-- **sticky 表头别被「表格自身的滚动容器」吃掉**（2026-10-10 修复资产概况）：
-  `position: sticky` 只认**最近的滚动容器**。`.ac-table` 为做圆角带了 `overflow: hidden`，
-  表格自身就成了那个容器 → 表头被锚在表格里、跟着内容滚走（实测偏移 -119px）。
-  修法：在滚动容器内还原为非滚动盒子 `.ac-ov-scroll .ac-table { overflow: visible; border-radius: 0; }`
-  （`border-collapse: collapse` **与此无关**，实测单独改它无效，别乱动）。
-  **同类排查**：写 `sticky` 前先确认「sticky 元素 → 最近的滚动祖先」之间没有 `overflow: hidden/auto` 的表格/盒子；
-  全仓已有 13 处 `position: sticky`，`.exec-tabs__table` 那类是干净的。
-- **本机可用真实浏览器做布局验证**（2026-10-10 起）：playwright 1.58.2 在 `/Users/mxq/node_modules`，
-  浏览器已在 `~/Library/Caches/ms-playwright`（chromium-1228）。跑法：
-  `NODE_PATH=/Users/mxq/node_modules /opt/homebrew/bin/node x.js`（`file://` 加载页面，
-  引用**项目里的真实 CSS**，`getBoundingClientRect()` 量偏移）。别只靠「读 CSS 猜」。
-- **改后端代码后必须热更新容器，否则前端「看起来没生效」**（2026-10-10 踩过）：
-  接口打 `localhost:8082` = 容器 `dataforge-allinone` 里的 jar。正常路径
-  `dataforge-server/build/hot-update-dataforge-server.sh`（mvn package → docker cp → restart）；
-  **更温和**：`docker cp <fatjar> dataforge-allinone:/opt/dataforge/dataforge-server.jar` +
-  `docker exec dataforge-allinone supervisorctl restart dataforge-server`（不动 PG/DS/Marquez）。
-  ⚠️ **本 agent shell 里 `mvn package` 的 repackage 必失败**（`Unable to rename …jar.original`，
-  `target/` 下 rename 被拒；classifier / 预置 `.original` 都绕不开）→ 把源码 rsync 到 `/tmp/dfbuild-src`
-  再 `mvn -o -q -DskipTests package`，然后在 `/tmp` 取 fat jar。用户自己的终端没这问题。
-  ⚠️ 登录接口要求**加密密码**，curl 登不进去（默认账号 admin/123456）；验证后端行为走 psql 或 UI。
+- **提交有环境维度**：prod/gray/test（默认 test），**血缘只在 prod 注入**（`deployEnv.ts::shouldInjectLineage`）；
+  拼装处 `src/utils/lineageParams.ts`（两入口共用）。
 - **运行态数据只有测试环境**：`table_metadata` 仅 `*_olist_test` + `test_db`（38 张 test 后缀表，gray/prod 各 0）
   ⇒ 环境切到生产/灰度时看板为空是**正确结果**，不是没切换。
-- **资产管理按环境切换（2026-10-10）**：环境是**模块级**维度——切换器挂在资产管理模块的**页签条右侧**
-  （`AssetCatalogPanel` 持有 state，`AssetOverviewTab` 是受控组件只接 `env`），切一次即让
-  **资产概况五块看板图表 + 资产目录的树/检索/治理项/收藏一起重取**。默认生产
-  （`ASSET_ENV_OPTIONS = DEPLOY_ENV_OPTIONS`，`DEFAULT_ASSET_ENV='prod'` ≠ `DEFAULT_DEPLOY_ENV='test'`）。
-  环境解析唯一实现 = 后端 `common/utils/DeployEnvParser`（原 `AssetEnvParser`，已迁移，metadata 模块也用）；
-  `matches` 语义：env 空=不过滤、脏值按不过滤、**解析不出环境的名称在显式过滤时被排除**。
-  过滤依据两套后缀：**表类 = 库名**、**任务类（top-compute/task-delay）= 工作流名**。过滤一律在权限之后。
-  `/inventory/env-project` 不收窄（前端要全库分母算占比）。指标无环境维度，`/search` 的指标命中不受 env 影响。
-  `/bookmark` 指定 env 时走内存分页（先分页后过滤会错位）。标注缺口 env 下推 SQL：
-  `LIKE '%!_prod' ESCAPE '!'`（`_` 必转义；用 `!` 避开反斜杠方言差异）。
-  **坑**：`LambdaQueryWrapper.select(lambda...)` 构造期即解析列名，纯单测会抛 `can not find lambda cache`
-  —— 只取几列时用 `QueryWrapper.select("col1","col2")`。**坑**：整体替换 `api/assetCatalog` 的测试 mock
-  必须补 `ASSET_ENV_OPTIONS` / `DEFAULT_ASSET_ENV`（切换器依赖）。
 - **资产分类不人工维护**：表名规范 `{分层}_{业务域}_{实体描述}_{刷新周期}` ⇒ 分层与业务域可确定性解析；
   失败即「未分类」并自动成为治理项。
 - **两条安全闸门**：校验 SQL 下发前必过 `SqlPermissionRewriter`；资产目录的树/检索/详情必须服务端 fail-close
   过滤 `sys_table_permission`（含列级）。
-- **库表授权的「整库」= `sys_table_permission.table_names` 存字符串 `"*"`**（不是全部表名、也不是空值）。
+- **库表授权的「整库」=`sys_table_permission.table_names` 存字符串 `"*"`**（不是全部表名、也不是空值）。
   `DataAccessPermissionService.parseTableNames/matchesTablePermission`：空值=整库可见、含 `*`=命中任意表；
-  `getAccessibleTableNames` 含 `*` → 返回 `null`（消费方按「null=不限」处理）。种子已有先例。
-  **前端已落地（2026-10-09）**：契约收敛在纯函数 `src/utils/tablePermissionScope.ts`
-  （`isWholeDatabaseSelection` / `supportsWholeDatabase` / `splitPerTableNames` / `validateTableSelection` /
-  `normalizeScopeSelection`），表单加「全部表（整库授权）」开关，`MultiSelect` 加 `enableSelectAll` 与
-  `disabled` 两个可选 prop。**`*` 只允许 scope=1**（指定字段/指定行/组合按真实表名落子表，配 `*` 命中不了）；
-  切离 scope=1 时会清空选择。列表渲染与检索文案走 `describeTableSelection`（显示「全部表」而非 `*` 标签）。
-- **改一级菜单必查三连锁**：① `ActiveTab`/`MENU_CODE_MAP`/`App.tsx::FIRST_LEVEL_TAB_IDS` 同批改；
-  ② `FIRST_LEVEL_MENU_CODES` 由 MENU_CODE_MAP 派生；③ **菜单种子只在 `sql/testdata/*.sql`**。
+  `getAccessibleTableNames` 含 `*` → 返回 `null`（消费方按「null=不限」处理）。
+  **前端契约收敛在 `src/utils/tablePermissionScope.ts`**（`isWholeDatabaseSelection`/`supportsWholeDatabase`/
+  `splitPerTableNames`/`validateTableSelection`/`normalizeScopeSelection`）；表单有「全部表（整库授权）」开关。
+  **`*` 只允许 scope=1**；切离 scope=1 会清空选择。文案走 `describeTableSelection`。
+
+## 资产管理环境维度（2026-10-10）
+
+- 环境是**模块级**维度：切换器挂在资产管理模块**页签条右侧**（`AssetCatalogPanel` 持 state，
+  `AssetOverviewTab` 受控只接 `env`），切一次即让**概况五块看板 + 目录的树/检索/治理项/收藏一起重取**。
+  默认生产（`ASSET_ENV_OPTIONS = DEPLOY_ENV_OPTIONS`，`DEFAULT_ASSET_ENV='prod'` ≠ `DEFAULT_DEPLOY_ENV='test'`）。
+- 环境解析唯一实现 = 后端 `common/utils/DeployEnvParser`（原 `AssetEnvParser` 已迁移，metadata 模块也用）；
+  `matches` 语义：env 空=不过滤、脏值按不过滤、**解析不出环境的名称在显式过滤时被排除**。
+  过滤依据两套后缀：**表类 = 库名**、**任务类（top-compute/task-delay）= 工作流名**。过滤一律在权限之后。
+- `/inventory/env-project` 不收窄（前端要全库分母算占比）。指标无环境维度，`/search` 指标命中不受 env 影响。
+  `/bookmark` 指定 env 时走内存分页。标注缺口 env 下推 SQL：`LIKE '%!_prod' ESCAPE '!'`（`_` 必转义）。
+- **坑**：`LambdaQueryWrapper.select(lambda...)` 构造期即解析列名，纯单测会抛 `can not find lambda cache`
+  —— 只取几列时用 `QueryWrapper.select("col1","col2")`。
+- **坑**：整体替换 `api/assetCatalog` 的测试 mock 必须补 `ASSET_ENV_OPTIONS` / `DEFAULT_ASSET_ENV`。
+
+## 资产目录接口接线（勿回退）
+
+- **后端零 LLM、也不落后**：前后端路径全部对得上且是真实实现，**不存在「前端调了后端没写」**；缺口只在前端 UI。
+- 组件职责：`AssetCatalogPanel.tsx` = 目录树+检索+收藏+治理项编排；`AssetDetailTabs.tsx` = 详情页签；
+  `AssetGovernanceEditor.tsx` = 负责人/分类/标签/刷新元数据四个写操作；`useProbe.ts` = 共用探测钩子。
+- **`useProbe` 必须写成 `Promise.resolve().then(loader)`**，否则 loader 同步抛错会在 effect 里冒泡成渲染错误。
+- **埋点只上报有具体资产的动作**（选中表=browse / 预览=read / 新增收藏=bookmark）；服务端对 `assetId == null`
+  直接 `continue`，「检索」故意不上报。
+- **分类/标签字典不可用时降级为只读**；标签接口是**整体替换**；写成功后由宿主**重拉详情**，
+  只有 `updateLifecycle` 沿用就地回填。
+- 改模块级 mock 要连坐：`AssetCatalogPanel.lifecycle.test.tsx` 用 `vi.mock` 整体替换 `api/assetCatalog`，
+  面板新调一个方法就必须在该 mock 里补上。
+
+## 数据质量模块（2026-10-09 大改）
+
+- **只剩 3 页签**：质量大盘 / 规则配置 / 规则模板。**质检任务、运行记录、告警订阅已彻底删除**（前端组件、
+  服务端各层、五张表 DDL：`dq_task`/`dq_task_rule_rel`/`dq_run_instance`/`dq_alert_log`/`dq_alert_subscription`、
+  提示词里的 taskId 与告警描述、`App.tsx` 注入的 DS Provider）。
+- **`dq_rule_result` 保留为「结果留痕」**：去 `run_id`，新增 `batch_no`/`check_record_count`/`fail_record_count`。
+  两个消费者：① `DqExecutionService.resolveBaseline`（按 rule_id 取 metric_value 做基线）；②
+  `AssetCatalogService.quality()`（按规则取最近一条 + 同日归集，状态仍只 SUCCESS/FAILED，异常由 errorCount 体现）。
+- **回传入口 `POST /quality/run/report` 路径刻意不变**（避免已部署环境的 `DATAFORGE_QUALITY_REPORT_URL` 失效），
+  换成轻量 `DqResultService`：解析 ruleId（显式优先 →「规则名+库+表」三段反查 → 查不到落 null 不报错）→
+  **表级读权限 fail-close** → 落一行。DTO 改名 `QualityResultReportDTO`。单测 `DqResultServiceReportTest`：
+  **非管理员用例必须先造 SecurityContext**。
+- **质量大盘**去掉 `passRateTrend`/`blockCount`；`projectCode` 入参移除；`topProblemTables` 直接聚合时间窗。
+- **规则登记**不再有 `taskId`；`QualityRuleRegisterDTO` 已删（用 `QualityRuleSaveDTO`）。判定键仍是
+  「规则名 + 库 + 表」，与回传反查口径必须逐字一致。
+- **7 类规则类型契约不变**：`types/quality.ts::QUALITY_RULE_TYPES` ↔ SQL 种子 ↔ 提示词三方逐字一致，
+  `template_code == rule_type`；`qualityContract.test.ts`、`df_sql_check.py` 在守它。
+- **模板下发**：`buildQualityTemplateSpec()` 仅拼进 S3 提示词，`useOpencodeChat` 发消息前拉取（模块级缓存 +
+  in-flight 去重，**空结果不写缓存**）。`DqRuleService.bindTemplate` 已有「规则类型 → 内置模板自动绑定」。
+  **坑**：SQL 骨架含 `${}`，不能用 TS 模板字符串拼。
+- 「阻断下游」：独立质量校验任务挂处理任务下游，**失败即非零退出**，平台**不反向改写调度状态**。
+- **质检任务粒度 = 一张被校验表一个程序**：按规则「校验对象」的库.表归属，命名
+  `{分层}_{业务域}_{实体描述}_check_{执行周期}`，@依赖 只写产出该表的处理任务，跨表规则归**左侧主表**；
+  禁止合并多表/跨分层。**别把「回传不单独建节点」读成「合并质检任务」**。S2 规则清单须按库.表分组**连续**
+  书写——`qualityRuleImport.ts` 遇首个非 `|` 行即 break，行间插小标题会漏读其后全部规则。
+
+## 数据库脚本与方言（改 schema 必读）
+
+- **无迁移阶段**：`sql/migrate/` 已整体删除——**`init/*.sql` 是 schema 唯一来源**，新库直接建、开发库直接重建。
+  四方言 init 各 **41 表**，**无 Flyway**。改动顺序：`init/` 四方言 → `testdata/`（仅当涉及菜单/角色/授权）。
+  **参考数据放 init**（7 类规则模板 / 7 个分层分类 / 4 个默认资产标签），菜单与授权只在
+  `testdata/dataforge-testdata-postgresql.sql`。
+- **真目标只有两个**：PostgreSQL 14（docker）、MySQL（本地开发）。**MariaDB / H2 连驱动都没有**，属文档级脚本。
+  **四方言结构一致**（不变量）：同一张表在四份 init 里列名/列序一致、类型跨方言等价。
+  验证两层见 skill **`dataforge-sql-dialect-verification`**：`df_sql_check.py` → `verify_pg.sh`/`verify_mysql.sh`。
+  **本机没有 `psql`/`mysql` 客户端**；docker CLI 在 `/Applications/Docker.app/Contents/Resources/bin/docker`；
+  JDBC 驱动 `/Users/mxq/Desktop/mysql-connector-j-8.0.33.jar`。**改完 SQL 必须重新切分再验证**；断言别写死数量。
+  `init-dataforge.sh` 用 `ON_ERROR_STOP=0`（吞错误），验证时务必改 `1`。
+- **InnoDB 索引键上限 3072 字节**（utf8mb4 每字符 4 字节）：`varchar(1024)` 建索引会**整张表建不出来**。
+- ⚠️ `df_sql_check.py` 顶部 `KNOWN_DIALECT_DIFFS` 有 **10 处存量跨方言差异**：`indicators.code` 与 `indicators.id`
+  是**真实漂移**（独立修复任务），其余是方言表达差异。
+- **真实部署容器 `dataforge-allinone` 常驻**（PG 5432 / 服务 8082 / 前端 3000 / DS 12345）——验证只用一次性库
+  （`df_sqlcheck_*`），收尾必须清理，绝不指向它。
+- ⚠️ **bash 陷阱**：`$VAR` 紧跟中文/全角标点会被并进变量名，一律写 `${VAR}`。自查正则 `\$(\w+)(?=[^\x00-\x7F])`。
 
 ## 平台定位与商业模式（对外叙事必守）
 
@@ -121,98 +167,36 @@
   也 ≠ DataWorks（业务方在平台外提、由开发者转述）。⇒ **数据代开发服务**成立的技术基础。
 - **软件在企业内部免费、代码闭源**；收益 = 数据开发服务 + 集群运维服务。
 - 五类上下文信息：规范开发环境 / 库表描述 / 指标描述 / 血缘 / 任务依赖。
-
-## 需求驱动的闭环
-
-- 六角色含**业务需求方**与**数据架构师**；开发助手任务类型即角色：需求编写(BUSINESS_REQUESTER) →
-  数仓设计(DATA_ARCHITECT) → 数据开发(DATA_DEV_ENGINEER)（数据探索另一套）。
-- 三段产物同名贯穿，契约唯一来源 `src/hooks/opencode/opencodeInstructions.ts`；**指标是唯一主线**，
-  另有四条同源线：数据时效 / 数据源名称 / 数据质量 / 敏感数据。
-- `TaskRecord` 不记任务类型；`AIPanel.tsx:145` 的 `handleTaskTypeChange` 当前主动 `newSession()`。
-
-## AI 能力落点（标状态前必看）
-
-- **推理在客户端**本地 sidecar（opencode，127.0.0.1:4096），模型与密钥用户自配；**服务端零 LLM 调用**。
-- **已落地**：6 个工具组（compile / indicator-query / knowledge-document / lineage / metadata-agent /
-  sql-validate）、元数据代理 `/metadata/agent/*`。
-- **规划中**：自动化问题排障、数据价值评估、知识检索增强（现为 MyBatis-Plus `like`，无向量库）。
-- **不做**：服务端统一推理入口。别一刀切标状态——一个目标常是「一半已落地 + 一半规划」。
-
-## 数据质量模块（2026-10-09 大改，必读）
-
-- **只剩 3 页签**：质量大盘 / 规则配置 / 规则模板。**质检任务、运行记录、告警订阅已彻底删除**（前端组件、
-  服务端各层、五张表 DDL：`dq_task`/`dq_task_rule_rel`/`dq_run_instance`/`dq_alert_log`/
-  `dq_alert_subscription`、提示词里的 taskId 与告警描述、`App.tsx` 注入的 DS Provider）。
-- **`dq_rule_result` 保留为「结果留痕」**：去 `run_id`，新增 `batch_no`/`check_record_count`/
-  `fail_record_count`。**只有两个消费者**：① `DqExecutionService.resolveBaseline`（按 rule_id 取
-  metric_value 做行数波动/环比基线）；② `AssetCatalogService.quality()`（按规则取最近一条 + 同日归集，
-  状态仍只 SUCCESS/FAILED，异常由 errorCount 体现）。
-- **回传入口 `POST /quality/run/report` 路径刻意不变**（避免已部署环境的 `DATAFORGE_QUALITY_REPORT_URL`
-  失效），实现换成轻量 `DqResultService`：解析 ruleId（显式优先 →「规则名+库+表」三段反查 → 查不到落 null
-  不报错）→ **表级读权限 fail-close** → 落一行。DTO 改名 `QualityResultReportDTO`。单测
-  `DqResultServiceReportTest`：**非管理员用例必须先造 SecurityContext**。
-- **质量大盘**去掉 `passRateTrend`/`blockCount`；`projectCode` 入参移除；`topProblemTables` 直接聚合时间窗。
-- **规则登记**不再有 `taskId`；`QualityRuleRegisterDTO` 已删（用 `QualityRuleSaveDTO`）。判定键仍是
-  「规则名 + 库 + 表」，与回传反查口径必须逐字一致。
-- **7 类规则类型契约不变**：`types/quality.ts::QUALITY_RULE_TYPES` ↔ SQL 种子 ↔ 提示词三方逐字一致，
-  `template_code == rule_type`。`qualityContract.test.ts`、`df_sql_check.py` 在守它。
-- **模板下发**：`buildQualityTemplateSpec()` 仅拼进 S3 提示词，`useOpencodeChat` 发消息前拉取（模块级缓存 +
-  in-flight 去重，**空结果不写缓存**）。`DqRuleService.bindTemplate` 已有「规则类型 → 内置模板自动绑定」。
-  **坑**：SQL 骨架含 `${}`，不能用 TS 模板字符串拼。
-- 「阻断下游」：独立质量校验任务挂处理任务下游，**失败即非零退出**，平台**不反向改写调度状态**。
-- **质检任务粒度 = 一张被校验表一个质检程序**：按规则「校验对象」的库.表归属，命名
-  `{分层}_{业务域}_{实体描述}_check_{执行周期}`，@依赖 只写产出该表的处理任务，跨表规则归**左侧主表**；
-  禁止合并多表/跨分层。**别把「回传不单独建节点」读成「合并质检任务」**。S2 规则清单须按库.表分组**连续**
-  书写——`qualityRuleImport.ts` 遇首个非 `|` 行即 break，行间插小标题会漏读其后全部规则。
-
-## 资产目录接口接线（勿回退）
-
-- **后端零 LLM、也不落后**：前后端路径全部对得上且是真实实现，**不存在「前端调了后端没写」**；
-  缺口只在前端 UI。
-- `AssetCatalogPanel.tsx` = 目录树+检索+收藏+治理项编排；`AssetDetailTabs.tsx` = 详情页签；
-  `AssetGovernanceEditor.tsx` = 负责人/分类/标签/刷新元数据四个写操作；`useProbe.ts` = 共用探测钩子。
-- **`useProbe` 必须写成 `Promise.resolve().then(loader)`**，否则 loader 同步抛错会在 effect 里冒泡成渲染错误。
-- **埋点只上报有具体资产的动作**（选中表=browse / 预览=read / 新增收藏=bookmark）；服务端对
-  `assetId == null` 直接 `continue`，「检索」故意不上报。
-- **分类/标签字典不可用时降级为只读**；标签接口是**整体替换**；写成功后由宿主**重拉详情**，
-  只有 `updateLifecycle` 沿用就地回填。
-- **改模块级 mock 要连坐**：`AssetCatalogPanel.lifecycle.test.tsx` 用 `vi.mock` 整体替换
-  `api/assetCatalog`，面板新调一个方法就必须在该 mock 里补上。
-
-## 数据库脚本与方言（改 schema 必读）
-
-- **无迁移阶段（2026-10-09 用户决定）**：`sql/migrate/`、`df_gen_mysql_migrate.py` 及校验脚本里的 migrate
-  步骤**已整体删除**——**`init/*.sql` 是 schema 唯一来源**，新库直接建、开发库直接重建。
-- schema **手写维护**在 `dataforge-server/src/main/resources/sql/`，**无 Flyway**。四方言 init 各 **41 表**。
-  改动顺序：`init/` 四方言 → `testdata/`（仅当涉及菜单/角色/授权）。
-- **真目标只有两个**：PostgreSQL 14（docker 部署）、MySQL（本地开发）。**MariaDB / H2 连驱动都没有**，
-  属「保持平行」的文档级脚本。
-- **四方言结构一致**（不变量）：同一张表在四份 init 里列名/列序一致、类型跨方言等价。
-- **参考数据放 init，菜单放 testdata**：7 类规则模板 / 7 个分层分类 / 4 个默认资产标签进 `init/*.sql`；
-  菜单与授权只在 `testdata/dataforge-testdata-postgresql.sql`。部署脚本 `init-dataforge.sh` 用
-  `ON_ERROR_STOP=0`（吞错误），验证时务必改 `1`。
-- **InnoDB 索引键上限 3072 字节**（utf8mb4 每字符 4 字节）：`varchar(1024)` 建索引会**整张表建不出来**。
-- **验证两层**见 skill **`dataforge-sql-dialect-verification`**：`df_sql_check.py` → `verify_pg.sh`/
-  `verify_mysql.sh`。**本机没有 `psql`/`mysql` 客户端**；docker CLI 在
-  `/Applications/Docker.app/Contents/Resources/bin/docker`；JDBC 驱动
-  `/Users/mxq/Desktop/mysql-connector-j-8.0.33.jar`。**改完 SQL 必须重新切分再验证**；断言别写死数量。
-- ⚠️ `df_sql_check.py` 顶部 `KNOWN_DIALECT_DIFFS` 有 **10 处存量跨方言差异**：`indicators.code` 与
-  `indicators.id` 是**真实漂移**（独立修复任务），其余是方言表达差异。
-- **真实部署容器 `dataforge-allinone` 常驻**（PG 5432 / 服务 8082 / 前端 3000 / DS 12345）——验证只用一次性库
-  （`df_sqlcheck_*`），收尾必须清理，绝不指向它。
-- ⚠️ **bash 陷阱**：`$VAR` 紧跟中文/全角标点会被并进变量名，一律写 `${VAR}`。
-  自查正则：`\$(\w+)(?=[^\x00-\x7F])`。
+- **需求闭环**：六角色含**业务需求方**与**数据架构师**；开发助手任务类型即角色：需求编写(BUSINESS_REQUESTER) →
+  数仓设计(DATA_ARCHITECT) → 数据开发(DATA_DEV_ENGINEER)（数据探索另一套）。三段产物同名贯穿，契约唯一来源
+  `src/hooks/opencode/opencodeInstructions.ts`；**指标是唯一主线**，另有四条同源线：数据时效 / 数据源名称 /
+  数据质量 / 敏感数据。`TaskRecord` 不记任务类型。
+- **AI 能力落点**：**已落地** 6 个工具组（compile / indicator-query / knowledge-document / lineage /
+  metadata-agent / sql-validate）+ 元数据代理 `/metadata/agent/*`；**规划中** 自动化问题排障、数据价值评估、
+  知识检索增强（现为 MyBatis-Plus `like`，无向量库）；**不做** 服务端统一推理入口。
+  别一刀切标状态——一个目标常是「一半已落地 + 一半规划」。
 
 ## 交付偏好
 
-- 性能类任务**诊断驱动**，先量化再改。交付含量化对比、变更表、决策理由、未改动项清单，附
-  `tsc --noEmit` 与 vitest 计数，新增逻辑配套单测。
-- **计划书不出 Word**（2026-09-15）：`output/<request_id>/` 最终交付物是 `stage3/…html`。**不设「风险识别与
-  应对」章节**。结构 = 一 概述 / 二 需求 / 三 架构 / 四 组件 / 五 模块优先级 / 六 推广与时间 / 七 验收质量 /
-  八 预期效益 / 九 附录：现状基线。真实残留边界留在本文档，别写回计划书。
-- 生成脚本可用版在 `output/45d4b135-…/tools/`（`df_md.py` + `df_gen_stage2.py`/`df_make_web.py` + css）。
+- 性能类任务**诊断驱动**，先量化再改。交付含量化对比、变更表、决策理由、未改动项清单，附 `tsc --noEmit`
+  与 vitest 计数，新增逻辑配套单测。
+- **计划书不出 Word**：`output/<request_id>/` 最终交付物是 `stage3/…html`。**不设「风险识别与应对」章节**。
+  结构 = 一 概述 / 二 需求 / 三 架构 / 四 组件 / 五 模块优先级 / 六 推广与时间 / 七 验收质量 / 八 预期效益 /
+  九 附录：现状基线。真实残留边界留在本文档，别写回计划书。生成脚本可用版在 `output/45d4b135-…/tools/`。
 - **表格列名必须短（≤ 约 12 视觉字符）**：`thead th` 是 `white-space:nowrap`，长表头会撑宽整张表
   （主区可用宽 ≈ 790px）。带枚举的列名拆成「短列名 + 导语里一句说明」。
 - **对照表按「一项能力一行」，能力项与非能力项分表**：能力表 = 数据集成/数据治理/开发环境/作业调度/
   数据血缘/权限管理/任务管理/指标管理/知识管理（+ AI 能力落点）；形态与部署/引擎兼容/角色模型/设计取向/
   收费模式属「比较坐标」，另列一表。
+
+## 布局与 CSS 坑
+
+- **sticky 表头别被「表格自身的滚动容器」吃掉**：`position: sticky` 只认**最近的滚动容器**。`.ac-table`
+  为做圆角带了 `overflow: hidden` → 表格自己成了容器，表头跟着内容滚走（实测偏移 -119px）。
+  修法：在滚动容器内还原为非滚动盒子 `.ac-ov-scroll .ac-table { overflow: visible; border-radius: 0; }`。
+  （`border-collapse: collapse` **与此无关**，单独改它无效。）**同类排查**：写 `sticky` 前先确认
+  「sticky 元素 → 最近的滚动祖先」之间没有 `overflow: hidden/auto`；全仓已有 13 处 `position: sticky`。
+- **资产目录左右两栏的「顶部工具带」必须等高（73px）**，否则左栏「搜索行 + 视角行」的
+  `border-bottom` 与右栏 `.ac-main__header` 的 `border-bottom` 会错开（改前实测 **18.5px**）。
+  构成：左 10+30+5 + 27+1 = 73；右 16+22(标题行高显式写死 22，别继承 :root 的 1.5→22.5)+4+18+12+1 = 73。
+  只在这两个选择器和 `.ac-viewbtn` 上调，改字号/内边距必须重算两者。

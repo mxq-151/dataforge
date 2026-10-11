@@ -85,12 +85,20 @@
   border-right: 1px solid #3c3c3c;
 }
 
+/**
+ * ⚠️ 左栏顶部工具带（本行 + .ac-side__views）与右栏头部 .ac-main__header 等高，
+ * 两栏的分界线才能连成横贯面板的一条线。基准高度 73px 的构成：
+ *   本行 10(上外边距) + 30(高度) + 5(下外边距) = 45
+ *   .ac-side__views 27(视角按钮) + 1(分隔线)   = 28
+ *   合计 73 = 右栏头部 16 + 22(标题) + 4 + 18(副标题) + 12 + 1
+ * 改这里的字号 / 内边距必须重算（改前两栏分界线实测错开 18.5px）。
+ */
 .ac-side__search {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin: 12px 12px 8px;
-  padding: 5px 8px;
+  margin: 10px 12px 5px;
+  padding: 3px 8px;
   background-color: #3c3c3c;
   border: 1px solid #4c4c4c;
   border-radius: 4px;
@@ -115,20 +123,22 @@
   color: #7a7a7a;
 }
 
+/* 底部不再留白：分隔线紧贴视角按钮下沿，本行高度（27 + 1）纳入上面 73px 的等高预算 */
 .ac-side__views {
   display: flex;
   gap: 2px;
-  padding: 0 12px 8px;
+  padding: 0 12px;
   border-bottom: 1px solid #3c3c3c;
 }
 
+/* 高 27px（4+4 + 1+1 边框 + 17 行高），与页签条右侧的环境切换按钮同高 */
 .ac-viewbtn {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   flex: 1;
   justify-content: center;
-  padding: 5px 8px;
+  padding: 4px 8px;
   background-color: transparent;
   border: 1px solid #3c3c3c;
   border-radius: 4px;
@@ -262,11 +272,15 @@
   flex-shrink: 0;
 }
 
+/* 高度与左栏顶部工具带（搜索行 + 视角行 = 73px）对齐：
+   标题行高显式写 22px（而不是继承 :root 的 1.5 → 22.5px），
+   头部栅格 16 + 22 + 4 + 18 + 12 + 1 = 73px 才不会出现半像素差 */
 .ac-main__title {
   margin: 0;
   font-size: 15px;
   font-weight: 600;
   color: #ffffff;
+  line-height: 22px;
 }
 
 .ac-main__subtitle {

@@ -969,7 +969,6 @@ const AssetCatalogPanel: React.FC = () => {
           <AssetEnvSwitch
             value={env}
             onChange={changeEnv}
-            hint="资产概况 / 资产目录共用"
           />
         )}
       </div>
