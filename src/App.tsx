@@ -435,7 +435,9 @@ const AppContent: React.FC = () => {
         }
 
         setGitSyncStatus(prev => ({ ...prev, message: '正在拉取最新代码...' }));
-        const pullResult = await gitPull(repoPath, config.gitSshKeyPath || undefined);
+        // 传入配置的远程地址：仓库此前若为本地 init（无 origin），gitPull 会先补齐远程再对齐，
+        // 避免「当前分支无跟踪信息」导致启动拉取失败。
+        const pullResult = await gitPull(repoPath, config.gitSshKeyPath || undefined, config.gitRepoUrl || undefined);
 
         if (pullResult.success) {
           setGitSyncStatus({ syncing: false, message: '✓ 代码已更新到最新版本', authError: false });

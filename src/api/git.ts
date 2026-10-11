@@ -108,9 +108,125 @@ export const gitClone = async (
   }
 };
 
+/** 读取指定远程的 URL；未配置该远程时返回 null。 */
+export const gitGetRemoteUrl = async (repoPath: string, remote = 'origin'): Promise<string | null> => {
+  try {
+    const res = await Command.create('git', ['-C', repoPath, 'remote', 'get-url', remote]).execute();
+    if (res.code !== 0) return null;
+    return res.stdout.trim() || null;
+  } catch {
+    return null;
+  }
+};
+
+/** 确保仓库存在指向 targetUrl 的指定远程：缺失则 add，地址不同则 set-url（幂等）。 */
+export const ensureGitRemote = async (
+  repoPath: string,
+  remote: string,
+  targetUrl: string
+): Promise<{ success: boolean; message: string }> => {
+  const existing = await gitGetRemoteUrl(repoPath, remote);
+  const args = existing
+    ? ['-C', repoPath, 'remote', 'set-url', remote, targetUrl]
+    : ['-C', repoPath, 'remote', 'add', remote, targetUrl];
+  const res = await Command.create('git', args).execute();
+  if (res.code !== 0) {
+    return { success: false, message: (res.stderr || res.stdout || '').trim() || 'git remote 配置失败' };
+  }
+  return { success: true, message: '' };
+};
+
+/** 当前分支名；detached HEAD 或无提交时返回 null。 */
+const getCurrentBranch = async (repoPath: string): Promise<string | null> => {
+  const res = await Command.create('git', ['-C', repoPath, 'rev-parse', '--abbrev-ref', 'HEAD']).execute();
+  const name = res.stdout.trim();
+  if (res.code !== 0 || !name || name === 'HEAD') return null;
+  return name;
+};
+
+/** 分支是否已配置上游跟踪分支。 */
+const hasUpstream = async (repoPath: string, branch: string): Promise<boolean> => {
+  const res = await Command.create('git', ['-C', repoPath, 'rev-parse', '--abbrev-ref', '--symbolic-full-name', `${branch}@{u}`]).execute();
+  return res.code === 0 && !!res.stdout.trim();
+};
+
+/** 从 git 输出中判断是否为鉴权类失败。 */
+const detectAuthRequired = (text: string): boolean => {
+  const t = text.toLowerCase();
+  return t.includes('authentication failed') ||
+         t.includes('could not read from remote repository') ||
+         t.includes('permission denied') ||
+         t.includes('fatal: could not read password') ||
+         t.includes('fatal: authentication failed') ||
+         t.includes('support for password authentication');
+};
+
+/**
+ * 当前分支没有上游时的拉取：按 {remote}/{branch} 对齐。
+ *
+ * 背景：仓库此前由 gitInit 在本地创建（无 origin、无上游），之后才在设置里补配
+ * gitRepoUrl。此时直接 `git pull` 会报
+ * 「There is no tracking information for the current branch」，启动同步因此失败。
+ *
+ * 安全边界：
+ *   - 本地该分支没有任何被跟踪文件（仓库仅由本地 init 产生）→ 可安全 reset --hard
+ *     对齐远端，既避开「无关历史」冲突，也不会丢数据；
+ *   - 本地分支已有内容 → 只显式拉取并建立跟踪，分叉/无关历史/鉴权等问题如实返回，
+ *     绝不覆盖本地提交。
+ */
+const pullWithExplicitUpstream = async (
+  repoPath: string,
+  remote: string,
+  branch: string,
+  env?: Record<string, string>
+): Promise<GitCloneResult> => {
+  // 串行化 fetch 以更新远端引用；失败不阻断——下面的显式 pull 会如实报错
+  try {
+    await fetchOrigin(repoPath);
+  } catch {
+    // 交给显式 pull 兜底
+  }
+
+  const upstream = `${remote}/${branch}`;
+  const verify = await Command.create('git', ['-C', repoPath, 'rev-parse', '--verify', `refs/remotes/${upstream}`]).execute();
+
+  const tree = await Command.create('git', ['-C', repoPath, 'ls-tree', '-r', '--name-only', 'HEAD']).execute();
+  const localEmpty = tree.code === 0 && !tree.stdout.trim();
+
+  // 本地无任何被跟踪文件且远端存在同名分支 → 直接对齐远端（无数据可丢）
+  if (localEmpty && verify.code === 0) {
+    const reset = await Command.create('git', ['-C', repoPath, 'reset', '--hard', upstream]).execute();
+    if (reset.code !== 0) {
+      return {
+        success: false,
+        message: (reset.stderr || reset.stdout || '').trim() || 'git reset 失败',
+        authRequired: false,
+      };
+    }
+    await Command.create('git', ['-C', repoPath, 'branch', `--set-upstream-to=${upstream}`, branch]).execute();
+    return { success: true, message: reset.stdout || '已同步到远端最新版本', authRequired: false };
+  }
+
+  // 常规：显式 pull（自带 fetch），成功则建立跟踪；失败如实返回
+  const pull = await Command.create('git', ['pull', '--progress', remote, branch], { cwd: repoPath, env }).execute();
+  if (pull.code !== 0) {
+    const errText = pull.stderr || pull.stdout || '';
+    return { success: false, message: errText.trim() || 'git pull failed', authRequired: detectAuthRequired(errText) };
+  }
+  await Command.create('git', ['-C', repoPath, 'branch', `--set-upstream-to=${upstream}`, branch]).execute();
+  return { success: true, message: pull.stdout || 'Pull successful', authRequired: false };
+};
+
+/**
+ * 拉取仓库最新代码。
+ *
+ * @param repoUrl 配置的远程地址。仓库此前为本地 init（无 origin）时用于补齐 remote，
+ *                从而避免「当前分支无跟踪信息」导致的启动拉取失败；未传则不处理远程。
+ */
 export const gitPull = async (
   repoPath: string,
-  sshKeyPath?: string
+  sshKeyPath?: string,
+  repoUrl?: string
 ): Promise<GitCloneResult> => {
   try {
     const env: Record<string, string> = {};
@@ -119,42 +235,50 @@ export const gitPull = async (
       env['SSH_ASKPASS_REQUIRE'] = 'force';
       env['GIT_SSH_COMMAND'] = buildSshCommand(sshKeyPath);
     }
+    const execEnv = Object.keys(env).length > 0 ? env : undefined;
+
+    // 遗留仓库：本地 init 后才配置远程地址 → 先补齐 origin，避免无远程/无跟踪导致拉取失败
+    if (repoUrl) {
+      const ensured = await ensureGitRemote(repoPath, 'origin', repoUrl);
+      if (!ensured.success) {
+        return { success: false, message: ensured.message, authRequired: false };
+      }
+    }
+
+    // 无任何远程（纯本地仓库）→ 无需拉取
+    if (!(await gitGetRemoteUrl(repoPath, 'origin'))) {
+      return { success: true, message: '本地仓库，无远程可拉取', authRequired: false };
+    }
+
+    // 当前分支未配置上游（如本地 init 出来的分支）→ 按 origin/<branch> 对齐
+    const branch = await getCurrentBranch(repoPath);
+    if (branch && !(await hasUpstream(repoPath, branch))) {
+      return await pullWithExplicitUpstream(repoPath, 'origin', branch, execEnv);
+    }
 
     const output = await Command.create('git', ['pull', '--progress'], {
       cwd: repoPath,
-      env: Object.keys(env).length > 0 ? env : undefined,
+      env: execEnv,
     }).execute();
 
     if (output.code !== 0) {
-      const stderr = output.stderr.toLowerCase();
-      const stdout = output.stdout.toLowerCase();
-      const combinedError = (stderr + stdout);
-
-      const authRequired = combinedError.includes('authentication failed') ||
-                          combinedError.includes('could not read from remote repository') ||
-                          combinedError.includes('permission denied') ||
-                          combinedError.includes('fatal: could not read password') ||
-                          combinedError.includes('fatal: authentication failed') ||
-                          combinedError.includes('support for password authentication');
-
+      const combinedError = output.stderr + output.stdout;
       return {
         success: false,
-        message: output.stderr || output.stdout || 'git pull failed',
-        authRequired,
+        message: (output.stderr || output.stdout || '').trim() || 'git pull failed',
+        authRequired: detectAuthRequired(combinedError),
       };
     }
 
     return { success: true, message: output.stdout || 'Pull successful', authRequired: false };
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
-    const authRequired = errorMessage.toLowerCase().includes('authentication') ||
-                        errorMessage.toLowerCase().includes('permission denied') ||
-                        errorMessage.toLowerCase().includes('could not read');
-
     return {
       success: false,
       message: errorMessage,
-      authRequired,
+      authRequired: errorMessage.toLowerCase().includes('authentication') ||
+                    errorMessage.toLowerCase().includes('permission denied') ||
+                    errorMessage.toLowerCase().includes('could not read'),
     };
   }
 };
