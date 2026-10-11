@@ -68,15 +68,25 @@ export default function ChartAnalysisModal({ visible, onClose, results }: ChartA
     return r.columns.filter((_, i) => isNumericColumn(r.rows, i));
   }, [activeResult]);
 
-  // 每次打开或切换结果时，重置图表配置为合理默认值
+  // 结果集标识：仅在所选结果集真正变化时重置，避免每次渲染都触发
+  const resultsKey = useMemo(() => results.map(r => r.id).join('|'), [results]);
+
+  // 打开模态框 / 所选结果集变化时：回到第一个结果，并恢复默认图表类型
+  useEffect(() => {
+    if (!visible) return;
+    setActiveIdx(0);
+    setChartType('table');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, resultsKey]);
+
+  // 当前结果变化时（含用户切换结果集）：按该结果的列重置横轴 / 纵轴，保留已选图表类型
+  // 注意：此处的依赖里绝不能出现 setActiveIdx，否则切换结果会被立即打回第一个结果
   useEffect(() => {
     if (!visible || !activeResult) return;
     const firstCol = activeResult.columns[0] || '';
     const firstNumeric = numericColumns[0] || '';
     setXColumn(firstCol);
     setYColumns(firstNumeric ? [firstNumeric] : []);
-    setChartType('table');
-    setActiveIdx(0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, activeResult?.id]);
 
