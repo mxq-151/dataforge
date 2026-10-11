@@ -217,6 +217,35 @@ export interface AssetIndicatorVO {
   fieldName: string;
 }
 
+/** 已启用的质检规则（「数据质量」页签列表展示用的精简字段） */
+export interface AssetQualityRuleVO {
+  id: number;
+  ruleName: string;
+  /** 规则类型编码（7 类之一），用 getQualityRuleType 映射中文名 */
+  ruleType: string;
+  /** 字段级规则的字段名；表级/跨表规则为空 */
+  columnName: string;
+  /** 处置方式 BLOCK / ALERT */
+  disposeMode: string;
+  /** 规则负责人 */
+  ownerName: string;
+}
+
+/** 未通过质检记录的样例（「数据质量」页签列表展示用） */
+export interface AssetQualityFailedSampleVO {
+  id: number;
+  /** 质检时间（结果留痕的创建时间） */
+  checkTime: string;
+  /** 质检规则名 */
+  ruleName: string;
+  /** 规则类型编码（7 类之一），用 getQualityRuleType 映射中文名 */
+  ruleType: string;
+  /** 校验状态 ERROR=红色异常 FAILED=校验失败 */
+  status: string;
+  /** 完整的数据样例：未通过明细，原样展示不截断 */
+  sample: string;
+}
+
 /** 该表的质量规则摘要（跨模块读 quality） */
 export interface AssetQualitySummaryVO {
   ruleCount: number;
@@ -228,6 +257,10 @@ export interface AssetQualitySummaryVO {
   failCount: number;
   /** 未通过规则条数，用于在资产详情上提示质量问题 */
   problemRuleCount: number;
+  /** 已启用的质检规则清单；旧版本后端可能不下发，故可选 */
+  enabledRules?: AssetQualityRuleVO[];
+  /** 最近一次校验中未通过的记录样例；旧版本后端可能不下发，故可选 */
+  failedSamples?: AssetQualityFailedSampleVO[];
 }
 
 /** 治理项：每项都可追到具体对象，不做加权分数 */

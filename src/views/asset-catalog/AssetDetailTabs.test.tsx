@@ -35,6 +35,20 @@ const h = vi.hoisted(() => {
         errorCount: 1,
         failCount: 0,
         problemRuleCount: 2,
+        enabledRules: [
+          { id: 101, ruleName: '订单号唯一', ruleType: 'PRIMARY_KEY_UNIQUE', columnName: 'order_id', disposeMode: 'BLOCK', ownerName: '张三' },
+          { id: 102, ruleName: '当日行数波动', ruleType: 'ROW_COUNT_FLUCTUATION', columnName: '', disposeMode: 'ALERT', ownerName: '李四' },
+        ],
+        failedSamples: [
+          {
+            id: 901,
+            checkTime: '2026-10-06 02:00',
+            ruleName: '订单号唯一',
+            ruleType: 'PRIMARY_KEY_UNIQUE',
+            status: 'ERROR',
+            sample: 'order_id=1001\norder_id=1002',
+          },
+        ],
       },
     })),
     previewTable: vi.fn(async () => ({
@@ -123,6 +137,34 @@ describe('AssetDetailTabs 页签接线', () => {
     await waitFor(() => expect(screen.getByText('未通过规则')).toBeTruthy());
     expect(h.api.getTableQuality).toHaveBeenCalledWith(1);
     expect(screen.getByText('2')).toBeTruthy();
+  });
+
+  it('数据质量页签用列表展示已启用质检规则', async () => {
+    renderTabs();
+    await openTab('数据质量');
+
+    await waitFor(() => expect(screen.getByText('已启用质检规则')).toBeTruthy());
+    // 规则名 + 规则类型中文名（编码 → label 由 types/quality 映射）
+    expect(screen.getByText('订单号唯一')).toBeTruthy();
+    expect(screen.getByText('主键唯一性')).toBeTruthy();
+    expect(screen.getByText('行数波动')).toBeTruthy();
+    // 处置方式中文名
+    expect(screen.getByText('阻断下游')).toBeTruthy();
+    expect(screen.getByText('告警')).toBeTruthy();
+  });
+
+  it('数据质量页签用列表展示未通过质检记录样例（时间/规则/完整数据样例）', async () => {
+    renderTabs();
+    await openTab('数据质量');
+
+    await waitFor(() => expect(screen.getByText('未通过质检记录样例')).toBeTruthy());
+    expect(screen.getByText('2026-10-06 02:00')).toBeTruthy();
+    // 规则名 + 类型中文名同列
+    expect(screen.getByText('订单号唯一（主键唯一性）')).toBeTruthy();
+    // 状态中文名（统计卡「红色异常」+ 本记录一处）
+    expect(screen.getAllByText('红色异常').length).toBeGreaterThan(1);
+    // 完整数据样例：多行原文原样渲染
+    expect(screen.getByText(/order_id=1001\s+order_id=1002/)).toBeTruthy();
   });
 
   it('数据预览按 preview 接口渲染列头', async () => {

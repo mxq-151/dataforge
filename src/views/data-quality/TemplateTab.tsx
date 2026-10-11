@@ -607,13 +607,7 @@ const TemplateTab: React.FC = () => {
 
   return (
     <div className="dq-template">
-      <div className="dq-notice">
-        <CircleAlert size={14} />
-        <span>
-          内置模板即 7 类规则类型，与智能体提示词（S1/S2/S3）同源，由平台维护、<strong>不可修改</strong>；
-          自定义模板仍须归属 7 类之一 —— 自定义的是 SQL 模板，不是规则类型，否则覆盖率统计会失去口径。
-        </span>
-      </div>
+
 
       {/* ── 内置模板（只读）── */}
       <section className="dq-section">

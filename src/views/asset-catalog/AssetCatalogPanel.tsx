@@ -549,7 +549,7 @@ const GovernanceSection: React.FC<{
         )}
       </section>
 
-      <section className="ac-section">
+      <section className="ac-section ac-section--divided">
         <h4 className="ac-section__title">
           <Tag size={13} />
           <span>治理项 · {assetEnvLabel(env)}</span>
@@ -600,15 +600,12 @@ const GovernanceSection: React.FC<{
           ))}
       </section>
 
-      <section className="ac-section">
+      <section className="ac-section ac-section--divided">
         <h4 className="ac-section__title">
           <Info size={13} />
           <span>元数据标注缺口 · {assetEnvLabel(env)}</span>
         </h4>
-        <p className="ac-muted">
-          复用既有接口 /api/metadata/annotation-gaps（由服务端按调用者的表权限过滤），
-          把「描述缺失」变成可见、可跟踪的清单，而不是逐个表点开才发现。
-        </p>
+
         {gaps.status === 'loading' && <div className="ac-loading">加载中…</div>}
         {gaps.status === 'unavailable' && <p className="ac-muted">标注缺口接口不可用。</p>}
         {gaps.status === 'ok' &&
@@ -911,14 +908,7 @@ const AssetCatalogPanel: React.FC = () => {
     }
     return (
       <>
-        <div className="ac-notice">
-          <Info size={14} />
-          <span>
-            从左侧目录树选择一张表，或在上方检索定位。选中后右栏提供概览（含负责人、分类、标签、生命周期）
-            与指标 / 数据质量 / 数据预览 / 使用说明 / 权限等页签。
-            目录树、检索与下方治理项均只统计「{assetEnvLabel(env)}」环境。
-          </span>
-        </div>
+
         <GovernanceSection
           env={env}
           domainCode={inventoryScope.domainCode}

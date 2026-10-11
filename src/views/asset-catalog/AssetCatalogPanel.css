@@ -444,6 +444,17 @@
   white-space: nowrap;
 }
 
+/* 未通过质检记录的数据样例：完整展示，保留回传明细里的换行 */
+.ac-sample {
+  margin: 0;
+  max-width: 460px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: #d7ba7d;
+}
+
 /* ── 操作与区块 ── */
 .ac-actions {
   display: flex;
@@ -488,6 +499,13 @@
   font-size: 13px;
   font-weight: 600;
   color: #ffffff;
+}
+
+/* 数据质量页签内各模块（统计 / 规则清单 / 未通过记录 / 说明）之间的分割线 */
+.ac-divider {
+  margin: 16px 0;
+  border: none;
+  border-top: 1px solid #3c3c3c;
 }
 
 .ac-list {
@@ -713,6 +731,37 @@
 .ac-stat__label {
   color: #858585;
   font-size: 11.5px;
+}
+
+/* 一组相关指标合并为一张卡片：组名 + 组内多个指标并排（如「存储」下的占用空间 / 占全库空间） */
+.ac-statgroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  background-color: #2d2d30;
+  border: 1px solid #3c3c3c;
+  border-radius: 8px;
+}
+
+.ac-statgroup__label {
+  color: #858585;
+  font-size: 11.5px;
+}
+
+.ac-statgroup__items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+}
+
+/* 组内指标不再重复卡片描边，只保留「数值 + 名称」 */
+.ac-statgroup .ac-stat {
+  gap: 2px;
+  padding: 0;
+  background-color: transparent;
+  border: none;
+  border-radius: 0;
 }
 
 /* 双图并排（窄视口自动堆叠） */
@@ -1121,7 +1170,7 @@
   margin-top: 12px;
 }
 
-/* 区块之间的分割线：与上方「基础信息」区块之间、以及各治理区块之间 */
+/* 区块之间的分割线：概览页各治理区块、以及资产目录未选表时的「资产盘点 / 治理项 / 标注缺口」区块共用 */
 .ac-section--divided {
   border-top: 1px solid #3c3c3c;
   padding-top: 14px;
