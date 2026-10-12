@@ -95,9 +95,6 @@ const ActivityBar: React.FC<ActivityBarProps> = ({ activeTab, onTabChange }) => 
   return (
     <aside className="activity-bar">
       <div className="activity-bar__top">
-        <div className="activity-bar__logo">
-          <span className="activity-bar__logo-text">df</span>
-        </div>
         {visibleTabs.map(tab => (
           <button
             key={tab.id}
