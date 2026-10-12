@@ -64,3 +64,6 @@ Thumbs.db
 .chrome-profile-bench/
 # 原始 CPU profile（3~4MB/份，可按需重生成，不入库）
 perf/*.raw.json
+
+# 安装协议标记：运行时应落在 userData（旧实现写在仓库根/应用包内，不入库）
+.df-install-token

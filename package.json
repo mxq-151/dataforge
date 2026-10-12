@@ -38,6 +38,10 @@
     "directories": {
       "output": "release"
     },
+    "electronDownload": {
+      "mirror": "https://npmmirror.com/mirrors/electron/",
+      "isVerifyChecksum": false
+    },
     "files": [
       "dist/**",
       "dist-electron/**",

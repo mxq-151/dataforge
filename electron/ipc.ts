@@ -1,5 +1,4 @@
 import { app, ipcMain } from 'electron';
-import { randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as fsp from 'node:fs/promises';
@@ -16,6 +15,15 @@ import {
 } from './backend/lspBridge';
 import { autoStartOpencode, startOpencodeAfterLogin, stopOpencode } from './backend/opencode';
 import { exportSanitizedStores, readStoreJSON, writeStoreJSON } from './backend/store';
+import {
+  LEGACY_MARKER_FILE_NAME,
+  MARKER_FILE_NAME,
+  readInstallMarker,
+  resolveBundleRoot,
+  writeInstallMarker,
+  type MarkerFsPort,
+  type MarkerPaths,
+} from './backend/installMarker';
 import { detectWsl, runtimeId, type RuntimeId } from './backend/platform';
 
 // 事件桥（主进程 → 渲染层）统一迁至 eventBus.ts，此处仅转发导出
@@ -334,32 +342,39 @@ async function handleHttpFetch(req: HttpFetchRequest): Promise<{
 // ────────────────────────────────────────────────────────────────
 
 // 安装协议同意标记
-// 该标记文件存放在应用自身安装目录（app.getAppPath()）下，而非持久化的 userData，
-// 因此在「全新安装/重装」时整个安装目录被替换、标记随之消失，用户必须重新同意协议。
-// 注：置于安装目录需该目录可写（当前未签名、asar 开启着 false，dev 与自分发目录通常可写）。
-function getInstallMarkerPath(): string {
-  return path.join(app.getAppPath(), '.df-install-token');
+// 实现与「为什么不能写在应用包里」的完整说明见 backend/installMarker.ts。一句话：
+// asar=false 时 app.getAppPath() 就是 .app 内的 Contents/Resources/app，首启往那里写
+// 文件会让代码签名的密封资源清单多出一项（codesign 报 "a sealed resource is missing
+// or invalid / file added"），签名失效后 macOS 无法通过钥匙串 ACL 校验，于是每次启动
+// 都弹「请输入"登录"钥匙串密码」。⇒ 标记落在 userData，改用「应用包 (inode, 创建时间)
+// 指纹」判定「重装」；包内的旧标记只读兼容并迁移一次，全程不写应用包。
+function installMarkerPaths(): MarkerPaths {
+  return {
+    markerFile: path.join(app.getPath('userData'), MARKER_FILE_NAME),
+    legacyFile: path.join(app.getAppPath(), LEGACY_MARKER_FILE_NAME),
+    // 指纹只在打包态参与判定：dev 跑的是 Electron.app、与打包态的 DataForge.app 共用同一份
+    // userData，两边都写指纹会让交替运行被反复判成「重装」，每切一次就弹一次协议页。
+    bundleRoot: app.isPackaged ? resolveBundleRoot(process.execPath, process.platform) : null,
+  };
 }
 
-async function readInstallToken(): Promise<string | null> {
-  try {
-    const raw = await fsp.readFile(getInstallMarkerPath(), 'utf-8');
-    return raw.trim() || null;
-  } catch {
-    return null;
-  }
-}
+const installMarkerFs: MarkerFsPort = {
+  readFile: (p) => fsp.readFile(p, 'utf-8'),
+  writeFile: (p, data) => fsp.writeFile(p, data, 'utf-8').then(() => undefined),
+  mkdir: (p) => fsp.mkdir(p, { recursive: true }).then(() => undefined),
+  stat: async (p) => {
+    const st = await fsp.stat(p);
+    return { ino: st.ino, birthtimeMs: st.birthtimeMs };
+  },
+};
 
-// 生成并写入安装标记；返回生成的 token。写入失败（目录不可写）返回 null。
-async function writeInstallToken(): Promise<string | null> {
-  const token = randomUUID();
-  try {
-    await fsp.writeFile(getInstallMarkerPath(), token, 'utf-8');
-    return token;
-  } catch {
-    return null;
-  }
-}
+// 读取当前安装的同意标记（无标记 / 属于上一次安装 → null，需重新同意）
+const readInstallToken = (): Promise<string | null> =>
+  readInstallMarker(installMarkerFs, installMarkerPaths());
+
+// 写入本次同意的标记，返回生成的 token（写失败返回 null）
+const writeInstallToken = (): Promise<string | null> =>
+  writeInstallMarker(installMarkerFs, installMarkerPaths());
 
 // 注册全部 IPC handler
 export function registerIpcHandlers(): void {

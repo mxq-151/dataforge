@@ -23,6 +23,14 @@
 - `deepseek-flash` = DeepSeek **V4.1** Flash **1M**；判定里无 v3/v4 字样只能**显式列出**，否则掉进泛化 `deepseek`→128k；V4 系一律 1_000_000。改判定须同步单测。
 - `GET /api/model` 必须带 location；冷实例首次 `200 + data: []` ⇒ 重试。sidecar 由 app 托管（127.0.0.1:4096），应用一关端口即拒连。
 
+## 打包与签名（macOS）
+- **运行时不写应用包**（`asar:false` ⇒ `app.getAppPath()` 就是 `.app/Contents/Resources/app`）：签名密封清单（800+ 条 `Resources/app/` 记录）覆盖该目录，往包里写一个文件就让 `codesign --verify` 报 `a sealed resource is missing or invalid / file added`；签名一失效，macOS 钥匙串 ACL 校验就过不去 ⇒ 每次启动 `safeStorage` 解密都弹「请输入"登录"钥匙串密码」（开发态跑官方 Electron.app 签名有效，故只有发布版弹）。运行时文件一律落 `userData`。
+- 协议同意标记已按此改造：`electron/backend/installMarker.ts`（纯逻辑 + 注入 fs 端口，22 例）。标记落 `userData/install-marker.json`；「重装即重新同意」改为比对**应用包 `(inode, birthtimeMs)` 指纹**，且**只在打包态**参与判定（dev 传 `bundleRoot: null` —— 否则 dev 的 Electron.app 与打包的 DataForge.app 共用同一份 userData，交替运行会被反复判成重装、每切一次弹一次协议页）。包内旧标记 `.df-install-token` 只读迁移一次，**读取侧保守放行**（拿不到指纹不做重装判定）。
+- `.df-install-token` 已 `git rm --cached` + 写进 `.gitignore`（旧实现会把 token 写进仓库根并被入库）。
+- 出包自检：`codesign --verify --deep --strict` 须 `valid on disk`；`spctl -a -vvv -t exec` 目前仍是 `rejected, source=Unnotarized Developer ID`（未配公证凭据）。见 `构建打包说明.md` 第六节第 4 条。
+- **electron-builder 不复用 `node_modules/electron/dist`**：它按 (版本/平台/架构) 自己下 zip 到 `~/Library/Caches/electron/<sha256(URL目录)>/`（目录名 = @electron/get 对 URL dirname 的 sha256；同版本各架构共用一个目录）。
+- **「每次构建都下载 Electron」的根因**：@electron/get 命中缓存后**仍要联网**取 `SHASUMS256.txt` 校验（`cacheMode=Bypass`，注释原文 "Never use the cache for loading checksums"）；该请求一失败，`Cache hit` 就被降级成 `falling back to re-download` ⇒ 白下 133 MB，而重下后内容哈希相同 ⇒ `putFileInCache` 不重写 ⇒ 缓存文件 mtime 永远不变（看着像「缓存没生效」，其实是校验那一步没走通）。自证：`DEBUG='@electron/get*' npx electron-builder --mac --dir 2>&1 | grep -E "Cache (hit|miss)|checksum|falling back"`。修复：`build.electronDownload.isVerifyChecksum=false`（实测 `• using cached artifact` 8 ms 返回、零网络；代价是不校验 sha256）或配 `electron_mirror` 镜像让校验请求稳定。
+
 ## 编码约定
 - 代码头三字段 `@程序参数`/`@资源参数`/`@任务参数`，**取值是真实值**。两消费面：运行弹窗只取参数名（`extractProgramParams`）、提交调度取取值落 `taskParams`（`headerTaskParams.ts`）。改字段名/语义须同步：S3 提示词 → `parseFileHeader` → `HEADER_FIELDS` → 上述两处 → `PendingProgramRun` → 两个 Modal → 6 个测试文件。调度侧「任务参数」是 DS 概念，别跟着改。
 - 工作流名**不 sanitize**、环境后缀**默认 test**；`_v{N}` 版本链已删；`mainJar` 不加必填。表单加必填项须同步 `REQUIRED_PARAMS` 与单测。
