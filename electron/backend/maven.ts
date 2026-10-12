@@ -69,6 +69,29 @@ function isWithin(base: string, target: string): boolean {
   return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
 }
 
+/** 触发 cmd.exe 加引号的字符：空白 + cmd 元字符。 */
+const CMD_QUOTE_TRIGGER = /[\s"&|<>^()]/;
+
+/**
+ * 为 cmd.exe 命令行转义单个 token：含空白或元字符时整体包双引号，内部双引号成对转义。
+ * 不含特殊字符时原样返回，避免给普通参数引入多余引号。
+ */
+export function quoteCmdArg(arg: string): string {
+  if (arg === '') return '""';
+  if (!CMD_QUOTE_TRIGGER.test(arg)) return arg;
+  return `"${arg.replace(/"/g, '""')}"`;
+}
+
+/** 拼出完整的 cmd.exe 命令行（bin 与 args 逐个转义）。 */
+export function buildCmdCommandLine(bin: string, args: string[]): string {
+  return [bin, ...args].map(quoteCmdArg).join(' ');
+}
+
+/** 是否需要经 cmd.exe 包装执行（Windows 的 .cmd/.bat 无法被 spawn 直接执行）。 */
+export function needsCmdShell(bin: string): boolean {
+  return isWindows && /\.(cmd|bat)$/i.test(bin);
+}
+
 /** 运行命令，完整收集 stdout/stderr。 */
 export function runMvn(
   bin: string,
@@ -77,16 +100,32 @@ export function runMvn(
   env: Record<string, string>,
 ): Promise<{ code: number; stdout: string; stderr: string; spawnError?: string }> {
   return new Promise((resolve) => {
-    const cp = spawn(bin, args, {
-      cwd,
-      env: { ...process.env, ...env },
-      windowsHide: true,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      // Windows 下 .cmd/.bat 无法被 spawn 直接执行（会同步抛 EINVAL -4071），
-      // 必须由 cmd.exe 经 shell 包装执行（Node 官方文档要求）。仅对脚本类
-      // 可执行文件启用 shell，避免普通 exe 因 shell 解析引入引号/元字符问题。
-      shell: isWindows && /\.(cmd|bat)$/i.test(bin),
-    });
+    const childEnv = { ...process.env, ...env };
+    // Windows 下 .cmd/.bat 无法被 spawn 直接执行（会同步抛 EINVAL -4071），
+    // 必须由 cmd.exe 经 shell 包装执行（Node 官方文档要求）。仅对脚本类
+    // 可执行文件启用 shell，避免普通 exe 因 shell 解析引入引号/元字符问题。
+    //
+    // ⚠️ shell 模式下 Node 只是把 file 与 args 用空格**裸拼**成命令行、不做任何转义
+    //（官方 DEP0190 即提示这一点），于是含空格的路径会被 cmd.exe 在空格处截断：
+    // `C:\Program Files\...\mvn.cmd` → 报 "'C:\Program' is not recognized as an
+    // internal or external command"。因此这里自己拼好带引号的命令行，并以「单个字符串」
+    // 形式交给 shell（不再传 args 数组，同时消除 DEP0190 警告）。
+    // 注：两条分支的 options 必须各自写成字面量，否则 TS 无法把 stdio 收窄成
+    // 非空管道元组，cp.stdout/stderr 会退化成可空类型。
+    const cp = needsCmdShell(bin)
+      ? spawn(buildCmdCommandLine(bin, args), {
+          cwd,
+          env: childEnv,
+          windowsHide: true,
+          stdio: ['ignore', 'pipe', 'pipe'],
+          shell: true,
+        })
+      : spawn(bin, args, {
+          cwd,
+          env: childEnv,
+          windowsHide: true,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
     let stdout = '';
     let stderr = '';
     cp.stdout.on('data', (d: Buffer) => {
