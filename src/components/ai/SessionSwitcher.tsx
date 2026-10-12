@@ -86,18 +86,36 @@ const SessionSwitcher: React.FC<SessionSwitcherProps> = ({
     setDropdownPos({ top: rect.bottom + MARGIN, left });
   }, [open]);
 
-  // 视口尺寸变化或滚动时关闭下拉，避免定位错乱
+  // 视口尺寸变化或「下拉框之外的滚动」时关闭下拉，避免定位错乱。
+  //
+  // 关键：**下拉框内部的滚动不能关闭它**。任务列表自己有滚动条
+  // （.ai-panel__session-list: max-height 300px + overflow-y:auto），
+  // 而这里注册的是 window 上的捕获阶段 scroll 监听——捕获阶段会收到任意后代
+  // （含列表自身）的 scroll 事件，于是「拖动列表去看下面的会话」会立刻把下拉框关掉，
+  // 底部那些会话永远够不着、也删不掉。这里按事件目标过滤：目标在下拉框内则忽略。
   useEffect(() => {
     if (!open) return;
     const handleClose = () => {
       setOpen(false);
       setEditingId(null);
     };
+    const handleScroll = (e: Event) => {
+      const target = e.target as Node | null;
+      // window/document 触发的滚动（target 不是节点）照旧关闭；下拉框内部滚动忽略
+      if (
+        target
+        && typeof (target as unknown as { nodeType?: number }).nodeType === 'number'
+        && dropdownRef.current?.contains(target)
+      ) {
+        return;
+      }
+      handleClose();
+    };
     window.addEventListener('resize', handleClose);
-    window.addEventListener('scroll', handleClose, true);
+    window.addEventListener('scroll', handleScroll, true);
     return () => {
       window.removeEventListener('resize', handleClose);
-      window.removeEventListener('scroll', handleClose, true);
+      window.removeEventListener('scroll', handleScroll, true);
     };
   }, [open]);
 
@@ -124,6 +142,8 @@ const SessionSwitcher: React.FC<SessionSwitcherProps> = ({
 
   const handleDelete = useCallback((e: React.MouseEvent, sessionId: string) => {
     e.stopPropagation();
+    // 正在重命名的那一行被删掉时，顺带退出编辑态（否则 editingId 指向已不存在的行）
+    setEditingId(prev => (prev === sessionId ? null : prev));
     onDeleteSession(sessionId);
   }, [onDeleteSession]);
 
@@ -203,7 +223,7 @@ const SessionSwitcher: React.FC<SessionSwitcherProps> = ({
           <div className="ai-panel__session-dropdown-header">
             <span>任务历史</span>
           </div>
-          <button className="ai-panel__session-new-btn" onClick={handleNew}>
+          <button type="button" className="ai-panel__session-new-btn" onClick={handleNew}>
             <Plus size={14} />
             <span>新建会话</span>
           </button>
@@ -242,6 +262,7 @@ const SessionSwitcher: React.FC<SessionSwitcherProps> = ({
                         onClick={e => e.stopPropagation()}
                       />
                       <button
+                        type="button"
                         className="ai-panel__session-edit-confirm"
                         onClick={e => { e.stopPropagation(); handleConfirmRename(); }}
                         title="确认"
@@ -249,6 +270,7 @@ const SessionSwitcher: React.FC<SessionSwitcherProps> = ({
                         <Check size={12} />
                       </button>
                       <button
+                        type="button"
                         className="ai-panel__session-edit-cancel"
                         onClick={e => { e.stopPropagation(); handleCancelRename(); }}
                         title="取消"
@@ -265,21 +287,25 @@ const SessionSwitcher: React.FC<SessionSwitcherProps> = ({
                         {formatTime(task.updatedAt)}
                       </span>
                       <button
+                        type="button"
                         className="ai-panel__session-rename-btn"
                         onClick={e => handleStartRename(e, task)}
                         title="重命名"
                       >
                         <Pencil size={12} />
                       </button>
-                      <button
-                        className="ai-panel__session-delete-btn"
-                        onClick={e => handleDelete(e, task.sessionId)}
-                        title="删除"
-                      >
-                        <Trash2 size={12} />
-                      </button>
                     </>
                   )}
+                  {/* 删除按钮始终渲染：正在重命名的行同样必须能删
+                      （整行被编辑态替换掉时按钮会消失，看起来就是「这一行删不掉」） */}
+                  <button
+                    type="button"
+                    className="ai-panel__session-delete-btn"
+                    onClick={e => handleDelete(e, task.sessionId)}
+                    title="删除"
+                  >
+                    <Trash2 size={12} />
+                  </button>
                 </div>
               );
             })}

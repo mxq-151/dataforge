@@ -14,6 +14,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { readStoreJSON } from './store';
 import { getCompileServerEndpoint } from './serviceEndpoints';
+import { localizeLogTimestamps } from './logTime';
 import { emitToRenderer, getMainWindow } from '../eventBus';
 
 const SERVER_PORT = 4096;
@@ -609,7 +610,7 @@ export async function startOpencodeServerCore(
     return new Promise<boolean>((resolve) => {
       const onStdout = (d: Buffer) => {
         const line = d.toString('utf8');
-        console.log(`[agent-out] ${line.trimEnd()}`);
+        console.log(`[agent-out] ${localizeLogTimestamps(line.trimEnd())}`);
         if (line.includes('listening') || line.includes('ready')) {
           proc.stdout?.off('data', onStdout);
           resolve(true);
@@ -618,8 +619,11 @@ export async function startOpencodeServerCore(
       proc.stdout?.on('data', onStdout);
       proc.stderr?.on('data', (d: Buffer) => {
         const line = d.toString('utf8');
-        console.log(`[agent-log] ${line.trimEnd()}`);
-        stderrLines.push(line);
+        // 以下 pending stderr 会拼进启动失败/进程退出的错误文案直达界面，
+        // 因此缓冲的也是本地时区版本，保证界面与终端口径一致。
+        const localLine = localizeLogTimestamps(line);
+        console.log(`[agent-log] ${localLine.trimEnd()}`);
+        stderrLines.push(localLine);
         if (stderrLines.length > 500) stderrLines.shift();
       });
       proc.on('error', (err) => {

@@ -246,13 +246,19 @@
 }
 
 .ai-panel__session-delete-btn {
-  flex-shrink: 0;
-  padding: 2px;
+  /* 与重命名按钮同尺寸：命中区 20×20（原先只有 padding:2px ≈ 16×16，
+     点偏一点就落到整行的 onClick 上 → 变成切换会话，用户观感即「这条删不掉」） */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
   border: none;
+  border-radius: 3px;
   background: transparent;
   color: #666;
   cursor: pointer;
-  border-radius: 3px;
+  flex-shrink: 0;
   opacity: 0;
   transition: opacity 0.15s;
 }

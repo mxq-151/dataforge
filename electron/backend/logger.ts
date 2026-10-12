@@ -9,6 +9,7 @@
 import { app } from 'electron';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { toLocalIsoString } from './logTime';
 
 let logStream: fs.WriteStream | null = null;
 let installed = false;
@@ -44,7 +45,7 @@ function stringifyArg(v: unknown): string {
 function writeLine(level: 'log' | 'warn' | 'error', args: unknown[]): void {
   ensureStream();
   if (!logStream) return;
-  const ts = new Date().toISOString();
+  const ts = toLocalIsoString();
   const msg = args.map(stringifyArg).join(' ');
   logStream.write(`[${ts}] [${level}] [pid:${process.pid}] ${msg}\n`);
 }

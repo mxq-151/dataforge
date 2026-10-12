@@ -24,6 +24,7 @@ import { buildScopedStorageKey } from '../../features/execHistory';
 import {
   buildSessionHistoryKey,
   loadSessionHistory,
+  loadDeletedSessionIds,
   saveSessionHistory,
   upsertSessionHistory,
   removeSessionHistoryEntry,
@@ -614,7 +615,10 @@ function useOpencodeClientImpl(
     if (!c) return;
     try {
       const sessions = await listSessions(c);
-      const mapped = mapSessionsToTasks(sessions);
+      // 播种前先剔除「被用户删除过」的会话：本地删除是最终结果，服务端可能仍持有
+      // 该会话（删除请求失败/挂起，或该会话属于别的目录），不能把它们放回列表。
+      const deletedIds = loadDeletedSessionIds(key);
+      const mapped = mapSessionsToTasks(sessions).filter(t => !deletedIds.has(t.sessionId));
       setTasks(mapped);
       saveSessionHistory(key, mapped);
       seededHistoryKeysRef.current.add(key);
@@ -1288,7 +1292,13 @@ function useOpencodeClientImpl(
     }
   }, [isDataExplore, connected, ensureFirstDataExploreDir]);
 
-  /** 删除数据探索会话：撤映射 → 删目录 → 删 opencode 会话 */
+  /**
+   * 删除数据探索会话：撤映射 → 删目录 → 删 opencode 会话。
+   *
+   * 顺序：**本地状态先落地，再动服务端/文件系统**。任务列表来自本地历史，
+   * 删除必须立即生效；若把 removeSessionHistoryEntry 放在 await 之后，
+   * 一旦 removeDir / session.delete 挂起或抛错，这一行就会永远留在下拉框里。
+   */
   const handleDataExploreDeleteSession = useCallback(async (dir: string) => {
     if (!isDataExplore) return;
     let sid: string | null = null;
@@ -1298,26 +1308,24 @@ function useOpencodeClientImpl(
     if (sid) {
       delete deDirMapRef.current[sid];
       saveDeDirMap(deDirMapKeyRef.current, deDirMapRef.current);
+      // 本地删除 + 立墓碑（后续服务端播种不得复活）
+      setTasks(removeSessionHistoryEntry(sessionHistoryKey, sid));
     }
     if (sid && sid === currentSessionId) clearCurrentSession();
-    if (dataExploreService) {
-      try {
-        await dataExploreService.removeDir(dir);
-      } catch (err) {
-        console.warn('[agent-client] 删除数据探索会话目录失败:', err);
-      }
-    }
     setDataExploreDirs(prev => (prev || []).filter(d => d.dir !== dir));
     bumpDeVersion();
-    if (sid && clientRef.current) {
-      try {
-        await deleteSession(clientRef.current, sid);
-        setTasks(removeSessionHistoryEntry(sessionHistoryKey, sid));
-      } catch (err) {
-        console.warn('[agent-client] 删除数据探索会话失败:', err);
-      }
+    if (dataExploreService) {
+      void dataExploreService.removeDir(dir).catch(err => {
+        console.warn('[agent-client] 删除数据探索会话目录失败:', err);
+      });
     }
-  }, [isDataExplore, dataExploreService, currentSessionId, clearCurrentSession, deleteSession, sessionHistoryKey]);
+    const c = clientRef.current;
+    if (sid && c) {
+      void deleteSession(c, sid).catch(err => {
+        console.warn('[agent-client] 删除数据探索会话失败:', err);
+      });
+    }
+  }, [isDataExplore, dataExploreService, currentSessionId, clearCurrentSession, deleteSession, sessionHistoryKey, bumpDeVersion, setDataExploreDirs]);
 
   /** 数据探索：打开/关闭指定目录的文件标签（仅操作编辑器标签，不动 AI 工作目录） */
   const setDeDirOpen = useCallback((dir: string, open: boolean) => {
@@ -1399,29 +1407,51 @@ function useOpencodeClientImpl(
     return listSessions(clientRef.current);
   }, [listSessions]);
 
+  /**
+   * 删除会话（下拉框「任务历史」里那一行）。
+   *
+   * 顺序：**先本地、后服务端**——这是本函数唯一重要的约定：
+   * 1) 任务列表的唯一事实来源是本地历史（sessionHistoryStore），所以本地删除同步落地，
+   *    行立即从下拉框消失。不能等 session.delete 返回：该请求可能挂起（sidecar 忙）
+   *    或失败，一等就把这一行永远留在列表里，用户表现就是「这条删不掉」。
+   * 2) 服务端删除失败不回滚本地结果（用户意图是删掉这一行）；
+   *    同时 removeSessionHistoryEntry 会给该 id 立墓碑，服务端仍持有该会话时也不会被播种复活。
+   */
   const handleDeleteSession = useCallback(async (sessionId: string) => {
-    // 数据探索：删除会话时一并删除其独立工作目录
+    // 1) 本地立即生效（含墓碑），不等任何 await
+    setTasks(removeSessionHistoryEntry(sessionHistoryKey, sessionId));
+
+    // 2) 数据探索：撤掉「会话 ↔ 工作目录」映射，并异步清理目录（不阻塞 UI）
     if (isDataExplore) {
       const dir = deDirMapRef.current[sessionId];
       if (dir) {
         delete deDirMapRef.current[sessionId];
         saveDeDirMap(deDirMapKeyRef.current, deDirMapRef.current);
-        if (dataExploreService) {
-          try {
-            await dataExploreService.removeDir(dir);
-          } catch (err) {
-            console.warn('[agent-client] 删除数据探索会话目录失败:', err);
-          }
-        }
         setDataExploreDirs(prev => (prev || []).filter(d => d.dir !== dir));
         bumpDeVersion();
+        if (dataExploreService) {
+          void dataExploreService.removeDir(dir).catch(err => {
+            console.warn('[agent-client] 删除数据探索会话目录失败:', err);
+          });
+        }
       }
-      if (sessionId === currentSessionId) clearCurrentSession();
     }
-    await deleteSession(clientRef.current, sessionId);
-    // 删除后从本地历史移除（乐观更新，同时持久化）
-    setTasks(removeSessionHistoryEntry(sessionHistoryKey, sessionId));
-  }, [deleteSession, isDataExplore, dataExploreService, currentSessionId, clearCurrentSession, sessionHistoryKey]);
+
+    // 3) 删的是当前会话 → 清空当前会话（避免继续往已删会话发消息）
+    if (sessionId === currentSessionId) clearCurrentSession();
+
+    // 4) 服务端删除：不阻塞 UI、失败也不回滚
+    const c = clientRef.current;
+    if (!c) return;
+    void deleteSession(c, sessionId).catch(err => {
+      addLog({
+        source: 'agent',
+        text: `删除会话失败（已从本地历史移除）: ${err instanceof Error ? err.message : String(err)}`,
+        timestamp: new Date(),
+        level: 'warn',
+      });
+    });
+  }, [deleteSession, isDataExplore, dataExploreService, currentSessionId, clearCurrentSession, sessionHistoryKey, bumpDeVersion, setDataExploreDirs, addLog]);
 
   /** 重命名任务（通过 SDK session.update 更新标题） */
   const renameTask = useCallback(async (sessionId: string, newTitle: string) => {
