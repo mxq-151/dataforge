@@ -70,37 +70,54 @@ function createWindow(): void {
   }
 }
 
-app.whenReady().then(() => {
-  // 启动即打印精确运行环境（Windows / macOS / WSL / 裸 Linux），便于排查时第一时间确认宿主系统
-  console.log(
-    `[platform] DataForge running on runtime=${runtimeId()} platform=${process.platform} arch=${process.arch} wsl=${detectWsl()}`
-  );
-  registerIpcHandlers();
-  createWindow();
+// 单实例锁：同一时刻只允许运行一个 DataForge 实例。
+// 拿不到锁说明已有实例在运行，当前进程立即退出，实现"app 只能单开"。
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
 
-  // 先启动 compile HTTP server（随机端口+token），再自动启动 opencode，
-  // 确保 opencode 工具能拿到 DATAFORGE_COMPILE_PORT/TOKEN。
-  startCompileServer();
-
-  // 配置完整（model + auth_token）时自动启动 opencode
-  void autoStartOpencode();
-
-  app.on('activate', () => {
-    // 应用已配置为关闭即完全退出，这里仅在极端情况下（窗口被系统销毁但进程存活）
-    // 补建窗口。普通关闭流程不会走到这里。
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  });
-});
-
-app.on('window-all-closed', () => {
-  // 点击标题栏关闭按钮后完全退出整个应用（含 macOS），
-  // 退出前 before-quit 会优雅终止 opencode / compile / LSP 进程。
+if (!gotSingleInstanceLock) {
   app.quit();
-});
+} else {
+  // 已有实例运行时，用户再次启动只聚焦其主窗口，不再新建进程/窗口。
+  app.on('second-instance', () => {
+    const [existing] = BrowserWindow.getAllWindows();
+    if (!existing) return;
+    if (existing.isMinimized()) existing.restore();
+    existing.show();
+    existing.focus();
+  });
 
-// 退出时优雅终止 opencode、compile server 与 LSP 桥（避免留下孤儿进程/占用端口）
-app.on('before-quit', () => {
-  void stopOpencodeServer();
-  stopCompileServer();
-  stopAllLspBridges();
-});
+  app.whenReady().then(() => {
+    // 启动即打印精确运行环境（Windows / macOS / WSL / 裸 Linux），便于排查时第一时间确认宿主系统
+    console.log(
+      `[platform] DataForge running on runtime=${runtimeId()} platform=${process.platform} arch=${process.arch} wsl=${detectWsl()}`
+    );
+    registerIpcHandlers();
+    createWindow();
+
+    // 先启动 compile HTTP server（随机端口+token），再自动启动 opencode，
+    // 确保 opencode 工具能拿到 DATAFORGE_COMPILE_PORT/TOKEN。
+    startCompileServer();
+
+    // 配置完整（model + auth_token）时自动启动 opencode
+    void autoStartOpencode();
+
+    app.on('activate', () => {
+      // 应用已配置为关闭即完全退出，这里仅在极端情况下（窗口被系统销毁但进程存活）
+      // 补建窗口。普通关闭流程不会走到这里。
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
+  });
+
+  app.on('window-all-closed', () => {
+    // 点击标题栏关闭按钮后完全退出整个应用（含 macOS），
+    // 退出前 before-quit 会优雅终止 opencode / compile / LSP 进程。
+    app.quit();
+  });
+
+  // 退出时优雅终止 opencode、compile server 与 LSP 桥（避免留下孤儿进程/占用端口）
+  app.on('before-quit', () => {
+    void stopOpencodeServer();
+    stopCompileServer();
+    stopAllLspBridges();
+  });
+}
