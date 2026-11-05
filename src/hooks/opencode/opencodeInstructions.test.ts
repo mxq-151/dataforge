@@ -1,0 +1,522 @@
+/**
+ * opencodeInstructions.test.ts — 需求 → 设计 → 开发 三阶段提示词的链路一致性测试
+ *
+ * 三份提示词是同一条研发链路的三个环节，靠"共享契约 + 指标主线"串起来：
+ *   S1 业务需求方  docs/{业务名称}_开发需求.md
+ *     → S2 数据架构师 docs/{业务名称}_数仓设计.md + ddls/{分层}_ddl.sql
+ *       → S3 数据开发  {语言}/{分层}/{程序文件}
+ * 若任一方改口径而另外两方没跟着改，链路就断了：需求定义的指标在设计里被改名、
+ * 设计分配的编码在开发里没落地、三方各用一套质量规则术语，都会让下游对不上上游。
+ *
+ * 本测试锁住三类契约：
+ * 1. 共享契约：周期枚举、质量规则类型、数据源口径、安全原则等在三方同时存在
+ * 2. 指标主线：S1 定义（名称即主键）→ S2 继承并分配编码 → S3 按编码实现并标注
+ * 3. 产物路径：三方引用同一套 docs/ddls 路径，{业务名称} 贯通
+ *
+ * 指标表头的列数断言在 extractMetrics.test.ts（解析器视角），
+ * 这里补的是"表头在提示词中的位置"（防止映射表等插到指标表头之前被误当作表头）。
+ */
+
+import { describe, it, expect } from 'vitest';
+import {
+  DATA_ARCHITECT_INSTRUCTIONS,
+  DATA_DEV_ENGINEER_INSTRUCTIONS,
+  BUSINESS_REQUESTER_INSTRUCTIONS,
+  getDeveloperInstructions,
+} from './opencodeInstructions';
+import { AGENT_DATA_ARCHITECT, AGENT_DATA_DEV } from './devAssistantAgents';
+import { parseQualityRulesFromDesignDoc } from '../../utils/qualityRuleImport';
+import { QUALITY_RULE_TYPES } from '../../types/quality';
+
+/** 三阶段提示词，顺序即链路顺序 */
+const STAGES = [
+  { id: 'S1 需求', prompt: BUSINESS_REQUESTER_INSTRUCTIONS },
+  { id: 'S2 设计', prompt: DATA_ARCHITECT_INSTRUCTIONS },
+  { id: 'S3 开发', prompt: DATA_DEV_ENGINEER_INSTRUCTIONS },
+] as const;
+
+/** 取出提示词中首个以指定前缀开头的表格行，及其列数 */
+function firstTableRow(prompt: string, prefix: string): { cols: number; line: string } {
+  const line = prompt
+    .split('\n')
+    .map(l => l.trim())
+    .find(l => l.startsWith(prefix));
+  if (!line) throw new Error(`提示词中未找到以 "${prefix}" 开头的表格行`);
+  return { cols: line.slice(1, -1).split('|').length, line };
+}
+
+describe('链路共享契约 — 三方必须同时具备', () => {
+  /** 共享契约片段：任何一处缺失都意味着某一环没跟上链路口径 */
+  const SHARED: Array<{ name: string; keys: string[] }> = [
+    {
+      name: '刷新周期枚举',
+      keys: ['d=日，h=小时，w=周，m=月，y=年，r=实时流式，f=全量快照'],
+    },
+    {
+      name: '质量规则 7 类',
+      keys: ['主键唯一性', '非空', '值域', '行数波动', '行数环比', '上下游对账', '口径一致性'],
+    },
+    {
+      name: '数据源口径统一',
+      keys: ['数据源名称以 metadata 工具查证结果为准'],
+    },
+    {
+      name: '安全原则',
+      keys: ['不允许访问工作空间以外的目录或文件'],
+    },
+    {
+      name: '信息获取原则',
+      keys: ['信息获取原则', '避免基于猜测'],
+    },
+    {
+      name: '增量追加不覆盖',
+      keys: ['目标文件已存在时增量追加', '不得覆盖已有内容'],
+    },
+    {
+      name: '待确认问题兜底',
+      keys: ['列出待确认问题'],
+    },
+  ];
+
+  it.each(SHARED)('$name 在 S1/S2/S3 三份提示词中均有定义', ({ keys }) => {
+    for (const { id, prompt } of STAGES) {
+      const missing = keys.filter(k => !prompt.includes(k));
+      expect(missing, `${id} 提示词缺少共享契约片段: ${missing.join('、')}`).toEqual([]);
+    }
+  });
+
+  it('S2 与 S3 共享同一份任务拆分原则', () => {
+    for (const key of ['最小依赖原则', '容错与隔离性', '幂等可重跑', '质量校验独立']) {
+      expect(DATA_ARCHITECT_INSTRUCTIONS, `S2 缺少拆分原则: ${key}`).toContain(key);
+      expect(DATA_DEV_ENGINEER_INSTRUCTIONS, `S3 缺少拆分原则: ${key}`).toContain(key);
+    }
+  });
+
+  it('S2 与 S3 共享同一份分层规范（S3 须遵循 S2 设计的分层）', () => {
+    for (const key of ['ODS 贴源层', 'DWD 明细层', 'DWS 汇总层', 'ADS 应用层', '禁止跨层跳跃引用']) {
+      expect(DATA_ARCHITECT_INSTRUCTIONS, `S2 缺少分层: ${key}`).toContain(key);
+      expect(DATA_DEV_ENGINEER_INSTRUCTIONS, `S3 缺少分层: ${key}`).toContain(key);
+    }
+  });
+
+  it('血缘调研只出现在掌握表级血缘的 S2/S3，S1 不强求', () => {
+    expect(DATA_ARCHITECT_INSTRUCTIONS).toContain('Marquez');
+    expect(DATA_DEV_ENGINEER_INSTRUCTIONS).toContain('Marquez');
+    expect(BUSINESS_REQUESTER_INSTRUCTIONS).not.toContain('Marquez');
+  });
+});
+
+describe('指标主线 — S1 定义 → S2 继承并编码 → S3 实现并标注', () => {
+  it('S1 明确指标名称为全链路主键，下游不得改名', () => {
+    expect(BUSINESS_REQUESTER_INSTRUCTIONS).toContain('全链路主键');
+    expect(BUSINESS_REQUESTER_INSTRUCTIONS).toContain('禁止改名、合并或拆分');
+  });
+
+  it('S1 给出 S1→S2 的固定列映射，且 7 个需求列全部覆盖', () => {
+    expect(BUSINESS_REQUESTER_INSTRUCTIONS).toContain('| 需求列 | S2 设计列 | 下游变化 |');
+    // 需求表 7 列逐列给出下游落点，避免设计阶段丢列
+    for (const col of ['指标名称', '主题域', '业务定义', '计算口径', '过滤条件', '下钻维度', '应用场景']) {
+      expect(BUSINESS_REQUESTER_INSTRUCTIONS, `映射表未覆盖需求列: ${col}`).toContain(`| ${col} |`);
+    }
+  });
+
+  it('下钻维度在 S1 定义、S2 落地、S3 实现，三方口径贯通', () => {
+    // S1：用业务语言声明可下钻的维度与层级
+    expect(BUSINESS_REQUESTER_INSTRUCTIONS, 'S1 未定义下钻维度').toContain('下钻维度');
+    // S2：把业务维度绑定到实际维度字段
+    expect(DATA_ARCHITECT_INSTRUCTIONS, 'S2 未落地下钻维度').toContain('下钻维度');
+    expect(DATA_ARCHITECT_INSTRUCTIONS).toContain('维度名(库.表:字段)');
+    // S3：按设计声明的维度输出分组字段
+    expect(DATA_DEV_ENGINEER_INSTRUCTIONS, 'S3 未实现下钻维度').toContain('下钻维度');
+  });
+
+  it('S2 逐字继承 S1 的指标名称与主题域，并分配指标编码', () => {
+    expect(DATA_ARCHITECT_INSTRUCTIONS).toContain('逐字继承需求文档');
+    expect(DATA_ARCHITECT_INSTRUCTIONS).toContain('指标编码');
+    expect(DATA_ARCHITECT_INSTRUCTIONS).toContain('不得遗漏');
+  });
+
+  it('S3 按设计文档的指标编码实现，且在代码中显式标注', () => {
+    expect(DATA_DEV_ENGINEER_INSTRUCTIONS).toContain('## 指标实现规范');
+    // 指标编码写进行注释而非代码头字段，避免破坏 generateFileHeader 的字段模板契约
+    expect(DATA_DEV_ENGINEER_INSTRUCTIONS).toContain('-- 指标: {指标编码} {指标名称}');
+    expect(DATA_DEV_ENGINEER_INSTRUCTIONS).toContain('不得改写口径或重命名');
+  });
+
+  it('S3 代码头 @备注 要求写明所产出的指标编码（机器解析字段未新增，靠备注承载）', () => {
+    expect(DATA_DEV_ENGINEER_INSTRUCTIONS).toContain('须在此写明指标编码');
+  });
+});
+
+describe('机器解析表头 — 在提示词中的位置', () => {
+  it('S2 中首个以 "| 指标编码" 开头的行就是 9 列指标表头', () => {
+    // 若把映射表/示例表插到指标表头之前，extractMetrics 会取错表头
+    const { cols, line } = firstTableRow(DATA_ARCHITECT_INSTRUCTIONS, '| 指标编码');
+    expect(cols, `首个匹配行不是 9 列表头: ${line}`).toBe(9);
+    expect(line).toContain('下钻维度');
+    expect(line).toContain('字段来源');
+    expect(line).toContain('数据源');
+  });
+
+  it('S1 中首个以 "| 指标名称" 开头的行就是 7 列指标表头', () => {
+    // S1 的"S1→S2 映射表"含 "| 指标名称 | 指标名称 | ..." 数据行，必须排在 7 列表头之后
+    const { cols, line } = firstTableRow(BUSINESS_REQUESTER_INSTRUCTIONS, '| 指标名称');
+    expect(cols, `首个匹配行不是 7 列表头: ${line}`).toBe(7);
+    expect(line).toContain('业务定义');
+    expect(line).toContain('下钻维度');
+    expect(line).toContain('应用场景');
+  });
+});
+
+describe('质检链路闭环 — S2 规则清单可被平台解析、S3 结果可回传平台', () => {
+  /** 提示词里声明的规则清单表头，也是平台解析器的识别依据，两处必须逐字一致 */
+  const RULE_TABLE_HEADER = '| 规则名 | 规则类型 | 校验对象（库.表.字段） | 阈值 | 处置方式 |';
+
+  it('S2 声明了机器可解析的规则清单表头（5 列，顺序固定）', () => {
+    expect(DATA_ARCHITECT_INSTRUCTIONS).toContain('## 稽核规则清单表格规范');
+    expect(DATA_ARCHITECT_INSTRUCTIONS).toContain(RULE_TABLE_HEADER);
+  });
+
+  it('按提示词表头写出的规则清单能被平台解析器识别（表头契约不漂移）', () => {
+    const doc = [
+      '## 6. 数据质量稽核设计',
+      '',
+      RULE_TABLE_HEADER,
+      '|--------|----------|------------------------|------|----------|',
+      '| R_AD_001 事件主键唯一 | 主键唯一性 | test_db.dwd_event_f.event_id | 重复=0 | 阻断下游+告警 |',
+    ].join('\n');
+
+    const { rules, warnings } = parseQualityRulesFromDesignDoc(doc);
+    expect(warnings).toEqual([]);
+    expect(rules).toHaveLength(1);
+    expect(rules[0]).toMatchObject({
+      ruleName: 'R_AD_001 事件主键唯一',
+      ruleType: 'PRIMARY_KEY_UNIQUE',
+      databaseName: 'test_db',
+      tableName: 'dwd_event_f',
+      columnName: 'event_id',
+      compareMode: 'EQ',
+      expectedValue: '0',
+      disposeMode: 'BLOCK',
+    });
+    expect(rules[0].warnings).toEqual([]);
+  });
+
+  it('S3 声明了结果回传协议：接口、凭据注入方式与全部必填字段', () => {
+    expect(DATA_DEV_ENGINEER_INSTRUCTIONS).toContain('## 质检结果回传规范');
+    expect(DATA_DEV_ENGINEER_INSTRUCTIONS).toContain('/api/quality/run/report');
+    expect(DATA_DEV_ENGINEER_INSTRUCTIONS).toContain('DATAFORGE_QUALITY_REPORT_URL');
+    expect(DATA_DEV_ENGINEER_INSTRUCTIONS).toContain('DATAFORGE_QUALITY_REPORT_TOKEN');
+    for (const field of ['datasourceName', 'databaseName', 'tableName', 'batchNo', 'ruleName', 'ruleType', 'passed']) {
+      expect(DATA_DEV_ENGINEER_INSTRUCTIONS, `回传协议缺少字段: ${field}`).toContain(field);
+    }
+    // 回传失败不得改变校验任务本身的成败判定（阻断语义仍由调度 DAG 承载）
+    expect(DATA_DEV_ENGINEER_INSTRUCTIONS).toContain('回传失败不得改变校验任务本身的成败判定');
+  });
+
+  it('规则名唯一键契约在 S2/S3 同时存在（改名即断链）', () => {
+    for (const prompt of [DATA_ARCHITECT_INSTRUCTIONS, DATA_DEV_ENGINEER_INSTRUCTIONS]) {
+      expect(prompt).toContain('规则名是全链路唯一键');
+    }
+  });
+
+  it('S1 不参与校验实现，因此不下发回传协议', () => {
+    expect(BUSINESS_REQUESTER_INSTRUCTIONS).not.toContain('/api/quality/run/report');
+  });
+});
+
+describe('产物路径 — 三方引用同一套约定', () => {
+  const ARTIFACTS = [
+    'docs/{业务名称}_开发需求.md',
+    'docs/{业务名称}_数仓设计.md',
+    'ddls/{分层}_ddl.sql',
+  ];
+
+  it.each(STAGES)('$id 提示词中声明了全链路的三类产物路径', ({ prompt }) => {
+    for (const artifact of ARTIFACTS) {
+      expect(prompt, `未声明产物路径: ${artifact}`).toContain(artifact);
+    }
+  });
+
+  it.each(STAGES)('$id 要求 {业务名称} 与上下游保持一致', ({ prompt }) => {
+    expect(prompt).toMatch(/\{业务名称\}[^。\n]*一致|一致[^。\n]*\{业务名称\}/);
+  });
+});
+
+/**
+ * 规则模板改由 opencode 的 quality-template 工具按需拉取（不再内嵌提示词）。
+ * 提示词侧只负责「告诉 S3 去调这个工具、传哪个规则类型编码、怎么用结果」。
+ * 工具实现见 opencode 侧 src/tool/quality-template.ts。
+ */
+describe('质量规则模板（工具拉取）', () => {
+  it('S3 提示词要求先调 quality-template 工具取模板，再照骨架实现', () => {
+    const prompt = DATA_DEV_ENGINEER_INSTRUCTIONS;
+
+    expect(prompt).toContain('## 质量规则模板获取（强约束）');
+    expect(prompt).toContain('quality-template');
+    expect(prompt).toContain('ruleType');
+    expect(prompt).toContain('禁止自选模板');
+    // 约束：模板会改版，回传须带实际执行的 SQL
+    expect(prompt).toContain('execSql');
+    // 工具不可用时不阻塞开发（降级路径要写清楚，否则模型可能卡住不产出）
+    expect(prompt).toContain('不阻塞开发');
+  });
+
+  it('提示词给出 7 类规则类型的编码对照，供调用工具时传参', () => {
+    const prompt = DATA_DEV_ENGINEER_INSTRUCTIONS;
+
+    for (const t of QUALITY_RULE_TYPES) {
+      expect(prompt, `缺少规则类型编码对照: ${t.code}`).toContain(`${t.label}（${t.code}）`);
+    }
+  });
+
+  it('S1 / S2 / 数据探索不下发模板获取章节', () => {
+    expect(getDeveloperInstructions('BUSINESS_REQUESTER', 'u', 'dev-assistant'))
+      .not.toContain('## 质量规则模板获取');
+    expect(getDeveloperInstructions('DATA_ARCHITECT', 'u', 'dev-assistant'))
+      .not.toContain('## 质量规则模板获取');
+    expect(getDeveloperInstructions('DATA_ANALYST', 'u', 'dev-assistant'))
+      .not.toContain('## 质量规则模板获取');
+    // 数据探索模块按 moduleName 短路，即使角色是数据开发也不该带模板
+    expect(getDeveloperInstructions('DATA_DEV_ENGINEER', 'u', 'data-explore'))
+      .not.toContain('## 质量规则模板获取');
+  });
+
+  it('回传规范声明了 ruleId 与 execSql 两个字段', () => {
+    const prompt = DATA_DEV_ENGINEER_INSTRUCTIONS;
+    expect(prompt).toContain('| ruleId | 否 |');
+    expect(prompt).toContain('| execSql | 否 |');
+    expect(prompt).toContain('带上 ruleId 后关联不再依赖名字');
+  });
+});
+
+/**
+ * 规则登记（把关联键从规则名字符串换成 ID）—— 同样只进 S3。
+ */
+describe('规则登记规范', () => {
+  it('S3 提示词声明登记接口、幂等语义与取回 ruleId 的用法', () => {
+    const prompt = DATA_DEV_ENGINEER_INSTRUCTIONS;
+
+    expect(prompt).toContain('## 规则登记规范（强约束）');
+    expect(prompt).toContain('/api/quality/rule/register');
+    // 幂等：判定键必须写清，否则 S3 会以为重复登记会建新规则而选择跳过
+    expect(prompt).toContain('平台按"规则名 + 库 + 表"判定同一条规则');
+    expect(prompt).toContain('既不新建也不覆盖已有阈值');
+    // 令牌沿用回传那套环境变量，不另起一套
+    expect(prompt).toContain('DATAFORGE_QUALITY_REPORT_TOKEN');
+    // 失败不阻塞开发，但要在汇报里列出
+    expect(prompt).toContain('必须在交付汇报里列出未登记成功的规则');
+    // 自检清单要覆盖登记
+    expect(prompt).toContain('登记合规');
+  });
+
+  it('登记接口只出现在数据开发提示词里，S1 / S2 不得出现', () => {
+    expect(DATA_DEV_ENGINEER_INSTRUCTIONS).toContain('/api/quality/rule/register');
+    expect(BUSINESS_REQUESTER_INSTRUCTIONS).not.toContain('/api/quality/rule/register');
+    expect(DATA_ARCHITECT_INSTRUCTIONS).not.toContain('/api/quality/rule/register');
+    expect(BUSINESS_REQUESTER_INSTRUCTIONS).not.toContain('规则登记规范');
+    expect(DATA_ARCHITECT_INSTRUCTIONS).not.toContain('规则登记规范');
+  });
+
+  it('登记不再涉及"挂质检任务"（该链路已下线，不得再指导智能体去挂）', () => {
+    const prompt = DATA_DEV_ENGINEER_INSTRUCTIONS;
+
+    // 质检任务 / 运行记录 / 告警订阅三个页签及其整条服务端链路已删除，
+    // 提示词里若还留着 taskId 指引，模型会去填一个平台根本不认的字段。
+    expect(prompt).not.toContain('taskId');
+    expect(prompt).not.toContain('质检任务页签');
+    expect(prompt).not.toContain('告警订阅');
+    // 登记的核心语义（幂等 + 取回 ruleId）必须保留
+    expect(prompt).toContain('data.ruleId 即该规则的平台 ID');
+  });
+});
+
+/**
+ * 回传的表级权限：平台会 fail-close 校验，提示词必须提前说清，否则程序会以为"随便传都能落"。
+ */
+describe('回传的表级权限约定', () => {
+  it('提示词声明无权读表会被拒绝登记结果', () => {
+    const prompt = DATA_DEV_ENGINEER_INSTRUCTIONS;
+
+    expect(prompt).toContain('无权读取的表会被拒绝登记结果');
+    expect(prompt).toContain('令牌的权限就是发放者账号的权限');
+  });
+
+  it('权限说明不进 S1 / S2 提示词', () => {
+    expect(BUSINESS_REQUESTER_INSTRUCTIONS).not.toContain('无权读取的表会被拒绝登记结果');
+    expect(DATA_ARCHITECT_INSTRUCTIONS).not.toContain('无权读取的表会被拒绝登记结果');
+  });
+});
+
+/**
+ * 质检任务粒度 —— 一张被校验表一个质检程序。
+ *
+ * 历史问题：提示词只说"质检任务与处理任务分离、独立成文件"，没定粒度，模型把整个业务域的
+ * 全部规则写进一个质检程序 —— 一个任务挂了多个上游、失败域糊在一起、重跑要整批重跑，
+ * 程序名也无法对应到任何一张表。粒度必须由提示词定死，不能靠模型自行领会。
+ */
+describe('质检任务粒度 — 一张被校验表一个质检程序', () => {
+  it('S3 声明粒度、归属依据与禁止项', () => {
+    const prompt = DATA_DEV_ENGINEER_INSTRUCTIONS;
+
+    expect(prompt).toContain('一张被校验表 = 一个质检程序');
+    // 归属依据：规则的校验对象所属表，而不是规则类型 / 分层 / 业务域
+    expect(prompt).toContain('不是规则类型，也不是分层或业务域');
+    expect(prompt).toContain('禁止把所有表、所有规则塞进同一个质检程序');
+    // 跨表对账规则必须有明确归属，否则模型会为它单建一个"共享"校验程序
+    expect(prompt).toContain('归入其左侧主表所在的质检程序');
+    expect(prompt).toContain('禁止把校验逻辑写进数据处理程序内部');
+  });
+
+  it('S3 给出可推导的程序名与调度挂载方式', () => {
+    const prompt = DATA_DEV_ENGINEER_INSTRUCTIONS;
+
+    expect(prompt).toContain('{分层}_{业务域}_{实体描述}_check_{执行周期}');
+    expect(prompt).toContain('dwd_trade_order_check_d.sql');
+    // 一个处理任务产出多张表时拆多个质检任务，而不是堆上游依赖到一个任务上
+    expect(prompt).toContain('@依赖 只写该处理任务');
+    expect(prompt).toContain('拆出多个质检任务');
+  });
+
+  it('自检清单覆盖质检粒度，避免产出后再被用户发现', () => {
+    expect(DATA_DEV_ENGINEER_INSTRUCTIONS).toContain('质检粒度：');
+  });
+
+  it('S2 与 S3 的拆分原则都写明质检粒度（设计端不得把规则堆成一个任务）', () => {
+    for (const prompt of [DATA_ARCHITECT_INSTRUCTIONS, DATA_DEV_ENGINEER_INSTRUCTIONS]) {
+      expect(prompt).toContain('一张被校验表对应一个质检任务');
+    }
+  });
+
+  it('S2 规则清单要求按表分组连续书写（解析器遇非表格行即中止）', () => {
+    const prompt = DATA_ARCHITECT_INSTRUCTIONS;
+
+    expect(prompt).toContain('表格必须是一张连续表格');
+    expect(prompt).toContain('按"库.表"分组连续书写');
+  });
+
+  it('回传"不单开节点"的约束不会被读成"把多张表合并进一个程序"', () => {
+    expect(DATA_DEV_ENGINEER_INSTRUCTIONS).toContain('不给回传单开节点');
+  });
+});
+
+/**
+ * 数据分类分级口径 —— 分级档位与分类枚举必须写死。
+ *
+ * 历史问题：提示词只给了「如 cla:用户信息-一般」一个例子，没定档位。模型每次自造一套
+ * （"机密/内部/公开"、"一般1级"），三份产物对不上，资产侧统计不出分级分布；更糟的是
+ * 旧口径要求"敏感字段不得低于重要"，而 GB/T 43697-2024 明确"仅影响组织自身或公民个体的
+ * 数据一般不作为重要数据"—— 把个人信息抬成重要数据会触发重要数据目录报备与风险评估义务。
+ * 因此：分级只有三档、分类只有六类、个人信息归一般数据、脱敏作为独立维度强制要求。
+ */
+describe('数据分类分级口径 — 三档分级 + 六类分类', () => {
+  const GRADES = ['核心数据', '重要数据', '一般数据'];
+  const CATEGORIES = '个人信息 / 业务数据 / 经营数据 / 公共数据 / 运维数据 / 其他';
+
+  it.each(STAGES)('$id 提示词带上了共享的分类分级口径', ({ prompt }) => {
+    expect(prompt).toContain('## 数据分类分级口径（全链路统一，GB/T 43697-2024）');
+    for (const grade of GRADES) {
+      expect(prompt, `缺少分级档位: ${grade}`).toContain(grade);
+    }
+    expect(prompt).toContain(CATEGORIES);
+    // 档位必须写死：既不额外造档，也不再细分小级
+    expect(prompt).toContain('禁止自造档位、禁止再细分小级');
+  });
+
+  it('S2 给出固定标注写法 cla:{分类}-{分级} 与可抄的示例', () => {
+    const prompt = DATA_ARCHITECT_INSTRUCTIONS;
+
+    expect(prompt).toContain('cla:{分类}-{分级}');
+    expect(prompt).toContain('cla:个人信息-一般数据');
+    // 表级与字段级都要标，不能只标一处
+    expect(prompt).toContain('表级写在表注释尾部，字段级写在字段注释尾部');
+  });
+
+  it('个人信息默认一般数据，且明确"不得靠抬高分级代替脱敏"', () => {
+    const prompt = DATA_ARCHITECT_INSTRUCTIONS;
+
+    expect(prompt).toContain('默认归"一般数据"');
+    expect(prompt).toContain('不得靠抬高分级代替脱敏');
+    expect(prompt).toContain('脱敏与分级是两件事');
+    // 已废除的旧口径不得残留：它会把个人信息抬成重要数据
+    expect(prompt).not.toContain('不得低于"重要"');
+  });
+
+  it('S3 把 cla: 标记落到脱敏实现与自检里', () => {
+    const prompt = DATA_DEV_ENGINEER_INSTRUCTIONS;
+
+    expect(prompt).toContain('cla: 分类分级标记与脱敏建议实现脱敏');
+    expect(prompt).toContain('分类分级落地：');
+  });
+
+  it('旁路角色的安全原则自带档位，不引用它们拿不到的口径章节', () => {
+    // S1/S2/S3 之外的提示词（超管、数据分析师）只拿到 SECURITY_PRINCIPLES，
+    // 里面若写"见数据分类分级口径"会指向一个不存在的章节。
+    for (const role of ['SUPER_ADMIN', 'DATA_ANALYST']) {
+      const prompt = getDeveloperInstructions(role, 'u', 'dev-assistant');
+      expect(prompt).toContain('分级固定为核心数据 / 重要数据 / 一般数据三档');
+      expect(prompt).not.toContain('## 数据分类分级口径');
+      expect(prompt).not.toContain('见"数据分类分级口径"');
+    }
+  });
+});
+
+/**
+ * 数仓开发 = 「数仓设计」「数据开发」合成一个任务类型，由主智能体编排两个子代理。
+ *
+ * 这里锁的不是文案，而是三件会导致功能静默失效的事：
+ * 1. 分派必须是确定性的 —— 阈值与"不足时自己做"的退路若没被显式覆盖，
+ *    模型会照着 S2/S3 自带的编排章节走，1~2 张表时根本不拉子代理
+ * 2. 主智能体不得亲自写 ETL —— 否则"数仓开发"退化成旧的合并提示词
+ * 3. 两侧机器解析契约必须完整存在 —— 子代理的 prompt 不含契约，只能由主智能体下发
+ */
+describe('数仓开发 — 一个入口编排设计与开发两个子代理', () => {
+  const MERGED = getDeveloperInstructions('DATA_WAREHOUSE_DEV', 'u', 'dev-assistant');
+
+  it('同时包含完整的数仓设计与数据开发提示词', () => {
+    expect(MERGED).toContain(DATA_ARCHITECT_INSTRUCTIONS);
+    expect(MERGED).toContain(DATA_DEV_ENGINEER_INSTRUCTIONS);
+  });
+
+  it('声明编排者定位，并点名两个子代理', () => {
+    expect(MERGED).toContain('## 任务定位（数仓开发：编排两个子代理完成设计与开发）');
+    expect(MERGED).toContain(AGENT_DATA_ARCHITECT);
+    expect(MERGED).toContain(AGENT_DATA_DEV);
+    expect(MERGED).toContain('拆表 → 分派 → 汇总 → 校验并落盘');
+  });
+
+  it('分派是硬约束：单表也必须分派，且不受各阶段自带阈值约束', () => {
+    expect(MERGED).toContain('## 强制分派纪律（强约束）');
+    // 关键：覆盖 S2/S3 自带章节里的「≥3 张 / ≥2 张」阈值与"自己做"的退路
+    expect(MERGED).toContain('表数不作门槛：**只有 1 张表也必须分派**');
+    expect(MERGED).toContain('在本任务类型下**一律不适用**');
+    // 主智能体亲自写代码 = 编排退化
+    expect(MERGED).toContain('禁止你自己编写 ETL 程序');
+  });
+
+  it('阶段门禁存在：没有设计产物不得进入开发', () => {
+    expect(MERGED).toContain('## 两阶段执行纪律');
+    expect(MERGED).toContain('设计文档与 DDL 落盘并经用户确认之前，禁止进入阶段二');
+  });
+
+  it('两阶段的机器解析契约与并行编排章节全部保留（供下发与校验）', () => {
+    for (const token of [
+      '| 指标编码',
+      '## 稽核规则清单表格规范',
+      '## 代码头格式规范',
+      '## 质检结果回传规范',
+      '## 规则登记规范（强约束）',
+      '## 多智能体并行编排（多表设计时启用）',
+      '## 多智能体并行编排（多表开发时启用）',
+    ]) {
+      expect(MERGED, `数仓开发提示词缺少契约: ${token}`).toContain(token);
+    }
+  });
+
+  it('不与需求编写、数据探索的系统指令混同', () => {
+    expect(MERGED).not.toBe(getDeveloperInstructions('BUSINESS_REQUESTER', 'u', 'dev-assistant'));
+    const explore = getDeveloperInstructions('DATA_WAREHOUSE_DEV', 'u', 'data-explore');
+    // 数据探索按 moduleName 短路，即使任务类型是数仓开发也只拿数据分析指令
+    expect(explore).not.toContain('## 阶段一：数仓设计');
+  });
+});

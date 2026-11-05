@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DataForge</title>
+    <style>
+      /*
+       * TitleBar 用 data-electron-drag-region 属性做窗口拖拽，
+       * 通过 -webkit-app-region 实现（Electron 支持该 CSS 属性）。
+       * 交互元素（按钮/输入框等）必须 no-drag，否则无法点击。
+       */
+      [data-electron-drag-region] {
+        -webkit-app-region: drag;
+      }
+      [data-electron-drag-region] button,
+      [data-electron-drag-region] input,
+      [data-electron-drag-region] select,
+      [data-electron-drag-region] textarea,
+      [data-electron-drag-region] a,
+      [data-electron-drag-region] [role="button"] {
+        -webkit-app-region: no-drag;
+      }
+      /* 全局深色背景：应用为深色主题，页面底层必须是深色，
+         否则 Monaco 在切换文件/内容时某表面瞬时透明的一帧会露出白色 body，
+         表现为点击文件名时"闪白" */
+      html, body, #root { height: 100%; margin: 0; background-color: #1e1e1e; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,215 @@
+/**
+ * x6 工作流画布样式（从 dolphinscheduler-ui 的 x6-style.scss + dag.module.scss 移植，适配 dataforge 深色主题）。
+ */
+
+/* ---------- 画布容器 ---------- */
+.dag-canvas {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex: 1;
+  background-color: #1e1e1e;
+}
+
+.dag-paper {
+  width: 100%;
+  height: 100%;
+}
+
+.dag-minimap {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  border: 1px dashed #4a4a4a;
+  z-index: 9;
+  background-color: #252526;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+.dag-minimap .x6-minimap {
+  background-color: #252526;
+}
+
+/* 画布网格 / 背景 */
+.dag-canvas .x6-graph {
+  background-color: #1e1e1e;
+}
+
+/* ---------- x6 自定义节点 ---------- */
+/* 连线时有效吸附目标高亮（app 连接绿） */
+.x6-node[data-shape='dag-task'].available .dag-task-body {
+  stroke: #89d185;
+  stroke-width: 1;
+  stroke-dasharray: 5, 2;
+}
+
+.x6-node[data-shape='dag-task'].available.adsorbed .dag-task-body {
+  stroke-width: 3;
+}
+
+/* 禁用态节点背景（flag === 'NO'） */
+.dag-node--disabled .dag-task-body {
+  fill: #38383a;
+}
+
+/* ---------- 侧栏 ---------- */
+.dag-sidebar {
+  width: 200px;
+  height: 100%;
+  background-color: #252526;
+  border-right: 1px solid #3c3c3c;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.dag-sidebar__header {
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #aaaaaa;
+  border-bottom: 1px solid #3c3c3c;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.dag-sidebar__content {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.dag-sidebar__category {
+  border-bottom: 1px solid #2d2d30;
+}
+
+.dag-sidebar__category-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  color: #cccccc;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.dag-sidebar__category-header:hover {
+  background-color: #2a2d2e;
+}
+
+.dag-sidebar__count {
+  margin-left: auto;
+  color: #666666;
+  font-size: 11px;
+}
+
+.dag-sidebar__category-tasks {
+  padding: 4px 8px 8px;
+}
+
+.dag-sidebar__task-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 32px;
+  margin-bottom: 6px;
+  padding: 0 10px;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  box-sizing: border-box;
+  cursor: move;
+  font-size: 12px;
+  color: #cccccc;
+  background-color: transparent;
+  user-select: none;
+  transition: all 0.15s;
+}
+
+.dag-sidebar__task-item:last-child {
+  margin-bottom: 0;
+}
+
+.dag-sidebar__task-item:hover {
+  color: #0078d4;
+  border: 1px dashed #0078d4;
+  background-color: rgba(0, 120, 212, 0.12);
+}
+
+.dag-sidebar__task-icon {
+  display: block;
+  width: 18px;
+  height: 18px;
+  background-size: 100% 100%;
+  flex-shrink: 0;
+}
+
+.dag-sidebar__task-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- 右键菜单 ---------- */
+.dag-context-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 140px;
+  padding: 4px;
+  background-color: #252526;
+  border: 1px solid #3c3c3c;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+
+.dag-context-menu__item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 7px 12px;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: #cccccc;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.dag-context-menu__item:hover:not(:disabled) {
+  background-color: #0078d4;
+  color: #ffffff;
+}
+
+.dag-context-menu__item:disabled {
+  color: #666666;
+  cursor: not-allowed;
+}
+
+/* ---------- 实例详情节点状态徽标（foreignObject 内的 HTML） ---------- */
+.dag-node-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  line-height: 1;
+  white-space: nowrap;
+  color: #ffffff;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+.dag-node-status__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: currentColor;
+}

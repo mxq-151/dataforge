@@ -1,0 +1,806 @@
+/**
+ * extractMetrics.test.ts — 指标提取逻辑测试
+ *
+ * 测试覆盖两种提示词规范的表格格式（见 src/hooks/opencode/opencodeInstructions.ts）：
+ * - 9 列数仓设计文档格式（数据架构师，含下钻维度、字段来源、数据源列）
+ * - 7 列业务需求文档格式（业务需求方，含下钻维度列），兼容旧版 4 列文档
+ * 无"下钻维度"列的历史文档（8 列设计 / 6 列需求 / 4 列需求）仍须可解析，见向后兼容用例。
+ * 以及章节提取、列识别（含"指定含义"/"指标编码"修复）、模糊匹配、兜底拼接等。
+ */
+
+import { describe, it, expect } from 'vitest';
+import {
+  extractSection,
+  parseMarkdownTables,
+  findColumn,
+  extractMetricsFromMarkdown,
+  expandCalcExpr,
+  expandCalcExprBatch,
+  parseFieldSource,
+} from './extractMetrics';
+import {
+  DATA_ARCHITECT_INSTRUCTIONS,
+  BUSINESS_REQUESTER_INSTRUCTIONS,
+} from '../hooks/opencode/opencodeInstructions';
+
+// ── 8 列数仓设计文档（数据架构师）──────────────────────────────
+
+const DESIGN_DOC_8COL = `# 用户域数仓设计
+
+## 技术架构说明
+略
+
+## 数据指标
+
+| 指标编码 | 指标名称 | 主题域 | 指定含义 | 计算表达式 | 过滤条件 | 字段来源 | 数据源 |
+|--------|------|----------|------------|----------|----------|----------|----------|
+| USR_0001 | 日活用户数 | 用户域 | 统计当日活跃的去重用户数 | count(distinct user_id) | status=1 且 channel in ('app','web') | ods_user.login:user_id,login_time | test_dbs |
+| USR_0002 | 新增用户数 | 用户域 | 当日新增注册用户数 | count(distinct user_id) | | dws_user.register:user_id | test_dbs |
+
+## 分层库表设计
+略
+`;
+
+// ── 9 列数仓设计文档（含下钻维度列，当前提示词格式）──────────────
+
+const DESIGN_DOC_9COL = `# 交易域数仓设计
+
+## 数据指标
+
+| 指标编码 | 指标名称 | 主题域 | 指标含义 | 计算表达式 | 过滤条件 | 下钻维度 | 字段来源 | 数据源 |
+|--------|------|----------|----------|----------|----------|----------|----------|----------|
+| TRD_0001 | 支付金额 | 交易域 | 当日成功支付的订单金额合计 | sum(pay_amount) | status='success' | 时间(dim_date:date_id);地区(dim_area:province→city) | dws_trade.pay:pay_amount,date_id | test_dbs |
+| TRD_0002 | 退款金额 | 交易域 | 当日成功退款的金额合计 | sum(refund_amount) | | 时间(dim_date:date_id) | dws_trade.refund:refund_amount | test_dbs |
+`;
+
+describe('extractMetricsFromMarkdown — 9 列数仓设计文档（下钻维度）', () => {
+  it('下钻维度以 "下钻维度: xxx" 拼入 businessDefinition，且不影响其他列解析', () => {
+    const result = extractMetricsFromMarkdown(DESIGN_DOC_9COL, 'TRD');
+    expect(result).toHaveLength(2);
+
+    const [ind1, ind2] = result;
+    expect(ind1.code).toBe('TRD_0001');
+    expect(ind1.name).toBe('支付金额');
+    expect(ind1.businessDefinition).toBe(
+      '当日成功支付的订单金额合计\n下钻维度: 时间(dim_date:date_id);地区(dim_area:province→city)',
+    );
+    // 下钻维度列位于字段来源之前，不得抢占字段来源与数据源的解析
+    expect(ind1.calcExpr).toBe('sum(pay_amount)');
+    expect(ind1.defaultFilter).toBe("status='success'");
+    expect(ind1.fields).toHaveLength(2);
+    expect(ind1.fields!.every(f => f.datasourceName === 'test_dbs')).toBe(true);
+
+    // 第二个指标维度较少，同样正常解析
+    expect(ind2.businessDefinition).toContain('下钻维度: 时间(dim_date:date_id)');
+    expect(ind2.fields).toHaveLength(1);
+  });
+
+  it('下钻维度列为空时不产生空前缀', () => {
+    const doc = DESIGN_DOC_9COL.replace(
+      '| 时间(dim_date:date_id) |',
+      '|  |',
+    );
+    const result = extractMetricsFromMarkdown(doc, 'TRD');
+    expect(result[1].businessDefinition).not.toContain('下钻维度');
+  });
+});
+
+// ── 旧版 4 列业务需求文档（业务需求方，无指标名称列）──────────────
+
+const BUSINESS_DOC_4COL = `# 用户增长业务需求
+
+## 数据源定义
+略
+
+## 数据指标
+
+| 业务定义 | 计算口径 | 过滤条件 | 应用场景 |
+|----------|----------|----------|----------|
+| 当日活跃的去重用户数 | 登录且产生有效行为的用户去重计数 | 仅统计正式渠道的活跃用户 | 日常运营日报 |
+| 当日新增注册用户数 | 当日完成注册的用户去重计数 | | 增长趋势分析 |
+
+## 注意事项
+略
+`;
+
+describe('extractMetricsFromMarkdown — 8 列数仓设计文档', () => {
+  it('提取指标并正确映射 8 列字段（含字段来源与数据源解析）', () => {
+    const result = extractMetricsFromMarkdown(DESIGN_DOC_8COL, 'USR');
+    expect(result).toHaveLength(2);
+
+    const [ind1, ind2] = result;
+
+    // 指标编码 → code
+    expect(ind1.code).toBe('USR_0001');
+    // 指标名称 → name
+    expect(ind1.name).toBe('日活用户数');
+    // 主题域 → topic
+    expect(ind1.topic).toBe('用户域');
+    // 指定含义 → businessDefinition（作为业务含义主体）
+    expect(ind1.businessDefinition).toContain('统计当日活跃的去重用户数');
+    // 计算表达式 → calcExpr（独立字段，不再拼入 businessDefinition）
+    expect(ind1.calcExpr).toBe('count(distinct user_id)');
+    expect(ind1.businessDefinition).not.toContain('计算表达式');
+    // 过滤条件 → defaultFilter
+    expect(ind1.defaultFilter).toBe("status=1 且 channel in ('app','web')");
+    // projectCode 取传入的项目编码
+    expect(ind1.projectCode).toBe('USR');
+    // 字段来源 → fields，数据源 → 每个字段的 datasourceName
+    expect(ind1.fields).toHaveLength(2);
+    expect(ind1.fields![0]).toEqual({
+      datasourceName: 'test_dbs', dbName: 'ods_user', tblName: 'login', fieldName: 'user_id', fieldType: '',
+    });
+    expect(ind1.fields![1]).toEqual({
+      datasourceName: 'test_dbs', dbName: 'ods_user', tblName: 'login', fieldName: 'login_time', fieldType: '',
+    });
+
+    // 第二行过滤条件为空 → defaultFilter 为 undefined
+    expect(ind2.code).toBe('USR_0002');
+    expect(ind2.name).toBe('新增用户数');
+    expect(ind2.defaultFilter).toBeUndefined();
+    // 第二行字段来源只有一个字段，数据源同样写入
+    expect(ind2.fields).toHaveLength(1);
+    expect(ind2.fields![0]).toEqual({
+      datasourceName: 'test_dbs', dbName: 'dws_user', tblName: 'register', fieldName: 'user_id', fieldType: '',
+    });
+  });
+
+  it('指标编码不污染 businessDefinition（修复回归）', () => {
+    const result = extractMetricsFromMarkdown(DESIGN_DOC_8COL, 'USR');
+    // 指标编码应映射到 alias，不应作为兜底 "指标编码: ..." 拼入 businessDefinition
+    expect(result[0].businessDefinition).not.toContain('指标编码');
+    expect(result[0].businessDefinition).not.toContain('USR_0001');
+  });
+
+  it('"指定含义"列被识别为业务含义（修复回归）', () => {
+    const result = extractMetricsFromMarkdown(DESIGN_DOC_8COL, 'USR');
+    // "指定含义"的内容应作为 businessDefinition 主体（非"指定含义: xxx"前缀兜底）
+    expect(result[0].businessDefinition).toContain('统计当日活跃的去重用户数');
+    expect(result[0].businessDefinition).not.toMatch(/^指定含义:/);
+  });
+
+  it('章节在下一个二级标题处终止，不越界提取', () => {
+    const result = extractMetricsFromMarkdown(DESIGN_DOC_8COL, 'USR');
+    // "分层库表设计"章节内容不应被纳入
+    expect(result).toHaveLength(2);
+  });
+
+  it('数据源列的值写入每个字段的 datasourceName', () => {
+    const result = extractMetricsFromMarkdown(DESIGN_DOC_8COL, 'USR');
+    expect(result[0].fields).toHaveLength(2);
+    // 两个字段均携带数据源名称
+    expect(result[0].fields!.every(f => f.datasourceName === 'test_dbs')).toBe(true);
+  });
+
+  it('旧文档无"下钻维度"列时不影响解析（向后兼容）', () => {
+    const result = extractMetricsFromMarkdown(DESIGN_DOC_8COL, 'USR');
+    expect(result).toHaveLength(2);
+    // 无该列时 businessDefinition 只含业务含义，不追加"下钻维度"前缀
+    expect(result[0].businessDefinition).not.toContain('下钻维度');
+  });
+
+  it('旧文档无"数据源"列时 datasourceName 为空串（向后兼容）', () => {
+    const doc = `# 文档
+
+## 数据指标
+
+| 指标编码 | 指标名称 | 主题域 | 指定含义 | 计算表达式 | 过滤条件 | 字段来源 |
+|--------|------|----------|------------|----------|----------|----------|
+| A_0001 | 指标A | 域A | 含义A | exprA | | db.tbl:field1 |
+`;
+    const result = extractMetricsFromMarkdown(doc, 'P');
+    expect(result).toHaveLength(1);
+    expect(result[0].fields).toHaveLength(1);
+    expect(result[0].fields![0].datasourceName).toBe('');
+  });
+});
+
+// ── 提示词与解析器一致性（防止修改提示词时破坏指标解析）──────────────
+
+/** 从数仓设计提示词中取出"数据指标"章节的示例表头行与列数 */
+function promptMetricHeader(): { header: string; colCount: number } {
+  const line = DATA_ARCHITECT_INSTRUCTIONS
+    .split('\n')
+    .map(l => l.trim())
+    .find(l => l.startsWith('| 指标编码'));
+  if (!line) throw new Error('提示词中未找到指标表头行');
+  const colCount = line.slice(1, -1).split('|').length;
+  return { header: line, colCount };
+}
+
+describe('extractMetricsFromMarkdown — 数仓设计提示词表头与解析器一致', () => {
+  it('提示词给出的是 9 列表头', () => {
+    const { colCount } = promptMetricHeader();
+    expect(colCount).toBe(9);
+  });
+
+  it('提示词表头含下钻维度列，且位于字段来源之前', () => {
+    const { header } = promptMetricHeader();
+    expect(header).toContain('下钻维度');
+    expect(header.indexOf('下钻维度')).toBeLessThan(header.indexOf('字段来源'));
+  });
+
+  it('按提示词表头生成的文档可被完整解析（含指标含义列）', () => {
+    const { header, colCount } = promptMetricHeader();
+    const sep = `|${'---|'.repeat(colCount)}`;
+    const row = `| USR_0009 | 次日留存率 | 用户域 | 次日仍活跃的用户占比 `
+      + `| USR_0002 / USR_0001 * 100 | | 时间(dim_date:date_id);渠道(dws_user.keep:channel) `
+      + `| ods_user.login:user_id;dws_user.keep:keep_flag | test_dbs |`;
+    const doc = ['# 用户域数仓设计', '', '## 数据指标', '', header, sep, row, ''].join('\n');
+
+    const result = extractMetricsFromMarkdown(doc, 'USR');
+    expect(result).toHaveLength(1);
+
+    const [ind] = result;
+    expect(ind.code).toBe('USR_0009');
+    expect(ind.name).toBe('次日留存率');
+    expect(ind.topic).toBe('用户域');
+    // 指标含义列命中 businessDefinition 主体，下钻维度以 "下钻维度: xxx" 追加
+    expect(ind.businessDefinition).toBe(
+      '次日仍活跃的用户占比\n下钻维度: 时间(dim_date:date_id);渠道(dws_user.keep:channel)',
+    );
+    expect(ind.calcExpr).toBe('USR_0002 / USR_0001 * 100');
+    expect(ind.defaultFilter).toBeUndefined();
+    // 字段来源解析：跨两张表共 2 个字段，均带上数据源名称
+    expect(ind.fields).toHaveLength(2);
+    expect(ind.fields![0]).toEqual({
+      datasourceName: 'test_dbs', dbName: 'ods_user', tblName: 'login', fieldName: 'user_id', fieldType: '',
+    });
+    expect(ind.fields![1]).toEqual({
+      datasourceName: 'test_dbs', dbName: 'dws_user', tblName: 'keep', fieldName: 'keep_flag', fieldType: '',
+    });
+  });
+});
+
+// ── 业务需求提示词与解析器一致性 ──────────────────────────────
+
+/** 从业务需求提示词中取出"数据指标"章节的示例表头行与列数 */
+function businessPromptMetricHeader(): { header: string; colCount: number } {
+  const line = BUSINESS_REQUESTER_INSTRUCTIONS
+    .split('\n')
+    .map(l => l.trim())
+    .find(l => l.startsWith('| 指标名称'));
+  if (!line) throw new Error('业务需求提示词中未找到指标表头行');
+  const colCount = line.slice(1, -1).split('|').length;
+  return { header: line, colCount };
+}
+
+describe('extractMetricsFromMarkdown — 业务需求提示词表头与解析器一致', () => {
+  it('提示词给出的是 7 列表头', () => {
+    const { colCount } = businessPromptMetricHeader();
+    expect(colCount).toBe(7);
+  });
+
+  it('提示词表头含下钻维度列', () => {
+    const { header } = businessPromptMetricHeader();
+    expect(header).toContain('下钻维度');
+  });
+
+  it('按提示词表头生成的文档可被完整解析', () => {
+    const { header, colCount } = businessPromptMetricHeader();
+    const sep = `|${'---|'.repeat(colCount)}`;
+    const row = '| 日活用户数 | 用户域 | 当日产生有效行为的去重用户数 '
+      + '| 登录且产生有效行为的用户按用户 ID 去重计数 | 仅统计正式渠道的用户 '
+      + '| 时间（日→周→月）、渠道（一级渠道→二级渠道） | 日常运营日报 |';
+    const doc = ['# 用户增长业务需求', '', '## 数据指标', '', header, sep, row, ''].join('\n');
+
+    const result = extractMetricsFromMarkdown(doc, 'BIZ');
+    expect(result).toHaveLength(1);
+
+    const [ind] = result;
+    // 有"指标名称"列时直接取其值作为指标名，不再用业务定义截断兜底
+    expect(ind.name).toBe('日活用户数');
+    expect(ind.topic).toBe('用户域');
+    // 业务定义 + 下钻维度 + 应用场景 依次拼入 businessDefinition
+    expect(ind.businessDefinition).toBe(
+      '当日产生有效行为的去重用户数\n'
+      + '下钻维度: 时间（日→周→月）、渠道（一级渠道→二级渠道）\n'
+      + '应用场景: 日常运营日报',
+    );
+    // 计算口径 → calcExpr（业务语言，非 SQL）
+    expect(ind.calcExpr).toBe('登录且产生有效行为的用户按用户 ID 去重计数');
+    expect(ind.defaultFilter).toBe('仅统计正式渠道的用户');
+    // 业务需求文档不定义指标编码与字段来源
+    expect(ind.code).toBeUndefined();
+    expect(ind.fields).toBeUndefined();
+  });
+});
+
+describe('extractMetricsFromMarkdown — 旧版 4 列业务需求文档（向后兼容）', () => {
+  it('无"指标名"列时以"业务定义"作为指标名', () => {
+    const result = extractMetricsFromMarkdown(BUSINESS_DOC_4COL, 'BIZ');
+    expect(result).toHaveLength(2);
+
+    const [ind1, ind2] = result;
+    // 业务定义 → name
+    expect(ind1.name).toBe('当日活跃的去重用户数');
+    // 计算口径 → calcExpr（独立字段，不再拼入 businessDefinition）
+    expect(ind1.calcExpr).toBe('登录且产生有效行为的用户去重计数');
+    expect(ind1.businessDefinition).not.toContain('计算口径');
+    // 应用场景 → 拼入 businessDefinition
+    expect(ind1.businessDefinition).toContain('应用场景: 日常运营日报');
+    // 过滤条件 → defaultFilter（业务语言）
+    expect(ind1.defaultFilter).toBe('仅统计正式渠道的活跃用户');
+    // 4 列格式无指标编码 → code 为 undefined
+    expect(ind1.code).toBeUndefined();
+    // 无主题域列 → 默认"未分类"
+    expect(ind1.topic).toBe('未分类');
+
+    // 第二行过滤条件为空
+    expect(ind2.defaultFilter).toBeUndefined();
+    expect(ind2.businessDefinition).toContain('应用场景: 增长趋势分析');
+  });
+
+  it('过长的业务定义作为名称时会被截断', () => {
+    const longDef = '当日活跃的去重用户数'.repeat(20);
+    const doc = `# 文档
+
+## 数据指标
+
+| 业务定义 | 计算口径 | 过滤条件 | 应用场景 |
+|----------|----------|----------|----------|
+| ${longDef} | 口径A | | 场景A |
+`;
+    const result = extractMetricsFromMarkdown(doc, 'BIZ');
+    expect(result).toHaveLength(1);
+    expect(result[0].name.length).toBeLessThanOrEqual(63); // 60 + "..."
+    expect(result[0].name.endsWith('...')).toBe(true);
+    // businessDefinition 仍保留完整业务定义
+    expect(result[0].businessDefinition).toContain(longDef);
+  });
+});
+
+describe('extractMetricsFromMarkdown — 边界与异常', () => {
+  it('无"数据指标"章节返回空数组', () => {
+    const doc = `# 文档\n\n## 其他章节\n\n| a | b |\n|---|---|\n| 1 | 2 |\n`;
+    expect(extractMetricsFromMarkdown(doc, 'P')).toEqual([]);
+  });
+
+  it('章节存在但表格无"指标名"和"业务定义"列时跳过', () => {
+    const doc = `# 文档\n\n## 数据指标\n\n| 字段 | 说明 |\n|---|---|\n| a | b |\n`;
+    expect(extractMetricsFromMarkdown(doc, 'P')).toEqual([]);
+  });
+
+  it('章节内含多张表格均被解析', () => {
+    const doc = `# 文档
+
+## 数据指标
+
+| 指标编码 | 指标名称 | 主题域 | 指定含义 | 计算表达式 | 过滤条件 | 字段来源 |
+|--------|------|----------|------------|----------|----------|----------|
+| A_0001 | 指标A | 域A | 含义A | exprA | | |
+
+| 指标编码 | 指标名称 | 主题域 | 指定含义 | 计算表达式 | 过滤条件 | 字段来源 |
+|--------|------|----------|------------|----------|----------|----------|
+| B_0001 | 指标B | 域B | 含义B | exprB | | |
+`;
+    const result = extractMetricsFromMarkdown(doc, 'P');
+    expect(result).toHaveLength(2);
+    expect(result[0].name).toBe('指标A');
+    expect(result[1].name).toBe('指标B');
+  });
+
+  it('支持三级标题下的数据指标章节（不与二级标题混用）', () => {
+    const doc = `# 文档
+
+### 数据指标
+
+| 业务定义 | 计算口径 | 过滤条件 | 应用场景 |
+|----------|----------|----------|----------|
+| 指标X | 口径X | | 场景X |
+
+## 其他
+`;
+    const result = extractMetricsFromMarkdown(doc, 'P');
+    expect(result).toHaveLength(1);
+    expect(result[0].name).toBe('指标X');
+  });
+
+  it('模糊匹配非标准列名（业务说明 / 计算公式 / 筛选条件）', () => {
+    const doc = `# 文档
+
+## 数据指标
+
+| 指标名 | 主题域 | 业务说明 | 计算公式 | 筛选条件 |
+|--------|------|----------|----------|----------|
+| 指标Y | 域Y | 说明Y | 公式Y | 条件Y |
+`;
+    const result = extractMetricsFromMarkdown(doc, 'P');
+    expect(result).toHaveLength(1);
+    expect(result[0].name).toBe('指标Y');
+    expect(result[0].topic).toBe('域Y');
+    expect(result[0].businessDefinition).toContain('说明Y');
+    expect(result[0].calcExpr).toBe('公式Y');
+    expect(result[0].businessDefinition).not.toContain('计算公式');
+    expect(result[0].defaultFilter).toBe('条件Y');
+  });
+
+  it('未识别列按"列名: 值"兜底拼入业务定义', () => {
+    const doc = `# 文档
+
+## 数据指标
+
+| 指标名称 | 备注 |
+|--------|------|
+| 指标Z | 备注Z |
+`;
+    const result = extractMetricsFromMarkdown(doc, 'P');
+    expect(result).toHaveLength(1);
+    expect(result[0].name).toBe('指标Z');
+    expect(result[0].businessDefinition).toContain('备注: 备注Z');
+  });
+
+  it('名称为空的行被跳过', () => {
+    const doc = `# 文档
+
+## 数据指标
+
+| 指标名称 | 主题域 |
+|--------|------|
+|  | 域A |
+| 指标B | 域B |
+`;
+    const result = extractMetricsFromMarkdown(doc, 'P');
+    expect(result).toHaveLength(1);
+    expect(result[0].name).toBe('指标B');
+  });
+});
+
+// ── 新提示词文档健壮性（模型输出偏差的容错解析，修复回归）──────────
+
+// 旧版 8 列表头（无下钻维度列）：用于验证模型输出偏差容错与向后兼容
+const HEADER_8COL = '| 指标编码 | 指标名称 | 主题域 | 指标含义 | 计算表达式 | 过滤条件 | 字段来源 | 数据源 |';
+const SEPARATOR_8COL = '|--------|------|----------|----------|----------|----------|----------|----------|';
+
+describe('extractMetricsFromMarkdown — 模型输出偏差容错（修复回归）', () => {
+  it('数据行缺失行尾竖线时整表仍完整提取（旧逻辑会丢行且产生垃圾行）', () => {
+    const doc = `# 设计
+
+## 数据指标
+
+${HEADER_8COL}
+${SEPARATOR_8COL}
+| USR_0001 | 指标一 | 用户域 | 含义一 | count(1) | | ods.login:user_id | ds1
+| USR_0002 | 指标二 | 用户域 | 含义二 | count(2) | | ods.login:user_id | ds2 |
+| USR_0003 | 指标三 | 用户域 | 含义三 | count(3) | | ods.login:user_id | ds3 |
+`;
+    const result = extractMetricsFromMarkdown(doc, 'USR');
+    expect(result.map(i => i.name)).toEqual(['指标一', '指标二', '指标三']);
+    expect(result[0].code).toBe('USR_0001');
+    expect(result[0].fields![0].datasourceName).toBe('ds1');
+  });
+
+  it('数据行缺失行首竖线时仍被提取', () => {
+    const doc = `# 设计
+
+## 数据指标
+
+${HEADER_8COL}
+${SEPARATOR_8COL}
+USR_0001 | 指标一 | 用户域 | 含义一 | count(1) | | ods.login:user_id | ds1 |
+`;
+    const result = extractMetricsFromMarkdown(doc, 'USR');
+    expect(result).toHaveLength(1);
+    expect(result[0].name).toBe('指标一');
+  });
+
+  it('单元格内转义竖线 \\| 不拆出额外单元格、不截断列', () => {
+    const doc = `# 设计
+
+## 数据指标
+
+${HEADER_8COL}
+${SEPARATOR_8COL}
+| USR_0001 | 指标一 | 用户域 | 含义一 | concat(a, '\\|', b) | | ods.login:user_id | ds1 |
+`;
+    const result = extractMetricsFromMarkdown(doc, 'USR');
+    expect(result).toHaveLength(1);
+    expect(result[0].calcExpr).toBe("concat(a, '|', b)");
+    expect(result[0].fields![0]).toEqual({
+      datasourceName: 'ds1', dbName: 'ods', tblName: 'login', fieldName: 'user_id', fieldType: '',
+    });
+  });
+
+  it('字段来源使用全角标点（：；，）仍可解析字段与数据源', () => {
+    const doc = `# 设计
+
+## 数据指标
+
+${HEADER_8COL}
+${SEPARATOR_8COL}
+| USR_0001 | 指标一 | 用户域 | 含义一 | count(1) | | ods.login：user_id，login_time；ods.reg：uid | ds1 |
+`;
+    const result = extractMetricsFromMarkdown(doc, 'USR');
+    expect(result[0].fields).toHaveLength(3);
+    expect(result[0].fields![0]).toEqual({
+      datasourceName: 'ds1', dbName: 'ods', tblName: 'login', fieldName: 'user_id', fieldType: '',
+    });
+    expect(result[0].fields![1].fieldName).toBe('login_time');
+    expect(result[0].fields![2]).toEqual({
+      datasourceName: 'ds1', dbName: 'ods', tblName: 'reg', fieldName: 'uid', fieldType: '',
+    });
+  });
+
+  it('数据行单元格数少于表头时补空对齐，不丢行', () => {
+    const doc = `# 设计
+
+## 数据指标
+
+${HEADER_8COL}
+${SEPARATOR_8COL}
+| USR_0001 | 指标一 | 用户域 | 含义一 | count(1) |
+`;
+    const result = extractMetricsFromMarkdown(doc, 'USR');
+    expect(result).toHaveLength(1);
+    expect(result[0].name).toBe('指标一');
+    expect(result[0].calcExpr).toBe('count(1)');
+    expect(result[0].fields).toBeUndefined();
+  });
+
+  it('编号章节标题（## 5. 数据指标）可命中', () => {
+    const doc = `# 设计
+
+## 4. 数据ETL逻辑
+略
+
+## 5. 数据指标
+
+${HEADER_8COL}
+${SEPARATOR_8COL}
+| USR_0001 | 指标一 | 用户域 | 含义一 | count(1) | | ods.login:user_id | ds1 |
+
+## 6. 数据质量稽核设计
+略
+`;
+    const result = extractMetricsFromMarkdown(doc, 'USR');
+    expect(result).toHaveLength(1);
+    expect(result[0].name).toBe('指标一');
+  });
+
+  it('围栏代码块内的竖线与 # 行不干扰章节与表格解析', () => {
+    const doc = `# 设计
+
+## 数据ETL逻辑
+\`\`\`sql
+-- select a || b from t
+# 数据指标（shell 注释伪标题）
+\`\`\`
+
+## 数据指标
+
+${HEADER_8COL}
+${SEPARATOR_8COL}
+| USR_0001 | 指标一 | 用户域 | 含义一 | count(1) | | ods.login:user_id | ds1 |
+`;
+    const result = extractMetricsFromMarkdown(doc, 'USR');
+    expect(result).toHaveLength(1);
+    expect(result[0].name).toBe('指标一');
+  });
+
+  it('含单个 | 的说明文字不终止表格、也不被当作数据行', () => {
+    const doc = `# 设计
+
+## 数据指标
+
+${HEADER_8COL}
+${SEPARATOR_8COL}
+| USR_0001 | 指标一 | 用户域 | 含义一 | count(1) | | ods.login:user_id | ds1 |
+注：口径 A|B 见需求文档
+| USR_0002 | 指标二 | 用户域 | 含义二 | count(2) | | ods.login:user_id | ds2 |
+`;
+    const result = extractMetricsFromMarkdown(doc, 'USR');
+    expect(result.map(i => i.name)).toEqual(['指标一', '指标二']);
+  });
+
+  it('无空格标题（##数据指标）可命中章节', () => {
+    const doc = `# 设计
+
+##数据指标
+
+${HEADER_8COL}
+${SEPARATOR_8COL}
+| USR_0001 | 指标一 | 用户域 | 含义一 | count(1) | | ods.login:user_id | ds1 |
+`;
+    const result = extractMetricsFromMarkdown(doc, 'USR');
+    expect(result).toHaveLength(1);
+    expect(result[0].name).toBe('指标一');
+  });
+});
+
+// ── 纯函数单元测试 ──────────────────────────────────────────
+
+describe('extractSection', () => {
+  it('提取关键词命中的首个章节', () => {
+    const text = `# T\n\n## A\n\n内容A\n\n## B\n\n内容B\n`;
+    expect(extractSection(text, 'A').trim()).toBe('内容A');
+  });
+
+  it('未命中返回空串', () => {
+    expect(extractSection('# T\n\n## A\n内容', 'X')).toBe('');
+  });
+});
+
+describe('parseMarkdownTables', () => {
+  it('解析单个表格的表头与数据行', () => {
+    const text = `| a | b |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |`;
+    const tables = parseMarkdownTables(text);
+    expect(tables).toHaveLength(1);
+    expect(tables[0].headers).toEqual(['a', 'b']);
+    expect(tables[0].rows).toEqual([['1', '2'], ['3', '4']]);
+  });
+
+  it('跳过非表格行并切分多张表', () => {
+    const text = `| a | b |\n|---|---|\n| 1 | 2 |\n\n文字\n\n| c | d |\n|---|---|\n| 3 | 4 |`;
+    const tables = parseMarkdownTables(text);
+    expect(tables).toHaveLength(2);
+    expect(tables[1].headers).toEqual(['c', 'd']);
+  });
+});
+
+describe('findColumn', () => {
+  it('精确匹配优先于模糊匹配', () => {
+    const headers = ['指标名称', '名称'];
+    const used = new Set<number>();
+    // 精确命中"指标名称"而非模糊命中的"名称"
+    expect(findColumn(headers, ['指标名称'], ['名称'], used)).toBe(0);
+  });
+
+  it('已用列不再参与匹配', () => {
+    const headers = ['指标名称', '主题域'];
+    const used = new Set<number>([0]);
+    expect(findColumn(headers, ['主题域'], ['主题'], used)).toBe(1);
+    // 0 已用 → 不应被再次命中
+    used.add(1);
+    expect(findColumn(headers, ['主题域'], ['主题'], used)).toBe(-1);
+  });
+
+  it('无匹配返回 -1', () => {
+    expect(findColumn(['a', 'b'], ['c'], ['d'], new Set())).toBe(-1);
+  });
+});
+
+// ── expandCalcExpr / expandCalcExprBatch ──────────────────
+
+describe('expandCalcExpr', () => {
+  it('替换 calcExpr 中引用的指标编码为实际计算公式', () => {
+    const lookup = new Map([
+      ['TEST_0001', 'sum(order_amount)'],
+      ['TEST_0002', 'count(distinct user_id)'],
+    ]);
+    expect(expandCalcExpr('TEST_0002 / TEST_0001 * 100%', lookup))
+      .toBe('count(distinct user_id) / sum(order_amount) * 100%');
+  });
+
+  it('未找到的编码保留原样', () => {
+    const lookup = new Map([['TEST_0001', 'sum(order_amount)']]);
+    expect(expandCalcExpr('TEST_0002 / TEST_0001', lookup))
+      .toBe('TEST_0002 / sum(order_amount)');
+  });
+
+  it('calcExpr 为 undefined 时返回 undefined', () => {
+    expect(expandCalcExpr(undefined, new Map())).toBeUndefined();
+  });
+
+  it('calcExpr 无指标编码时原样返回', () => {
+    expect(expandCalcExpr('count(distinct user_id)', new Map()))
+      .toBe('count(distinct user_id)');
+  });
+
+  it('支持嵌套展开（A引用B，B引用C）', () => {
+    const lookup = new Map([
+      ['B_0001', 'C_0001 + 1'],
+      ['C_0001', 'sum(amount)'],
+    ]);
+    // B_0001 → "C_0001 + 1"，然后 C_0001 → "sum(amount)"，结果为 "sum(amount) + 1"
+    expect(expandCalcExpr('B_0001 * 2', lookup))
+      .toBe('sum(amount) + 1 * 2');
+  });
+
+  it('循环引用时在最大深度截断', () => {
+    const lookup = new Map([
+      ['A_0001', 'A_0001 + 1'],  // 自引用
+    ]);
+    // maxDepth=1 时只展开一次，结果仍含 A_0001
+    const result = expandCalcExpr('A_0001', lookup, 1);
+    expect(result).toBe('A_0001 + 1');
+  });
+});
+
+describe('expandCalcExprBatch', () => {
+  it('批量展开并叠加同批次指标', () => {
+    const indicators = [
+      { projectCode: 'P', topic: 'T', name: '指标1', code: 'X_0001', calcExpr: 'sum(amount)' },
+      { projectCode: 'P', topic: 'T', name: '指标2', code: 'X_0002', calcExpr: 'X_0001 / 100' },
+    ] as import('../types/indicator').IndicatorDTO[];
+
+    const existingLookup = new Map<string, string>();
+    const result = expandCalcExprBatch(indicators, existingLookup);
+
+    expect(result[0].calcExpr).toBe('sum(amount)');
+    expect(result[1].calcExpr).toBe('sum(amount) / 100');
+  });
+
+  it('已有指标查找表与当前批次合并', () => {
+    const indicators = [
+      { projectCode: 'P', topic: 'T', name: '指标3', code: 'Y_0003', calcExpr: 'Y_0001 + Y_0002' },
+    ] as import('../types/indicator').IndicatorDTO[];
+
+    const existingLookup = new Map([
+      ['Y_0001', 'count(*)'],
+      ['Y_0002', 'sum(price)'],
+    ]);
+
+    const result = expandCalcExprBatch(indicators, existingLookup);
+    expect(result[0].calcExpr).toBe('count(*) + sum(price)');
+  });
+
+  it('无 calcExpr 的指标不受影响', () => {
+    const indicators = [
+      { projectCode: 'P', topic: 'T', name: '指标1', code: 'Z_0001' },
+    ] as import('../types/indicator').IndicatorDTO[];
+
+    const result = expandCalcExprBatch(indicators, new Map());
+    expect(result[0].calcExpr).toBeUndefined();
+  });
+});
+
+// ── parseFieldSource ──────────────────────────────────────
+
+describe('parseFieldSource', () => {
+  it('解析单库单表多字段', () => {
+    const result = parseFieldSource('ods_user.login:user_id,login_time');
+    expect(result).toHaveLength(2);
+    expect(result![0]).toEqual({
+      datasourceName: '', dbName: 'ods_user', tblName: 'login', fieldName: 'user_id', fieldType: '',
+    });
+    expect(result![1]).toEqual({
+      datasourceName: '', dbName: 'ods_user', tblName: 'login', fieldName: 'login_time', fieldType: '',
+    });
+  });
+
+  it('解析多库多表（分号分隔）', () => {
+    const result = parseFieldSource('ods_user.login:user_id,login_time;dws_order.order:order_id,amount');
+    expect(result).toHaveLength(4);
+    expect(result![0].dbName).toBe('ods_user');
+    expect(result![0].tblName).toBe('login');
+    expect(result![2].dbName).toBe('dws_order');
+    expect(result![2].tblName).toBe('order');
+    expect(result![3].fieldName).toBe('amount');
+  });
+
+  it('单字段无逗号', () => {
+    const result = parseFieldSource('db.tbl:field1');
+    expect(result).toHaveLength(1);
+    expect(result![0].fieldName).toBe('field1');
+  });
+
+  it('undefined 或空串返回 undefined', () => {
+    expect(parseFieldSource(undefined)).toBeUndefined();
+    expect(parseFieldSource('')).toBeUndefined();
+    expect(parseFieldSource('   ')).toBeUndefined();
+  });
+
+  it('格式不合法时跳过该组（无冒号/无点号仍可解析）', () => {
+    // 无冒号 → 跳过
+    expect(parseFieldSource('nocolon')).toBeUndefined();
+    // 无点号 → tblName 取整段
+    const result = parseFieldSource('tblname:field1');
+    expect(result).toHaveLength(1);
+    expect(result![0].dbName).toBe('');
+    expect(result![0].tblName).toBe('tblname');
+  });
+
+  it('无字段来源列的指标 fields 为 undefined', () => {
+    const doc = `# 文档
+
+## 数据指标
+
+| 指标编码 | 指标名称 | 主题域 | 指定含义 | 计算表达式 | 过滤条件 |
+|--------|------|----------|------------|----------|----------|
+| A_0001 | 指标A | 域A | 含义A | exprA | |
+`;
+    const result = extractMetricsFromMarkdown(doc, 'P');
+    expect(result).toHaveLength(1);
+    expect(result[0].fields).toBeUndefined();
+  });
+});

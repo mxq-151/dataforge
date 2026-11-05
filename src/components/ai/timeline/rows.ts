@@ -1,0 +1,208 @@
+/**
+ * rows.ts — TimelineRow 类型定义 + key/equals 工具函数
+ *
+ * 对齐 opencode 桌面版 rows.ts，适配 React + TypeScript（不使用 effect 库）。
+ * 11 种行类型以 user message 为 turn 锚点，把 assistant 消息的 parts 展平成行。
+ */
+
+import type { SnapshotFileDiff } from '@opencode-ai/sdk/v2/client';
+import type { Todo, FileChange } from '../../../types/opencode-backend';
+
+export type SummaryDiff = SnapshotFileDiff & { file: string };
+
+// ── PartRef / PartGroup（对齐桌面版 message-part.tsx PartGroup） ──
+// 原先定义在 projection.ts，而 projection 又要从本文件导入 rowKey/rowEquals，
+// 构成 rows ↔ projection 的循环依赖。类型定义下移到本文件（行模型的组成部分），
+// projection 改为从此处导入并 re-export。
+
+export type PartRef = {
+  messageID: string;
+  partID: string;
+};
+
+export type PartGroup =
+  | { key: string; type: 'part'; ref: PartRef }
+  | { key: string; type: 'context'; refs: PartRef[] };
+
+// ── TimelineRow 判别联合 ──────────────────────────────────────
+
+export interface TurnGapRow {
+  _tag: 'TurnGap';
+  userMessageID: string;
+}
+
+export interface CommentStripRow {
+  _tag: 'CommentStrip';
+  userMessageID: string;
+}
+
+export interface UserMessageRow {
+  _tag: 'UserMessage';
+  userMessageID: string;
+  anchor: boolean;
+}
+
+export interface TurnDividerRow {
+  _tag: 'TurnDivider';
+  userMessageID: string;
+  label: 'compaction' | 'interrupted';
+}
+
+export interface AssistantPartRow {
+  _tag: 'AssistantPart';
+  userMessageID: string;
+  group: PartGroup;
+  previousAssistantPart: boolean;
+}
+
+export interface ThinkingRow {
+  _tag: 'Thinking';
+  userMessageID: string;
+  reasoningHeading?: string;
+}
+
+export interface RetryRow {
+  _tag: 'Retry';
+  userMessageID: string;
+}
+
+export interface DiffSummaryRow {
+  _tag: 'DiffSummary';
+  userMessageID: string;
+  diffs: SummaryDiff[];
+}
+
+export interface ErrorRow {
+  _tag: 'Error';
+  userMessageID: string;
+  text: string;
+}
+
+/** 执行计划内联行：在对话流中对应 turn 末尾展示 TodoDock */
+export interface TodoRow {
+  _tag: 'Todo';
+  userMessageID: string;
+  todos: Todo[];
+}
+
+/** 文件变更内联行：在对话流中对应 turn 末尾展示 FileReviewPanel */
+export interface FileChangeRow {
+  _tag: 'FileChange';
+  userMessageID: string;
+  changes: FileChange[];
+}
+
+export type TimelineRow =
+  | TurnGapRow
+  | CommentStripRow
+  | UserMessageRow
+  | TurnDividerRow
+  | AssistantPartRow
+  | ThinkingRow
+  | RetryRow
+  | DiffSummaryRow
+  | ErrorRow
+  | TodoRow
+  | FileChangeRow;
+
+// ── 工厂函数 ──────────────────────────────────────────────────
+
+export const TimelineRow = {
+  TurnGap: (userMessageID: string): TurnGapRow => ({ _tag: 'TurnGap', userMessageID }),
+  CommentStrip: (userMessageID: string): CommentStripRow => ({ _tag: 'CommentStrip', userMessageID }),
+  UserMessage: (userMessageID: string, anchor: boolean): UserMessageRow => ({ _tag: 'UserMessage', userMessageID, anchor }),
+  TurnDivider: (userMessageID: string, label: 'compaction' | 'interrupted'): TurnDividerRow => ({ _tag: 'TurnDivider', userMessageID, label }),
+  AssistantPart: (userMessageID: string, group: PartGroup, previousAssistantPart: boolean): AssistantPartRow => ({ _tag: 'AssistantPart', userMessageID, group, previousAssistantPart }),
+  Thinking: (userMessageID: string, reasoningHeading?: string): ThinkingRow => ({ _tag: 'Thinking', userMessageID, reasoningHeading }),
+  Retry: (userMessageID: string): RetryRow => ({ _tag: 'Retry', userMessageID }),
+  DiffSummary: (userMessageID: string, diffs: SummaryDiff[]): DiffSummaryRow => ({ _tag: 'DiffSummary', userMessageID, diffs }),
+  Error: (userMessageID: string, text: string): ErrorRow => ({ _tag: 'Error', userMessageID, text }),
+  Todo: (userMessageID: string, todos: Todo[]): TodoRow => ({ _tag: 'Todo', userMessageID, todos }),
+  FileChange: (userMessageID: string, changes: FileChange[]): FileChangeRow => ({ _tag: 'FileChange', userMessageID, changes }),
+};
+
+// ── key() — 生成稳定字符串 key（用于 React key prop 和 virtualizer getItemKey） ──
+
+export function rowKey(row: TimelineRow): string {
+  switch (row._tag) {
+    case 'TurnGap':
+      return `turn-gap:${row.userMessageID}`;
+    case 'CommentStrip':
+      return `comment-strip:${row.userMessageID}`;
+    case 'UserMessage':
+      return `user-message:${row.userMessageID}`;
+    case 'TurnDivider':
+      return `turn-divider:${row.userMessageID}:${row.label}`;
+    case 'AssistantPart':
+      return `assistant-part:${row.userMessageID}:${row.group.key}`;
+    case 'Thinking':
+      return `thinking:${row.userMessageID}`;
+    case 'DiffSummary':
+      return `diff-summary:${row.userMessageID}`;
+    case 'Error':
+      return `error:${row.userMessageID}`;
+    case 'Retry':
+      return `retry:${row.userMessageID}`;
+    case 'Todo':
+      return `todo:${row.userMessageID}`;
+    case 'FileChange':
+      return `file-change:${row.userMessageID}`;
+  }
+}
+
+// ── equals() — 浅比较（用于 reuseTimelineRows 引用复用） ──────
+
+export function rowEquals(a: TimelineRow, b: TimelineRow): boolean {
+  if (a._tag !== b._tag) return false;
+  switch (a._tag) {
+    case 'TurnGap':
+      return a.userMessageID === (b as TurnGapRow).userMessageID;
+    case 'CommentStrip':
+      return a.userMessageID === (b as CommentStripRow).userMessageID;
+    case 'UserMessage': {
+      const o = b as UserMessageRow;
+      return a.userMessageID === o.userMessageID && a.anchor === o.anchor;
+    }
+    case 'TurnDivider': {
+      const o = b as TurnDividerRow;
+      return a.userMessageID === o.userMessageID && a.label === o.label;
+    }
+    case 'AssistantPart': {
+      const o = b as AssistantPartRow;
+      return (
+        a.userMessageID === o.userMessageID &&
+        a.previousAssistantPart === o.previousAssistantPart &&
+        a.group.key === o.group.key &&
+        a.group.type === o.group.type
+      );
+    }
+    case 'Thinking': {
+      const o = b as ThinkingRow;
+      return a.userMessageID === o.userMessageID && a.reasoningHeading === o.reasoningHeading;
+    }
+    case 'Retry':
+      return a.userMessageID === (b as RetryRow).userMessageID;
+    case 'DiffSummary': {
+      const o = b as DiffSummaryRow;
+      return a.userMessageID === o.userMessageID && a.diffs.length === o.diffs.length;
+    }
+    case 'Error': {
+      const o = b as ErrorRow;
+      return a.userMessageID === o.userMessageID && a.text === o.text;
+    }
+    case 'Todo': {
+      const o = b as TodoRow;
+      return a.userMessageID === o.userMessageID && a.todos === o.todos;
+    }
+    case 'FileChange': {
+      const o = b as FileChangeRow;
+      return a.userMessageID === o.userMessageID && a.changes === o.changes;
+    }
+  }
+}
+
+// ── 类型守卫 ──────────────────────────────────────────────────
+
+export function hasUserMessageID(row: TimelineRow): row is TimelineRow & { userMessageID: string } {
+  return 'userMessageID' in row;
+}

@@ -1,0 +1,72 @@
+.ai-bench-page {
+  display: flex;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: #1e1e1e;
+  color: #d4d4d4;
+  font-family: system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+}
+
+.ai-bench-page__side {
+  flex: 1 1 50%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #333;
+  overflow: hidden;
+}
+
+.ai-bench-page__side--editor {
+  position: relative;
+}
+
+.ai-bench-page__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: #9cdcfe;
+  background: #252526;
+  border-bottom: 1px solid #333;
+  flex: 0 0 auto;
+}
+
+.ai-bench-page__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #666;
+}
+
+.ai-bench-page__dot.is-running {
+  background: #f14c4c;
+}
+
+/* 让 MessageTimeline 的虚拟化容器获得确定高度 */
+.ai-bench-page__side > div:last-of-type {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.ai-bench-page__typing-probe {
+  flex: 0 0 140px;
+  border-top: 1px solid #333;
+}
+
+.ai-bench-page__log {
+  flex: 0 0 auto;
+  max-height: 120px;
+  overflow: auto;
+  padding: 6px 10px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: #b5cea8;
+  background: #1a1a1a;
+  border-top: 1px solid #333;
+}
+
+.ai-bench-page__log-hint {
+  color: #6a9955;
+}

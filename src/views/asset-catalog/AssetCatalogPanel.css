@@ -1,0 +1,1364 @@
+/**
+ * 资产管理面板样式
+ *
+ * 视觉基准与数据质量面板一致（暗色）：页面 #1e1e1e / 面板 #252526 /
+ * 分隔线 #3c3c3c / 正文 #cccccc / 次要 #858585 / 强调 #007acc。
+ * 模块为「页签 + 内容」两段纵向结构：
+ * - 资产目录：左栏固定 300px（目录树），右栏自适应（检索结果或资产详情）；
+ * - 资产概况：五块看板纵向排布，整体可滚动。
+ */
+
+/* ── 模块骨架（标题 + 页签 + 内容）── */
+.ac-module {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background-color: #1e1e1e;
+  color: #cccccc;
+  font-size: 13px;
+  overflow: hidden;
+}
+
+/* 页签条 + 环境切换器同一行：环境是**模块级**维度（两个页签共用），
+   放在这一行才能保证「无论在哪个页签都能看到当前环境、也都能切换」。 */
+.ac-module__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-right: 16px;
+  border-bottom: 1px solid #3c3c3c;
+  flex-shrink: 0;
+}
+
+.ac-module__tabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 12px;
+  flex-shrink: 0;
+  overflow-x: auto;
+}
+
+.ac-module__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 12px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #858585;
+  font-size: 12.5px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ac-module__tab:hover {
+  color: #e0e0e0;
+}
+
+.ac-module__tab--active {
+  color: #ffffff;
+  border-bottom-color: #007acc;
+}
+
+/* ── 目录页签：左栏 + 右栏 ── */
+.ac-panel {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  width: 100%;
+  color: #cccccc;
+  font-size: 13px;
+  overflow: hidden;
+}
+
+/* ── 左栏 ── */
+.ac-side {
+  width: 300px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background-color: #252526;
+  border-right: 1px solid #3c3c3c;
+}
+
+/**
+ * ⚠️ 左栏顶部工具带（本行 + .ac-side__views）与右栏头部 .ac-main__header 等高，
+ * 两栏的分界线才能连成横贯面板的一条线。基准高度 73px 的构成：
+ *   本行 10(上外边距) + 30(高度) + 5(下外边距) = 45
+ *   .ac-side__views 27(视角按钮) + 1(分隔线)   = 28
+ *   合计 73 = 右栏头部 16 + 22(标题) + 4 + 18(副标题) + 12 + 1
+ * 改这里的字号 / 内边距必须重算（改前两栏分界线实测错开 18.5px）。
+ */
+.ac-side__search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 12px 5px;
+  padding: 3px 8px;
+  background-color: #3c3c3c;
+  border: 1px solid #4c4c4c;
+  border-radius: 4px;
+  color: #858585;
+}
+
+.ac-side__search:focus-within {
+  border-color: #007acc;
+}
+
+.ac-side__search-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #cccccc;
+  font-size: 12.5px;
+}
+
+.ac-side__search-input::placeholder {
+  color: #7a7a7a;
+}
+
+/* 底部不再留白：分隔线紧贴视角按钮下沿，本行高度（27 + 1）纳入上面 73px 的等高预算 */
+.ac-side__views {
+  display: flex;
+  gap: 2px;
+  padding: 0 12px;
+  border-bottom: 1px solid #3c3c3c;
+}
+
+/* 高 27px（4+4 + 1+1 边框 + 17 行高），与页签条右侧的环境切换按钮同高 */
+.ac-viewbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 1;
+  justify-content: center;
+  padding: 4px 8px;
+  background-color: transparent;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  color: #858585;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ac-viewbtn:hover {
+  color: #e0e0e0;
+  border-color: #4c4c4c;
+}
+
+.ac-viewbtn--active {
+  color: #ffffff;
+  background-color: #37373d;
+  border-color: #007acc;
+}
+
+.ac-side__tree {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 8px 12px;
+}
+
+.ac-side__footer {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  border-top: 1px solid #3c3c3c;
+}
+
+.ac-side__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 8px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: #a9a9a9;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ac-side__link:hover {
+  background-color: #2a2d2e;
+  color: #ffffff;
+}
+
+/* ── 目录树节点 ── */
+.ac-tree__node {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  color: #cccccc;
+  font-size: 12.5px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.ac-tree__node:hover {
+  background-color: #2a2d2e;
+}
+
+.ac-tree__node--active {
+  background-color: #094771;
+  color: #ffffff;
+}
+
+.ac-tree__chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  flex-shrink: 0;
+  color: #858585;
+}
+
+.ac-tree__icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: #858585;
+}
+
+.ac-tree__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ac-tree__badge {
+  flex-shrink: 0;
+  padding: 1px 5px;
+  background-color: #4b3621;
+  border: 1px solid #6b4a2a;
+  border-radius: 8px;
+  color: #d7ba7d;
+  font-size: 10.5px;
+}
+
+.ac-tree__count {
+  flex-shrink: 0;
+  color: #7a7a7a;
+  font-size: 11px;
+}
+
+/* ── 右栏 ── */
+.ac-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background-color: #1e1e1e;
+}
+
+.ac-main__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid #3c3c3c;
+  flex-shrink: 0;
+}
+
+/* 高度与左栏顶部工具带（搜索行 + 视角行 = 73px）对齐：
+   标题行高显式写 22px（而不是继承 :root 的 1.5 → 22.5px），
+   头部栅格 16 + 22 + 4 + 18 + 12 + 1 = 73px 才不会出现半像素差 */
+.ac-main__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #ffffff;
+  line-height: 22px;
+}
+
+.ac-main__subtitle {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #858585;
+}
+
+.ac-main__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px 20px 24px;
+}
+
+.ac-iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  background-color: transparent;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  color: #858585;
+  cursor: pointer;
+}
+
+.ac-iconbtn:hover {
+  color: #ffffff;
+  border-color: #4c4c4c;
+  background-color: #2a2d2e;
+}
+
+.ac-loading {
+  padding: 12px 6px;
+  color: #858585;
+  font-size: 12.5px;
+}
+
+.ac-muted {
+  margin: 8px 0 0;
+  color: #858585;
+  font-size: 12px;
+  line-height: 1.75;
+}
+
+/* ── 占位空态 ── */
+.ac-placeholder {
+  padding: 12px 14px;
+  background-color: #2a2a2a;
+  border: 1px solid #3c3c3c;
+  border-left: 3px solid #007acc;
+  border-radius: 6px;
+}
+
+.ac-placeholder__head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #d7ba7d;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.ac-placeholder__lead {
+  margin: 10px 0 6px;
+  font-size: 12px;
+  color: #cccccc;
+}
+
+.ac-placeholder__list {
+  margin: 0;
+  padding-left: 16px;
+  color: #a9a9a9;
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+.ac-placeholder__list li {
+  margin: 0 0 2px;
+}
+
+/* ── 提示条 ── */
+.ac-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  background-color: #262d3a;
+  border: 1px solid #35506e;
+  border-radius: 6px;
+  color: #a8c7e8;
+  font-size: 12.5px;
+  line-height: 1.65;
+}
+
+.ac-notice svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+/* ── 详情页签 ── */
+.ac-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.ac-tab {
+  padding: 3px 10px;
+  background-color: #2d2d2d;
+  border: 1px solid #3c3c3c;
+  border-radius: 10px;
+  color: #a9a9a9;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.ac-tab:hover {
+  border-color: #4a4a4a;
+  color: #cccccc;
+}
+
+.ac-tab--active {
+  background-color: #0e639c;
+  border-color: #1177bb;
+  color: #ffffff;
+}
+
+.ac-tabbody {
+  padding-top: 2px;
+}
+
+/* ── 表格 ── */
+.ac-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  background-color: #252526;
+  border: 1px solid #3c3c3c;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.ac-table th {
+  padding: 8px 10px;
+  text-align: left;
+  font-weight: 600;
+  color: #a9a9a9;
+  background-color: #2d2d2d;
+  border-bottom: 1px solid #3c3c3c;
+  white-space: nowrap;
+}
+
+.ac-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #333333;
+  color: #cccccc;
+  vertical-align: top;
+  line-height: 1.65;
+}
+
+.ac-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.ac-table__strong {
+  color: #ffffff;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* 未通过质检记录的数据样例：完整展示，保留回传明细里的换行 */
+.ac-sample {
+  margin: 0;
+  max-width: 460px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: #d7ba7d;
+}
+
+/* ── 操作与区块 ── */
+.ac-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 14px 0 4px;
+}
+
+.ac-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background-color: #0e639c;
+  border: 1px solid #1177bb;
+  border-radius: 4px;
+  color: #ffffff;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.ac-btn:hover:not(:disabled) {
+  background-color: #1177bb;
+}
+
+.ac-btn:disabled {
+  background-color: #333333;
+  border-color: #3c3c3c;
+  color: #7a7a7a;
+  cursor: not-allowed;
+}
+
+.ac-section {
+  margin-top: 20px;
+}
+
+.ac-section__title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+/* 数据质量页签内各模块（统计 / 规则清单 / 未通过记录 / 说明）之间的分割线 */
+.ac-divider {
+  margin: 16px 0;
+  border: none;
+  border-top: 1px solid #3c3c3c;
+}
+
+.ac-list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: #a9a9a9;
+  font-size: 12.5px;
+  line-height: 1.8;
+}
+
+.ac-list li {
+  margin: 0 0 3px;
+}
+
+/* ── 表详情（复用数据探索的 table-detail-modal__* 区块）──
+   非模态承载：右栏本身可滚动，故取消模态内部的定高占位，
+   字段表改为按内容自适应高度 + 超高内部滚动，避免内容被裁切或撑出空白。 */
+.ac-main__body .table-detail-modal__info {
+  margin-top: 0;
+}
+
+/* 基础信息：前三列（存储引擎 / 存储格式 / 压缩方式 / 热冷保留天数等短字段）收窄 30%，
+   把富余宽度让给表注释与存储位置这两个长文本字段 */
+.ac-main__body .table-detail-modal__info-row {
+  grid-template-columns: 0.7fr 0.7fr 0.7fr 1.9fr;
+}
+
+/* 所有信息框统一为单行固定高度，超长文本以省略号截断（完整值见 title 提示） */
+.ac-main__body .table-detail-modal__value {
+  display: block;
+  height: 24px;
+  line-height: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ac-main__body .table-detail-modal__columns-table-wrapper {
+  flex: none;
+  min-height: 0;
+}
+
+.ac-main__body .table-detail-modal__columns-scroll-container {
+  max-height: 56vh;
+}
+
+/* ── 次级按钮（取消 / 重新加载）── */
+.ac-btn--ghost {
+  background-color: #2d2d2d;
+  border-color: #3c3c3c;
+  color: #cccccc;
+}
+
+.ac-btn--ghost:hover:not(:disabled) {
+  background-color: #37373d;
+  border-color: #4c4c4c;
+  color: #ffffff;
+}
+
+/* ── 治理编辑器：只读查看态（编辑入口按钮在 ac-inlinebar 内）── */
+.ac-readonly-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.ac-readonly-item {
+  flex: 1;
+  min-width: 120px;
+}
+
+.ac-readonly-label {
+  display: block;
+  margin-bottom: 6px;
+  color: #a9a9a9;
+  font-size: 12.5px;
+}
+
+.ac-readonly-value {
+  color: #cccccc;
+  font-size: 12.5px;
+  word-break: break-all;
+}
+
+.ac-form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.ac-form-group {
+  flex: 1;
+  min-width: 120px;
+}
+
+.ac-form-group > label {
+  display: block;
+  margin-bottom: 6px;
+  color: #a9a9a9;
+  font-size: 12.5px;
+}
+
+.ac-input {
+  width: 100%;
+  padding: 5px 8px;
+  background-color: #1e1e1e;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  color: #cccccc;
+  font-size: 12.5px;
+  font-family: inherit;
+}
+
+.ac-input:focus {
+  outline: none;
+  border-color: #007acc;
+}
+
+.ac-required {
+  color: #f48771;
+}
+
+.ac-form-error {
+  margin: 12px 0 0;
+  color: #f48771;
+  font-size: 12.5px;
+}
+
+/* ── 资产概况页签（图表看板）── */
+.ac-ov {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ac-ov .ac-notice {
+  margin-bottom: 0;
+}
+
+/* 卡片：五块看板的统一容器 */
+.ac-card {
+  min-width: 0;
+  padding: 14px 16px 16px;
+  background-color: #252526;
+  border: 1px solid #3c3c3c;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+
+.ac-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ac-card__title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.ac-card__title svg {
+  color: #4fc3f7;
+}
+
+.ac-card__hint {
+  margin: 6px 0 0;
+  color: #858585;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.ac-card__empty {
+  padding: 34px 0;
+  text-align: center;
+  color: #7a7a7a;
+  font-size: 12.5px;
+}
+
+/* 指标卡 */
+.ac-ov-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.ac-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  background-color: #2d2d30;
+  border: 1px solid #3c3c3c;
+  border-radius: 8px;
+}
+
+.ac-stat__value {
+  color: #ffffff;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+.ac-stat__unit {
+  margin-left: 4px;
+  color: #858585;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.ac-stat__label {
+  color: #858585;
+  font-size: 11.5px;
+}
+
+/* 一组相关指标合并为一张卡片：组名 + 组内多个指标并排（如「存储」下的占用空间 / 占全库空间） */
+.ac-statgroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  background-color: #2d2d30;
+  border: 1px solid #3c3c3c;
+  border-radius: 8px;
+}
+
+.ac-statgroup__label {
+  color: #858585;
+  font-size: 11.5px;
+}
+
+.ac-statgroup__items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+}
+
+/* 组内指标不再重复卡片描边，只保留「数值 + 名称」 */
+.ac-statgroup .ac-stat {
+  gap: 2px;
+  padding: 0;
+  background-color: transparent;
+  border: none;
+  border-radius: 0;
+}
+
+/* 双图并排（窄视口自动堆叠） */
+.ac-ov-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 16px;
+  margin-top: 14px;
+}
+
+/* 网格项默认 min-width:auto，会被图表内在宽度撑开导致横向溢出，统一收为 0 */
+.ac-ov-cols > * {
+  min-width: 0;
+}
+
+.ac-ov-subtitle {
+  margin: 0 0 4px;
+  color: #a9a9a9;
+  font-size: 12px;
+}
+
+.ac-chart {
+  width: 100%;
+}
+
+/* 榜单完整清单：卡片内限高滚动，表头吸附 */
+.ac-ov-note {
+  margin: 12px 0 6px;
+  color: #7a7a7a;
+  font-size: 11.5px;
+}
+
+.ac-ov-scroll {
+  max-height: 240px;
+  overflow: auto;
+}
+
+/**
+ * ⚠️ 必须解掉表格自身的滚动容器，否则表头根本不会吸附。
+ *
+ * `position: sticky` 只认**最近的滚动容器**。`.ac-table` 为做圆角带了
+ * `overflow: hidden`（+ `border-radius`），表格自身因此成了那个容器：
+ * 表头被锚死在表格内部（表格不滚动，表头就没有可吸附的空间），
+ * 于是跟着内容一起滚走 —— 真实 Chromium 实测偏移 -119px（滚 120px）。
+ * 在滚动容器内还原为非滚动盒子后偏移为 0。
+ *
+ * 实测对照（滚动 120px 后 thead 相对容器顶部的偏移）：
+ * - 现状                                   → -119px（未吸附）
+ * - 只加 overflow:visible + border-radius:0 →    0px（已吸附）✅
+ * - 只改 border-collapse: separate          → -119px（无关，别乱动）
+ */
+.ac-ov-scroll .ac-table {
+  overflow: visible;
+  border-radius: 0;
+}
+
+.ac-ov-scroll thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+/* 排序维度切换（访问频率/占用空间、计算资源/运行时长） */
+.ac-ov-toggle {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 2px;
+  padding: 2px;
+  background-color: #2d2d30;
+  border: 1px solid #3c3c3c;
+  border-radius: 6px;
+}
+
+.ac-ov-toggle__btn {
+  padding: 4px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: #858585;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ac-ov-toggle__btn:hover {
+  color: #e0e0e0;
+}
+
+.ac-ov-toggle__btn--active {
+  background-color: #094771;
+  color: #ffffff;
+}
+
+/* ── 环境切换器（生产 / 灰度 / 测试）──
+   **模块级**：挂在资产管理模块的页签条右侧，两个页签共用同一个选中环境，
+   切换即重取该环境下的全部内容（五个看板图表 / 目录树 / 检索 / 治理项 / 收藏）。
+   配色在组件里按环境码内联给出，与看板图表共用同一份常量，
+   避免同一环境在切换器与图表里出现两种颜色。 */
+.ac-envbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ac-envbar__label {
+  flex-shrink: 0;
+  color: #858585;
+  font-size: 12px;
+}
+
+.ac-envbar__hint {
+  color: #7a7a7a;
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+
+.ac-envswitch {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 2px;
+  padding: 2px;
+  background-color: #2d2d30;
+  border: 1px solid #3c3c3c;
+  border-radius: 6px;
+}
+
+.ac-envswitch__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: #858585;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ac-envswitch__btn:hover {
+  color: #e0e0e0;
+}
+
+.ac-envswitch__btn--active {
+  background-color: #37373d;
+  color: #ffffff;
+}
+
+.ac-envswitch__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* 右栏头部显示当前环境 */
+.ac-main__env {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  color: #a9a9a9;
+  font-size: 11.5px;
+}
+
+.ac-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.ac-ov-rank {
+  width: 44px;
+  color: #858585;
+}
+
+.ac-ov-sub {
+  display: block;
+  margin-top: 2px;
+  color: #858585;
+  font-size: 11.5px;
+}
+
+.ac-ov-warn {
+  color: #ff8a65;
+}
+
+/* ── 资产目录：检索 / 收藏 / 治理项 / 详情页签内容 ──────────────
+   新增于「前端与后端接口对接补全」改动：详情由静态占位改为真页签，
+   新增检索结果、收藏列表、治理项看板、概览内治理写表单所需的类名。
+   配色沿用文件头的暗色基准（#1e1e1e / #252526 / #3c3c3c / #cccccc / #007acc）。 */
+
+/* 右栏头部工具区（收藏 / 返回 / 刷新） */
+.ac-main__tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* 紧凑型图标按钮（搜索框内的检索按钮） */
+.ac-iconbtn--sm {
+  width: 22px;
+  height: 22px;
+}
+
+/* 已选中态按钮（如「已收藏」） */
+.ac-btn--on {
+  background-color: #0e639c;
+  border-color: #1177bb;
+  color: #ffffff;
+}
+
+/* 左栏底部入口的选中态 */
+.ac-side__link--active {
+  background-color: #094771;
+  color: #ffffff;
+}
+
+/* ── 搜索联想 ── */
+.ac-side__search {
+  position: relative;
+}
+
+.ac-suggest {
+  position: absolute;
+  z-index: 20;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin: 4px 0 0;
+  padding: 4px;
+  list-style: none;
+  background-color: #252526;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.ac-suggest button {
+  display: block;
+  width: 100%;
+  padding: 5px 6px;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  color: #cccccc;
+  font-size: 12.5px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ac-suggest button:hover {
+  background-color: #2d2d2d;
+}
+
+/* ── 检索命中 / 收藏列表 ── */
+.ac-hitlist {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ac-hit {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  background-color: #252526;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  color: #cccccc;
+  font-size: 12.5px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ac-hit:hover:not(:disabled) {
+  border-color: #1177bb;
+}
+
+.ac-hit:disabled {
+  cursor: default;
+  opacity: 0.75;
+}
+
+.ac-hit--row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: default;
+}
+
+.ac-hit__main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ac-hit__main:disabled {
+  cursor: default;
+}
+
+.ac-hit__type {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 11px;
+  background-color: #2d2d2d;
+  color: #a9a9a9;
+}
+
+.ac-hit__type--table {
+  background-color: #0e3a5c;
+  color: #7fc4f0;
+}
+
+.ac-hit__type--column {
+  background-color: #3d3316;
+  color: #e0b954;
+}
+
+.ac-hit__type--indicator {
+  background-color: #2f3a2a;
+  color: #9ccc7a;
+}
+
+.ac-hit__title {
+  color: #ffffff;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.ac-hit__subtitle {
+  color: #858585;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ac-hit__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* ── 治理项 / 详情统计卡 ── */
+.ac-detailstats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 10px 0;
+}
+
+.ac-detailstat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 96px;
+  padding: 8px 12px;
+  background-color: #252526;
+  border: 1px solid #3c3c3c;
+  border-radius: 6px;
+}
+
+.ac-detailstat__value {
+  color: #ffffff;
+  font-size: 17px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.ac-detailstat__value--warn {
+  color: #ff8a65;
+}
+
+.ac-detailstat__label {
+  color: #858585;
+  font-size: 11.5px;
+}
+
+/* 区块紧凑变体（页签内部用，减少纵向留白） */
+.ac-section--tight {
+  margin-top: 12px;
+}
+
+/* 区块之间的分割线：概览页各治理区块、以及资产目录未选表时的「资产盘点 / 治理项 / 标注缺口」区块共用 */
+.ac-section--divided {
+  border-top: 1px solid #3c3c3c;
+  padding-top: 14px;
+}
+
+/* 区块标题右侧的操作图标（编辑 / 保存 / 取消） */
+.ac-section__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.ac-section__iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px;
+  background: none;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  color: #cccccc;
+  cursor: pointer;
+}
+
+.ac-section__iconbtn:hover:not(:disabled) {
+  background-color: #37373d;
+  border-color: #4c4c4c;
+  color: #ffffff;
+}
+
+.ac-section__iconbtn:disabled {
+  color: #5a5a5a;
+  cursor: not-allowed;
+}
+
+.ac-section__hint {
+  margin-left: 8px;
+  color: #858585;
+  font-size: 11.5px;
+  font-weight: 400;
+}
+
+/* ── 行内工具条 ── */
+.ac-inlinebar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.ac-inlinebar .ac-muted {
+  margin: 0;
+}
+
+.ac-inlinebar__label {
+  color: #a9a9a9;
+  font-size: 12px;
+}
+
+.ac-inlinebar--pager {
+  justify-content: flex-end;
+}
+
+/* ── 表单控件 ── */
+.ac-select {
+  width: 100%;
+  padding: 5px 8px;
+  background-color: #1e1e1e;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  color: #cccccc;
+  font-size: 12.5px;
+  font-family: inherit;
+}
+
+.ac-select--sm {
+  width: auto;
+  min-width: 72px;
+}
+
+.ac-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  background-color: #1e1e1e;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  color: #cccccc;
+  font-size: 12.5px;
+  font-family: inherit;
+  line-height: 1.7;
+  resize: vertical;
+}
+
+.ac-textarea:focus,
+.ac-select:focus,
+.ac-input:focus {
+  outline: none;
+  border-color: #007acc;
+}
+
+/* ── 标签选择（整体替换语义）── */
+.ac-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ac-chips--selectable {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ac-chip {
+  padding: 3px 10px;
+  background-color: #2d2d2d;
+  border: 1px solid #3c3c3c;
+  border-radius: 10px;
+  color: #a9a9a9;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+/* 只读展示的标签：不可点 */
+.ac-chip--static {
+  cursor: default;
+}
+
+.ac-chip--on {
+  background-color: #0e639c;
+  border-color: #1177bb;
+  color: #ffffff;
+}
+
+/* ── 数据预览 ── */
+.ac-preview {
+  margin-top: 10px;
+  overflow-x: auto;
+}
+
+.ac-table--preview td,
+.ac-table--preview th {
+  white-space: nowrap;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── 迷你条形图（使用趋势占比）── */
+.ac-bar {
+  display: inline-block;
+  height: 8px;
+  min-width: 2px;
+  background-color: #1177bb;
+  border-radius: 4px;
+  vertical-align: middle;
+}
+
+/* ── 字段热度星级 ── */
+.ac-stars {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.ac-star--on {
+  color: #e0b954;
+}
+
+.ac-star--off {
+  color: #4a4a4a;
+}
+

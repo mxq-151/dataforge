@@ -1,0 +1,202 @@
+{
+  "name": "dataforge-electron",
+  "version": "0.1.0",
+  "description": "DataForge 基于 Electron 的重构版",
+  "author": {
+    "name": "DataForge",
+    "email": "support@dataforge.local"
+  },
+  "homepage": "https://dataforge.local",
+  "license": "Apache-2.0",
+  "main": "dist-electron/main.js",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -k \"npm:dev:renderer\" \"npm:dev:main\" \"npm:dev:electron\"",
+    "dev:renderer": "vite",
+    "dev:main": "tsc -p tsconfig.node.json --watch --preserveWatchOutput",
+    "dev:electron": "wait-on tcp:127.0.0.1:5173 dist-electron/main.js && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ electron .",
+    "install:electron": "cross-env ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ node node_modules/electron/install.js",
+    "build:main": "tsc -p tsconfig.node.json",
+    "build:renderer": "vite build",
+    "build": "npm run build:main && npm run build:renderer",
+    "prepare:metals": "node scripts/prepare-metals-bundle.mjs",
+    "prebuild": "npm run prepare:metals",
+    "pack": "npm run build && cross-env ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/ electron-builder --dir",
+    "dist": "npm run build && cross-env ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/ electron-builder",
+    "start": "electron .",
+    "postinstall": "patch-package",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "bench:ai": "node scripts/ai-bench.mjs --out perf/bench.json",
+    "bench:ai:before": "node scripts/ai-bench.mjs --out perf/before.json",
+    "bench:ai:after": "node scripts/ai-bench.mjs --out perf/after.json",
+    "bench:ai:report": "node scripts/ai-bench-compare.mjs --before perf/before.json --after perf/after.json",
+    "bench:ai:profile": "node scripts/ai-bench-profile.mjs --preset long --iterations 3 --typing false --out perf/profile.json",
+    "bench:ai:profile:conv": "node scripts/ai-bench-profile.mjs --preset conversation --iterations 2 --out perf/profile-conv.json"
+  },
+  "build": {
+    "appId": "com.dataforge.electron",
+    "productName": "DataForge",
+    "asar": false,
+    "directories": {
+      "output": "release"
+    },
+    "electronDownload": {
+      "mirror": "https://npmmirror.com/mirrors/electron/",
+      "isVerifyChecksum": false
+    },
+    "files": [
+      "dist/**",
+      "dist-electron/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/sandbox",
+        "to": "sandbox",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "resources/metals",
+        "to": "metals",
+        "filter": [
+          "lib/**/*",
+          "coursier-cache/**/*",
+          "bundle.json",
+          "metals.jar"
+        ]
+      },
+      {
+        "from": "resources/jdtls",
+        "to": "jdtls",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "icon": "build/icon.icns",
+      "electronLanguages": [
+        "zh_CN",
+        "zh_TW",
+        "en"
+      ],
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "extraResources": [
+        {
+          "from": "resources/binaries",
+          "to": "binaries",
+          "filter": [
+            "opencode-darwin-arm64",
+            "opencode-darwin-x64"
+          ]
+        }
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "artifactName": "${productName} Setup ${version}-${arch}.${ext}",
+      "icon": "build/icon.ico",
+      "electronLanguages": [
+        "zh-CN",
+        "zh-TW",
+        "en-US"
+      ],
+      "extraResources": [
+        {
+          "from": "resources/binaries",
+          "to": "binaries",
+          "filter": [
+            "opencode-windows-x64.exe",
+            "opencode-windows-arm64.exe"
+          ]
+        }
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "icon": "build/icon.png",
+      "category": "Development",
+      "maintainer": "DataForge",
+      "extraResources": [
+        {
+          "from": "resources/binaries",
+          "to": "binaries",
+          "filter": [
+            "opencode-linux-x64",
+            "opencode-linux-arm64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "license": "LICENSE",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico"
+    }
+  },
+  "overrides": {
+    "dompurify": "3.4.14"
+  },
+  "dependencies": {
+    "adm-zip": "^0.6.0",
+    "ws": "^8.21.3"
+  },
+  "devDependencies": {
+    "@antv/layout": "^0.1.31",
+    "@antv/x6": "^1.35.1",
+    "@codingame/esbuild-import-meta-url-plugin": "^1.0.3",
+    "@codingame/monaco-vscode-api": "^25.1.2",
+    "@codingame/monaco-vscode-editor-api": "^25.1.2",
+    "@codingame/monaco-vscode-extension-api": "^25.1.2",
+    "@monaco-editor/react": "^4.7.0",
+    "@opencode-ai/sdk": "^1.18.30",
+    "@tanstack/react-virtual": "^3.14.10",
+    "@testing-library/react": "^16.3.3",
+    "@types/crypto-js": "^4.2.2",
+    "@types/node": "^26.3.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "@types/ws": "^8.18.1",
+    "@vitejs/plugin-react": "^6.1.0",
+    "@xyflow/react": "^12.11.3",
+    "concurrently": "^10.0.5",
+    "cross-env": "^10.1.0",
+    "crypto-js": "^4.2.0",
+    "echarts": "^6.1.0",
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3",
+    "jsdom": "^30.0.1",
+    "lucide-react": "^1.34.0",
+    "monaco-languageclient": "^10.7.0",
+    "patch-package": "^8.0.1",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-file-navigator": "^1.0.2-dev.1",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "terser": "^5.50.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11",
+    "vscode": "npm:@codingame/monaco-vscode-extension-api@^25.1.2",
+    "wait-on": "^9.1.0"
+  }
+}

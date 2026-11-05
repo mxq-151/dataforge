@@ -1,0 +1,47 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://maven.apache.org/POM/4.0.0">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>io.monix</groupId>
+    <artifactId>implicitbox_2.12</artifactId>
+    <packaging>jar</packaging>
+    <description>implicitbox</description>
+    <url>https://github.com/monix/implicitbox</url>
+    <version>0.2.0</version>
+    <licenses>
+        <license>
+            <name>APL2</name>
+            <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+    <name>implicitbox</name>
+    <organization>
+        <name>monix</name>
+        <url>https://github.com/monix/implicitbox</url>
+    </organization>
+    <scm>
+        <url>https://github.com/monix/implicitbox</url>
+        <connection>scm:git@github.com:monix/implicitbox.git</connection>
+    </scm>
+    <developers>
+        <developer>
+            <id>alexelcu</id>
+            <name>Alexandru Nedelcu</name>
+            <url>https://alexn.org</url>
+            <email>noreply@alexn.org</email>
+        </developer>
+    </developers>
+    <dependencies>
+        <dependency>
+            <groupId>org.scala-lang</groupId>
+            <artifactId>scala-library</artifactId>
+            <version>2.12.10</version>
+        </dependency>
+        <dependency>
+            <groupId>io.monix</groupId>
+            <artifactId>minitest_2.12</artifactId>
+            <version>2.8.2</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

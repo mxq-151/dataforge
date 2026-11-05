@@ -1,0 +1,17 @@
+diff --git a/node_modules/@codingame/monaco-vscode-api/vscode/src/vs/editor/contrib/gotoSymbol/browser/link/goToDefinitionAtPosition.js b/node_modules/@codingame/monaco-vscode-api/vscode/src/vs/editor/contrib/gotoSymbol/browser/link/goToDefinitionAtPosition.js
+index 185d634..bc962d6 100644
+--- a/node_modules/@codingame/monaco-vscode-api/vscode/src/vs/editor/contrib/gotoSymbol/browser/link/goToDefinitionAtPosition.js
++++ b/node_modules/@codingame/monaco-vscode-api/vscode/src/vs/editor/contrib/gotoSymbol/browser/link/goToDefinitionAtPosition.js
+@@ -41,6 +41,12 @@ let GotoDefinitionAtPositionEditorContribution = class GotoDefinitionAtPositionE
+         const linkGesture = ( new ClickLinkGesture(editor));
+         this.toUnhook.add(linkGesture);
+         this.toUnhook.add(linkGesture.onMouseMoveOrRelevantKeyDown(([mouseEvent, keyboardEvent]) => {
++            // 本地化修正：仅在真正 ⌘+点击（鼠标按下后松开）时跳转/弹出定义预览。
++            // 若仅按住 ⌘ 悬停（由键盘事件触发、未按下鼠标按钮），不再提前弹出定义预览，
++            // 避免「一按 ⌘ 就弹出/跳转」。真正的 ⌘+点击仍由下方 onExecute(mouseUp) 触发跳转。
++            if (keyboardEvent && !mouseEvent.isLeftClick) {
++                return;
++            }
+             this.startFindDefinitionFromMouse(mouseEvent, keyboardEvent ?? undefined);
+         }));
+         this.toUnhook.add(linkGesture.onExecute((mouseEvent) => {

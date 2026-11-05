@@ -1,0 +1,11 @@
+{
+  "metalsVersion": "1.6.7",
+  "mainClass": "scala.meta.metals.Main",
+  "bloopVersion": "2.0.19",
+  "bloopModule": "ch.epfl.scala:bloop-frontend_2.12",
+  "libJars": 163,
+  "libBytes": 129695954,
+  "cacheBytes": 107678007,
+  "generatedAt": "2026-11-05T15:59:25.552Z",
+  "generatedBy": "scripts/prepare-metals-bundle.mjs"
+}

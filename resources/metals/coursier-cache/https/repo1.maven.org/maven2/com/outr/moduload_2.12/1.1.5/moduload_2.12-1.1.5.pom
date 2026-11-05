@@ -1,0 +1,52 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://maven.apache.org/POM/4.0.0">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>com.outr</groupId>
+    <artifactId>moduload_2.12</artifactId>
+    <packaging>jar</packaging>
+    <description>moduload</description>
+    <url>https://github.com/outr/moduload</url>
+    <version>1.1.5</version>
+    <licenses>
+        <license>
+            <name>MIT</name>
+            <url>https://github.com/outr/moduload/blob/master/LICENSE</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+    <name>moduload</name>
+    <organization>
+        <name>com.outr</name>
+        <url>https://github.com/outr/moduload</url>
+    </organization>
+    <scm>
+        <url>https://github.com/outr/moduload</url>
+        <connection>scm:git@github.com:outr/moduload.git</connection>
+    </scm>
+    <developers>
+        <developer>
+            <id>darkfrog</id>
+            <name>Matt Hicks</name>
+            <url>http://matthicks.com</url>
+            <email>matt@matthicks.com</email>
+        </developer>
+    </developers>
+    <dependencies>
+        <dependency>
+            <groupId>org.scala-lang</groupId>
+            <artifactId>scala-library</artifactId>
+            <version>2.12.13</version>
+        </dependency>
+        <dependency>
+            <groupId>org.scala-lang.modules</groupId>
+            <artifactId>scala-collection-compat_2.12</artifactId>
+            <version>2.4.4</version>
+        </dependency>
+        <dependency>
+            <groupId>com.outr</groupId>
+            <artifactId>testy_2.12</artifactId>
+            <version>1.0.6</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

@@ -1,0 +1,69 @@
+# Dependencies
+node_modules/
+
+# Build outputs (Vite renderer)
+dist/
+dist-ssr/
+*.local
+
+# Build outputs (Electron main process, tsc)
+dist-electron/
+
+# electron-builder packaged artifacts
+release/
+dist_electron/
+electron-builder.yml
+
+# Monaco cache
+public/monaco
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*~
+.projectile
+
+# Bundled LSP servers
+# resources/jdtls、resources/metals 的离线运行时包（lib/ + coursier-cache/）随代码提交，
+# 由 npm run prepare:metals 生成；打包时经 electron-builder extraResources 原样带入安装包。
+resources/metals/*.bak
+resources/binaries/
+
+# 构建期工具缓存（Maven 发行版、临时 pom 等）
+.cache/
+
+# Java test artifacts
+**/*.class
+
+# OS files
+Thumbs.db
+
+# AI 性能基准：浏览器临时 profile 与报告快照
+.edge-bench-profile/
+.edge-debug-profile/
+
+# V8 CPU profile 采集用的浏览器临时 profile（Chrome）
+.chrome-profile-bench/
+# 原始 CPU profile（3~4MB/份，可按需重生成，不入库）
+perf/*.raw.json

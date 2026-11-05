@@ -1,0 +1,45 @@
+/* 应用内标题栏：仅标题 + 拖拽区域，系统负责渲染窗口控制按钮 */
+
+.title-bar {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  flex-shrink: 0;
+  background-color: #1f1f1f;
+  border-bottom: 1px solid #2e2e2e;
+  color: #cccccc;
+  user-select: none;
+  -webkit-user-select: none;
+  font-size: 12px;
+  font-weight: 500;
+  position: relative;
+  z-index: 999;
+}
+
+/* macOS: 左侧为系统红绿灯预留空间（约 3 个 traffic light + padding） */
+.title-bar__left {
+  width: 84px;
+  flex-shrink: 0;
+}
+
+/* 中间：应用标题（可拖拽区域） */
+.title-bar__center {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+}
+
+.title-bar__title {
+  color: #cccccc;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  font-size: 12px;
+}
+
+/* Windows/Linux: 右侧为系统控制按钮（titleBarOverlay）预留空间 */
+.title-bar__right {
+  width: 138px;
+  flex-shrink: 0;
+}

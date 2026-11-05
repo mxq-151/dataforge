@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>io.github.alexarchambault.bleep</groupId>
+  <artifactId>jsonrpc4s_2.12</artifactId>
+  <version>0.1.1</version>
+  <url>https://github.com/alexarchambault/jsonrpc4s</url>
+  <description>jsonrpc4s_2.12</description>
+  <name>jsonrpc4s_2.12</name>
+  <organization>
+    <name>io.github.alexarchambault.bleep</name>
+    <url>https://github.com/alexarchambault/jsonrpc4s</url>
+  </organization>
+  <licenses>
+    <license>
+      <name>Apache-2.0</name>
+      <url>https://spdx.org/licenses/Apache-2.0.html</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+  <scm>
+    <url>https://github.com/alexarchambault/jsonrpc4s.git</url>
+    <connection>scm:git:github.com/alexarchambault/jsonrpc4s.git</connection>
+    <developerConnection>scm:git:git@github.com:alexarchambault/jsonrpc4s.git</developerConnection>
+  </scm>
+  <developers>
+    <developer>
+      <id>Jorge Vicente Cantero</id>
+      <name></name>
+      <url>https://jvican.github.io/</url>
+    </developer>
+  </developers>
+  <dependencies>
+    <dependency>
+      <groupId>org.scala-lang</groupId>
+      <artifactId>scala-library</artifactId>
+      <version>2.12.14</version>
+    </dependency>
+    <dependency>
+      <groupId>io.monix</groupId>
+      <artifactId>monix_2.12</artifactId>
+      <version>3.2.0</version>
+    </dependency>
+    <dependency>
+      <groupId>com.outr</groupId>
+      <artifactId>scribe_2.12</artifactId>
+      <version>3.5.5</version>
+    </dependency>
+    <dependency>
+      <groupId>com.github.plokhotnyuk.jsoniter-scala</groupId>
+      <artifactId>jsoniter-scala-core_2.12</artifactId>
+      <version>2.13.5</version>
+    </dependency>
+  </dependencies>
+</project>

@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project 
+xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <modelVersion>4.0.0</modelVersion>
+    <name>pprint_2.12</name>
+    <groupId>com.lihaoyi</groupId>
+    <artifactId>pprint_2.12</artifactId>
+    <packaging>jar</packaging>
+    <description>pprint</description>
+    <version>0.9.6</version>
+    <url>https://github.com/com-lihaoyi/PPrint</url>
+    <licenses>
+        <license>
+            <name>MIT License</name>
+            <url>https://spdx.org/licenses/MIT.html</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+    <scm>
+        <connection>scm:git:git://github.com/com-lihaoyi/PPrint.git</connection>
+        <developerConnection>scm:git:ssh://git@github.com:com-lihaoyi/PPrint.git</developerConnection>
+        <url>https://github.com/com-lihaoyi/PPrint</url>
+    </scm>
+    <developers>
+        <developer>
+            <id>lihaoyi</id>
+            <name>Li Haoyi</name>
+            <url>https://github.com/lihaoyi</url>
+            <email></email>
+        </developer>
+    </developers>
+    <dependencies>
+        <dependency>
+            <groupId>com.lihaoyi</groupId>
+            <artifactId>fansi_2.12</artifactId>
+            <version>0.5.1</version>
+        </dependency>
+        <dependency>
+            <groupId>com.lihaoyi</groupId>
+            <artifactId>sourcecode_2.12</artifactId>
+            <version>0.4.3-M5</version>
+        </dependency>
+        <dependency>
+            <groupId>org.scala-lang</groupId>
+            <artifactId>scala-library</artifactId>
+            <version>2.12.20</version>
+        </dependency>
+        <dependency>
+            <groupId>org.scala-lang</groupId>
+            <artifactId>scala-reflect</artifactId>
+            <version>2.12.20</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.scala-lang</groupId>
+            <artifactId>scala-compiler</artifactId>
+            <version>2.12.20</version>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+</project>

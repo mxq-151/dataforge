@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project 
+xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <modelVersion>4.0.0</modelVersion>
+    <name>libdaemon_2.12</name>
+    <groupId>ch.epfl.scala</groupId>
+    <artifactId>libdaemon_2.12</artifactId>
+    <packaging>jar</packaging>
+    <description>libdaemon</description>
+    <version>0.0.12</version>
+    <url>https://github.com/scalacenter/libdaemon-jvm</url>
+    <licenses>
+        <license>
+            <name>Apache-2.0</name>
+            <url>https://spdx.org/licenses/Apache-2.0.html</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+    <scm>
+        <connection>scm:git:git://github.com/scalacenter/libdaemon-jvm.git</connection>
+        <developerConnection>scm:git:ssh://git@github.com:scalacenter/libdaemon-jvm.git</developerConnection>
+        <url>https://github.com/scalacenter/libdaemon-jvm</url>
+    </scm>
+    <developers>
+        <developer>
+            <id>alexarchambault</id>
+            <name>Alex Archambault</name>
+            <url>https://github.com/alexarchambault</url>
+        </developer>
+    </developers>
+    <dependencies> </dependencies>
+</project>

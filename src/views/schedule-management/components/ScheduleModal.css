@@ -1,0 +1,195 @@
+/**
+ * 定时调度弹窗的样式。
+ *
+ * 基础类（sm-modal / sm-btn / sm-select / sm-required 等）来自
+ * ScheduleManagementPanel.css，这里只补定时表单专有的部分：
+ * crontab 预设芯片、下次触发时间预览、字段级错误提示。
+ */
+
+.sm-modal--schedule {
+  min-width: 560px;
+  max-width: 720px;
+  width: 720px;
+}
+
+.sm-modal__body--schedule {
+  max-height: min(70vh, 640px);
+  overflow-y: auto;
+}
+
+/* 标题栏右侧的工作流名，弱化显示避免喧宾夺主 */
+.sm-schedule__workflow {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 400;
+  color: #888888;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sm-schedule__error,
+.sm-schedule__notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 8px 10px;
+  margin-bottom: 12px;
+  border-radius: 3px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.sm-schedule__error {
+  background-color: #5a1d1d;
+  border: 1px solid #7a2a2a;
+  color: #f48771;
+}
+
+.sm-schedule__notice {
+  background-color: #4d3a1e;
+  border: 1px solid #6b5228;
+  color: #d1a855;
+}
+
+.sm-schedule__notice svg,
+.sm-schedule__error svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+/* 当前定时状态 */
+.sm-schedule__status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  margin-bottom: 14px;
+  background-color: #353535;
+  border: 1px solid #444444;
+  border-radius: 3px;
+  font-size: 12px;
+  color: #aaaaaa;
+}
+
+.sm-schedule__status strong {
+  font-size: 12px;
+}
+
+.sm-schedule__status--on {
+  color: #89d185;
+}
+
+.sm-schedule__status--off {
+  color: #999999;
+}
+
+.sm-schedule__meta {
+  margin-left: auto;
+  color: #777777;
+}
+
+/* 生效区间：开始 / 结束并排 */
+.sm-schedule__row {
+  display: flex;
+  gap: 12px;
+}
+
+.sm-schedule__row > .sm-modal__field {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 常用周期预设芯片 */
+.sm-cron-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.sm-cron-preset {
+  padding: 3px 8px;
+  background-color: #3c3c3c;
+  border: 1px solid #555555;
+  border-radius: 10px;
+  color: #cccccc;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.sm-cron-preset:hover:not(:disabled) {
+  border-color: #0078d4;
+  color: #ffffff;
+}
+
+.sm-cron-preset--active {
+  background-color: #094771;
+  border-color: #0078d4;
+  color: #ffffff;
+}
+
+.sm-cron-preset:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 下次触发时间预览 */
+.sm-cron-preview {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 8px 10px;
+  background-color: #353535;
+  border: 1px solid #444444;
+  border-radius: 3px;
+}
+
+.sm-cron-preview__list {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding-left: 20px;
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  font-size: 11px;
+  line-height: 1.7;
+  color: #cccccc;
+}
+
+.sm-cron-preview__empty {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  color: #888888;
+  line-height: 1.6;
+}
+
+.sm-cron-preview__side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+/* 字段级提示与错误 */
+.sm-field-hint {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #888888;
+  line-height: 1.5;
+}
+
+.sm-field-error {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #f48771;
+  line-height: 1.5;
+}
+
+/* 底部左侧按钮组与右侧「关闭/保存」之间的弹性间隔 */
+.sm-modal__footer-spacer {
+  flex: 1;
+}
