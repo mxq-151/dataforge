@@ -43,6 +43,8 @@ lerna-debug.log*
 *.sw?
 *~
 .projectile
+.workbuddy/
+.trae/
 
 # Bundled LSP servers
 # resources/jdtls、resources/metals 的离线运行时包（lib/ + coursier-cache/）随代码提交，
