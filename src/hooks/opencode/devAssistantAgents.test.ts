@@ -16,6 +16,7 @@ import {
   DEV_ASSISTANT_AGENTS,
   AGENT_DATA_ARCHITECT,
   AGENT_DATA_DEV,
+  AGENT_DATA_RETRIEVER,
 } from '../../../electron/backend/devAssistantAgents';
 import {
   DEV_ASSISTANT_SUBAGENT_NAMES,
@@ -33,11 +34,13 @@ describe('子代理注册 — 两侧名称必须逐字一致', () => {
     );
   });
 
-  it('渲染侧常量覆盖设计与开发两个子代理', () => {
+  it('渲染侧常量覆盖设计、开发与检索三个子代理', () => {
     expect(AGENT_DATA_ARCHITECT).toBe('data-architect');
     expect(AGENT_DATA_DEV).toBe('data-dev');
+    expect(AGENT_DATA_RETRIEVER).toBe('data-retriever');
     expect(DEV_ASSISTANT_AGENTS[AGENT_DATA_ARCHITECT]).toBeDefined();
     expect(DEV_ASSISTANT_AGENTS[AGENT_DATA_DEV]).toBeDefined();
+    expect(DEV_ASSISTANT_AGENTS[AGENT_DATA_RETRIEVER]).toBeDefined();
   });
 
   it.each(Object.entries(DEV_ASSISTANT_AGENTS))(
@@ -106,10 +109,28 @@ describe('子代理 prompt 不复制机器解析契约', () => {
     },
   );
 
-  it('子代理被明确要求以主智能体下发的规范摘要为准', () => {
-    for (const def of Object.values(DEV_ASSISTANT_AGENTS)) {
+  it('设计与开发子代理被明确要求以主智能体下发的规范摘要为准', () => {
+    for (const name of [AGENT_DATA_ARCHITECT, AGENT_DATA_DEV]) {
+      const def = DEV_ASSISTANT_AGENTS[name];
       expect(def.prompt).toContain('规范来源（强约束）');
       expect(def.prompt).toContain('以任务描述中');
     }
+  });
+
+  it('检索子代理只负责找，不写产物，且要求带证据与置信度', () => {
+    const def = DEV_ASSISTANT_AGENTS[AGENT_DATA_RETRIEVER];
+
+    // 检索过程隔离在子会话里，产物只有证据包
+    expect(def.prompt).toContain('不写文件');
+    expect(def.prompt).toContain('不产出设计方案');
+    // 必须知道用哪些工具、怎么判收敛
+    expect(def.prompt).toContain('metadata_search');
+    expect(def.prompt).toContain('knowledge_search');
+    expect(def.prompt).toContain('lineage_walk');
+    expect(def.prompt).toContain('最多三轮');
+    // 未命中要有结构化出口，否则模型会用推测填空
+    expect(def.prompt).toContain('resolved');
+    expect(def.prompt).toContain('confidence');
+    expect(def.prompt).toContain('unresolved');
   });
 });

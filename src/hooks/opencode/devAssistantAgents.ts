@@ -14,10 +14,14 @@ export const AGENT_DATA_ARCHITECT = 'data-architect';
 /** 数据开发子代理：一张目标表的处理程序 + 质检程序，直接落盘 */
 export const AGENT_DATA_DEV = 'data-dev';
 
+/** 检索子代理：把模糊业务词收敛成带证据的库表/知识/血缘结论，不写任何产物 */
+export const AGENT_DATA_RETRIEVER = 'data-retriever';
+
 /** 全部已注册子代理名称（顺序无意义，仅供一致性断言与提示词列举） */
 export const DEV_ASSISTANT_SUBAGENT_NAMES = [
   AGENT_DATA_ARCHITECT,
   AGENT_DATA_DEV,
+  AGENT_DATA_RETRIEVER,
 ] as const;
 
 export type DevAssistantSubagentName = (typeof DEV_ASSISTANT_SUBAGENT_NAMES)[number];

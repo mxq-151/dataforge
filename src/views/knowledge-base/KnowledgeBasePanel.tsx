@@ -5,7 +5,9 @@ import remarkGfm from 'remark-gfm';
 import { knowledgeApi, KnowledgeDocument, DocType, DOC_TYPE_OPTIONS } from '../../api/knowledge';
 import AddDocumentModal from './AddDocumentModal';
 import EditDocumentModal from './EditDocumentModal';
+import { appendTermTemplate, hasTermTable, TERM_TABLE_HINT } from './termTableTemplate';
 import './KnowledgeBasePanel.css';
+import './termTableHint.css';
 
 const KnowledgeBasePanel: React.FC = () => {
   const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
@@ -387,12 +389,26 @@ const KnowledgeBasePanel: React.FC = () => {
                           </ReactMarkdown>
                         </div>
                       ) : (
-                        <textarea
-                          className="knowledge-base-panel__content-editor"
-                          value={editingContent}
-                          onChange={(e) => setEditingContent(e.target.value)}
-                          placeholder="请输入文档内容（支持Markdown格式）..."
-                        />
+                        <>
+                          <textarea
+                            className="knowledge-base-panel__content-editor"
+                            value={editingContent}
+                            onChange={(e) => setEditingContent(e.target.value)}
+                            placeholder="请输入文档内容（支持Markdown格式）..."
+                          />
+                          {doc.docType === DocType.BUSINESS_KNOWLEDGE && (
+                            <div className="knowledge-base-panel__term-hint">
+                              <span className="knowledge-base-panel__term-hint-text">{TERM_TABLE_HINT}</span>
+                              <button
+                                type="button"
+                                className="knowledge-base-panel__term-hint-action"
+                                onClick={() => setEditingContent((prev) => appendTermTemplate(prev))}
+                              >
+                                {hasTermTable(editingContent) ? '再插入一组术语' : '插入术语表模板'}
+                              </button>
+                            </div>
+                          )}
+                        </>
                       )
                     ) : (
                       isPreviewMode ? (

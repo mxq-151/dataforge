@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
 import { DocType, DOC_TYPE_OPTIONS } from '../../api/knowledge';
+import { appendTermTemplate, hasTermTable, TERM_TABLE_HINT } from './termTableTemplate';
 import './AddDocumentModal.css';
+import './termTableHint.css';
 
 interface AddDocumentModalProps {
   onClose: () => void;
@@ -100,6 +102,18 @@ const AddDocumentModal: React.FC<AddDocumentModalProps> = ({ onClose, onConfirm 
               className="add-document-modal__textarea"
               rows={8}
             />
+            {docType === DocType.BUSINESS_KNOWLEDGE && (
+              <div className="add-document-modal__term-hint">
+                <span className="add-document-modal__term-hint-text">{TERM_TABLE_HINT}</span>
+                <button
+                  type="button"
+                  className="add-document-modal__term-hint-action"
+                  onClick={() => setContent((prev) => appendTermTemplate(prev))}
+                >
+                  {hasTermTable(content) ? '再插入一组术语' : '插入术语表模板'}
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="add-document-modal__actions">

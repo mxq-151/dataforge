@@ -30,7 +30,9 @@ const IGNORED_EVENTS = new Set([
   'server.instance.disposed',
   'global.disposed',
   'installation.updated',
-  'installation.update.available',
+  // 事件名以连字符连接（SDK EventInstallationUpdateAvailable.type = 'installation.update-available'），
+  // 旧写法 'installation.update.available' 从未匹配，此处已按 SDK 1.19.5 定义纠正
+  'installation.update-available',
   'project.directories.updated',
   'project.updated',
   'pty.created',
