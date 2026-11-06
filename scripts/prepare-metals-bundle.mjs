@@ -36,6 +36,14 @@ const WORK_DIR = path.join(ROOT, '.cache', 'metals-bundle');
 
 const METALS_VERSION = (process.env.DATAFORGE_METALS_VERSION || '1.6.7').trim();
 const METALS_MAIN_CLASS = 'scala.meta.metals.Main';
+// Metals 1.6.7 编译时依赖 scalameta 4.15.2。Maven 的冲突解析是「最近者优先」，而
+// scala-debug-adapter 等依赖会把 trees/common/parsers 拉到更浅层的 4.13.8；官方分发的
+// coursier 则取「最高版本」（4.15.2）。二者混用会让 mtags 1.6.7 在运行期抛
+// NoSuchMethodError: CharArrayReader$.$lessinit$greater$default$3（4.13.8 里该方法被
+// private[tokenizers] 改名成 mangled 形式），索引线程直接死掉，表现为 Scala 依赖符号的
+// 悬停/跳转全部失效。这里显式把这些模块提到 Metals 需要的版本。
+const SCALAMETA_VERSION = (process.env.DATAFORGE_SCALAMETA_VERSION || '4.15.2').trim();
+const SCALAMETA_FORCED_MODULES = ['trees_2.13', 'common_2.13', 'parsers_2.13', 'io_2.13'];
 const COURSIER_VERSION = (process.env.DATAFORGE_COURSIER_VERSION || '2.1.24').trim();
 const MAVEN_VERSION = (process.env.DATAFORGE_MAVEN_VERSION || '3.9.9').trim();
 const CENTRAL = (process.env.DATAFORGE_MAVEN_MIRROR || 'https://repo1.maven.org/maven2').replace(/\/+$/, '');
@@ -349,7 +357,15 @@ async function main() {
   // 1) Metals 运行时依赖 → resources/metals/lib
   fs.rmSync(LIB_DIR, { recursive: true, force: true });
   const metalsPom = path.join(WORK_DIR, 'pom-metals.xml');
-  writePom(metalsPom, [{ groupId: 'org.scalameta', artifactId: 'metals_2.13', version: METALS_VERSION }]);
+  writePom(metalsPom, [
+    { groupId: 'org.scalameta', artifactId: 'metals_2.13', version: METALS_VERSION },
+    // 直接声明（深度 1）→ Maven 最近者优先规则下必定胜出，避免被浅层的 4.13.8 覆盖
+    ...SCALAMETA_FORCED_MODULES.map((artifactId) => ({
+      groupId: 'org.scalameta',
+      artifactId,
+      version: SCALAMETA_VERSION,
+    })),
+  ]);
   log(`解析 Metals ${METALS_VERSION} 运行时依赖（约 150MB，仅构建机联网）`);
   runMvn(
     mvn,
@@ -359,7 +375,15 @@ async function main() {
   const jars = libJars();
   if (jars.length === 0) fail(`未解析出任何 jar: ${LIB_DIR}`);
   if (!jars.some((n) => n.startsWith('metals_2.13-'))) fail(`lib 中缺少 metals 主 jar（${METALS_VERSION}）`);
-  log(`Metals 依赖就绪：${jars.length} 个 jar`);
+  // 守住 scalameta 模块一致性：混版本会让 mtags 在运行期 NoSuchMethodError（索引线程死亡 →
+  // Scala 悬停/跳转失效），而且症状只出现在日志里，极难定位，这里构建期直接失败。
+  const staleScalameta = jars.filter(
+    (n) => /^(trees|common|parsers|io)_2\.13-/.test(n) && !n.endsWith(`-${SCALAMETA_VERSION}.jar`),
+  );
+  if (staleScalameta.length > 0) {
+    fail(`scalameta 模块版本不一致（期望 ${SCALAMETA_VERSION}）：${staleScalameta.join(', ')}`);
+  }
+  log(`Metals 依赖就绪：${jars.length} 个 jar（scalameta ${SCALAMETA_VERSION}）`);
 
   // 2) Bloop 引导构件 → resources/metals/coursier-cache
   const bloop = readBloopDefaults();

@@ -173,6 +173,10 @@ export function useLspManagement({
       const stderrLines: string[] = [];
       const unlisteners: Array<() => void> = [];
       let exited = false;
+      // 记住后端已拉起的 client_id：若前端 wrapper.start() 失败（如依赖版本不兼容），
+      // 必须显式 stop 回收 JVM。否则 JVM 会一直空转并长期占用 JDT.LS 的 -data 工作区锁，
+      // 导致后续每次启动都抢不到锁（表现为「一直 ✕ 错误」，重启应用才恢复）。
+      let started: WsStartResult | null = null;
 
       // 看门狗：从「调用主进程」起计时，超时仍未就绪 → 翻转错误。
       // Java：JDT.LS 缺失时才按需下载（随包已带，正常无下载）；Scala：Metals 运行时随包分发
@@ -222,6 +226,7 @@ export function useLspManagement({
           }
         }
         const res = await invoke<WsStartResult>(cmd, { javaHome, workspaceRoot });
+        started = res;
         console.log(`[LSP:${languageId}] 主进程返回 ws_url=${res.ws_url}, client_id=${res.client_id}`);
 
         // 监听 Metals 进程退出（带最后 N 行 stderr）：进程死亡时立即翻转错误，
@@ -273,6 +278,17 @@ export function useLspManagement({
         unlisteners.forEach((u) => u());
         console.warn(`[LSP] ${languageId === 'java' ? 'Java (JDT.LS)' : 'Scala (Metals)'} 启动失败:`, e);
         setStatus('error');
+        // 前端连接/初始化失败时，后端 JVM 仍在空转（既不响应也不释放 -data 锁）→ 立即回收。
+        if (started) {
+          const stopCmd = languageId === 'java' ? 'stop_java_lsp_ws' : 'stop_scala_lsp_ws';
+          try {
+            await invoke(stopCmd, { clientId: started.client_id });
+            console.log(`[LSP:${languageId}] 启动失败后已回收 JVM, client_id=${started.client_id}`);
+          } catch (err) {
+            console.warn(`[LSP:${languageId}] 启动失败后回收 JVM 失败:`, err);
+          }
+          started = null;
+        }
       } finally {
         startingRef.current = false;
       }

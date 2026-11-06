@@ -93,12 +93,6 @@ npm run prepare:metals -- --force
 可用环境变量覆盖版本：`DATAFORGE_METALS_VERSION`、`DATAFORGE_BLOOP_VERSION`、`DATAFORGE_BLOOP_MODULE`。第一次在无 Maven 的机器上执行时，脚本会把 Apache Maven 下载到 `.cache/tools/`（已 gitignore）。
 
 
-## 常见问题
-
-- **opencode 无法启动**：确认 `resources/binaries/` 下存在当前平台的 opencode 二进制（或已加入 PATH）；若提示端口 4096 被占用，关闭占用进程后重试。可通过 `DATAFORGE_DISABLE_SANDBOX=1` 临时跳过沙箱排查（仅开发 / 受限环境）。
-- **LSP 启动失败 / "只成功一回，之后都失败"**：多为 JDT.LS 的 `-data` 工作区锁被占用；请确认 `resources/jdtls/`、`resources/metals/lib/` 资源完整（可用 `npm run prepare:metals` 重建），并检查设置页 `JAVA_HOME` 配置。
-- **编辑器无语法高亮**：确认 `public/grammars/` 与 `public/wasm/onig.wasm` 存在；`@codingame/monaco-vscode-*` 包已在 Vite `optimizeDeps.exclude` 中排除，请勿改动该配置。
-- **登录失败**：确认 `backendHost` 填的是服务根地址（不含 `/api`）且端口正确（本地运行 8083 / 容器 8082）。
 
 ## 许可
 
