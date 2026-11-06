@@ -139,6 +139,22 @@ export function useLspManagement({
 
       const client = wrapper.getLanguageClient();
       if (client) registerHeadlessHandlers(client);
+      // DEV 诊断：把服务端推送的诊断摘要打到主进程日志（main.log 中的 `[renderer] [diag:...]`）。
+      // 用于排查「编辑器有红线但服务端日志 0 problems」这类客户端/服务端不一致问题：
+      // 有了这条日志就能确认到底有没有 publishDiagnostics、条数与首条消息是什么。
+      if (import.meta.env.DEV && client) {
+        client.onNotification('textDocument/publishDiagnostics', (params: any) => {
+          const list: any[] = params?.diagnostics ?? [];
+          if (list.length === 0) return;
+          const head = list
+            .slice(0, 5)
+            .map((d) => `L${(d?.range?.start?.line ?? 0) + 1}:${String(d?.message ?? '').slice(0, 160)}`)
+            .join(' || ');
+          invoke('trace_log', {
+            msg: `[diag:${languageId}] uri=${params?.uri} count=${list.length} :: ${head}`,
+          }).catch(() => undefined);
+        });
+      }
       // 注册 jdt:// 类文件内容提供器（仅 Java），让「定义跳转」到 JDK / 第三方库时
       // 能向 JDT.LS 取回源码并显示。全局只注册一次，这里只对 Java 客户端调用。
       if (languageId === 'java' && client) registerJavaClassFileProvider(client);
