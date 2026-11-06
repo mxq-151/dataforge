@@ -11,27 +11,6 @@
  * → S3 按编码实现。三方 prompt 共享本文件中段的契约常量，任何口径变更只改一处，
  * 避免三份提示词各自漂移；角色特有内容只在各自段落中补充。
  *
- * ⚠ 机器解析契约（改动前必读）：
- * - DATA_ARCHITECT_INSTRUCTIONS 的 9 列指标表头、BUSINESS_REQUESTER_INSTRUCTIONS 的
- *   7 列指标表头，被 src/utils/extractMetrics.ts 解析，并由 extractMetrics.test.ts
- *   直接读取表头行做列数断言。改列名/列数/顺序必须同步改解析器与测试。
- * - DATA_DEV_ENGINEER_INSTRUCTIONS 的代码头样例被 src/utils/fileHeader.test.ts 抽取
- *   后喂给真实解析器。改样例必须保持：块注释（/* ... *\/）连续书写于文件开头、含
- *   @备注/@引擎/@数据源，Java 样例 package 声明为 TEST.java.ods。
- * - @依赖 是数据开发提示词里代码头的机器解析字段，src/utils/fileHeader.ts 的
- *   parseFileHeader 会提取其原始值（前置依赖逗号分隔串，写为 {调度项目}.{前置任务名称}，
- *   前置任务名称不含文件扩展名）。同步修改 opencodeInstructions.ts 的 @依赖 描述时，
- *   须保持该格式约定与 fileHeader.test.ts 中的解析断言一致。
- * - S2/S3 各自带「多智能体并行编排」章节：子代理由 electron/backend/devAssistantAgents.ts
- *   注册到 opencode 配置，其 prompt 只做角色包装，**不复制**上述机器解析契约 —— 契约正文
- *   仍以本文件为唯一事实源，由主智能体在 task 任务描述里原样下发。改章节里的分派条件
- *   （几表起并行、子代理名）须同步 devAssistantAgents.test.ts。
- * - 代码头 @程序参数 与 SQL 变量（数据开发「SQL 开发规范」里的 ${参数名}）是机器解析契约：
- *   src/utils/programArgs.ts::parseSqlVarKeys 先剥离注释（stripSqlComments）再扫 SQL 正文的
- *   ${}，只取纯标识符名（PARAM_KEY_PATTERN）；parseParamKeys 从 @程序参数 声明里取参数名
- *   （兼容 `--键 值` 与 `${变量名}` 两种写法）。两者合并去重后作为「运行程序」弹窗的预填
- *   来源，@程序参数 的声明原文还会落到调度节点的「主参数」(mainArgs)。改提示词里的写法
- *   （${} 形式、合法名、注释内不算、时间参数一律用 ${} 变量）必须同步上述解析器与测试。
  */
 
 import { QUALITY_RULE_TYPES } from '../../types/quality';
@@ -85,13 +64,13 @@ const DATASOURCE_SPEC = `
  */
 const QUALITY_RULE_SPEC = `
 ## 数据质量规则类型（全链路统一术语）
-规则类型固定为以下 7 类，三阶段使用同一套名称，禁止自造同义词：
+规则类型固定为以下 ${QUALITY_RULE_TYPES.length} 类，三阶段使用同一套名称，禁止自造同义词：
 ${QUALITY_RULE_TYPES.map((t, i) => `${i + 1}. ${t.label}：${t.desc}`).join('\n')}
 
 三阶段分工：
 - S1 业务需求：在"数据质量要求"中用业务语言说明需覆盖的规则类型与可接受偏差
 - S2 数仓设计：为每张新建表选择规则类型，定义规则名、校验对象、阈值与处置方式
-- S3 数据开发：把设计定义的规则实现为独立的质量校验任务，挂在处理任务下游；**一张被校验表对应一个质检任务**，不得把多张表的规则合并到同一个校验程序里
+- S3 数据开发：把设计定义的规则实现为独立的质量校验任务，挂在处理任务下游
 
 规则名是全链路唯一键（强约束）：
 - 规则名由 S2 在设计文档"稽核规则清单"中一次定死，格式 {前缀}_{业务域}_{序号} {中文描述}，如 R_AD_001 事件主键唯一；同一设计文档内唯一，禁止重名
@@ -131,8 +110,16 @@ const QUALITY_TEMPLATE_TOOL_SPEC = `
 - 骨架里的占位符（形如 \${表名}）替换为设计文档里对应的库表字段；替换后仍须是单条 SELECT / WITH 查询
 - 模板会随平台维护改版，因此回传时必须带上本次**实际执行**的 SQL（execSql 字段）—— 否则事后无法核对当时跑的是哪一版口径
 - 工具不可用（平台不可达、无可用模板）时不阻塞开发：按规则类型语义自行实现，并在交付汇报里说明模板缺失
-- 规则类型编码对照（调用时传编码，与"数据质量规则类型"的 7 类一一对应）：
+- 规则类型编码对照（调用时传编码，与"数据质量规则类型"的 ${QUALITY_RULE_TYPES.length} 类一一对应）：
 ${QUALITY_RULE_TYPES.map((t, i) => `${i + 1}. ${t.label}（${t.code}）`).join('\n')}`;
+
+/**
+ * 代码头 @引擎 取值枚举（S2 的 DDL 代码头与 S3 的程序代码头共用，口径只改这一处）。
+ * 限定为平台调度可识别的 10 个引擎；iceberg/hudi/paimon 等存储格式不作为 @引擎 值，
+ * 需要时写入建表语句的存储格式/表属性中。
+ */
+const HEADER_ENGINE_ENUM =
+  'spark、flink、kyuubi、hive、doris、clickhouse、starrocks、mysql、postgresql、presto';
 
 /** 分层规范（S2 主导设计，S3 必须遵循） */
 const LAYERING_SPEC = `
@@ -221,8 +208,7 @@ const PROGRAM_NAMING_CONVENTIONS = `
   - 操作类型：load=加载，etl=转换清洗，sync=同步，calc=计算聚合，check=质量校验，export=导出
   - 执行周期：见"刷新周期与时效口径"中的统一枚举（d/h/w/m/y/r/f）
   - 示例：ods_trade_order_load_d.sql、dws_trade_order_etl_d.java、dwd_trade_order_check_d.sql
-- 处理程序分为sql/code/algo三类，然后再数仓分层归类，例如sql/ods,code/dwd/,其中sql存放sql程序,code存放java/scala程序，algo存储python算法程序，另外java/scala常用工具类放 code/utils下
-- Java/Scala 包声明规则：假设工作空间为 /tmp/warehouse/TEST，文件路径为 java/ods/test.java，则包声明为 package TEST.java.ods，文件名与类名需一致
+- 程序按语言分三类目录，再按数仓分层归类：sql/ 存放 SQL 程序（如 sql/ods/）、code/ 存放 Java/Scala 程序（如 code/dwd/）、algo/ 存放 Python 算法程序；Java/Scala 公共工具类统一放 code/utils/
 - 调度任务名与程序文件名保持一致（去除扩展名），便于追溯`;
 
 /** 安全原则（所有角色共用） */
@@ -524,7 +510,7 @@ ${DATABASE_ENV_SPEC}
 
 列填写要求：
 - 规则名：必填，格式 {前缀}_{业务域}_{序号} {中文描述}，如 R_AD_001 事件主键唯一；同一设计文档内唯一，不得重名；该名称即平台规则名与校验结果回传的匹配键，S3 禁止改写
-- 规则类型：必填，逐字取自"数据质量规则类型"的 7 类名称之一；禁止自造同义词，也不要附加括号说明（如"行数波动（装载基线）"应直接写"行数波动"）
+- 规则类型：必填，逐字取自"数据质量规则类型"的 ${QUALITY_RULE_TYPES.length} 类名称之一；禁止自造同义词，也不要附加括号说明（如"行数波动（装载基线）"应直接写"行数波动"）
 - 校验对象：必填，三段式"库.表.字段"；表级规则写到表（库.表）；跨表比对用 ↔ 连接两侧（库.表.字段 ↔ 库.表.字段），如 test_db.dwd_event_f.ad_id ↔ test_db.dim_creative_f.ad_id；一条规则只写一个字段，多字段须拆成多条规则；枚举取值、金额口径等说明不要写进本列
 - 阈值：必填，写成"比较符 + 数值"，比较符限 = > < ≥ ≤，如 重复=0、匹配率≥99、偏差≤0.001；不得写成"记录数一致"这类无法判定的描述
 - 处置方式：必填，取值为"阻断下游"或"告警"；两者同时生效时写"阻断下游+告警"
@@ -551,7 +537,7 @@ DDL 文件（ddls/{分层}_ddl.sql）同样需在文件最开头书写代码头�
 - 代码头须连续书写，中途出现非代码头的行即视为代码头结束
 - 字段说明：
   - @数据源：必填，该文件建表所涉及的数据源名称（来自 metadata 工具），多个用英文逗号分隔
-  - @引擎：必填，建表所用存储/计算引擎，取值限定为以下之一：spark、flink、flink_stream、kyuubi、hive、hivecli、doris、clickhouse、starrocks、mysql、postgresql、presto、trino、iceberg、hudi、paimon，须与"技术架构说明"及具体建表语法的引擎一致
+  - @引擎：必填，建表所用引擎，取值限定为以下之一：${HEADER_ENGINE_ENUM}，须与"技术架构说明"及具体建表语法的引擎一致
 - DDL 代码头写法示例：
   \`\`\`plaintext
   /*
@@ -659,7 +645,6 @@ ${MULTI_AGENT_ORCHESTRATION_S3}
 
 ## 职责与边界（S3）
 - 依据 docs/{业务名称}_数仓设计.md 与 ddls/{分层}_ddl.sql 实现数据处理程序（ODS 同步、DWD 清洗、DWS 汇总、ADS 应用、DQC 质量校验）
-- 程序所属业务名称须与设计文档保持一致，不得另起一套命名
 - 为设计文档中定义的每张目标表产出对应的处理程序，任务边界与设计文档保持一致
 - 按设计文档实现指标计算逻辑，并在代码中显式标注所实现的指标编码
 - 代码完成后必须通过 compile（Java/Scala）或 sql-validate（SQL）校验语法，并复核代码逻辑与设计口径一致
@@ -670,17 +655,17 @@ ${MULTI_AGENT_ORCHESTRATION_S3}
 2. 现状调研：知识库（集群架构、开发规范、业务规范、处理流程）→ 后端元数据服务（已有库表结构、字段业务含义、数据源）→ Marquez（数据血缘与上下游依赖）
 3. 复用优先：先查找可复用的已有程序、utils 工具类与集群同步组件；能复用则复用，禁止重复造轮子
 4. 技术选型：确定运行引擎与实现语言（见"引擎与技术选型规范"），处理链路须与知识库定义的集群架构及处理流程一致
-5. 编码实现：先写代码头再写主体, SQL 与 Java/Scala/Python 分别遵照对应的开发规范；按设计文档逐表逐指标实现
+5. 编码实现：先写代码头再写主体，SQL 与 Java/Scala/Python 分别遵照对应的开发规范；按设计文档逐表逐指标实现
 6. 质量实现：按设计文档"稽核规则清单"里的被校验表逐表拆出独立的质检程序（一张表一个程序，见"数据质量校验规范"）；每个程序先用 quality-template 工具按规则类型取回平台模板，照骨架实现校验逻辑，并按"质检结果回传规范"把规则级结果回传平台
 7. 校验修复：调用 compile / sql-validate 校验，逐个修复报错直至零错误，校验不通过不得落地产出
 8. 落地产出与交付自检：用文件写入工具落到目标目录，再按"交付前自检清单"逐项核对，不通过则先修正产出，再回复用户
 
 ## 引擎与技术选型规范
-- SQL 优先：能用 SQL 表达且性能可接受的一律用 SQL；SQL 实现过于复杂或性能不可接受时改用 Java/Scala（Spark/Flink）；数据同步优先复用集群已有组件（DataX/SeaTunnel/Sqoop），不重复造轮子
+- SQL 优先：能用 SQL 表达且性能可接受的一律用 SQL；SQL 实现过于复杂或性能不可接受时改用 Java/Scala（Spark/Flink）
 - 处理流程必须符合知识库中定义的集群架构与处理流程，不得引入集群不具备的组件
-- @引擎 取值限定为以下之一（系统据此识别调度任务类型）：spark、flink、flink_stream、kyuubi、hive、hivecli、doris、clickhouse、starrocks、mysql、postgresql、presto、trino、python、shell、mr、mapreduce、datax、sqoop、seatunnel、dinky、linkis、java、procedure、http
+- @引擎 取值限定为以下之一（系统据此识别调度任务类型）：${HEADER_ENGINE_ENUM}
 - .java/.scala 文件必须声明 @引擎，未声明时任务类型会被默认判定为 SPARK
-- 实时/流式任务使用 flink 或 flink_stream；离线批处理优先 spark/kyuubi/hive
+- 实时/流式任务使用 flink；离线批处理优先 spark/hive
 - 执行周期须满足设计文档与需求文档要求的时效，见"刷新周期与时效口径"
 
 ${PROGRAM_NAMING_CONVENTIONS}
@@ -704,18 +689,18 @@ ${DATABASE_ENV_SPEC}
   - @备注：必填，描述代码实现的业务逻辑、业务需求与注意点；若本程序产出设计文档中的指标，须在此写明指标编码
   - @引擎：必填，取值见"引擎与技术选型规范"
   - @依赖: 必填，描述当前任务有哪些前置依赖任务；格式为 @依赖: {调度项目}.{前置任务名称}，多个前置依赖用英文逗号分隔，参考：@依赖: test_project.ods_load_user_f,test_project.ods_load_events_f，其中 test_project 是调度项目（也是项目编码），ods_load_user_f、ods_load_events_f 为前置任务名称（不含文件扩展名，如 .java/.sql 等不写入）；若无前置依赖任务则填无
-  - @程序参数：可选，声明程序运行期需要的参数，写成 @程序参数: --键 值 形式、多个用空格分隔；无则填「无」
+  - @程序参数：声明程序运行期需要的参数，写成 @程序参数: --键 值 形式、多个用空格分隔；无参数时填「无」（样例与代码头模板均含此字段，缺省会被解析为空）
     - 时间类参数（业务日期、时间窗口等）的取值必须写成 \`\${变量名}\` 变量，不得写死具体日期，如 @程序参数: --day \`\${day}\`；变量名须为合法标识符（字母或下划线开头，只含字母、数字、下划线、点、连字符），并与其在正文中的 \`\${}\` 同名同大小写
     - 变量取值由调度侧提供：在 DolphinScheduler 中为同名变量配置参数，时间类参数的取值使用 DS 内置时间变量（\`$[yyyyMMdd]\`、\`$[yyyyMMddHHmmss]\`、\`$[yyyyMMdd-1]\` 等）作为变量值，由 DS 在调度时解析；代码里（代码头与正文）禁止出现 \`$[...]\` 写法
     - 非时间类参数可直接写字面值，如 @程序参数: --env prod
   - @数据源：必填，代码用到的数据源名称（来自 metadata 工具），多个用英文逗号分隔
-
 
 - 代码头写法示例：
   \`\`\`plaintext
   /*
    * @备注: 描述业务逻辑
    * @引擎: kyuubi
+   * @依赖: 无
    * @程序参数: --day \${day}
    * @数据源: test_datasource
    */
@@ -752,7 +737,7 @@ ${DATABASE_ENV_SPEC}
   - 归属依据是规则"校验对象"里的表（三段式 库.表.字段 取 库.表），不是规则类型，也不是分层或业务域
   - 跨表对账规则（校验对象写作 A ↔ B）归入其左侧主表所在的质检程序，不要为它单建一个共享的校验程序
   - 禁止把所有表、所有规则塞进同一个质检程序；禁止跨分层、跨业务域、跨刷新周期合并；禁止把校验逻辑写进数据处理程序内部（处理程序只负责加工数据）
-- 命名：{分层}_{业务域}_{实体描述}_check_{执行周期}.{扩展名}，四个描述段与被校验表保持一致，如被校验表 dwd_trade_order_d 对应 dwd_trade_order_check_d.sql；因为一个质检程序只校验一张表，禁止出现无法对应到单张表的程序名
+- 命名：{分层}_{业务域}_{实体描述}_check_{执行周期}.{扩展名}：即将常规程序命名中的操作类型段换成 check，其余各段与被校验表逐字一致，如被校验表 dwd_trade_order_d 对应 dwd_trade_order_check_d.sql；一个质检程序只校验一张表，禁止出现无法对应到单张表的程序名
 - 调度：每个质检任务挂在**产出它校验的那张表**的处理任务下游，@依赖 只写该处理任务（如 @依赖: test_project.dwd_trade_order_etl_d）；一个处理任务产出多张表时，拆出多个质检任务、各自挂该处理任务下游，不要为了让单个质检任务覆盖全部表而堆砌多个上游依赖
 - 校验输出须可定位：规则名、校验对象、阈值、实际值、是否通过
 - 规则类型取自"数据质量规则类型"，实现范围须覆盖设计文档中为**本程序负责的那张表**定义的全部规则
@@ -795,7 +780,7 @@ ${QUALITY_TEMPLATE_TOOL_SPEC}
 | failDetail | 否 | 失败明细，便于定位与修复 |
 | execSql | 否 | 本次**实际执行**的校验 SQL（模板会改版，留下它才能事后核对口径） |
 
-- 为什么建议回传 ruleId：平台默认按"规则名"匹配规则，规则一旦改名（设计文档改了、平台里没跟着改）关联就断；带上 ruleId 后关联不再依赖名字。另外"行数波动 / 行数环比"这类规则的历史基线是按规则 ID 取的，只传规则名会让程序回传的结果进不了基线计算
+- 为什么建议回传 ruleId：带上 ruleId 后关联不再依赖名字（改名即断链，详见"规则登记规范"）；且"行数波动 / 行数环比"这类规则的历史基线是按规则 ID 取的，只传规则名会让回传的结果进不了基线计算
 - 回传前平台会校验调用者对目标表的读权限：**无权读取的表会被拒绝登记结果**。令牌的权限就是发放者账号的权限，请确保用它有权读取被校验的表；被拒时按"回传失败不改变任务成败"处理，并在汇报里说明哪些表没传上去
 - 回传失败不得改变校验任务本身的成败判定：捕获异常、记录日志后继续执行，不得把回传异常判成任务失败
 - 回传步骤与校验逻辑写在同一任务内（校验 SQL 由 python/java/shell 包装执行后再回传），不得为回传单独新建调度节点 —— 这条只是不给回传单开节点，**不是**把多张表的校验合并进同一个程序（质检程序的粒度见"数据质量校验规范"）
@@ -833,6 +818,7 @@ ${OUTPUT_REQUIREMENTS}
   /*
    * @备注: 将 ODS 层登录明细清洗后写入 DWD 层用户登录明细，按天分区，支持重跑；产出指标 USR_0001 日活用户数
    * @引擎: kyuubi
+   * @依赖: test_project.ods_user_login_load_d
    * @程序参数: --day \${day}
    * @数据源: test_datasource
    */
@@ -848,6 +834,7 @@ ${OUTPUT_REQUIREMENTS}
   /*
    * @备注: 实时消费订单 Kafka 消息写入 ODS 层订单表
    * @引擎: flink
+   * @依赖: 无
    * @程序参数: 无
    * @数据源: test_datasource
    */
@@ -981,21 +968,24 @@ export type RoleType =
 /**
  * 根据用户角色类型生成对应的系统指令
  *
+ * moduleName 为 "data-explore" 时固定返回数据分析师指令（短路优先于角色判断），
+ * 其余模块按角色分发；roleType 缺省时兜底为数据开发工程师。
+ *
  * 质量规则模板不再内嵌进提示词：S3 在实现校验逻辑前用 quality-template 工具按规则类型现拉，
  * 模板永远是最新版（见 QUALITY_TEMPLATE_TOOL_SPEC）。
  */
 export function getDeveloperInstructions(
   roleType: RoleType | string,
   username: string,
-  _moduleName: string
+  moduleName: string
 ): string {
-  if (!roleType) {
-    return DATA_DEV_ENGINEER_INSTRUCTIONS;
+  // 数据探索模块固定走数据分析师视角，与角色配置无关，须最先短路判断
+  if (moduleName === 'data-explore') {
+    return getDataAnalystInstructions(username || '用户');
   }
 
-  if (_moduleName==="data-explore")
-  {
-    return getDataAnalystInstructions(username)
+  if (!roleType) {
+    return DATA_DEV_ENGINEER_INSTRUCTIONS;
   }
 
   const upper = roleType.toUpperCase();

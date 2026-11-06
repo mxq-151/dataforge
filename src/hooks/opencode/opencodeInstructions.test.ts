@@ -108,6 +108,22 @@ describe('链路共享契约 — 三方必须同时具备', () => {
     expect(DATA_DEV_ENGINEER_INSTRUCTIONS).toContain('Marquez');
     expect(BUSINESS_REQUESTER_INSTRUCTIONS).not.toContain('Marquez');
   });
+
+  it('S2 与 S3 的代码头 @引擎 枚举同源一致（固定 10 个，存储格式引擎不入枚举）', () => {
+    // 2026-11 收窄口径：S2 DDL 代码头与 S3 程序代码头共用同一枚举，
+    // 只保留平台调度可识别的 10 个引擎；iceberg/hudi/paimon 等存储格式
+    // 写进建表语句而非 @引擎，否则 S2 设计的引擎 S3 无法合法引用（链路漂移）。
+    const ENGINES =
+      'spark、flink、kyuubi、hive、doris、clickhouse、starrocks、mysql、postgresql、presto';
+    for (const prompt of [DATA_ARCHITECT_INSTRUCTIONS, DATA_DEV_ENGINEER_INSTRUCTIONS]) {
+      expect(prompt).toContain(ENGINES);
+    }
+    // 已收窄掉的引擎不得回流进提示词
+    for (const banned of ['flink_stream', 'hivecli', 'trino', 'iceberg', 'hudi', 'paimon']) {
+      expect(DATA_ARCHITECT_INSTRUCTIONS, `S2 提示词不应再出现 ${banned}`).not.toContain(banned);
+      expect(DATA_DEV_ENGINEER_INSTRUCTIONS, `S3 提示词不应再出现 ${banned}`).not.toContain(banned);
+    }
+  });
 });
 
 describe('指标主线 — S1 定义 → S2 继承并编码 → S3 实现并标注', () => {
