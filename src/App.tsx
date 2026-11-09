@@ -12,6 +12,7 @@ import ScheduleManagementPanel from './views/schedule-management/ScheduleManagem
 import DataLineagePanel, { type LineageJumpTarget } from './views/data-lineage/DataLineagePanel';
 import SystemManagementPanel from './views/system-management/SystemManagementPanel';
 import IndicatorManagementPanel from './views/indicator-management/IndicatorManagementPanel';
+import DataIntegrationPanel from './views/data-integration/DataIntegrationPanel';
 import AssetCatalogPanel from './views/asset-catalog/AssetCatalogPanel';
 import { DolphinSchedulerProvider } from './contexts/DolphinSchedulerContext';
 import useOpencodeConfig from './hooks/useOpencodeConfig';
@@ -51,6 +52,7 @@ const workspaceClassMap: Record<string, string> = {
   devAssist: 'app__workspace--dev-assistant',
   dataExplore: 'app__workspace--data-explore',
   indicatorManagement: 'app__workspace--indicator-management',
+  dataIntegration: 'app__workspace--data-integration',
   knowledgeBase: 'app__workspace--knowledge-base',
   fileBrowser: 'app__workspace--file-browser',
   scheduleManagement: 'app__workspace--schedule-management',
@@ -722,6 +724,9 @@ const AppContent: React.FC = () => {
         </div>
         <div className={`app__view-container ${activeTab === 'indicatorManagement' ? 'app__view-container--active' : ''}`}>
           {isTabVisible('indicatorManagement') && visitedTabs.has('indicatorManagement') && <IndicatorManagementPanel onNavigateToLineage={handleNavigateToLineage} />}
+        </div>
+        <div className={`app__view-container ${activeTab === 'dataIntegration' ? 'app__view-container--active' : ''}`}>
+          {isTabVisible('dataIntegration') && visitedTabs.has('dataIntegration') && <DataIntegrationPanel />}
         </div>
         <div className={`app__view-container ${activeTab === 'knowledgeBase' ? 'app__view-container--active' : ''}`}>
           {isTabVisible('knowledgeBase') && visitedTabs.has('knowledgeBase') && <KnowledgeBasePanel />}

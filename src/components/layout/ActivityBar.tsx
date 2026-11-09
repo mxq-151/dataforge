@@ -1,5 +1,5 @@
 import React, { useMemo, useEffect, useState, useRef } from 'react';
-import { MessageSquare, Settings, User, Database, BookOpen, FolderOpen, Calendar, Shield, Library, LogOut, X, GitBranch, Check, BarChart3 } from 'lucide-react';
+import { MessageSquare, Settings, User, Database, BookOpen, FolderOpen, Calendar, Shield, Library, LogOut, X, GitBranch, Check, BarChart3, Workflow } from 'lucide-react';
 import { ActiveTab, MENU_CODE_MAP, FIRST_LEVEL_MENU_CODES } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
 import './ActivityBar.css';
@@ -53,6 +53,7 @@ const ActivityBar: React.FC<ActivityBarProps> = ({ activeTab, onTabChange }) => 
     { id: 'devAssist', icon: <MessageSquare size={20} />, title: '开发助手' },
     { id: 'dataExplore', icon: <Database size={20} />, title: '数据探索' },
     { id: 'indicatorManagement', icon: <BarChart3 size={20} />, title: '指标管理' },
+    { id: 'dataIntegration', icon: <Workflow size={20} />, title: '数据集成' },
     { id: 'knowledgeBase', icon: <BookOpen size={20} />, title: '知识库' },
     { id: 'fileBrowser', icon: <FolderOpen size={20} />, title: '文件浏览器' },
     { id: 'scheduleManagement', icon: <Calendar size={20} />, title: '调度管理' },
