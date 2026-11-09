@@ -437,12 +437,23 @@ const TaskEditor: React.FC<{
         toast.error(`第 ${i + 1} 行的源表不能为空`);
         return;
       }
-      // CDC 一份源连接只读一个库：表清单默认只填表名；兼容历史「库.表」但库名必须与源端一致
+      // 表清单前缀语义随源端类型不同：库名（MySQL/PG/OceanBase）/ schema（SQL Server/Db2）/ 不允许前缀（Oracle）
       const dot = table.indexOf('.');
       const configuredDb = String(form.sourceConfig.database || '').trim();
-      if (dot >= 0 && configuredDb) {
-        const db = table.slice(0, dot).trim();
-        if (db.toLowerCase() !== configuredDb.toLowerCase()) {
+      if (dot >= 0) {
+        const prefix = table.slice(0, dot).trim();
+        const tablePart = table.slice(dot + 1).trim();
+        if (!tablePart) {
+          toast.error(`第 ${i + 1} 行源表「${table}」缺少表名`);
+          return;
+        }
+        if (form.sourceType === 'oracle') {
+          toast.error(`第 ${i + 1} 行源表「${table}」不要带前缀，Oracle 的 schema 请在源端配置里填写`);
+          return;
+        }
+        if ((form.sourceType === 'mysql' || form.sourceType === 'postgresql' || form.sourceType === 'oceanbase'
+            || form.sourceType === 'mongodb' || form.sourceType === 'tidb')
+            && configuredDb && prefix.toLowerCase() !== configuredDb.toLowerCase()) {
           toast.error(`第 ${i + 1} 行源表「${table}」的库名与源端数据库「${configuredDb}」不一致，请只填表名`);
           return;
         }
@@ -651,7 +662,15 @@ const TaskEditor: React.FC<{
             <div className="di-tables">
               <div className="di-tables__head">
                 <span />
-                <span>源表名（库名由源端数据库决定）</span>
+                <span>
+                  {form.sourceType === 'sqlserver' || form.sourceType === 'db2'
+                    ? '源表名（可填 schema.表名）'
+                    : form.sourceType === 'oracle'
+                      ? '源表名（schema 由源端配置决定）'
+                      : form.sourceType === 'mongodb'
+                        ? '集合名（库名由源端数据库决定）'
+                        : '源表名（库名由源端数据库决定）'}
+                </span>
                 <span>排除字段（逗号分隔，可留空）</span>
                 <span />
               </div>
@@ -661,7 +680,7 @@ const TaskEditor: React.FC<{
                   <input
                     className="di-input"
                     value={table.sourceTable}
-                    placeholder="如 orders"
+                    placeholder={form.sourceType === 'sqlserver' || form.sourceType === 'db2' ? '如 dbo.orders' : '如 orders'}
                     onChange={e => patchTable(table.uid, { sourceTable: e.target.value })}
                   />
                   <input
