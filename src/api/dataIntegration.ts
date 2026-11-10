@@ -58,6 +58,10 @@ export interface IntegrationTaskVO {
   taskName: string;
   taskCode: string;
   description: string;
+  /** 所属项目（dev_project），历史任务可能为空 */
+  projectId?: number | null;
+  projectCode?: string | null;
+  projectName?: string | null;
   sourceType: string;
   sourceTypeLabel: string;
   /** 一份源端连接配置 */
@@ -91,6 +95,8 @@ export interface IntegrationTaskDTO {
   taskName: string;
   taskCode?: string;
   description?: string;
+  /** 所属项目（dev_project.id），上线时其 project_code 作为血缘 namespace */
+  projectId: number;
   sourceType: string;
   sourceConfig: StageConfig;
   targetType: string;

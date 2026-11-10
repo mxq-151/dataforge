@@ -18,6 +18,9 @@ import {
 } from 'lucide-react';
 import { useToast } from '../../components/Toast';
 import dataIntegrationApi from '../../api/dataIntegration';
+import { fetchProjectList } from '../../api/devProject';
+import type { ProjectInfo } from '../../api/devProject';
+import { useAuth } from '../../contexts/AuthContext';
 import type {
   IntegrationOptionsVO,
   IntegrationSubmitLogVO,
@@ -235,6 +238,8 @@ interface FormState {
   taskName: string;
   taskCode: string;
   description: string;
+  /** 所属项目（dev_project.id），上线时其项目编码作为数据血缘 namespace */
+  projectId: number | '';
   clusterType: string;
   jobMode: string;
   triggerType: string;
@@ -283,7 +288,11 @@ const TaskEditor: React.FC<{
   onSaved: () => void;
 }> = ({ options, task, onClose, onSaved }) => {
   const toast = useToast();
+  const { user } = useAuth();
   const [saving, setSaving] = useState(false);
+  const [projects, setProjects] = useState<ProjectInfo[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(true);
+  const [projectError, setProjectError] = useState<string | null>(null);
 
   const [form, setForm] = useState<FormState>(() => {
     if (task) {
@@ -293,6 +302,7 @@ const TaskEditor: React.FC<{
         taskName: task.taskName,
         taskCode: task.taskCode,
         description: task.description || '',
+        projectId: task.projectId ?? '',
         clusterType: task.clusterType,
         jobMode: task.jobMode || 'BATCH',
         triggerType: task.triggerType || 'MANUAL',
@@ -318,6 +328,7 @@ const TaskEditor: React.FC<{
       taskName: '',
       taskCode: '',
       description: '',
+      projectId: '',
       clusterType: options.clusterTypes[0]?.code || 'flink-standalone',
       jobMode: 'BATCH',
       triggerType: 'MANUAL',
@@ -341,6 +352,38 @@ const TaskEditor: React.FC<{
       setForm(prev => ({ ...prev, paramRows: [{ key: '', value: '' }] }));
     }
   }, [form.paramMode, form.paramRows.length]);
+
+  // 项目下拉与「开发助手」共用 /development/project/list：后端不做用户过滤，
+  // 这里按登录用户的 projectCodes 收敛可见范围（超管全量），与开发助手项目列表一致。
+  useEffect(() => {
+    let active = true;
+    setProjectsLoading(true);
+    setProjectError(null);
+    fetchProjectList({ current: 1, size: 100 })
+      .then(res => {
+        if (!active) return;
+        if (res.code !== 200) throw new Error(res.message || '获取项目列表失败');
+        setProjects(res.data?.records || []);
+      })
+      .catch(e => {
+        if (active) setProjectError(e instanceof Error ? e.message : '获取项目列表失败');
+      })
+      .finally(() => {
+        if (active) setProjectsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const visibleProjects = useMemo(() => {
+    if (user?.isSuperAdmin) return projects;
+    const allowed = user?.projectCodes;
+    if (!allowed || allowed.length === 0) return [];
+    return projects.filter(project =>
+      allowed.some(pc => pc.projectCode === project.projectCode)
+    );
+  }, [projects, user?.isSuperAdmin, user?.projectCodes]);
 
   const sourceTypeMeta = options.sourceTypes.find(item => item.code === form.sourceType);
   const targetTypeMeta = options.targetTypes.find(item => item.code === form.targetType);
@@ -399,6 +442,10 @@ const TaskEditor: React.FC<{
   const handleSave = async () => {
     if (!form.taskName.trim()) {
       toast.error('任务名称不能为空');
+      return;
+    }
+    if (!form.projectId) {
+      toast.error('请选择所属项目（项目编码将作为数据血缘 namespace）');
       return;
     }
     if (!form.targetType) {
@@ -474,6 +521,7 @@ const TaskEditor: React.FC<{
       taskName: form.taskName.trim(),
       taskCode: form.taskCode.trim() || undefined,
       description: form.description.trim(),
+      projectId: Number(form.projectId),
       sourceType: form.sourceType,
       sourceConfig: pickConfig(form.sourceConfig, sourceTypeMeta?.readFields || []),
       targetType: form.targetType,
@@ -590,6 +638,40 @@ const TaskEditor: React.FC<{
                   />
                 </label>
               )}
+              <label className="di-field">
+                <span className="di-field__label">
+                  所属项目<em className="di-field__required">*</em>
+                </span>
+                <select
+                  className="di-input di-select"
+                  value={form.projectId}
+                  disabled={projectsLoading}
+                  onChange={e => set('projectId', e.target.value ? Number(e.target.value) : '')}
+                >
+                  <option value="">
+                    {projectsLoading
+                      ? '加载中...'
+                      : visibleProjects.length === 0
+                        ? '暂无可选项目'
+                        : '请选择所属项目'}
+                  </option>
+                  {form.projectId !== '' && !visibleProjects.some(item => item.id === form.projectId) && (
+                    <option value={form.projectId}>
+                      {task?.projectName || task?.projectCode || `项目#${form.projectId}`}（当前不可见）
+                    </option>
+                  )}
+                  {visibleProjects.map(item => (
+                    <option key={item.id} value={item.id}>
+                      {item.projectName}（{item.projectCode}）
+                    </option>
+                  ))}
+                </select>
+                <span className={`di-form__hint ${form.id && !form.projectId ? 'di-form__hint--warn' : ''}`}>
+                  {form.id && !form.projectId
+                    ? '该历史任务未记录所属项目，请补齐后再保存/上线'
+                    : projectError || '项目列表与开发助手一致；项目编码将作为血缘 namespace'}
+                </span>
+              </label>
               <label className="di-field di-field--wide">
                 <span className="di-field__label">描述</span>
                 <textarea
@@ -941,6 +1023,19 @@ const DetailDrawer: React.FC<{
             <h5>基本信息</h5>
             <dl className="di-meta">
               <div><dt>运行集群</dt><dd>{detail.clusterType}</dd></div>
+              <div>
+                <dt>所属项目</dt>
+                <dd>
+                  {detail.projectId ? (
+                    <>
+                      {detail.projectName || detail.projectCode}
+                      {detail.projectName && detail.projectCode ? `（${detail.projectCode}）` : ''}
+                    </>
+                  ) : (
+                    <span className="di-form__hint di-form__hint--warn">未设置（请编辑任务补齐，否则无法上线）</span>
+                  )}
+                </dd>
+              </div>
               <div><dt>作业模式</dt><dd>{detail.jobMode}</dd></div>
               <div><dt>触发方式</dt><dd>{detail.triggerType}{detail.triggerConfig ? `（${detail.triggerConfig}）` : ''}</dd></div>
               <div><dt>并行度</dt><dd>读 {detail.readParallelism} / 写 {detail.writeParallelism}</dd></div>
@@ -1286,6 +1381,7 @@ const DataIntegrationPanel: React.FC = () => {
             <thead>
               <tr>
                 <th>任务名称</th>
+                <th>所属项目</th>
                 <th>源端 → 目标端</th>
                 <th>表数量</th>
                 <th>运行集群</th>
@@ -1297,9 +1393,9 @@ const DataIntegrationPanel: React.FC = () => {
             </thead>
             <tbody>
               {loading && tasks.length === 0 ? (
-                <tr><td colSpan={8} className="di-table__empty">加载中...</td></tr>
+                <tr><td colSpan={9} className="di-table__empty">加载中...</td></tr>
               ) : tasks.length === 0 ? (
-                <tr><td colSpan={8} className="di-table__empty">暂无数据集成任务，点击右上角「新建任务」开始</td></tr>
+                <tr><td colSpan={9} className="di-table__empty">暂无数据集成任务，点击右上角「新建任务」开始</td></tr>
               ) : (
                 tasks.map(task => (
                   <tr key={task.id}>
@@ -1308,6 +1404,16 @@ const DataIntegrationPanel: React.FC = () => {
                         {task.taskName}
                       </button>
                       <div className="di-table__code">{task.taskCode}</div>
+                    </td>
+                    <td>
+                      {task.projectId ? (
+                        <span title={task.projectCode || ''}>
+                          {task.projectName || task.projectCode}
+                          {task.projectName && task.projectCode ? <div className="di-table__code">{task.projectCode}</div> : null}
+                        </span>
+                      ) : (
+                        <span className="di-form__hint di-form__hint--warn">未设置</span>
+                      )}
                     </td>
                     <td>
                       <div className="di-table__flow">
