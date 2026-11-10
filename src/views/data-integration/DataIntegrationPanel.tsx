@@ -22,6 +22,7 @@ import { fetchProjectList } from '../../api/devProject';
 import type { ProjectInfo } from '../../api/devProject';
 import { useAuth } from '../../contexts/AuthContext';
 import type {
+  IntegrationFieldVO,
   IntegrationOptionsVO,
   IntegrationSubmitLogVO,
   IntegrationTableVO,
@@ -45,6 +46,15 @@ const ACTION_LABEL: Record<string, string> = {
   STATUS: '状态同步',
 };
 
+/** 文件系统目标端（HDFS / S3）的文件格式 → 支持的压缩算法，与后端 FileSinkOptions 保持一致 */
+const FILE_SINK_COMPRESSION: Record<string, string[]> = {
+  parquet: ['none', 'snappy', 'gzip', 'lzo', 'brotli', 'lz4', 'zstd'],
+  orc: ['none', 'zlib', 'snappy', 'lzo', 'lz4'],
+  avro: ['none', 'deflate', 'snappy', 'bzip2', 'xz', 'zstandard', 'zstd'],
+  csv: ['none'],
+  json: ['none'],
+};
+
 function formatTime(value?: string | null): string {
   if (!value) return '-';
   const date = new Date(value);
@@ -65,7 +75,7 @@ const StatusBadge: React.FC<{ status: string; label?: string }> = ({ status, lab
 // ------------------------------------------------------------------ 动态连接参数表单
 
 const DynamicFields: React.FC<{
-  fields: { key: string; label: string; required: boolean; placeholder: string; type: string }[];
+  fields: IntegrationFieldVO[];
   value: Record<string, string>;
   onChange: (next: Record<string, string>) => void;
 }> = ({ fields, value, onChange }) => {
@@ -91,6 +101,17 @@ const DynamicFields: React.FC<{
                 placeholder={field.placeholder}
                 onChange={e => setField(field.key, e.target.value)}
               />
+            ) : field.type === 'select' ? (
+              <select
+                className="di-input di-select"
+                value={value[field.key] ?? ''}
+                onChange={e => setField(field.key, e.target.value)}
+              >
+                <option value="">{field.required ? `请选择${field.label}` : field.placeholder}</option>
+                {(field.options || []).map(option => (
+                  <option key={option} value={option}>{option}</option>
+                ))}
+              </select>
             ) : (
               <input
                 className="di-input"
@@ -467,6 +488,21 @@ const TaskEditor: React.FC<{
     if (missing.length > 0) {
       toast.error(`请填写必填参数：${missing.join('、')}`);
       return;
+    }
+
+    // 文件系统目标端：格式与压缩算法必须兼容（后端保存时同样会校验）
+    if (form.targetType === 'hdfs' || form.targetType === 's3') {
+      const format = String(form.targetConfig.format || 'parquet').toLowerCase();
+      const compression = String(form.targetConfig.compression || '').toLowerCase();
+      const allowed = FILE_SINK_COMPRESSION[format];
+      if (!allowed) {
+        toast.error(`不支持的文件格式：${format}，可选：${Object.keys(FILE_SINK_COMPRESSION).join(' / ')}`);
+        return;
+      }
+      if (compression && compression !== 'auto' && !allowed.includes(compression)) {
+        toast.error(`文件格式 ${format} 不支持压缩算法 ${compression}，可选：${allowed.join(' / ')}`);
+        return;
+      }
     }
 
     if (form.tables.length === 0) {

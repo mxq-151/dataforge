@@ -6,8 +6,10 @@ export interface IntegrationFieldVO {
   label: string;
   required: boolean;
   placeholder: string;
-  /** text / password / textarea */
+  /** text / password / textarea / select */
   type: string;
+  /** type=select 时的可选值 */
+  options?: string[];
 }
 
 export interface DataSourceTypeVO {

@@ -17,6 +17,7 @@ import {
   AGENT_DATA_ARCHITECT,
   AGENT_DATA_DEV,
   AGENT_DATA_RETRIEVER,
+  AGENT_DATA_VERIFIER,
 } from '../../../electron/backend/devAssistantAgents';
 import {
   DEV_ASSISTANT_SUBAGENT_NAMES,
@@ -34,13 +35,15 @@ describe('子代理注册 — 两侧名称必须逐字一致', () => {
     );
   });
 
-  it('渲染侧常量覆盖设计、开发与检索三个子代理', () => {
+  it('渲染侧常量覆盖设计、开发、检索与验收四个子代理', () => {
     expect(AGENT_DATA_ARCHITECT).toBe('data-architect');
     expect(AGENT_DATA_DEV).toBe('data-dev');
     expect(AGENT_DATA_RETRIEVER).toBe('data-retriever');
+    expect(AGENT_DATA_VERIFIER).toBe('data-verifier');
     expect(DEV_ASSISTANT_AGENTS[AGENT_DATA_ARCHITECT]).toBeDefined();
     expect(DEV_ASSISTANT_AGENTS[AGENT_DATA_DEV]).toBeDefined();
     expect(DEV_ASSISTANT_AGENTS[AGENT_DATA_RETRIEVER]).toBeDefined();
+    expect(DEV_ASSISTANT_AGENTS[AGENT_DATA_VERIFIER]).toBeDefined();
   });
 
   it.each(Object.entries(DEV_ASSISTANT_AGENTS))(
@@ -81,10 +84,28 @@ describe('编排章节 — 只下发给 S2 / S3', () => {
     expect(prompt).toContain('子代理失败或返回不完整时，由你补做该表');
   });
 
+  it('验收子代理只核对不修改：独立验收、语法校验、结构化报告三要素齐备', () => {
+    const def = DEV_ASSISTANT_AGENTS[AGENT_DATA_VERIFIER];
+
+    // 验收必须独立：只读不改，问题走报告，由主智能体安排修复
+    expect(def.prompt).toContain('只核对、不修改');
+    expect(def.prompt).toContain('不要修复代码');
+    expect(def.prompt).toContain('验收与开发必须分开');
+    // 语法校验是验收的一部分
+    expect(def.prompt).toContain('compile（Java/Scala）或 sql-validate（SQL）');
+    // 验收以需求 → 设计 → 代码为主线：核对的是"是否符合开发需求要求"
+    expect(def.prompt).toContain('需求 → 设计 → 代码');
+    expect(def.prompt).toContain('都要在代码中找到落地');
+    // 结构化出口：整体结论 + 通过项 + 不通过项 + 待确认
+    expect(def.prompt).toContain('验收结论：通过 / 不通过');
+    expect(def.prompt).toContain('不通过项清单');
+  });
+
   it('S1 不下发编排章节（需求方不参与分派）', () => {
     expect(BUSINESS_REQUESTER_INSTRUCTIONS).not.toContain('多智能体并行编排');
     expect(BUSINESS_REQUESTER_INSTRUCTIONS).not.toContain(AGENT_DATA_DEV);
     expect(BUSINESS_REQUESTER_INSTRUCTIONS).not.toContain(AGENT_DATA_ARCHITECT);
+    expect(BUSINESS_REQUESTER_INSTRUCTIONS).not.toContain(AGENT_DATA_VERIFIER);
   });
 });
 

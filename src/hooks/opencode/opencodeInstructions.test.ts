@@ -24,7 +24,7 @@ import {
   BUSINESS_REQUESTER_INSTRUCTIONS,
   getDeveloperInstructions,
 } from './opencodeInstructions';
-import { AGENT_DATA_ARCHITECT, AGENT_DATA_DEV } from './devAssistantAgents';
+import { AGENT_DATA_ARCHITECT, AGENT_DATA_DEV, AGENT_DATA_VERIFIER } from './devAssistantAgents';
 import { parseQualityRulesFromDesignDoc } from '../../utils/qualityRuleImport';
 import { QUALITY_RULE_TYPES } from '../../types/quality';
 
@@ -498,11 +498,12 @@ describe('数仓开发 — 一个入口编排设计与开发两个子代理', ()
     expect(MERGED).toContain(DATA_DEV_ENGINEER_INSTRUCTIONS);
   });
 
-  it('声明编排者定位，并点名两个子代理', () => {
-    expect(MERGED).toContain('## 任务定位（数仓开发：编排两个子代理完成设计与开发）');
+  it('声明编排者定位，并点名三个子代理', () => {
+    expect(MERGED).toContain('## 任务定位（数仓开发：编排三个子代理完成设计与开发）');
     expect(MERGED).toContain(AGENT_DATA_ARCHITECT);
     expect(MERGED).toContain(AGENT_DATA_DEV);
-    expect(MERGED).toContain('拆表 → 分派 → 汇总 → 校验并落盘');
+    expect(MERGED).toContain(AGENT_DATA_VERIFIER);
+    expect(MERGED).toContain('拆表 → 分派 → 汇总 → 验收并落盘');
   });
 
   it('分派是硬约束：单表也必须分派，且不受各阶段自带阈值约束', () => {
@@ -517,6 +518,33 @@ describe('数仓开发 — 一个入口编排设计与开发两个子代理', ()
   it('阶段门禁存在：没有设计产物不得进入开发', () => {
     expect(MERGED).toContain('## 两阶段执行纪律');
     expect(MERGED).toContain('设计文档与 DDL 落盘并经用户确认之前，禁止进入阶段二');
+    // 子代理按阶段严格先后派生：data-dev 必须等 data-architect 设计落盘后才可分派，
+    // "并行"仅限同一阶段内多张表之间，不得跨阶段同时分派
+    expect(MERGED).toContain('三类子代理严格先后派生');
+    expect(MERGED).toContain('禁止跨阶段并行派生');
+  });
+
+  it('代码验收统一由 data-verifier 独立执行，且与自检互不替代', () => {
+    // 统一口径：自检（产出者）与验收（data-verifier）两道关口，此前散落的
+    // "校验代码结果"表述全部收敛到同一份"交付验收规范"
+    for (const prompt of [DATA_DEV_ENGINEER_INSTRUCTIONS, MERGED]) {
+      expect(prompt).toContain('## 交付验收规范（强约束）');
+      expect(prompt).toContain('自检与验收是两道独立关口');
+      expect(prompt).toContain('自检不能替代验收');
+      expect(prompt).toContain(AGENT_DATA_VERIFIER);
+      // 验收必须换人：产出者不校验自己的代码
+      expect(prompt).toContain('禁止产出者验收自己');
+      // 验收维度随任务描述下发（子代理拿不到主提示词）
+      expect(prompt).toContain('任务描述必须随附验收维度清单');
+    }
+    // 验收是 S3 侧职责，S1/S2 不参与
+    for (const prompt of [BUSINESS_REQUESTER_INSTRUCTIONS, DATA_ARCHITECT_INSTRUCTIONS]) {
+      expect(prompt).not.toContain('## 交付验收规范');
+      expect(prompt).not.toContain(AGENT_DATA_VERIFIER);
+    }
+    // 编排者在收尾必须分派验收并汇报验收结论
+    expect(MERGED).toContain(`**必须分派一个 ${AGENT_DATA_VERIFIER} 子代理**`);
+    expect(MERGED).toContain('的验收结论（通过项、不通过项及修复情况）');
   });
 
   it('两阶段的机器解析契约与并行编排章节全部保留（供下发与校验）', () => {
