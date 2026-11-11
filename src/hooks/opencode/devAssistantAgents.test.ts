@@ -18,6 +18,8 @@ import {
   AGENT_DATA_DEV,
   AGENT_DATA_RETRIEVER,
   AGENT_DATA_VERIFIER,
+  AGENT_METRIC_DESIGNER,
+  AGENT_REQUIREMENT_VERIFIER,
 } from '../../../electron/backend/devAssistantAgents';
 import {
   DEV_ASSISTANT_SUBAGENT_NAMES,
@@ -35,15 +37,19 @@ describe('子代理注册 — 两侧名称必须逐字一致', () => {
     );
   });
 
-  it('渲染侧常量覆盖设计、开发、检索与验收四个子代理', () => {
+  it('渲染侧常量覆盖设计、开发、检索、验收与需求阶段共六个子代理', () => {
     expect(AGENT_DATA_ARCHITECT).toBe('data-architect');
     expect(AGENT_DATA_DEV).toBe('data-dev');
     expect(AGENT_DATA_RETRIEVER).toBe('data-retriever');
     expect(AGENT_DATA_VERIFIER).toBe('data-verifier');
+    expect(AGENT_METRIC_DESIGNER).toBe('metric-designer');
+    expect(AGENT_REQUIREMENT_VERIFIER).toBe('requirement-verifier');
     expect(DEV_ASSISTANT_AGENTS[AGENT_DATA_ARCHITECT]).toBeDefined();
     expect(DEV_ASSISTANT_AGENTS[AGENT_DATA_DEV]).toBeDefined();
     expect(DEV_ASSISTANT_AGENTS[AGENT_DATA_RETRIEVER]).toBeDefined();
     expect(DEV_ASSISTANT_AGENTS[AGENT_DATA_VERIFIER]).toBeDefined();
+    expect(DEV_ASSISTANT_AGENTS[AGENT_METRIC_DESIGNER]).toBeDefined();
+    expect(DEV_ASSISTANT_AGENTS[AGENT_REQUIREMENT_VERIFIER]).toBeDefined();
   });
 
   it.each(Object.entries(DEV_ASSISTANT_AGENTS))(
@@ -58,7 +64,7 @@ describe('子代理注册 — 两侧名称必须逐字一致', () => {
   );
 });
 
-describe('编排章节 — 只下发给 S2 / S3', () => {
+describe('编排章节 — 各阶段只分派自己的子代理', () => {
   it('S2 声明按表分派 data-architect，且产物只能由主智能体写入', () => {
     const prompt = DATA_ARCHITECT_INSTRUCTIONS;
 
@@ -101,11 +107,66 @@ describe('编排章节 — 只下发给 S2 / S3', () => {
     expect(def.prompt).toContain('不通过项清单');
   });
 
-  it('S1 不下发编排章节（需求方不参与分派）', () => {
-    expect(BUSINESS_REQUESTER_INSTRUCTIONS).not.toContain('多智能体并行编排');
-    expect(BUSINESS_REQUESTER_INSTRUCTIONS).not.toContain(AGENT_DATA_DEV);
-    expect(BUSINESS_REQUESTER_INSTRUCTIONS).not.toContain(AGENT_DATA_ARCHITECT);
-    expect(BUSINESS_REQUESTER_INSTRUCTIONS).not.toContain(AGENT_DATA_VERIFIER);
+  it('S1 只分派需求阶段子代理，不跨越到设计与开发链路', () => {
+    const prompt = BUSINESS_REQUESTER_INSTRUCTIONS;
+    expect(prompt).toContain('## 子代理协作与独立校验（需求阶段，强约束）');
+    expect(prompt).toContain(AGENT_DATA_RETRIEVER);
+    expect(prompt).toContain(AGENT_METRIC_DESIGNER);
+    expect(prompt).toContain(AGENT_REQUIREMENT_VERIFIER);
+    // 需求阶段不得跨阶段分派设计与开发子代理
+    expect(prompt).not.toContain(AGENT_DATA_DEV);
+    expect(prompt).not.toContain(AGENT_DATA_ARCHITECT);
+    expect(prompt).not.toContain(AGENT_DATA_VERIFIER);
+    // 旧表述"需求方不参与分派"已失效：需求阶段走自己的编排章节
+    expect(prompt).not.toContain('多智能体并行编排');
+  });
+});
+
+describe('需求阶段子代理 — 起草与校验分离', () => {
+  it('指标起草子代理只产出业务口径，不写文件也不做技术设计', () => {
+    const def = DEV_ASSISTANT_AGENTS[AGENT_METRIC_DESIGNER];
+
+    expect(def.prompt).toContain('不写文件');
+    expect(def.prompt).toContain('不写 SQL');
+    // 指标行必须写全归属规则；否则订单级指标按类目下钻会重复计数
+    expect(def.prompt).toContain('归属或分摊规则');
+    // 列序等机器契约由主智能体随任务描述下发，子代理不自行猜测
+    expect(def.prompt).toContain('按任务描述下发的列序');
+  });
+
+  it('需求校验子代理只核对不修改，三态判定且不替用户决策', () => {
+    const def = DEV_ASSISTANT_AGENTS[AGENT_REQUIREMENT_VERIFIER];
+
+    expect(def.prompt).toContain('只核对、不修改');
+    // 查不到的事项不得默认通过，必须显式判"无法判定"
+    expect(def.prompt).toContain('三态判定');
+    expect(def.prompt).toContain('无法判定');
+    // 需求校验不做技术评审，也不替业务拍板
+    expect(def.prompt).toContain('不替用户做业务决策');
+    expect(def.prompt).toContain('不评价技术实现');
+  });
+
+  it('需求校验子代理的口径完整性规则可逐条判定', () => {
+    const def = DEV_ASSISTANT_AGENTS[AGENT_REQUIREMENT_VERIFIER];
+
+    expect(def.prompt).toContain('## 口径完整性校验规则');
+    // 不允许抽样：每个指标 × 每条规则都要过
+    expect(def.prompt).toContain('不得抽样');
+    for (const rule of [
+      '粒度声明',
+      '计数方式',
+      '比率结构',
+      '时间语义',
+      '限定词可判定',
+      '归属规则',
+      '分摊完整性',
+      '总额守恒',
+      '指标间一致',
+    ]) {
+      expect(def.prompt, `缺少口径规则: ${rule}`).toContain(rule);
+    }
+    // 问题必须可追溯到具体规则，避免只给"口径不完整"的笼统结论
+    expect(def.prompt).toContain('规则编号');
   });
 });
 

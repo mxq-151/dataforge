@@ -20,12 +20,20 @@ export const AGENT_DATA_RETRIEVER = 'data-retriever';
 /** 交付验收子代理：核对代码是否符合开发需求要求，只返回验收报告，不修改任何文件 */
 export const AGENT_DATA_VERIFIER = 'data-verifier';
 
+/** 指标起草子代理：需求阶段一个分析场景一份指标草案，不写文件 */
+export const AGENT_METRIC_DESIGNER = 'metric-designer';
+
+/** 需求校验子代理：独立校验需求文档的口径完备性，只返回报告，不修改任何文件 */
+export const AGENT_REQUIREMENT_VERIFIER = 'requirement-verifier';
+
 /** 全部已注册子代理名称（顺序无意义，仅供一致性断言与提示词列举） */
 export const DEV_ASSISTANT_SUBAGENT_NAMES = [
   AGENT_DATA_ARCHITECT,
   AGENT_DATA_DEV,
   AGENT_DATA_RETRIEVER,
   AGENT_DATA_VERIFIER,
+  AGENT_METRIC_DESIGNER,
+  AGENT_REQUIREMENT_VERIFIER,
 ] as const;
 
 export type DevAssistantSubagentName = (typeof DEV_ASSISTANT_SUBAGENT_NAMES)[number];

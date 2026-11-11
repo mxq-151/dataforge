@@ -24,7 +24,14 @@ import {
   BUSINESS_REQUESTER_INSTRUCTIONS,
   getDeveloperInstructions,
 } from './opencodeInstructions';
-import { AGENT_DATA_ARCHITECT, AGENT_DATA_DEV, AGENT_DATA_VERIFIER } from './devAssistantAgents';
+import {
+  AGENT_DATA_ARCHITECT,
+  AGENT_DATA_DEV,
+  AGENT_DATA_RETRIEVER,
+  AGENT_DATA_VERIFIER,
+  AGENT_METRIC_DESIGNER,
+  AGENT_REQUIREMENT_VERIFIER,
+} from './devAssistantAgents';
 import { parseQualityRulesFromDesignDoc } from '../../utils/qualityRuleImport';
 import { QUALITY_RULE_TYPES } from '../../types/quality';
 
@@ -165,6 +172,65 @@ describe('指标主线 — S1 定义 → S2 继承并编码 → S3 实现并标�
 
   it('S3 代码头 @备注 要求写明所产出的指标编码（机器解析字段未新增，靠备注承载）', () => {
     expect(DATA_DEV_ENGINEER_INSTRUCTIONS).toContain('须在此写明指标编码');
+  });
+});
+
+describe('需求阶段 — 口径完备性与独立校验', () => {
+  it('S1 声明子代理协作与换人校验，不用自检代替独立校验', () => {
+    const prompt = BUSINESS_REQUESTER_INSTRUCTIONS;
+
+    expect(prompt).toContain('## 子代理协作与独立校验（需求阶段，强约束）');
+    expect(prompt).toContain(AGENT_DATA_RETRIEVER);
+    expect(prompt).toContain(AGENT_METRIC_DESIGNER);
+    expect(prompt).toContain(AGENT_REQUIREMENT_VERIFIER);
+    // 校验必须换会话：继承编写方推理只会把"自洽"复核成"正确"
+    expect(prompt).toContain('校验必须换人');
+    expect(prompt).toContain('把自洽当正确');
+    // 业务口径只能由用户拍板
+    expect(prompt).toContain('不得替用户拍板');
+    // 子代理不可用时不阻塞交付，但必须显式标注未完成独立校验
+    expect(prompt).toContain('本次未完成独立校验');
+  });
+
+  it('S1 跨阶段不得分派设计与开发子代理', () => {
+    const prompt = BUSINESS_REQUESTER_INSTRUCTIONS;
+
+    expect(prompt).not.toContain(AGENT_DATA_ARCHITECT);
+    expect(prompt).not.toContain(AGENT_DATA_DEV);
+    expect(prompt).not.toContain(AGENT_DATA_VERIFIER);
+  });
+
+  it('计算口径强制五项要素，且不新增列破坏 7 列解析契约', () => {
+    const prompt = BUSINESS_REQUESTER_INSTRUCTIONS;
+
+    for (const key of ['统计对象与粒度', '计数与去重', '时间口径', '有效性限定', '归属与分摊']) {
+      expect(prompt, `计算口径缺少要素: ${key}`).toContain(key);
+    }
+    // 五项写在同一个单元格内，保持 7 列不变
+    expect(prompt).toContain('用中文分号分隔，不换行');
+  });
+
+  it('下钻维度必须与指标粒度兼容，多归属须写归属规则', () => {
+    const prompt = BUSINESS_REQUESTER_INSTRUCTIONS;
+
+    expect(prompt).toContain('粒度兼容');
+    expect(prompt).toContain('未写归属规则的维度不得声明');
+  });
+
+  it('自检清单按阶段拆分：技术项只进 S2/S3，口径项只进 S1', () => {
+    expect(BUSINESS_REQUESTER_INSTRUCTIONS).not.toContain('命名合规：库名、表名、字段名、程序名');
+    expect(BUSINESS_REQUESTER_INSTRUCTIONS).toContain('口径完备：');
+    expect(BUSINESS_REQUESTER_INSTRUCTIONS).toContain('表格契约：');
+
+    for (const prompt of [DATA_ARCHITECT_INSTRUCTIONS, DATA_DEV_ENGINEER_INSTRUCTIONS]) {
+      expect(prompt).toContain('命名合规：库名、表名、字段名、程序名');
+      expect(prompt).not.toContain('表格契约：');
+    }
+  });
+
+  it('S2 不得替需求补全缺失口径，只能退回待确认', () => {
+    expect(DATA_ARCHITECT_INSTRUCTIONS).toContain('口径缺失不等于可以自行补全');
+    expect(DATA_ARCHITECT_INSTRUCTIONS).toContain('不得只在设计文档里补写而不回写需求文档');
   });
 });
 
