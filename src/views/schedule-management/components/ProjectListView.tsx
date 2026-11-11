@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { FolderKanban, Play, Edit3, Trash2, Plus, RefreshCw } from 'lucide-react';
+import { FolderKanban, Play, Edit3, Trash2, RefreshCw } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
 import {
   PROJECT_PERM_EDIT,
@@ -34,7 +34,6 @@ export interface ProjectListViewProps {
    */
   permissionByCode: ReadonlyMap<string, number> | null;
   onEnterProject: (project: DSProject) => void;
-  onProjectsChanged: () => void;
   onProjectRenamed: (project: DSProject) => void;
   onProjectDeleted: (code: number) => void;
 }
@@ -44,7 +43,6 @@ const ProjectListView: React.FC<ProjectListViewProps> = ({
   refreshToken,
   permissionByCode,
   onEnterProject,
-  onProjectsChanged,
   onProjectRenamed,
   onProjectDeleted,
 }) => {
@@ -107,35 +105,6 @@ const ProjectListView: React.FC<ProjectListViewProps> = ({
       // 搜索词没变（例如连续回车）时不会触发上面的 effect，手动拉一次
       fetchProjects();
     }
-  };
-
-  const handleCreateProject = () => {
-    setInputModal({
-      title: '创建项目',
-      fields: [
-        { key: 'projectName', label: '项目名称', placeholder: '请输入项目名称', required: true },
-        { key: 'description', label: '项目描述', placeholder: '请输入项目描述', type: 'textarea' },
-      ],
-      onConfirm: async (values) => {
-        if (!values.projectName?.trim()) return;
-        setInputModal(null);
-        try {
-          const res = await api.project.create({
-            projectName: values.projectName.trim(),
-            description: values.description?.trim(),
-          });
-          if (res.code === 0) {
-            onProjectsChanged();
-            fetchProjects();
-          } else {
-            setError(res.msg || '创建项目失败');
-          }
-        } catch (e: any) {
-          setError(e.message || '创建失败');
-        }
-      },
-      onCancel: () => setInputModal(null),
-    });
   };
 
   const handleEditProject = (project: DSProject) => {
@@ -214,9 +183,6 @@ const ProjectListView: React.FC<ProjectListViewProps> = ({
               onSearch={handleSearch}
               placeholder="搜索项目..."
             />
-            <button className="sm-btn sm-btn--primary" onClick={handleCreateProject}>
-              <Plus size={14} /> 创建项目
-            </button>
             <button className="sm-btn sm-btn--ghost" onClick={fetchProjects} title="刷新">
               <RefreshCw size={14} className={loading ? 'sm-spin' : undefined} />
             </button>

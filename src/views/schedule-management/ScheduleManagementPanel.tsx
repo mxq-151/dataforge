@@ -157,10 +157,6 @@ const ScheduleManagementPanelInner: React.FC<{
     setTabs(prev => prev.map(t => (t.id === tabId ? { ...t, project: null } : t)));
   }, []);
 
-  const handleProjectsChanged = useCallback(() => {
-    setProjectListRefreshToken(t => t + 1);
-  }, []);
-
   const handleProjectRenamed = useCallback((project: DSProject) => {
     // 同步持有该项目的标签页标题
     setTabs(prev => prev.map(t => (t.project?.code === project.code ? { ...t, project: { ...t.project!, ...project } } : t)));
@@ -276,7 +272,6 @@ const ScheduleManagementPanelInner: React.FC<{
                   refreshToken={projectListRefreshToken}
                   permissionByCode={permissionByCode}
                   onEnterProject={p => handleEnterProject(tab.id, p)}
-                  onProjectsChanged={handleProjectsChanged}
                   onProjectRenamed={handleProjectRenamed}
                   onProjectDeleted={handleProjectDeleted}
                 />
