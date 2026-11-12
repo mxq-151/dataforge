@@ -51,6 +51,7 @@ const AIPanel: React.FC<AIPanelProps> = ({ chatBackend, llmModels, onRollback, o
     compressSession, compressing,
     approveFileChange, rejectFileChange, approveAllFileChanges,
     newSession, loadSession, deleteSession, renameTask,
+    loadSessionMessages,
     setActiveLLMModel,
     taskType, setTaskType,
     client, readPartText, subscribePartText, listSessions,
@@ -216,17 +217,9 @@ const AIPanel: React.FC<AIPanelProps> = ({ chatBackend, llmModels, onRollback, o
     }
   }, [messages, onRollback, sendRollback]);
 
-  // ── Task 工具跳转导航（对齐桌面版 navigateToSession + sessionHref） ──
-  const navigateToSession = useCallback((sessionID: string) => {
-    loadSession(sessionID);
-  }, [loadSession]);
-
-  // sessionHref：dataforge 是桌面应用无 session 路由，返回 undefined
-  // TaskTool 将使用 navigateToSession 进行 SPA 跳转（不支持新窗口打开）
-  const sessionHref = useCallback((_sessionID: string): string | undefined => undefined, []);
-
   // ── sessions 列表（供 TaskTool 回退匹配子 session） ──
-  // 当 client 可用或消息数变化时刷新（task 工具执行后会产生新子 session）
+  // 当 client 可用、消息数变化或执行状态翻转时刷新
+  // （task 工具执行后会产生新子 session，running 开始时也可能已创建）
   const [sessions, setSessions] = useState<Session[]>([]);
   useEffect(() => {
     if (!client) return;
@@ -241,7 +234,7 @@ const AIPanel: React.FC<AIPanelProps> = ({ chatBackend, llmModels, onRollback, o
     return () => {
       cancelled = true;
     };
-  }, [client, messages.length, listSessions]);
+  }, [client, messages.length, busy, listSessions]);
 
   // 上下文压缩处理
   const handleCompress = useCallback(async () => {
@@ -369,8 +362,7 @@ const AIPanel: React.FC<AIPanelProps> = ({ chatBackend, llmModels, onRollback, o
           retry={retry}
           readPartText={readPartText}
           subscribePartText={subscribePartText}
-          navigateToSession={navigateToSession}
-          sessionHref={sessionHref}
+          loadSessionMessages={loadSessionMessages}
           currentSessionID={currentSessionId ?? undefined}
           sessions={sessions}
           onRevert={handleRollback}

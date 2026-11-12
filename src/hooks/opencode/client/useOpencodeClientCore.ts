@@ -148,11 +148,19 @@ export function useOpencodeClientCore(options: UseOpencodeClientCoreOptions): Op
     setCurrentSessionParentID(null);
   }, [setCurrentSessionId, setCurrentSessionParentID]);
 
+  // ── 当前展示会话 ID 的 ref（事件按会话过滤用） ──
+  // 子代理子会话与主会话共享同一个工作目录，SSE 的目录过滤无法区分二者；
+  // 不按 sessionID 再收一道的话，子代理的 user/assistant 消息会被追加到当前
+  // 会话的 messages 里，任务 prompt 会被渲染成「用户」输入。
+  // 渲染期赋值：SSE 回调是异步的，读到的永远是最新会话 ID。
+  const currentSessionIdRef = useRef<string | null>(currentSessionId);
+  currentSessionIdRef.current = currentSessionId;
+
   // ── 记录"已发送的真实用户输入"（用于过滤 sub-agent 注入的内部 user 消息） ──
   const sentUserInputsRef = useRef<Set<string>>(new Set());
 
   // ── 事件订阅与消息状态 ──
-  const events = useOpencodeEvents(addLog, { sentUserInputsRef });
+  const events = useOpencodeEvents(addLog, { sentUserInputsRef, currentSessionIdRef });
 
   // ── 任务历史（需在连接之前：断开连接要清空任务列表，且它要读 clientRef） ──
   const history = useSessionHistory({

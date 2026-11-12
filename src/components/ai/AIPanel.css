@@ -3376,6 +3376,31 @@
   border-left: 2px solid var(--task-tone, #58a6ff);
 }
 
+/* 子代理对话（task 卡片内联展开）：思考 / 工具执行 / 结论 */
+.ai-panel__subagent-transcript {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 360px;
+  overflow-y: auto;
+  min-width: 0;
+  padding-left: 8px;
+  border-left: 2px solid rgba(255, 255, 255, 0.12);
+}
+
+.ai-panel__subagent-transcript-message {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ai-panel__subagent-transcript-empty {
+  font-size: 11px;
+  color: #8b949e;
+  padding: 4px 0;
+}
+
 /* ── TodoDock 新增样式（状态机 + SVG 脉冲） ───────────────────── */
 .ai-panel__todo-dot {
   display: inline-block;

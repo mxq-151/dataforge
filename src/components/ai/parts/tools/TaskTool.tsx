@@ -1,25 +1,24 @@
 /**
- * TaskTool — 子智能体任务卡片（完全对齐桌面版，跳转模式）
+ * TaskTool — 子智能体任务卡片（内联折叠展示）
  *
- * 对齐 opencode 桌面版 task 渲染器（message-part.tsx 1797-1880 行）。
+ * 子代理的思考 / 工具执行 / 结论通过 task 卡片原地展开查看，不再跳转到子会话：
+ * - 折叠态：只显示 agent 名 + 任务描述（running 时带 spinner）
+ * - 展开态：读取子会话消息，按时间顺序渲染 reasoning / 工具卡片 / 文本结论
+ * - 任务仍在运行时按固定间隔轮询刷新（子代理消息不进入主会话事件流）
  *
- * 行为（与桌面版一致）：
- * - hideDetails={true}（写死，不展开任何内容）
- * - 点击左键：navigateToSession(childSessionId) 跳转当前视图到子 session
- * - Cmd/Ctrl/Shift/Alt/中键：走 triggerHref（<a target=_blank>）新窗口打开
- * - childSessionId：优先 metadata.sessionId；缺失时 taskSession 回退匹配
- *
- * trigger 结构：spinner(running) + agent 名(tone 色) + description(+background 标记) + 外跳图标
- *
- * 不再加载子 session 消息、不再内联展开、不再递归 MessageTimeline。
+ * childSessionId：优先 metadata.sessionId；缺失时 taskSession 回退匹配。
  */
 
-import React, { useMemo, useCallback } from 'react';
-import BasicTool from '../BasicTool';
+import React, { useEffect, useMemo, useState } from 'react';
+import BasicTool, { GenericTool } from '../BasicTool';
 import TextShimmer from '../TextShimmer';
+import TextPartDisplay from '../TextPartDisplay';
+import ReasoningPartDisplay from '../ReasoningPartDisplay';
+import { ToolRegistry } from '../ToolRegistry';
+import { renderable } from '../../timeline/projection';
 import { usePartsData } from '../PartsDataContext';
 import type { ToolProps } from '../ToolRegistry';
-import type { Session } from '../../../../types/opencode-backend';
+import type { MessageEntry, Part, Session } from '../../../../types/opencode-backend';
 
 // ── agent tone：4 个固定 tone + 12 色 hash palette ─────────────
 
@@ -77,10 +76,119 @@ function taskSession(
     .sort((a, b) => (b.time?.created ?? 0) - (a.time?.created ?? 0))[0]?.id;
 }
 
+// ── 子代理对话：运行中的刷新间隔 ───────────────────────────────
+// 子代理消息不会进入主会话的 SSE 消息状态（已按 sessionID 过滤），
+// 展开期间用定时拉取保证「思考 / 工具执行 / 结论」能持续可见。
+const SUBAGENT_REFRESH_MS = 1000;
+
+// ── 子代理对话正文 ─────────────────────────────────────────────
+
+interface SubagentTranscriptProps {
+  sessionID: string;
+  /** 子代理是否仍在运行（运行中才轮询刷新） */
+  running: boolean;
+}
+
+/** 从 tool part 提取渲染器所需的 props（与 ToolPartDisplay 的取值口径一致） */
+function toolPartProps(part: Part): ToolProps {
+  const toolPart = part as any;
+  const state = toolPart.state ?? {};
+  return {
+    tool: toolPart.tool,
+    input: (state.input ?? {}) as Record<string, unknown>,
+    metadata: (state.metadata ?? {}) as Record<string, unknown>,
+    output: typeof state.output === 'string' ? state.output : undefined,
+    status: state.status ?? 'pending',
+    defaultOpen: false,
+  };
+}
+
+const SubagentTranscript: React.FC<SubagentTranscriptProps> = ({ sessionID, running }) => {
+  const { loadSessionMessages } = usePartsData();
+  const [entries, setEntries] = useState<MessageEntry[] | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setInterval> | undefined;
+
+    const load = async () => {
+      try {
+        const result = await loadSessionMessages?.(sessionID);
+        if (cancelled) return;
+        if (result) {
+          setEntries(result);
+          setFailed(false);
+        }
+      } catch {
+        if (!cancelled) setFailed(true);
+      }
+    };
+
+    void load();
+    if (running) timer = setInterval(() => { void load(); }, SUBAGENT_REFRESH_MS);
+
+    return () => {
+      cancelled = true;
+      if (timer) clearInterval(timer);
+    };
+  }, [sessionID, running, loadSessionMessages]);
+
+  // 只展示子代理自己的输出：跳过主会话注入的任务 prompt（user 消息）
+  const assistantEntries = useMemo(
+    () => (entries ?? []).filter((entry) => entry.info.role === 'assistant'),
+    [entries],
+  );
+
+  if (failed && !entries) {
+    return <div className="ai-panel__subagent-transcript-empty">子代理对话读取失败</div>;
+  }
+
+  if (!entries) {
+    return <div className="ai-panel__subagent-transcript-empty">正在读取子代理对话...</div>;
+  }
+
+  if (assistantEntries.length === 0) {
+    return (
+      <div className="ai-panel__subagent-transcript-empty">
+        {running ? '子代理正在执行，等待输出...' : '子代理没有输出内容'}
+      </div>
+    );
+  }
+
+  return (
+    <div className="ai-panel__subagent-transcript">
+      {assistantEntries.map((entry) => {
+        const parts = entry.parts.filter((part) => {
+          if (!renderable(part)) return false;
+          // 压缩标记不属于子代理对话内容
+          return part.type === 'text' || part.type === 'reasoning' || part.type === 'tool';
+        });
+        if (parts.length === 0) return null;
+
+        return (
+          <div className="ai-panel__subagent-transcript-message" key={entry.info.id}>
+            {parts.map((part) => {
+              if (part.type === 'text') {
+                return <TextPartDisplay key={part.id} part={part} message={entry.info} />;
+              }
+              if (part.type === 'reasoning') {
+                return <ReasoningPartDisplay key={part.id} part={part} message={entry.info} />;
+              }
+              const Renderer = ToolRegistry.render((part as any).tool) ?? GenericTool;
+              return <Renderer key={part.id} {...toolPartProps(part)} />;
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
 // ── TaskTool 组件 ─────────────────────────────────────────────
 
-const TaskTool: React.FC<ToolProps> = ({ input, metadata, status }) => {
-  const { navigateToSession, sessionHref, currentSessionID, sessions } = usePartsData();
+const TaskTool: React.FC<ToolProps> = ({ input, metadata, status, open, onOpenChange }) => {
+  const { loadSessionMessages, currentSessionID, sessions } = usePartsData();
 
   const subagentType = String(input.subagent_type ?? input.agent ?? 'sub-agent');
   const description = String(input.description ?? '');
@@ -105,27 +213,6 @@ const TaskTool: React.FC<ToolProps> = ({ input, metadata, status }) => {
     return value;
   }, [description, childSessionId, isBackground]);
 
-  // triggerHref：用于 Cmd/中键新窗口
-  const href = useMemo(() => {
-    if (!childSessionId) return undefined;
-    return sessionHref?.(childSessionId);
-  }, [childSessionId, sessionHref]);
-
-  const clickable = !!(childSessionId && (navigateToSession || href));
-
-  // 左键 SPA 跳转；修饰键放行默认行为（新窗口）
-  const onTriggerClick = useCallback(
-    (e: React.MouseEvent<HTMLElement>) => {
-      if (!navigateToSession) return;
-      // 非左键或带修饰键 → 放行（走 <a> 默认新窗口）
-      if (e.button !== 0 || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
-      if (!childSessionId) return;
-      e.preventDefault();
-      navigateToSession(childSessionId);
-    },
-    [navigateToSession, childSessionId],
-  );
-
   // 构建 trigger 内容（自定义 JSX，非 TriggerTitle）
   const triggerContent = (
     <div className="ai-panel__basic-tool-info">
@@ -148,26 +235,25 @@ const TaskTool: React.FC<ToolProps> = ({ input, metadata, status }) => {
           <span className="ai-panel__basic-tool-subtitle">{subtitle}</span>
         )}
       </div>
-      {clickable && (
-        <span className="ai-panel__task-tool-action" aria-hidden="true">
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <path d="M4 4h4v4M8 4L3.5 8.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </span>
-      )}
     </div>
   );
+
+  // 无子会话（拿不到 childSessionId）或没有读取能力时不提供展开
+  const expandable = !!(childSessionId && loadSessionMessages);
 
   return (
     <BasicTool
       status={status}
-      hideDetails
+      allowPendingToggle
+      open={open}
+      onOpenChange={onOpenChange}
       trigger={triggerContent}
-      triggerHref={href}
-      clickable={clickable}
-      onTriggerClick={onTriggerClick}
       className="ai-panel__basic-tool--sub-agent"
-    />
+    >
+      {expandable ? (
+        <SubagentTranscript sessionID={childSessionId!} running={isRunning} />
+      ) : null}
+    </BasicTool>
   );
 };
 

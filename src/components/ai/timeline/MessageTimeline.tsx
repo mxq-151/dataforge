@@ -12,7 +12,8 @@
  * - follow 逻辑：用户在底部 80px 内时自动跟随滚动
  * - renderRow switch 分发到各行渲染组件
  * - renderAssistantPartGroup：context group → ContextToolGroup，part group → MessagePart
- * - PartsDataProvider 包裹，透传 navigateToSession/sessionHref/readPartText
+ * - PartsDataProvider 包裹，透传 loadSessionMessages/currentSessionID/readPartText
+ *   （task 工具内联展开子代理对话时读取子会话消息）
  *
  * 简化项（相对桌面版）：
  * - 无 resize pin 防跳变逻辑（用 measureElement 自动测量替代）
@@ -76,10 +77,8 @@ export interface MessageTimelineProps {
   readPartText?: (partID: string, part: Part) => string;
   /** 订阅 part 流式文本变化（把逐字重渲染限制在该 part 内） */
   subscribePartText?: (partID: string, listener: () => void) => () => void;
-  /** 跳转到子 session（task 工具点击行为） */
-  navigateToSession?: (sessionID: string) => void;
-  /** 生成 session 链接（用于 triggerHref 新窗口） */
-  sessionHref?: (sessionID: string) => string | undefined;
+  /** 只读读取指定会话的消息（task 工具内联展开子代理对话用，不切换当前会话） */
+  loadSessionMessages?: (sessionID: string) => Promise<MessageEntry[]>;
   /** 当前 session ID（task 工具回退匹配用） */
   currentSessionID?: string;
   /** 全部 session 列表（task 工具回退匹配用） */
@@ -150,8 +149,7 @@ const MessageTimeline: React.FC<MessageTimelineProps> = ({
   showReasoning = true,
   readPartText,
   subscribePartText,
-  navigateToSession,
-  sessionHref,
+  loadSessionMessages,
   currentSessionID,
   sessions,
   onRevert,
@@ -391,10 +389,10 @@ const MessageTimeline: React.FC<MessageTimelineProps> = ({
     [entryByID, onRevert, revertDisabled, renderAssistantPartGroup, retry, todoDock, fileReview, subagentTaskMessageID],
   );
 
-  // PartsDataProvider 值（透传导航和流式文本读取）
+  // PartsDataProvider 值（透传子会话读取和流式文本读取）
   const partsDataValue = useMemo(
-    () => ({ navigateToSession, sessionHref, currentSessionID, sessions, readPartText, subscribePartText }),
-    [navigateToSession, sessionHref, currentSessionID, sessions, readPartText, subscribePartText],
+    () => ({ loadSessionMessages, currentSessionID, sessions, readPartText, subscribePartText }),
+    [loadSessionMessages, currentSessionID, sessions, readPartText, subscribePartText],
   );
 
   // 空状态

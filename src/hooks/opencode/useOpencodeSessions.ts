@@ -36,6 +36,51 @@ export interface UseOpencodeSessionsReturn {
  */
 const MESSAGE_PAGE_SIZE = 200;
 
+/**
+ * 读取指定会话的全部历史消息（只读，不切换当前会话）。
+ *
+ * 借鉴 OpenCode 官方 app 的游标分页机制：
+ * 1. 调用 session.messages({ sessionID, limit, before }) 获取消息页
+ * 2. 从 HTTP 响应头 x-next-cursor 获取下一页游标
+ * 3. 循环加载直到游标为空（所有消息已加载完毕）
+ *
+ * 子代理内联展开（task 工具）也复用它读取子会话内容，
+ * 因此不能带任何「设置当前会话」的副作用。
+ */
+export async function fetchSessionMessages(
+  client: OpencodeClient,
+  sessionId: string,
+): Promise<MessageEntry[]> {
+  const allEntries: MessageEntry[] = [];
+  let cursor: string | undefined = undefined;
+  let pageNum = 0;
+  const maxPages = 50; // 安全上限：最多加载 50 页 = 10000 条消息
+
+  while (pageNum < maxPages) {
+    const messagesParams: { sessionID: string; limit: number; before?: string } = {
+      sessionID: sessionId,
+      limit: MESSAGE_PAGE_SIZE,
+    };
+    if (cursor) messagesParams.before = cursor;
+    const result = await client.session.messages(messagesParams);
+
+    // 数据在 result.data 中（HeyApiClient 自动解包）
+    const page: MessageEntry[] = Array.isArray(result.data) ? result.data : [];
+    allEntries.push(...page);
+
+    // 检查下一页游标（参考 OpenCode app 的 directory-sync.ts:307）
+    const nextCursor: string | undefined =
+      result.response?.headers?.get("x-next-cursor") ?? undefined;
+
+    if (!nextCursor) break; // 所有消息已加载完毕
+
+    cursor = nextCursor;
+    pageNum++;
+  }
+
+  return allEntries;
+}
+
 export function useOpencodeSessions(): UseOpencodeSessionsReturn {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [currentSessionParentID, setCurrentSessionParentID] = useState<string | null>(null);
@@ -61,12 +106,8 @@ export function useOpencodeSessions(): UseOpencodeSessionsReturn {
   /**
    * 加载会话的全部历史消息。
    *
-   * 借鉴 OpenCode 官方 app 的游标分页机制：
-   * 1. 调用 session.messages({ sessionID, limit, before }) 获取消息页
-   * 2. 从 HTTP 响应头 x-next-cursor 获取下一页游标
-   * 3. 循环加载直到游标为空（所有消息已加载完毕）
-   *
-   * v2 SDK 的 messages 参数已扁平化：sessionID/limit/before 直传，无需 path/query 包裹。
+   * 分页拉取逻辑见 fetchSessionMessages；这里额外读取会话元信息
+   * （parentID 表示这是子代理会话，其首条 user 消息是主会话注入的任务 prompt）。
    */
   const loadSession = useCallback(async (
     client: OpencodeClient | null,
@@ -80,34 +121,7 @@ export function useOpencodeSessions(): UseOpencodeSessionsReturn {
       setCurrentSessionId(sessionId);
       setCurrentSessionParentID(sessionResult.data?.parentID ?? null);
 
-      const allEntries: MessageEntry[] = [];
-      let cursor: string | undefined = undefined;
-      let pageNum = 0;
-      const maxPages = 50; // 安全上限：最多加载 50 页 = 10000 条消息
-
-      while (pageNum < maxPages) {
-        const messagesParams: { sessionID: string; limit: number; before?: string } = {
-          sessionID: sessionId,
-          limit: MESSAGE_PAGE_SIZE,
-        };
-        if (cursor) messagesParams.before = cursor;
-        const result = await client.session.messages(messagesParams);
-
-        // 数据在 result.data 中（HeyApiClient 自动解包）
-        const page: MessageEntry[] = Array.isArray(result.data) ? result.data : [];
-        allEntries.push(...page);
-
-        // 检查下一页游标（参考 OpenCode app 的 directory-sync.ts:307）
-        const nextCursor: string | undefined =
-          result.response?.headers?.get("x-next-cursor") ?? undefined;
-
-        if (!nextCursor) break; // 所有消息已加载完毕
-
-        cursor = nextCursor;
-        pageNum++;
-      }
-
-      return allEntries;
+      return await fetchSessionMessages(client, sessionId);
     } catch (err) {
       console.error('[agent-sessions] loadSession error:', err);
       return [];

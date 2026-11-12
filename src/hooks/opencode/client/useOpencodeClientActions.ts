@@ -18,6 +18,7 @@ import type { MessageEntry, Todo } from '../../../types/opencode-backend';
 import type { OpencodeClientBackend } from './types';
 import type { WorkspaceStrategy } from './workspace';
 import type { OpencodeClientCore } from './useOpencodeClientCore';
+import { fetchSessionMessages } from '../useOpencodeSessions';
 
 export interface OpencodeClientActions {
   sendMessage: (line: string) => Promise<void>;
@@ -31,6 +32,8 @@ export interface OpencodeClientActions {
 
   newSession: () => Promise<void>;
   loadSession: (sessionId: string) => Promise<void>;
+  /** 只读读取指定会话的消息（子代理内联展开用，不切换当前会话） */
+  loadSessionMessages: (sessionId: string) => Promise<MessageEntry[]>;
   listSessions: () => Promise<import('@opencode-ai/sdk/v2/client').Session[]>;
   deleteSession: (sessionId: string) => Promise<void>;
   renameTask: (sessionId: string, newTitle: string) => Promise<void>;
@@ -292,6 +295,26 @@ export function useOpencodeClientActions(
   }, [listSessionsRaw, clientRef]);
 
   /**
+   * 只读读取指定会话的消息（子代理内联展开用）。
+   * 不修改 currentSessionId —— 子代理内容在主会话的 task 卡片内展示，不切换视图。
+   */
+  const loadSessionMessages = useCallback(async (sessionId: string): Promise<MessageEntry[]> => {
+    const c = clientRef.current;
+    if (!c) return [];
+    try {
+      return await fetchSessionMessages(c, sessionId);
+    } catch (err) {
+      addLog({
+        source: 'agent',
+        text: `读取子代理会话消息失败: ${err instanceof Error ? err.message : String(err)}`,
+        timestamp: new Date(),
+        level: 'warn',
+      });
+      return [];
+    }
+  }, [clientRef, addLog]);
+
+  /**
    * 删除会话（下拉框「任务历史」里那一行）。
    *
    * 顺序：**先本地、后服务端**——这是本函数唯一重要的约定：
@@ -345,6 +368,7 @@ export function useOpencodeClientActions(
     compressing,
     newSession,
     loadSession,
+    loadSessionMessages,
     listSessions,
     deleteSession,
     renameTask,
@@ -432,6 +456,7 @@ export function useOpencodeClientValue(
 
     newSession: actions.newSession,
     loadSession: actions.loadSession,
+    loadSessionMessages: actions.loadSessionMessages,
     listSessions: actions.listSessions,
     deleteSession: actions.deleteSession,
     renameTask: actions.renameTask,

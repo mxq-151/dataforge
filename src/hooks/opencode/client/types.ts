@@ -115,6 +115,8 @@ export interface OpencodeClientBackend {
 
   newSession: () => Promise<void>;
   loadSession: (sessionId: string) => Promise<void>;
+  /** 只读读取指定会话的消息（子代理内联展开用，不切换当前会话） */
+  loadSessionMessages: (sessionId: string) => Promise<MessageEntry[]>;
   listSessions: () => Promise<import('../../../types/opencode-backend').Session[]>;
   deleteSession: (sessionId: string) => Promise<void>;
   /** 重命名任务（通过 SDK session.update 更新标题） */

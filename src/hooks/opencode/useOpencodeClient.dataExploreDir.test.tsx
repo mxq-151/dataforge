@@ -8,8 +8,8 @@
  *   00:35:27.918  connected working dir: .../admin/individual                 ← 13ms 后被拉回
  *   00:35:27.926  订阅 SSE 事件流 — directory=.../admin/individual             ← 订阅跟着跑掉
  * 会话目录那次连接**从未产生自己的订阅**（日志里没有 directory=...1791736527892 的订阅行）。
- * 前端按「事件目录 == 订阅目录」过滤 SSE（useOpencodeEvents.ts；子代理会话共享父目录，
- * 故不能改按 sessionID 过滤），于是该会话的事件被整条丢弃：
+ * 前端按「事件目录 == 订阅目录」过滤 SSE（useOpencodeEvents.ts；目录过滤负责跨模块隔离，
+ * 子代理子会话与父会话同目录，另由 sessionID 过滤区分），于是该会话的事件被整条丢弃：
  *   用户消息有本地回显、智能体回复永不上屏；切到别的会话再切回来（loadSession 直读
  *   服务端 session.messages）才看得到回复。
  *

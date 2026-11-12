@@ -2,22 +2,20 @@
  * PartsDataContext — Part 渲染层数据上下文
  *
  * 对齐 opencode 桌面版 useData（session-ui/src/context/data.tsx）。
- * 提供导航回调、会话链接生成、当前会话信息、流式文本读取等，
+ * 提供会话读取、当前会话信息、流式文本读取等，
  * 供 ToolPartDisplay / TaskTool / TextPartDisplay 等组件消费。
  *
  * 桌面版通过 SolidJS Context 注入；dataforge 用 React Context 适配。
  */
 
 import React, { createContext, useContext } from 'react';
-import type { Part, Session } from '../../../types/opencode-backend';
+import type { Part, Session, MessageEntry } from '../../../types/opencode-backend';
 
 // ── 上下文值类型 ───────────────────────────────────────────────
 
 export interface PartsDataValue {
-  /** 跳转到子 session（task 工具点击行为） */
-  navigateToSession?: (sessionID: string) => void;
-  /** 生成 session 链接（用于 triggerHref，支持 Cmd/中键新窗口） */
-  sessionHref?: (sessionID: string) => string | undefined;
+  /** 只读读取指定会话的消息（task 工具内联展开子代理对话用，不切换当前会话） */
+  loadSessionMessages?: (sessionID: string) => Promise<MessageEntry[]>;
   /** 当前 session ID（用于 task 工具的 taskSession 回退匹配） */
   currentSessionID?: string;
   /** 全部 session 列表（用于 task 工具的 taskSession 回退匹配） */
@@ -40,8 +38,7 @@ export interface PartsDataProviderProps extends PartsDataValue {
 }
 
 export const PartsDataProvider: React.FC<PartsDataProviderProps> = ({
-  navigateToSession,
-  sessionHref,
+  loadSessionMessages,
   currentSessionID,
   sessions,
   readPartText,
@@ -49,8 +46,8 @@ export const PartsDataProvider: React.FC<PartsDataProviderProps> = ({
   children,
 }) => {
   const value = React.useMemo<PartsDataValue>(
-    () => ({ navigateToSession, sessionHref, currentSessionID, sessions, readPartText, subscribePartText }),
-    [navigateToSession, sessionHref, currentSessionID, sessions, readPartText, subscribePartText],
+    () => ({ loadSessionMessages, currentSessionID, sessions, readPartText, subscribePartText }),
+    [loadSessionMessages, currentSessionID, sessions, readPartText, subscribePartText],
   );
   return <PartsDataContext.Provider value={value}>{children}</PartsDataContext.Provider>;
 };

@@ -62,6 +62,8 @@ export interface BasicToolProps {
   status?: string;
   /** 是否隐藏详情（仅显示 trigger，不渲染展开内容） */
   hideDetails?: boolean;
+  /** pending/running 状态下是否仍允许展开/折叠（如子代理执行中查看其对话） */
+  allowPendingToggle?: boolean;
   /** 默认是否展开 */
   defaultOpen?: boolean;
   /** 受控展开状态 */
@@ -93,6 +95,7 @@ const BasicTool: React.FC<BasicToolProps> = ({
   children,
   status,
   hideDetails = false,
+  allowPendingToggle = false,
   defaultOpen = false,
   open: controlledOpen,
   onOpenChange,
@@ -130,12 +133,12 @@ const BasicTool: React.FC<BasicToolProps> = ({
   }, [forceOpen, open, setOpen]);
 
   const handleToggle = useCallback(() => {
-    // pending/running 时禁止操作
-    if (pending) return;
+    // pending/running 时默认禁止操作（allowPendingToggle 场景除外）
+    if (pending && !allowPendingToggle) return;
     // locked 时禁止关闭
     if (locked && open) return;
     setOpen(!open);
-  }, [pending, locked, open, setOpen]);
+  }, [pending, allowPendingToggle, locked, open, setOpen]);
 
   // 渲染触发器内容
   const triggerContent = useMemo(() => {
@@ -191,7 +194,7 @@ const BasicTool: React.FC<BasicToolProps> = ({
   }, [trigger, open, pending, onSubtitleClick]);
 
   const showContent = hasChildren && !hideDetails;
-  const showArrow = showContent && !pending;
+  const showArrow = showContent && (!pending || allowPendingToggle);
 
   // ── deferred mount：重 DOM 工具首屏按帧分批挂载 ──────────────
   // 对齐桌面版 basic-tool.tsx 的 defer 机制，适配 React hooks。
@@ -241,7 +244,7 @@ const BasicTool: React.FC<BasicToolProps> = ({
           onTriggerClick?.(e);
           handleToggle();
         }}
-        disabled={pending}
+        disabled={pending && !allowPendingToggle}
         showArrow={showArrow}
         href={triggerHref}
         className="ai-panel__basic-tool-trigger"

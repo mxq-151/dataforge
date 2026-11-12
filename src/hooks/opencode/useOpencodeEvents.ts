@@ -155,13 +155,24 @@ export interface UseOpencodeEventsOptions {
    * 该 user 消息会被视为"内部消息"并从列表中移除。
    */
   sentUserInputsRef?: MutableRefObject<Set<string>>;
+  /**
+   * 当前展示会话 ID 的 ref（随会话切换保持最新）。
+   *
+   * 子代理子会话与主会话共享同一个工作目录，SSE 的目录过滤拦不住它们：
+   * 子会话的 user/assistant 消息事件会进入当前会话的消息列表，
+   * 表现为子代理的任务 prompt 被渲染成「用户」输入、子代理回复混进主对话。
+   * 提供该 ref 后，会话级事件（消息 / todo / 状态 / 压缩）只处理属于当前会话的部分。
+   *
+   * 不传时不做会话过滤（性能基准页直接驱动合成事件流，没有真实会话）。
+   */
+  currentSessionIdRef?: MutableRefObject<string | null>;
 }
 
 export function useOpencodeEvents(
   addLog: (entry: LogEntry) => void,
   options: UseOpencodeEventsOptions = {}
 ): UseOpencodeEventsReturn {
-  const { sentUserInputsRef } = options;
+  const { sentUserInputsRef, currentSessionIdRef } = options;
   const [messages, setMessages] = useState<MessageEntry[]>([]);
   const [busy, setBusy] = useState(false);
   const [busyLabel, setBusyLabel] = useState<string | undefined>(undefined);
@@ -919,6 +930,24 @@ export function useOpencodeEvents(
 
 
   /**
+   * 事件是否属于当前展示的会话。
+   *
+   * 子代理子会话与主会话共享工作目录，目录过滤无法区分二者，
+   * 这里按 sessionID 再收一道，避免子代理的消息被渲染进当前会话的时间线。
+   *
+   * - 未提供 currentSessionIdRef（性能基准页）：不过滤，保持原行为
+   * - 当前未选定会话：丢弃（此时界面不展示任何会话，任何会话的事件都属于串扰）
+   * - 事件不带 sessionID：无法判定，放行
+   */
+  function belongsToCurrentSession(sessionID: unknown): boolean {
+    if (!currentSessionIdRef) return true;
+    const current = currentSessionIdRef.current;
+    if (!current) return false;
+    if (typeof sessionID !== 'string' || !sessionID) return true;
+    return sessionID === current;
+  }
+
+  /**
    * 处理单个 SSE 事件（event = GlobalEvent.payload = Event 联合类型）
    */
   function handleEvent(event: any) {
@@ -962,6 +991,8 @@ export function useOpencodeEvents(
         // v2 SessionStatus = { type: "idle" } | { type: "busy" } | { type: "retry", attempt, message, next, action? }
         // busy 状态无 label 字段，客户端固定显示"正在思考..."（对齐桌面版 ui.sessionTurn.status.thinking）
         // retry 期间保持 busy=true（对齐桌面版：retry 是 busy 的子态，避免 TodoDock 误判 idle）
+        // 子代理会话的忙碌状态不代表当前会话，按 sessionID 过滤
+        if (!belongsToCurrentSession(props.sessionID)) break;
         const st = props.status?.type;
         if (st === 'busy') {
           setBusy(true);
@@ -993,6 +1024,7 @@ export function useOpencodeEvents(
 
       case 'session.idle':
         // EventSessionIdle.properties = { sessionID }
+        if (!belongsToCurrentSession(props.sessionID)) break;
         setBusy(false);
         setBusyLabel(undefined);
         setRetry(null);
@@ -1017,6 +1049,8 @@ export function useOpencodeEvents(
       case 'session.compacted': {
         // EventSessionCompacted.properties = { sessionID }
         // 服务端已完成会话历史压缩（session.summarize 调用完成）。
+        // 子代理会话的压缩不应重置当前会话的 token 进度条。
+        if (!belongsToCurrentSession(props.sessionID)) break;
         //
         // 处理逻辑：
         // 1. 设置 skipNextStepFinish 标志，跳过压缩步骤自己的 step-finish（其 input
@@ -1049,6 +1083,9 @@ export function useOpencodeEvents(
         // EventMessageUpdated.properties = { info: Message }
         const info = props.info as any;
         if (!info?.id) break;
+        // 只处理当前展示会话的消息：子代理子会话共享工作目录，
+        // 其 user 消息（任务 prompt）若不拦截会被渲染成「用户」输入
+        if (!belongsToCurrentSession(info.sessionID ?? props.sessionID)) break;
 
         // ── AssistantMessage 的 tokens 更新上下文使用量 ──
         // AssistantMessage.tokens 包含该消息完整的 token 统计，
@@ -1128,6 +1165,7 @@ export function useOpencodeEvents(
         const deltaField = props.field as string;
         const deltaText = props.delta as string;
         if (!deltaMessageId || !deltaPartId || !deltaText) break;
+        if (!belongsToCurrentSession(props.sessionID)) break;
         if (internalMessageIds.current.has(deltaMessageId)) break;
 
         // 累积到 partTextAccumDelta Map（供 TextPartDisplay 读取流式文本，对齐桌面版 part_text_accum_delta）
@@ -1217,6 +1255,8 @@ export function useOpencodeEvents(
         const part = props.part as Part;
         const messageId = part?.messageID;
         if (!messageId || !part?.id) break;
+        // 子代理子会话的 part 事件不进入当前会话时间线
+        if (!belongsToCurrentSession((part as any).sessionID ?? props.sessionID)) break;
 
         // 如果该消息已被标记为内部消息或已确认为真实用户消息，跳过处理
         if (internalMessageIds.current.has(messageId)) break;
@@ -1343,6 +1383,7 @@ export function useOpencodeEvents(
         const rmMessageId = props.messageID;
         const rmPartId = props.partID;
         if (!rmMessageId || !rmPartId) break;
+        if (!belongsToCurrentSession(props.sessionID)) break;
         setMessages(prev =>
           prev.map(m =>
             m.info.id === rmMessageId
@@ -1357,6 +1398,7 @@ export function useOpencodeEvents(
         // EventMessageRemoved.properties = { sessionID; messageID }
         const removedId = props.messageID;
         if (!removedId) break;
+        if (!belongsToCurrentSession(props.sessionID)) break;
         setMessages(prev => prev.filter(m => m.info.id !== removedId));
         break;
       }
@@ -1462,6 +1504,8 @@ export function useOpencodeEvents(
       // ── Todo 事件 ──
       case 'todo.updated':
         // EventTodoUpdated.properties = { sessionID; todos: Todo[] }
+        // 执行计划属于会话级状态：子代理的 todo 不应覆盖当前会话的计划面板
+        if (!belongsToCurrentSession(props.sessionID)) break;
         console.log('[DEBUG-TODO] todo.updated arrived:', {
           time: new Date().toISOString(),
           count: props.todos?.length,

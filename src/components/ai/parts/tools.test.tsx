@@ -6,7 +6,7 @@
  * - ToolPartDisplay: 分发逻辑、隐藏工具、错误处理、fake pending 修正
  * - BashTool: command 提取、description、ANSI 去除、输出
  * - FileEditTool: edit/write/apply_patch 标题、文件名、diff 统计、defer
- * - TaskTool: agent tone、subagent 类型、导航
+ * - TaskTool: agent tone、subagent 类型、内联折叠展开
  * - SkillTool: skill 名称、hideDetails
  * - WebFetchTool: URL、hideDetails
  * - WebSearchTool: provider 标签、query、URL 提取
@@ -791,7 +791,7 @@ describe('TaskTool', () => {
     expect(container.querySelector('.ai-panel__task-tool-spinner')).not.toBeNull();
   });
 
-  it('hideDetails 模式（无展开内容）', () => {
+  it('无子会话时不渲染展开内容', () => {
     const { container } = render(
       <PartsDataProvider>
         <TaskTool
@@ -803,6 +803,7 @@ describe('TaskTool', () => {
       </PartsDataProvider>,
     );
     expect(container.querySelector('.ai-panel__basic-tool-content')).toBeNull();
+    expect(container.querySelector('.ai-panel__collapsible-arrow')).toBeNull();
   });
 
   it('background 任务追加标记', () => {
@@ -837,26 +838,17 @@ describe('TaskTool', () => {
     expect(style).toMatch(/(#[0-9a-fA-F]{6}|rgb\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*\))/);
   });
 
-  it('有 sessionId 时 triggerHref 可用', () => {
-    const sessionHref = vi.fn((id: string) => `/session/${id}`);
+  it('点击 trigger 原位展开子代理对话（不跳转）', async () => {
+    const loadSessionMessages = vi.fn(async () => [
+      {
+        info: { id: 'a1', role: 'assistant', sessionID: 'child-456', time: { created: 1, completed: 2 } },
+        parts: [
+          { id: 'p1', type: 'text', text: '子代理结论', messageID: 'a1', sessionID: 'child-456' },
+        ],
+      },
+    ]);
     const { container } = render(
-      <PartsDataProvider sessionHref={sessionHref}>
-        <TaskTool
-          tool="task"
-          input={{ subagent_type: 'build', description: 'Build' }}
-          metadata={{ sessionId: 'child-123' }}
-          status="completed"
-        />
-      </PartsDataProvider>,
-    );
-    expect(sessionHref).toHaveBeenCalledWith('child-123');
-    expect(container.querySelector('a[href]')).not.toBeNull();
-  });
-
-  it('点击 trigger 调用 navigateToSession', () => {
-    const navigateToSession = vi.fn();
-    const { container } = render(
-      <PartsDataProvider navigateToSession={navigateToSession}>
+      <PartsDataProvider loadSessionMessages={loadSessionMessages}>
         <TaskTool
           tool="task"
           input={{ subagent_type: 'build', description: 'Build' }}
@@ -867,8 +859,36 @@ describe('TaskTool', () => {
     );
     const trigger = container.querySelector('.ai-panel__collapsible-header');
     expect(trigger).not.toBeNull();
-    fireEvent.click(trigger!);
-    expect(navigateToSession).toHaveBeenCalledWith('child-456');
+    await act(async () => {
+      fireEvent.click(trigger!);
+    });
+    expect(loadSessionMessages).toHaveBeenCalledWith('child-456');
+    expect(await screen.findByText('子代理结论')).not.toBeNull();
+  });
+
+  it('子代理运行中也可展开查看', async () => {
+    const loadSessionMessages = vi.fn(async () => [
+      {
+        info: { id: 'a2', role: 'assistant', sessionID: 'child-789', time: { created: 1 } },
+        parts: [
+          { id: 'p2', type: 'text', text: '执行中的输出', messageID: 'a2', sessionID: 'child-789' },
+        ],
+      },
+    ]);
+    const { container } = render(
+      <PartsDataProvider loadSessionMessages={loadSessionMessages}>
+        <TaskTool
+          tool="task"
+          input={{ subagent_type: 'plan', description: 'Planning' }}
+          metadata={{ sessionId: 'child-789' }}
+          status="running"
+        />
+      </PartsDataProvider>,
+    );
+    await act(async () => {
+      fireEvent.click(container.querySelector('.ai-panel__collapsible-header')!);
+    });
+    expect(container.querySelector('.ai-panel__subagent-transcript')).not.toBeNull();
   });
 });
 
@@ -1498,13 +1518,13 @@ describe('PartsDataContext', () => {
       contextValue = usePartsData();
       return null;
     };
-    const navigateToSession = vi.fn();
+    const loadSessionMessages = vi.fn(async () => []);
     render(
-      <PartsDataProvider navigateToSession={navigateToSession} currentSessionID="s1">
+      <PartsDataProvider loadSessionMessages={loadSessionMessages} currentSessionID="s1">
         <Consumer />
       </PartsDataProvider>,
     );
-    expect(contextValue.navigateToSession).toBe(navigateToSession);
+    expect(contextValue.loadSessionMessages).toBe(loadSessionMessages);
     expect(contextValue.currentSessionID).toBe('s1');
   });
 });
