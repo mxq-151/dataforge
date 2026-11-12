@@ -1,30 +1,37 @@
 /**
- * 开发助手子代理名称（渲染进程侧）。
+ * 开发助手子代理名称（渲染进程侧入口）。
  *
- * 提示词里要按名字指挥主智能体用 task 工具分派子代理，名字写错等于分派失败，
- * 而真正的 agent 定义在 electron 侧（opencode 配置注入，见
- * electron/backend/devAssistantAgents.ts）。两处无法共享同一份代码
- * （electron 的 tsconfig rootDir 锁在 electron/，import src 会让编译产物路径错乱），
- * 因此这里只保留**名称**，并用 devAssistantAgents.test.ts 断言两侧逐字一致。
+ * 名称与定义的单一事实源在 electron/backend/devAssistantAgents.ts（服务端注册表，
+ * 零依赖纯常量）。历史约束是 electron 的 tsconfig rootDir 锁在 electron/、不能
+ * import src；反向没有限制——渲染侧由 vite 构建、无 rootDir，可以直接 import 这个
+ * 纯常量文件。因此这里不再重复定义名称，只做 re-export：两侧一致性由编译期保证，
+ * 不再依赖测试断言兜底。
+ *
+ * 本文件额外维护 DEV_ASSISTANT_SUBAGENT_NAMES 字面量元组与派生类型，
+ * 供提示词插值、类型标注与注册完整性断言使用。
  */
 
-/** 数仓设计子代理：一张表一份设计片段，不写文件 */
-export const AGENT_DATA_ARCHITECT = 'data-architect';
+import {
+  AGENT_ANALYSIS_VERIFIER,
+  AGENT_DATA_ARCHITECT,
+  AGENT_DATA_DEV,
+  AGENT_DATA_RETRIEVER,
+  AGENT_DATA_VERIFIER,
+  AGENT_DESIGN_VERIFIER,
+  AGENT_METRIC_DESIGNER,
+  AGENT_REQUIREMENT_VERIFIER,
+} from '../../../electron/backend/devAssistantAgents';
 
-/** 数据开发子代理：一张目标表的处理程序 + 质检程序，直接落盘 */
-export const AGENT_DATA_DEV = 'data-dev';
-
-/** 检索子代理：把模糊业务词收敛成带证据的库表/知识/血缘结论，不写任何产物 */
-export const AGENT_DATA_RETRIEVER = 'data-retriever';
-
-/** 交付验收子代理：核对代码是否符合开发需求要求，只返回验收报告，不修改任何文件 */
-export const AGENT_DATA_VERIFIER = 'data-verifier';
-
-/** 指标起草子代理：需求阶段一个分析场景一份指标草案，不写文件 */
-export const AGENT_METRIC_DESIGNER = 'metric-designer';
-
-/** 需求校验子代理：独立校验需求文档的口径完备性，只返回报告，不修改任何文件 */
-export const AGENT_REQUIREMENT_VERIFIER = 'requirement-verifier';
+export {
+  AGENT_ANALYSIS_VERIFIER,
+  AGENT_DATA_ARCHITECT,
+  AGENT_DATA_DEV,
+  AGENT_DATA_RETRIEVER,
+  AGENT_DATA_VERIFIER,
+  AGENT_DESIGN_VERIFIER,
+  AGENT_METRIC_DESIGNER,
+  AGENT_REQUIREMENT_VERIFIER,
+};
 
 /** 全部已注册子代理名称（顺序无意义，仅供一致性断言与提示词列举） */
 export const DEV_ASSISTANT_SUBAGENT_NAMES = [
@@ -32,6 +39,8 @@ export const DEV_ASSISTANT_SUBAGENT_NAMES = [
   AGENT_DATA_DEV,
   AGENT_DATA_RETRIEVER,
   AGENT_DATA_VERIFIER,
+  AGENT_DESIGN_VERIFIER,
+  AGENT_ANALYSIS_VERIFIER,
   AGENT_METRIC_DESIGNER,
   AGENT_REQUIREMENT_VERIFIER,
 ] as const;

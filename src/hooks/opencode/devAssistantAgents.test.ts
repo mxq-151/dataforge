@@ -1,23 +1,27 @@
 /**
- * devAssistantAgents.test.ts — 多智能体编排的跨进程契约测试
+ * devAssistantAgents.test.ts — 多智能体编排的注册完整性测试
  *
- * 子代理定义在 electron 侧（opencode 配置注入），提示词在渲染进程侧按名字指挥主智能体
- * 分派。名字写错、子代理没注册、或把机器解析契约复制进子代理 prompt，都会让编排静默失效：
- * 主智能体发出 task 调用 → 服务端找不到 agent → 整批并行任务失败，而提示词测试完全无感。
+ * 子代理定义在 electron 侧（opencode 配置注入），渲染侧经 re-export 复用同一份名称
+ * 常量——两侧一致性已由编译期保证。名称写错、子代理没注册、或把机器解析契约复制进
+ * 子代理 prompt，仍会让编排静默失效：主智能体发出 task 调用 → 服务端找不到 agent →
+ * 整批并行任务失败，而提示词测试完全无感。
  *
  * 因此这里锁三件事：
- * 1. 名称一致：electron 侧注册的 agent key 与渲染侧常量逐字相同
- * 2. 编排章节只在 S2/S3：S1 是需求方，不参与分派
+ * 1. 注册完整：每个名称常量都在 DEV_ASSISTANT_AGENTS 注册表里有定义（防止加了
+ *    常量却忘了注册，让 task 分派静默失败）
+ * 2. 编排章节按任务归属：各任务提示词只分派自己的子代理
  * 3. 子代理 prompt 不复制机器解析契约（9 列表头、@引擎 枚举等），避免出现第二份事实源
  */
 
 import { describe, it, expect } from 'vitest';
 import {
   DEV_ASSISTANT_AGENTS,
+  AGENT_ANALYSIS_VERIFIER,
   AGENT_DATA_ARCHITECT,
   AGENT_DATA_DEV,
   AGENT_DATA_RETRIEVER,
   AGENT_DATA_VERIFIER,
+  AGENT_DESIGN_VERIFIER,
   AGENT_METRIC_DESIGNER,
   AGENT_REQUIREMENT_VERIFIER,
 } from '../../../electron/backend/devAssistantAgents';
@@ -30,24 +34,28 @@ import {
   DATA_DEV_ENGINEER_INSTRUCTIONS,
 } from './opencodeInstructions';
 
-describe('子代理注册 — 两侧名称必须逐字一致', () => {
-  it('electron 侧注册的 agent 与渲染侧常量同名同数量', () => {
+describe('子代理注册 — 名称单一事实源下的注册完整性', () => {
+  it('electron 侧注册的 agent 与名称清单同名同数量（无漏注册）', () => {
     expect(Object.keys(DEV_ASSISTANT_AGENTS).sort()).toEqual(
       [...DEV_ASSISTANT_SUBAGENT_NAMES].sort(),
     );
   });
 
-  it('渲染侧常量覆盖设计、开发、检索、验收与需求阶段共六个子代理', () => {
+  it('名称常量覆盖设计、设计校验、开发、检索、验收、分析校验与需求阶段共八个子代理', () => {
     expect(AGENT_DATA_ARCHITECT).toBe('data-architect');
     expect(AGENT_DATA_DEV).toBe('data-dev');
     expect(AGENT_DATA_RETRIEVER).toBe('data-retriever');
     expect(AGENT_DATA_VERIFIER).toBe('data-verifier');
+    expect(AGENT_DESIGN_VERIFIER).toBe('design-verifier');
+    expect(AGENT_ANALYSIS_VERIFIER).toBe('analysis-verifier');
     expect(AGENT_METRIC_DESIGNER).toBe('metric-designer');
     expect(AGENT_REQUIREMENT_VERIFIER).toBe('requirement-verifier');
     expect(DEV_ASSISTANT_AGENTS[AGENT_DATA_ARCHITECT]).toBeDefined();
     expect(DEV_ASSISTANT_AGENTS[AGENT_DATA_DEV]).toBeDefined();
     expect(DEV_ASSISTANT_AGENTS[AGENT_DATA_RETRIEVER]).toBeDefined();
     expect(DEV_ASSISTANT_AGENTS[AGENT_DATA_VERIFIER]).toBeDefined();
+    expect(DEV_ASSISTANT_AGENTS[AGENT_DESIGN_VERIFIER]).toBeDefined();
+    expect(DEV_ASSISTANT_AGENTS[AGENT_ANALYSIS_VERIFIER]).toBeDefined();
     expect(DEV_ASSISTANT_AGENTS[AGENT_METRIC_DESIGNER]).toBeDefined();
     expect(DEV_ASSISTANT_AGENTS[AGENT_REQUIREMENT_VERIFIER]).toBeDefined();
   });
@@ -105,6 +113,62 @@ describe('编排章节 — 各阶段只分派自己的子代理', () => {
     // 结构化出口：整体结论 + 通过项 + 不通过项 + 待确认
     expect(def.prompt).toContain('验收结论：通过 / 不通过');
     expect(def.prompt).toContain('不通过项清单');
+  });
+
+  it('设计校验子代理整体校验全部层次，P0 未关闭不得放行进入代码开发', () => {
+    const def = DEV_ASSISTANT_AGENTS[AGENT_DESIGN_VERIFIER];
+
+    // 设计校验与设计产出必须分开：只读不改，问题走报告
+    expect(def.prompt).toContain('只核对、不修改');
+    expect(def.prompt).toContain('不替用户做业务决策');
+    // 查不到的事项不得默认通过
+    expect(def.prompt).toContain('三态判定');
+    expect(def.prompt).toContain('无法判定');
+    // 全局观：等全部层次设计落盘后一次校验，不按波次/分层分批
+    expect(def.prompt).toContain('全部层次的数仓设计与 DDL 落盘后');
+    expect(def.prompt).toContain('全局分层与依赖');
+    expect(def.prompt).not.toContain('波次');
+    // 门禁语义：设计错误必须在编码之前拦截
+    expect(def.prompt).toContain('不得放行进入代码开发');
+    // 设计层校验维度必须齐备，避免只知道"看一致性"却漏掉解析契约
+    for (const dim of ['需求覆盖', '三方一致', '指标一致', '可溯性', '命名与环境', '分类分级', '稽核规则']) {
+      expect(def.prompt, `设计校验缺少维度: ${dim}`).toContain(dim);
+    }
+    // P0/P1/P2 分级与证据要求
+    expect(def.prompt).toContain('P0');
+    expect(def.prompt).toContain('证据');
+  });
+
+  it('分析代码校验子代理只核对不修改，且校验通过前不得交付结论', () => {
+    const def = DEV_ASSISTANT_AGENTS[AGENT_ANALYSIS_VERIFIER];
+
+    expect(def.prompt).toContain('只核对、不修改');
+    expect(def.prompt).toContain('三态判定');
+    expect(def.prompt).toContain('无法判定');
+    // 只读是数据分析的硬边界：写操作直接判不通过
+    expect(def.prompt).toContain('只允许 SELECT / WITH');
+    expect(def.prompt).toContain('INSERT');
+    // 校验目的是防止口径错误随结论交付给用户
+    expect(def.prompt).toContain('不得把分析结论交付给用户');
+    expect(def.prompt).toContain('sql-validate');
+    // 查询规范与脱敏必须在校验维度里
+    expect(def.prompt).toContain('LIMIT');
+    expect(def.prompt).toContain('敏感字段');
+  });
+
+  it('设计与开发子代理按交付单元派发，不再按单表硬拆', () => {
+    const architect = DEV_ASSISTANT_AGENTS[AGENT_DATA_ARCHITECT];
+    const dev = DEV_ASSISTANT_AGENTS[AGENT_DATA_DEV];
+
+    // 设计：一个设计单元可以是同域 1~3 张表（可跨分层）
+    expect(architect.prompt).toContain('设计单元');
+    expect(architect.prompt).toContain('1~3 张表');
+    expect(architect.prompt).toContain('可跨分层');
+    // 开发：一个处理任务可以覆盖多张表
+    expect(dev.prompt).toContain('处理任务子代理');
+    expect(dev.prompt).toContain('一张或多张目标表');
+    // 质检粒度不变：一张被校验表一个质检程序
+    expect(dev.prompt).toContain('一张被校验表一个质检程序');
   });
 
   it('S1 只分派需求阶段子代理，不跨越到设计与开发链路', () => {

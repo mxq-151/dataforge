@@ -25,10 +25,12 @@ import {
   getDeveloperInstructions,
 } from './opencodeInstructions';
 import {
+  AGENT_ANALYSIS_VERIFIER,
   AGENT_DATA_ARCHITECT,
   AGENT_DATA_DEV,
   AGENT_DATA_RETRIEVER,
   AGENT_DATA_VERIFIER,
+  AGENT_DESIGN_VERIFIER,
   AGENT_METRIC_DESIGNER,
   AGENT_REQUIREMENT_VERIFIER,
 } from './devAssistantAgents';
@@ -185,7 +187,7 @@ describe('需求阶段 — 口径完备性与独立校验', () => {
     expect(prompt).toContain(AGENT_REQUIREMENT_VERIFIER);
     // 校验必须换会话：继承编写方推理只会把"自洽"复核成"正确"
     expect(prompt).toContain('校验必须换人');
-    expect(prompt).toContain('把自洽当正确');
+    expect(prompt).toContain('把「自洽」复核成「正确」');
     // 业务口径只能由用户拍板
     expect(prompt).toContain('不得替用户拍板');
     // 子代理不可用时不阻塞交付，但必须显式标注未完成独立校验
@@ -231,6 +233,21 @@ describe('需求阶段 — 口径完备性与独立校验', () => {
   it('S2 不得替需求补全缺失口径，只能退回待确认', () => {
     expect(DATA_ARCHITECT_INSTRUCTIONS).toContain('口径缺失不等于可以自行补全');
     expect(DATA_ARCHITECT_INSTRUCTIONS).toContain('不得只在设计文档里补写而不回写需求文档');
+  });
+
+  it('需求交付闭环：编写 → 文档校验 → 重写 → 复验', () => {
+    const prompt = BUSINESS_REQUESTER_INSTRUCTIONS;
+
+    expect(prompt).toContain('### 交付闭环（编写 → 文档校验 → 重写 → 复验）');
+    // 校验是放行门禁：未通过不得向用户交付
+    expect(prompt).toContain('校验通过前不得向用户交付');
+    // 复验有上界，到上界停止推进并报告用户
+    expect(prompt).toContain('复验上界：文档校验最多复验**两轮**');
+    expect(prompt).toContain('停止推进');
+    expect(prompt).toContain('问题清单原样报告用户');
+    expect(prompt).toContain('不得宣告完成');
+    // 需求文档的唯一写入者是主智能体，重写不等于让校验方代改
+    expect(prompt).toContain('你是唯一写入者');
   });
 });
 
@@ -548,15 +565,18 @@ describe('数据分类分级口径 — 三档分级 + 六类分类', () => {
 });
 
 /**
- * 数仓开发 = 「数仓设计」「数据开发」合成一个任务类型，由主智能体编排两个子代理。
+ * 数仓开发 = 「数仓设计 → 设计校验 → 代码开发 → 代码校验」的闭环编排。
  *
- * 这里锁的不是文案，而是三件会导致功能静默失效的事：
- * 1. 分派必须是确定性的 —— 阈值与"不足时自己做"的退路若没被显式覆盖，
- *    模型会照着 S2/S3 自带的编排章节走，1~2 张表时根本不拉子代理
- * 2. 主智能体不得亲自写 ETL —— 否则"数仓开发"退化成旧的合并提示词
- * 3. 两侧机器解析契约必须完整存在 —— 子代理的 prompt 不含契约，只能由主智能体下发
+ * 这里锁的不是文案，而是五件会导致功能静默失效的事：
+ * 1. 派发单位必须与交付单元一致 —— 设计按设计单元（同业务域 1~3 张表，可跨分层），
+ *    开发按处理任务（可覆盖多张表）；退回按表硬拆会让同域口径各自漂移
+ * 2. 设计校验必须先于代码开发，且只做一次全量 —— 数仓分层是一个整体，分批校验时
+ *    校验方看不到后续分层，会把「局部自洽、全局冲突」的设计放行，分层失去全局观
+ * 3. 代码校验必须是收尾门禁 —— 未通过不得结束对话、不得宣告完成
+ * 4. 两个校验环节都要有复验上界 —— 两轮仍不通过就停止推进并报告用户，避免无限循环
+ * 5. 两侧机器解析契约必须完整存在 —— 子代理的 prompt 不含契约，只能由主智能体下发
  */
-describe('数仓开发 — 一个入口编排设计与开发两个子代理', () => {
+describe('数仓开发 — 设计/设计校验/开发/代码校验四阶段闭环', () => {
   const MERGED = getDeveloperInstructions('DATA_WAREHOUSE_DEV', 'u', 'dev-assistant');
 
   it('同时包含完整的数仓设计与数据开发提示词', () => {
@@ -564,16 +584,26 @@ describe('数仓开发 — 一个入口编排设计与开发两个子代理', ()
     expect(MERGED).toContain(DATA_DEV_ENGINEER_INSTRUCTIONS);
   });
 
-  it('声明编排者定位，并点名三个子代理', () => {
-    expect(MERGED).toContain('## 任务定位（数仓开发：编排三个子代理完成设计与开发）');
-    expect(MERGED).toContain(AGENT_DATA_ARCHITECT);
-    expect(MERGED).toContain(AGENT_DATA_DEV);
-    expect(MERGED).toContain(AGENT_DATA_VERIFIER);
-    expect(MERGED).toContain('拆表 → 分派 → 汇总 → 验收并落盘');
+  it('声明编排者定位，并点名四个子代理', () => {
+    expect(MERGED).toContain(
+      '## 任务定位（数仓开发：设计 → 设计校验 → 代码开发 → 代码校验的闭环编排）',
+    );
+    for (const agent of [
+      AGENT_DATA_ARCHITECT,
+      AGENT_DESIGN_VERIFIER,
+      AGENT_DATA_DEV,
+      AGENT_DATA_VERIFIER,
+    ]) {
+      expect(MERGED, `未点名子代理: ${agent}`).toContain(agent);
+    }
+    expect(MERGED).toContain('拆单元与任务 → 分派 → 汇总修复 → 校验收口');
   });
 
-  it('分派是硬约束：单表也必须分派，且不受各阶段自带阈值约束', () => {
+  it('派发单位对齐交付单元：设计按设计单元、开发按处理任务，不按表硬拆', () => {
     expect(MERGED).toContain('## 强制分派纪律（强约束）');
+    expect(MERGED).toContain('每个**设计单元**派生一个');
+    expect(MERGED).toContain('每个**处理任务**派生一个');
+    expect(MERGED).toContain('不得按表逐张拆分');
     // 关键：覆盖 S2/S3 自带章节里的「≥3 张 / ≥2 张」阈值与"自己做"的退路
     expect(MERGED).toContain('表数不作门槛：**只有 1 张表也必须分派**');
     expect(MERGED).toContain('在本任务类型下**一律不适用**');
@@ -581,13 +611,30 @@ describe('数仓开发 — 一个入口编排设计与开发两个子代理', ()
     expect(MERGED).toContain('禁止你自己编写 ETL 程序');
   });
 
-  it('阶段门禁存在：没有设计产物不得进入开发', () => {
-    expect(MERGED).toContain('## 两阶段执行纪律');
-    expect(MERGED).toContain('设计文档与 DDL 落盘并经用户确认之前，禁止进入阶段二');
-    // 子代理按阶段严格先后派生：data-dev 必须等 data-architect 设计落盘后才可分派，
-    // "并行"仅限同一阶段内多张表之间，不得跨阶段同时分派
-    expect(MERGED).toContain('三类子代理严格先后派生');
-    expect(MERGED).toContain('禁止跨阶段并行派生');
+  it('设计校验是进入代码开发的前置门禁，且等全部层次设计完成后整体校验一次', () => {
+    expect(MERGED).toContain('## 四阶段闭环执行纪律（强约束）');
+    expect(MERGED).toContain('整体设计校验「通过」之前，禁止进入代码开发');
+    // 全局观：一次性完成所有层次设计，再整体校验，禁止边设计边校验/按分层分批
+    expect(MERGED).toContain('全部层次的设计与 DDL 落盘后才进入阶段二');
+    expect(MERGED).toContain('禁止边设计边校验');
+    expect(MERGED).toContain('全部层次设计落盘后派生**一个**');
+    // 不得回退成按波次/分批校验
+    expect(MERGED).not.toContain('波次');
+  });
+
+  it('代码校验是收尾门禁：未通过不得结束对话', () => {
+    expect(MERGED).toContain('代码校验「通过」之前，禁止结束本次对话');
+    expect(MERGED).toContain('不得宣告完成、不得结束对话');
+  });
+
+  it('两个校验环节都有两轮复验上界，到上界停止推进并报告用户', () => {
+    expect(MERGED).toContain('设计校验与代码校验各自最多复验**两轮**');
+    expect(MERGED).toContain('停止推进');
+    expect(MERGED).toContain('不得自行降级放行');
+  });
+
+  it('四类子代理严格先后派生，不跨阶段并行', () => {
+    expect(MERGED).toContain('禁止跳阶，禁止跨阶段并行派生');
   });
 
   it('代码验收统一由 data-verifier 独立执行，且与自检互不替代', () => {
@@ -632,5 +679,43 @@ describe('数仓开发 — 一个入口编排设计与开发两个子代理', ()
     const explore = getDeveloperInstructions('DATA_WAREHOUSE_DEV', 'u', 'data-explore');
     // 数据探索按 moduleName 短路，即使任务类型是数仓开发也只拿数据分析指令
     expect(explore).not.toContain('## 阶段一：数仓设计');
+  });
+});
+
+/**
+ * 数据分析 = 「编写分析代码 → 代码校验 → 重写 → 复验」的闭环。
+ *
+ * 数据分析没有设计文档作为对照，若分析方自己写、自己查，口径错误会直接随结论交付给用户。
+ * 因此代码校验必须是独立子代理，且作为交付前的放行门禁；复验同样有上界。
+ */
+describe('数据分析 — 编写分析代码 → 代码校验 → 重写 → 复验', () => {
+  const ANALYST = getDeveloperInstructions('DATA_ANALYST', 'alice', 'dev-assistant');
+
+  it('声明分析交付闭环并点名 analysis-verifier', () => {
+    expect(ANALYST).toContain('## 分析交付闭环（编写代码 → 代码校验 → 重写 → 复验，强约束）');
+    expect(ANALYST).toContain(AGENT_ANALYSIS_VERIFIER);
+    // 一次分析只派一个校验子代理，避免按 SQL 片段拆碎验收
+    expect(ANALYST).toContain('一次分析只派一个校验子代理');
+  });
+
+  it('校验通过前不得交付结论，两轮复验后停止推进', () => {
+    expect(ANALYST).toContain('代码未经独立校验不得把结论交给用户');
+    expect(ANALYST).toContain('最多两轮');
+    expect(ANALYST).toContain('停止推进');
+    expect(ANALYST).toContain('不得给出分析结论');
+    // 子代理不可用时的降级路径必须显式标注
+    expect(ANALYST).toContain('本次未完成独立校验');
+  });
+
+  it('校验必须换人，分析文件唯一写入者是主智能体', () => {
+    expect(ANALYST).toContain('校验必须换人');
+    expect(ANALYST).toContain('分析文件的唯一写入者是你');
+    expect(ANALYST).toContain('校验子代理只核对不修改');
+  });
+
+  it('数据探索模块经 moduleName 短路后同样走分析闭环', () => {
+    const explore = getDeveloperInstructions('DATA_DEV_ENGINEER', 'alice', 'data-explore');
+    expect(explore).toContain('## 分析交付闭环');
+    expect(explore).toContain(AGENT_ANALYSIS_VERIFIER);
   });
 });

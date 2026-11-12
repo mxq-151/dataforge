@@ -194,15 +194,16 @@ describe('AIPanel 任务类型切换', () => {
     expect(newSessionSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('开发助手下拉提供需求编写与数仓开发两项（设计/开发已合并且由子代理编排）', () => {
+  it('开发助手下拉提供需求编写与数仓开发两项（四阶段闭环由子代理编排）', () => {
     render(<Harness />);
 
     const options = Array.from(taskTypeSelect().options);
     expect(options.map(o => o.value)).toEqual(['BUSINESS_REQUESTER', 'DATA_WAREHOUSE_DEV']);
     expect(options.map(o => o.textContent)).toEqual(['需求编写', '数仓开发']);
-    // 「数仓开发」必须能看出它会拉起两个子代理，否则用户会以为它只是换了个名字
-    expect(options[1].title).toContain('data-architect');
-    expect(options[1].title).toContain('data-dev');
+    // 「数仓开发」必须能看出一共会拉起哪四类子代理，否则用户会以为它只是换了个名字
+    for (const agent of ['data-architect', 'design-verifier', 'data-dev', 'data-verifier']) {
+      expect(options[1].title, `tooltip 未提及子代理: ${agent}`).toContain(agent);
+    }
   });
 
   it('数据探索下拉提供数据分析与运维管理', () => {

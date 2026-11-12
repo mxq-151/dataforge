@@ -226,7 +226,7 @@ const ChatInput: React.FC<ChatInputProps> = ({ busy, onSend, onInterrupt, fileTr
               <option value="BUSINESS_REQUESTER">需求编写</option>
               <option
                 value="DATA_WAREHOUSE_DEV"
-                title="编排模式：先派生 data-architect 子代理完成数仓设计，再派生 data-dev 子代理完成开发"
+                title="闭环编排：data-architect 数仓设计 → design-verifier 设计校验（通过才开发）→ data-dev 代码开发 → data-verifier 代码校验（通过才结束）"
               >
                 数仓开发
               </option>

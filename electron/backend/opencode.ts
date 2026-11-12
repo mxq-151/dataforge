@@ -394,8 +394,8 @@ function buildSdkConfig(config: OpenCodeServerConfig): Record<string, unknown> {
 
   // 开发助手子代理注册：task 工具的 subagent_type 只能指向已声明的 agent，
   // 未注册时主智能体的并行分派请求会直接失败。
-  // 这些 agent 是 subagent 模式，不会出现在主智能体的切换列表里，
-  // 对数据探索模块无行为影响（该模块提示词从不引用它们）。
+  // 这些 agent 是 subagent 模式，不会出现在主智能体的切换列表里；
+  // 数仓开发、需求编写与数据探索的提示词按各自的交付闭环引用其中一部分。
   sdk.agent = DEV_ASSISTANT_AGENTS;
 
   return sdk;
