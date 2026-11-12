@@ -31,8 +31,8 @@ import {
   AGENT_DATA_RETRIEVER,
   AGENT_DATA_VERIFIER,
   AGENT_DESIGN_VERIFIER,
-  AGENT_METRIC_DESIGNER,
   AGENT_REQUIREMENT_VERIFIER,
+  AGENT_REQUIREMENT_WRITER,
 } from './devAssistantAgents';
 import { parseQualityRulesFromDesignDoc } from '../../utils/qualityRuleImport';
 import { QUALITY_RULE_TYPES } from '../../types/quality';
@@ -177,14 +177,17 @@ describe('指标主线 — S1 定义 → S2 继承并编码 → S3 实现并标�
   });
 });
 
-describe('需求阶段 — 口径完备性与独立校验', () => {
-  it('S1 声明子代理协作与换人校验，不用自检代替独立校验', () => {
+describe('需求阶段 — 编写与校验分离的闭环编排', () => {
+  it('S1 声明闭环编排：一个编写子代理统一完成、一个校验子代理独立核对', () => {
     const prompt = BUSINESS_REQUESTER_INSTRUCTIONS;
 
-    expect(prompt).toContain('## 子代理协作与独立校验（需求阶段，强约束）');
+    expect(prompt).toContain('## 任务定位（需求编写：需求文档编写 → 文档校验的闭环编排）');
     expect(prompt).toContain(AGENT_DATA_RETRIEVER);
-    expect(prompt).toContain(AGENT_METRIC_DESIGNER);
+    expect(prompt).toContain(AGENT_REQUIREMENT_WRITER);
     expect(prompt).toContain(AGENT_REQUIREMENT_VERIFIER);
+    // 每个环节一个子代理统一完成，禁止按场景拆分起草
+    expect(prompt).toContain('每个环节派生**一个**子代理统一完成该环节全部工作');
+    expect(prompt).toContain('不按分析场景、不按指标、不按文档章节拆成多个子代理');
     // 校验必须换会话：继承编写方推理只会把"自洽"复核成"正确"
     expect(prompt).toContain('校验必须换人');
     expect(prompt).toContain('把「自洽」复核成「正确」');
@@ -194,12 +197,14 @@ describe('需求阶段 — 口径完备性与独立校验', () => {
     expect(prompt).toContain('本次未完成独立校验');
   });
 
-  it('S1 跨阶段不得分派设计与开发子代理', () => {
+  it('S1 跨阶段不得分派设计与开发子代理，也不得回退按场景拆分起草', () => {
     const prompt = BUSINESS_REQUESTER_INSTRUCTIONS;
 
     expect(prompt).not.toContain(AGENT_DATA_ARCHITECT);
     expect(prompt).not.toContain(AGENT_DATA_DEV);
     expect(prompt).not.toContain(AGENT_DATA_VERIFIER);
+    // 已删除的 metric-designer 不得回流
+    expect(prompt).not.toContain('metric-designer');
   });
 
   it('计算口径强制五项要素，且不新增列破坏 7 列解析契约', () => {
@@ -219,14 +224,14 @@ describe('需求阶段 — 口径完备性与独立校验', () => {
     expect(prompt).toContain('未写归属规则的维度不得声明');
   });
 
-  it('自检清单按阶段拆分：技术项只进 S2/S3，口径项只进 S1', () => {
+  it('S1 是编排者：不自检产出，文档规范仅作下发与打回核对的参考', () => {
+    // 自检清单是产出方的关口；S1 主智能体是编排者，产出方是 requirement-writer
+    expect(BUSINESS_REQUESTER_INSTRUCTIONS).not.toContain('交付前自检清单（必须逐项核对后再回复用户）');
+    expect(BUSINESS_REQUESTER_INSTRUCTIONS).toContain('## 参考规范：需求文档完整规范');
     expect(BUSINESS_REQUESTER_INSTRUCTIONS).not.toContain('命名合规：库名、表名、字段名、程序名');
-    expect(BUSINESS_REQUESTER_INSTRUCTIONS).toContain('口径完备：');
-    expect(BUSINESS_REQUESTER_INSTRUCTIONS).toContain('表格契约：');
 
     for (const prompt of [DATA_ARCHITECT_INSTRUCTIONS, DATA_DEV_ENGINEER_INSTRUCTIONS]) {
       expect(prompt).toContain('命名合规：库名、表名、字段名、程序名');
-      expect(prompt).not.toContain('表格契约：');
     }
   });
 
@@ -238,16 +243,19 @@ describe('需求阶段 — 口径完备性与独立校验', () => {
   it('需求交付闭环：编写 → 文档校验 → 重写 → 复验', () => {
     const prompt = BUSINESS_REQUESTER_INSTRUCTIONS;
 
-    expect(prompt).toContain('### 交付闭环（编写 → 文档校验 → 重写 → 复验）');
+    // 闭环章节与阶段划分
+    expect(prompt).toContain('## 两阶段闭环执行纪律（强约束）');
+    expect(prompt).toContain('## 阶段一：需求文档编写');
+    expect(prompt).toContain('## 阶段二：文档校验');
     // 校验是放行门禁：未通过不得向用户交付
-    expect(prompt).toContain('校验通过前不得向用户交付');
+    expect(prompt).toContain('禁止向用户宣告完成、禁止交付需求文档');
     // 复验有上界，到上界停止推进并报告用户
     expect(prompt).toContain('复验上界：文档校验最多复验**两轮**');
     expect(prompt).toContain('停止推进');
     expect(prompt).toContain('问题清单原样报告用户');
-    expect(prompt).toContain('不得宣告完成');
-    // 需求文档的唯一写入者是主智能体，重写不等于让校验方代改
-    expect(prompt).toContain('你是唯一写入者');
+    // 文档由编写子代理统一落盘，重写打回编写子代理，不让校验方代改
+    expect(prompt).toContain('重写打回 ' + AGENT_REQUIREMENT_WRITER);
+    expect(prompt).toContain('禁止你自己编写需求文档');
   });
 });
 
@@ -568,8 +576,8 @@ describe('数据分类分级口径 — 三档分级 + 六类分类', () => {
  * 数仓开发 = 「数仓设计 → 设计校验 → 代码开发 → 代码校验」的闭环编排。
  *
  * 这里锁的不是文案，而是五件会导致功能静默失效的事：
- * 1. 派发单位必须与交付单元一致 —— 设计按设计单元（同业务域 1~3 张表，可跨分层），
- *    开发按处理任务（可覆盖多张表）；退回按表硬拆会让同域口径各自漂移
+ * 1. 每个阶段由一个子代理统一完成 —— 任何形式的拆分派发（按表/设计单元/处理任务/
+ *    业务域/分层）都会让互相看不到对方的子代理各自决定口径，错误顺着 DAG 放大
  * 2. 设计校验必须先于代码开发，且只做一次全量 —— 数仓分层是一个整体，分批校验时
  *    校验方看不到后续分层，会把「局部自洽、全局冲突」的设计放行，分层失去全局观
  * 3. 代码校验必须是收尾门禁 —— 未通过不得结束对话、不得宣告完成
@@ -596,17 +604,16 @@ describe('数仓开发 — 设计/设计校验/开发/代码校验四阶段闭�
     ]) {
       expect(MERGED, `未点名子代理: ${agent}`).toContain(agent);
     }
-    expect(MERGED).toContain('拆单元与任务 → 分派 → 汇总修复 → 校验收口');
+    expect(MERGED).toContain('分派 → 转达规范 → 打回修复 → 校验收口');
   });
 
-  it('派发单位对齐交付单元：设计按设计单元、开发按处理任务，不按表硬拆', () => {
+  it('每阶段一个子代理统一完成，禁止任何形式的拆分派发', () => {
     expect(MERGED).toContain('## 强制分派纪律（强约束）');
-    expect(MERGED).toContain('每个**设计单元**派生一个');
-    expect(MERGED).toContain('每个**处理任务**派生一个');
-    expect(MERGED).toContain('不得按表逐张拆分');
-    // 关键：覆盖 S2/S3 自带章节里的「≥3 张 / ≥2 张」阈值与"自己做"的退路
+    expect(MERGED).toContain('每个阶段派生**一个**子代理统一完成该阶段全部工作');
+    expect(MERGED).toContain('禁止任何形式的拆分派发');
+    expect(MERGED).toContain('不按表、不按设计单元、不按处理任务、不按业务域、不按分层');
+    // 表数不是分派门槛：单表任务也要走完四阶段
     expect(MERGED).toContain('表数不作门槛：**只有 1 张表也必须分派**');
-    expect(MERGED).toContain('在本任务类型下**一律不适用**');
     // 主智能体亲自写代码 = 编排退化
     expect(MERGED).toContain('禁止你自己编写 ETL 程序');
   });
@@ -614,10 +621,9 @@ describe('数仓开发 — 设计/设计校验/开发/代码校验四阶段闭�
   it('设计校验是进入代码开发的前置门禁，且等全部层次设计完成后整体校验一次', () => {
     expect(MERGED).toContain('## 四阶段闭环执行纪律（强约束）');
     expect(MERGED).toContain('整体设计校验「通过」之前，禁止进入代码开发');
-    // 全局观：一次性完成所有层次设计，再整体校验，禁止边设计边校验/按分层分批
-    expect(MERGED).toContain('全部层次的设计与 DDL 落盘后才进入阶段二');
-    expect(MERGED).toContain('禁止边设计边校验');
-    expect(MERGED).toContain('全部层次设计落盘后派生**一个**');
+    // 全局观：一个子代理一次性完成所有层次设计，再整体校验一次
+    expect(MERGED).toContain('全部层次的设计与 DDL 落盘后');
+    expect(MERGED).toContain(`派生**一个** ${AGENT_DESIGN_VERIFIER} 一次性校验整体设计`);
     // 不得回退成按波次/分批校验
     expect(MERGED).not.toContain('波次');
   });
@@ -633,8 +639,8 @@ describe('数仓开发 — 设计/设计校验/开发/代码校验四阶段闭�
     expect(MERGED).toContain('不得自行降级放行');
   });
 
-  it('四类子代理严格先后派生，不跨阶段并行', () => {
-    expect(MERGED).toContain('禁止跳阶，禁止跨阶段并行派生');
+  it('四类子代理严格先后派生，不跨阶段派生', () => {
+    expect(MERGED).toContain('禁止跳阶，禁止跨阶段派生');
   });
 
   it('代码验收统一由 data-verifier 独立执行，且与自检互不替代', () => {
@@ -660,18 +666,18 @@ describe('数仓开发 — 设计/设计校验/开发/代码校验四阶段闭�
     expect(MERGED).toContain('的验收结论（通过项、不通过项及修复情况）');
   });
 
-  it('两阶段的机器解析契约与并行编排章节全部保留（供下发与校验）', () => {
+  it('两套完整规范的机器解析契约全部保留（供任务描述下发与打回核对）', () => {
     for (const token of [
       '| 指标编码',
       '## 稽核规则清单表格规范',
       '## 代码头格式规范',
       '## 质检结果回传规范',
       '## 规则登记规范（强约束）',
-      '## 多智能体并行编排（多表设计时启用）',
-      '## 多智能体并行编排（多表开发时启用）',
     ]) {
       expect(MERGED, `数仓开发提示词缺少契约: ${token}`).toContain(token);
     }
+    // 并行编排章节已删除：数仓开发各阶段由一个子代理统一完成，不再拆分派发
+    expect(MERGED).not.toContain('## 多智能体并行编排');
   });
 
   it('不与需求编写、数据探索的系统指令混同', () => {

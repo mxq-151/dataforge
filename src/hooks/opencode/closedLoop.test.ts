@@ -29,6 +29,7 @@ import {
   AGENT_DATA_VERIFIER,
   AGENT_DESIGN_VERIFIER,
   AGENT_REQUIREMENT_VERIFIER,
+  AGENT_REQUIREMENT_WRITER,
   DEV_ASSISTANT_SUBAGENT_NAMES,
 } from './devAssistantAgents';
 import { DEV_ASSISTANT_AGENTS } from '../../../electron/backend/devAssistantAgents';
@@ -150,26 +151,25 @@ describe('getDeveloperInstructions() — 闭环提示词的分发入口', () => 
 describe('需求编写闭环 — 编写 → 文档校验 → 重写 → 复验', () => {
   const prompt = BUSINESS_REQUESTER_INSTRUCTIONS;
 
-  it('步骤按编写 → 文档校验 → 重写 → 复验 → 放行排列', () => {
-    expect(prompt).toContain('### 交付闭环（编写 → 文档校验 → 重写 → 复验）');
+  it('两个阶段严格按顺序出现：文档编写在前、文档校验在后', () => {
+    expect(prompt).toContain('## 任务定位（需求编写：需求文档编写 → 文档校验的闭环编排）');
     expectOrdered(prompt, [
-      '1. 编写：',
-      '2. 文档校验：',
-      '3. 重写：',
-      '4. 复验：',
-      '5. 放行：',
+      '## 阶段一：需求文档编写',
+      '## 阶段二：文档校验',
     ]);
   });
 
   it('文档校验是放行门禁，未通过不得交付', () => {
+    expect(prompt).toContain(AGENT_REQUIREMENT_WRITER);
     expect(prompt).toContain(AGENT_REQUIREMENT_VERIFIER);
-    expect(prompt).toContain('校验通过前不得向用户交付');
-    expect(prompt).toContain('未通过独立校验不得向用户宣告完成');
+    expect(prompt).toContain('文档校验「通过」之前，禁止向用户宣告完成、禁止交付需求文档');
     expectSharedDiscipline(prompt, '文档校验');
   });
 
-  it('重写由主智能体完成，校验子代理不代改文档', () => {
-    expect(prompt).toContain('你是唯一写入者');
+  it('文档由编写子代理统一落盘，重写打回编写子代理，校验子代理不代改', () => {
+    expect(prompt).toContain('每个环节派生**一个**子代理统一完成该环节全部工作');
+    expect(prompt).toContain('不按分析场景、不按指标、不按文档章节拆成多个子代理');
+    expect(prompt).toContain('禁止你自己编写需求文档');
     expect(prompt).toContain('校验子代理只核对不修改');
   });
 });
@@ -189,8 +189,8 @@ describe('数仓开发闭环 — 设计 → 设计校验 → 代码开发 → �
   it('设计校验通过前禁止进入代码开发', () => {
     expect(prompt).toContain(AGENT_DESIGN_VERIFIER);
     expect(prompt).toContain('整体设计校验「通过」之前，禁止进入代码开发');
-    // 设计阶段一次做完所有层次，不做波次/分批校验
-    expect(prompt).toContain('全部层次的设计与 DDL 落盘后才进入阶段二');
+    // 设计由一个子代理统一做完所有层次，整体校验一次，不做波次/分批校验
+    expect(prompt).toContain('全部层次的设计与 DDL 落盘后');
     expect(prompt).not.toContain('波次');
   });
 
@@ -206,12 +206,15 @@ describe('数仓开发闭环 — 设计 → 设计校验 → 代码开发 → �
     expect(prompt).not.toContain('本次未完成独立校验');
   });
 
-  it('派发单位是设计单元与处理任务，不退回按表硬拆', () => {
+  it('每阶段一个子代理统一完成，禁止任何形式的拆分派发', () => {
     expect(prompt).toContain(AGENT_DATA_ARCHITECT);
     expect(prompt).toContain(AGENT_DATA_DEV);
-    expect(prompt).toContain('每个**设计单元**派生一个');
-    expect(prompt).toContain('每个**处理任务**派生一个');
-    expect(prompt).toContain('不得按表逐张拆分');
+    expect(prompt).toContain('每个阶段派生**一个**子代理统一完成该阶段全部工作');
+    expect(prompt).toContain('禁止任何形式的拆分派发');
+    // 不按表、不按设计单元、不按处理任务、不按业务域、不按分层拆
+    expect(prompt).toContain('不按表、不按设计单元、不按处理任务、不按业务域、不按分层');
+    // 主智能体是纯编排者：不写表级产物
+    expect(prompt).toContain('禁止你自己编写 ETL 程序、禁止自己写表结构设计');
   });
 });
 
@@ -297,7 +300,7 @@ describe('闭环引用的子代理 — 全部已在服务端注册', () => {
   });
 
   it('产出型子代理（设计/开发）也被数仓开发闭环引用且已注册', () => {
-    // 闭环不只是校验：设计单元与处理任务的产出方同样走 task 分派，
+    // 闭环不只是校验：设计与编码的产出方同样走 task 分派，
     // 引用未注册一样会让闭环在阶段一/阶段三静默失败。
     for (const agent of [AGENT_DATA_ARCHITECT, AGENT_DATA_DEV]) {
       expect(WAREHOUSE, `数仓开发闭环应引用产出方 ${agent}`).toContain(agent);
