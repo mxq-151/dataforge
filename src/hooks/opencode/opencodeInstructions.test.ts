@@ -245,13 +245,18 @@ describe('需求阶段 — 编写与校验分离的闭环编排', () => {
 
     // 闭环章节与阶段划分
     expect(prompt).toContain('## 两阶段闭环执行纪律（强约束）');
+    expect(prompt).toContain('## 阶段零：口径确认（写入前一次问完，强约束）');
     expect(prompt).toContain('## 阶段一：需求文档编写');
     expect(prompt).toContain('## 阶段二：文档校验');
+    // 写入前先形成口径基线，避免写完再靠校验暴露口径缺失
+    expect(prompt).toContain('口径基线');
+    expect(prompt).toContain('默认口径（待确认）');
     // 校验是放行门禁：未通过不得向用户交付
     expect(prompt).toContain('禁止向用户宣告完成、禁止交付需求文档');
-    // 复验有上界，到上界停止推进并报告用户
+    // 复验有上界，到上界停止推进并报告用户；停止推进不等于零交付
     expect(prompt).toContain('复验上界：文档校验最多复验**两轮**');
     expect(prompt).toContain('停止推进');
+    expect(prompt).toContain('未通过门禁的草稿');
     expect(prompt).toContain('问题清单原样报告用户');
     // 文档由编写子代理统一落盘，重写打回编写子代理，不让校验方代改
     expect(prompt).toContain('重写打回 ' + AGENT_REQUIREMENT_WRITER);

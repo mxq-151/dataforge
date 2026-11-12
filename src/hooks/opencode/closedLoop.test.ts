@@ -159,6 +159,24 @@ describe('需求编写闭环 — 编写 → 文档校验 → 重写 → 复验',
     ]);
   });
 
+  it('口径确认前置：写入前一次问完 12 项口径并形成口径基线', () => {
+    expect(prompt).toContain('## 阶段零：口径确认（写入前一次问完，强约束）');
+    expect(prompt).toContain('一次性列出全部 12 项');
+    expect(prompt).toContain('口径基线');
+    expect(prompt).toContain('默认口径（待确认）');
+    // 阶段零必须先于编写，避免"写完再让校验暴露口径问题"的返工
+    expect(prompt.indexOf('## 阶段零：口径确认')).toBeLessThan(
+      prompt.indexOf('## 阶段一：需求文档编写'),
+    );
+  });
+
+  it('复验增量核对；到上界仍有 P0 时交付标注草稿而非零交付', () => {
+    expect(prompt).toContain('复验只查未关闭问题、改动段落与新增指标');
+    expect(prompt).toContain('问题登记表');
+    expect(prompt).toContain('未通过门禁的草稿');
+    expect(prompt).toContain('不得宣告完成');
+  });
+
   it('文档校验是放行门禁，未通过不得交付', () => {
     expect(prompt).toContain(AGENT_REQUIREMENT_WRITER);
     expect(prompt).toContain(AGENT_REQUIREMENT_VERIFIER);

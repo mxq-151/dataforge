@@ -189,8 +189,13 @@ describe('需求阶段子代理 — 编写与校验分离', () => {
     const def = DEV_ASSISTANT_AGENTS[AGENT_REQUIREMENT_VERIFIER];
 
     expect(def.prompt).toContain('## 口径完整性校验规则');
-    // 不允许抽样：每个指标 × 每条规则都要过
+    // 首轮 P0 不允许抽样：每个指标 × 每条 P0 规则都要过；复验按问题登记表增量核对
     expect(def.prompt).toContain('不得抽样');
+    expect(def.prompt).toContain('## 校验分层与成本约束');
+    expect(def.prompt).toContain('复验增量');
+    expect(def.prompt).toContain('问题登记表');
+    expect(def.prompt).toContain('证据包视为已查证事实');
+    expect(def.prompt).toContain('单次最多 2 张表');
     for (const rule of [
       '粒度声明',
       '计数方式',
