@@ -177,6 +177,16 @@ describe('需求编写闭环 — 编写 → 文档校验 → 重写 → 复验',
     expect(prompt).toContain('不得宣告完成');
   });
 
+  it('修订最小化：只改受影响段落、不重跑全量自检、P2 不单开一轮、上下文超限先压缩', () => {
+    expect(prompt).toContain('只改受影响段落');
+    expect(prompt).toContain('优先用 edit 做最小改动');
+    expect(prompt).toContain('禁止整篇重写');
+    expect(prompt).toContain('单次修订的 bash 工具调用不超过 3 次');
+    expect(prompt).toContain('修订任务不重跑全量格式自检');
+    expect(prompt).toContain('P2 不阻断，不得为清理 P2 单独派发一轮重写');
+    expect(prompt).toContain('上下文压缩');
+  });
+
   it('文档校验是放行门禁，未通过不得交付', () => {
     expect(prompt).toContain(AGENT_REQUIREMENT_WRITER);
     expect(prompt).toContain(AGENT_REQUIREMENT_VERIFIER);
@@ -202,6 +212,38 @@ describe('数仓开发闭环 — 设计 → 设计校验 → 代码开发 → �
       '## 阶段三：代码开发',
       '## 阶段四：代码校验',
     ]);
+  });
+
+  it('设计决策前置：先形成设计基线，再分派设计子代理', () => {
+    expect(prompt).toContain('## 阶段零：设计决策确认（写入前一次问完，强约束）');
+    expect(prompt).toContain('设计基线');
+    expect(prompt).toContain('S1 口径基线');
+    expect(prompt).toContain('证据包');
+    // 阶段零必须先于设计，避免"设计完再让校验暴露决策问题"的返工
+    expect(prompt.indexOf('## 阶段零：设计决策确认')).toBeLessThan(
+      prompt.indexOf('## 阶段一：数仓设计'),
+    );
+  });
+
+  it('复验增量核对；到上界仍有 P0 时交付标注草稿而非零交付', () => {
+    expect(prompt).toContain('复验只查未关闭问题、改动段落与新增/改名对象');
+    expect(prompt).toContain('问题登记表');
+    expect(prompt).toContain('未通过门禁的设计草稿');
+    expect(prompt).toContain('未通过门禁的代码草稿');
+    expect(prompt).toContain('不得宣告完成');
+  });
+
+  it('compile / sql-validate 只跑一次批处理，主智能体不重复执行', () => {
+    expect(prompt).toContain('compile / sql-validate 只由代码校验子代理跑一次批处理');
+    expect(prompt).toContain('不逐文件重复');
+  });
+
+  it('修订最小化：只改受影响段落/表、不重跑全量自检、P2 不单开一轮、上下文超限先压缩', () => {
+    expect(prompt).toContain('只改受影响段落/表');
+    expect(prompt).toContain('禁止整篇重写设计文档');
+    expect(prompt).toContain('修订任务不重跑全量格式自检');
+    expect(prompt).toContain('P2 不阻断，不得为清理 P2 单独派发一轮重写');
+    expect(prompt).toContain('上下文压缩');
   });
 
   it('设计校验通过前禁止进入代码开发', () => {

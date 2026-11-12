@@ -84,6 +84,16 @@ describe('编排章节 — 各任务只分派自己的子代理', () => {
     // 结构化出口：整体结论 + 通过项 + 不通过项 + 待确认
     expect(def.prompt).toContain('验收结论：通过 / 不通过');
     expect(def.prompt).toContain('不通过项清单');
+    // 首轮 P0 全量、复验增量、问题登记表与单次编译
+    expect(def.prompt).toContain('## 校验分层与成本约束');
+    expect(def.prompt).toContain('复验增量');
+    expect(def.prompt).toContain('问题登记表');
+    expect(def.prompt).toContain('只跑一次批处理');
+    expect(def.prompt).toContain('P1 未关闭不阻断草稿交付');
+    // 验收必须分级，避免任一格式问题触发整轮全量验收
+    for (const level of ['P0', 'P1', 'P2']) {
+      expect(def.prompt, `验收缺少分级: ${level}`).toContain(level);
+    }
   });
 
   it('设计校验子代理整体校验全部层次，P0 未关闭不得放行进入代码开发', () => {
@@ -108,6 +118,13 @@ describe('编排章节 — 各任务只分派自己的子代理', () => {
     // P0/P1/P2 分级与证据要求
     expect(def.prompt).toContain('P0');
     expect(def.prompt).toContain('证据');
+    // 首轮 P0 全量、复验增量、问题登记表与证据复用
+    expect(def.prompt).toContain('## 校验分层与成本约束');
+    expect(def.prompt).toContain('复验增量');
+    expect(def.prompt).toContain('问题登记表');
+    expect(def.prompt).toContain('证据包视为已查证事实');
+    expect(def.prompt).toContain('单次最多 2 张表');
+    expect(def.prompt).toContain('P1 未关闭不阻断草稿交付');
   });
 
   it('分析代码校验子代理只核对不修改，且校验通过前不得交付结论', () => {
@@ -135,6 +152,13 @@ describe('编排章节 — 各任务只分派自己的子代理', () => {
     expect(architect.prompt).toContain('统一完成本次需求的全部数仓设计');
     expect(architect.prompt).toContain('从 ODS 到 ADS 的所有目标表一次做完');
     expect(architect.prompt).toContain('直接写入');
+    // 修订任务最小化：只改受影响表与 DDL，不整篇重写、不重跑全量格式自检
+    expect(architect.prompt).toContain('## 修订模式');
+    expect(architect.prompt).toContain('只改受影响表与 DDL');
+    expect(architect.prompt).toContain('禁止整篇重写设计文档');
+    expect(architect.prompt).toContain('不重跑全量格式自检');
+    expect(architect.prompt).toContain('bash 工具调用不超过 3 次');
+    expect(architect.prompt).toContain('上下文压缩');
     // 开发：一个子代理统一做完全部处理任务与质检程序
     expect(dev.prompt).toContain('统一完成设计文档定义的全部代码开发');
     expect(dev.prompt).toContain('全部处理任务');
@@ -171,6 +195,13 @@ describe('需求阶段子代理 — 编写与校验分离', () => {
     expect(def.prompt).toContain('以任务描述中主智能体下发的规范摘要为准');
     // 口径取舍不替用户拍板
     expect(def.prompt).toContain('口径取舍不要自行拍板');
+    // 修订任务最小化：只改受影响段落，不整篇重写、不重跑全量格式自检
+    expect(def.prompt).toContain('## 修订模式');
+    expect(def.prompt).toContain('只改受影响段落');
+    expect(def.prompt).toContain('禁止整篇重写');
+    expect(def.prompt).toContain('不重跑全量格式自检');
+    expect(def.prompt).toContain('bash 工具调用不超过 3 次');
+    expect(def.prompt).toContain('上下文压缩');
   });
 
   it('需求校验子代理只核对不修改，三态判定且不替用户决策', () => {

@@ -258,6 +258,10 @@ describe('需求阶段 — 编写与校验分离的闭环编排', () => {
     expect(prompt).toContain('停止推进');
     expect(prompt).toContain('未通过门禁的草稿');
     expect(prompt).toContain('问题清单原样报告用户');
+    // 修订最小化：只改受影响段落、不重跑全量自检、P2 不单开一轮
+    expect(prompt).toContain('只改受影响段落');
+    expect(prompt).toContain('修订任务不重跑全量格式自检');
+    expect(prompt).toContain('P2 不阻断，不得为清理 P2 单独派发一轮重写');
     // 文档由编写子代理统一落盘，重写打回编写子代理，不让校验方代改
     expect(prompt).toContain('重写打回 ' + AGENT_REQUIREMENT_WRITER);
     expect(prompt).toContain('禁止你自己编写需求文档');
@@ -642,6 +646,22 @@ describe('数仓开发 — 设计/设计校验/开发/代码校验四阶段闭�
     expect(MERGED).toContain('设计校验与代码校验各自最多复验**两轮**');
     expect(MERGED).toContain('停止推进');
     expect(MERGED).toContain('不得自行降级放行');
+  });
+
+  it('设计决策与 S1 基线前置，复验增量并支持草稿交付', () => {
+    expect(MERGED).toContain('## 阶段零：设计决策确认（写入前一次问完，强约束）');
+    expect(MERGED).toContain('设计基线');
+    expect(MERGED).toContain('S1 口径基线');
+    expect(MERGED).toContain('证据包');
+    expect(MERGED).toContain('问题登记表');
+    expect(MERGED).toContain('未通过门禁的设计草稿');
+    expect(MERGED).toContain('未通过门禁的代码草稿');
+    expect(MERGED).toContain('compile / sql-validate 只由代码校验子代理跑一次批处理');
+    // 修订最小化：只改受影响段落/表、不重跑全量自检、P2 不单开一轮、上下文超限先压缩
+    expect(MERGED).toContain('只改受影响段落/表');
+    expect(MERGED).toContain('修订任务不重跑全量格式自检');
+    expect(MERGED).toContain('P2 不阻断，不得为清理 P2 单独派发一轮重写');
+    expect(MERGED).toContain('上下文压缩');
   });
 
   it('四类子代理严格先后派生，不跨阶段派生', () => {
