@@ -11,6 +11,11 @@ export interface UseOpencodeChatOptions {
   username?: string;
   moduleId?: string;
   roleType?: string;
+  /**
+   * 按任务类型覆盖的系统提示词（来自设置页「智能体提示词」）。
+   * key 为任务类型，value 为提示词正文；缺省或空白时使用内置默认提示词。
+   */
+  taskPrompts?: Record<string, string>;
   currentSessionId: string | null;
   setCurrentSessionId: (id: string | null) => void;
   /**
@@ -107,7 +112,7 @@ export interface UseOpencodeChatReturn {
 }
 
 export function useOpencodeChat(options: UseOpencodeChatOptions): UseOpencodeChatReturn {
-  const { username, moduleId, roleType, currentSessionId, setCurrentSessionId, addLog } = options;
+  const { username, moduleId, roleType, taskPrompts, currentSessionId, setCurrentSessionId, addLog } = options;
 
   /** 上报错误到 UI 日志面板（如果 addLog 可用）+ console.error */
   const reportError = useCallback((label: string, err: unknown) => {
@@ -140,7 +145,8 @@ export function useOpencodeChat(options: UseOpencodeChatOptions): UseOpencodeCha
     const systemInstructions = getDeveloperInstructions(
       roleType ?? '',
       username ?? '',
-      moduleId ?? ''
+      moduleId ?? '',
+      taskPrompts
     );
 
     // 如果没有 session，先创建一个
@@ -186,7 +192,7 @@ export function useOpencodeChat(options: UseOpencodeChatOptions): UseOpencodeCha
     }
 
     return sessionId || null;
-  }, [username, moduleId, roleType, currentSessionId, setCurrentSessionId]);
+  }, [username, moduleId, roleType, taskPrompts, currentSessionId, setCurrentSessionId]);
 
   /**
    * 中断当前对话

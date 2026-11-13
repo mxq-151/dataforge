@@ -522,3 +522,24 @@ confidence 判定：high=命名与约束全部吻合且有注释/文档佐证；
 复验时只输出第 1、2、6 节与变化项，不重贴上一轮已关闭的完整清单。`,
   },
 };
+
+/**
+ * 合并用户在设置页配置的子代理提示词覆盖。
+ *
+ * 只接受已注册的 agent 名称，避免渲染进程写入未知 agent 污染 SDK 配置；
+ * 空白正文视为未配置，保持内置默认。未发生任何覆盖时直接返回内置注册表本身。
+ */
+export function resolveDevAssistantAgents(
+  overrides?: Record<string, string>
+): Record<string, DevAssistantSubagent> {
+  if (!overrides) return DEV_ASSISTANT_AGENTS;
+
+  let resolved: Record<string, DevAssistantSubagent> | null = null;
+  for (const [name, prompt] of Object.entries(overrides)) {
+    const base = DEV_ASSISTANT_AGENTS[name];
+    if (!base || !prompt?.trim()) continue;
+    if (!resolved) resolved = { ...DEV_ASSISTANT_AGENTS };
+    resolved[name] = { ...base, prompt };
+  }
+  return resolved ?? DEV_ASSISTANT_AGENTS;
+}

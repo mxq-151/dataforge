@@ -108,6 +108,17 @@ export interface OpenCodeConfig {
   baseUrl: string;
   /** 用户配置的 LLM 模型列表（可在 AIPanel 中切换） */
   llmModels: LLMModelConfig[];
+  /**
+   * 按任务类型（RoleType）覆盖的智能体系统提示词。
+   * key 为任务类型，value 为完整提示词正文；缺省或空白表示使用内置默认提示词。
+   * 正文支持 {{username}} 占位符，发送时替换为当前用户名。
+   */
+  taskPrompts: Record<string, string>;
+  /**
+   * 按子代理名称覆盖的系统提示词（如 data-architect、design-verifier）。
+   * 缺省或空白表示使用内置默认提示词；主进程在启动智能体服务时合并进 agent 注册表。
+   */
+  subagentPrompts: Record<string, string>;
   /** JAVA_HOME 路径 */
   javaHome: string;
   /** SCALA_HOME 路径 */
@@ -303,6 +314,8 @@ export const DEFAULT_CONFIG: OpenCodeConfig = {
   apiKey: '',
   baseUrl: '',
   llmModels: [],
+  taskPrompts: {},
+  subagentPrompts: {},
   javaHome: '',
   scalaHome: '',
   mavenHome: '',

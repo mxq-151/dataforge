@@ -22,6 +22,7 @@ import {
   DATA_ARCHITECT_INSTRUCTIONS,
   DATA_DEV_ENGINEER_INSTRUCTIONS,
   BUSINESS_REQUESTER_INSTRUCTIONS,
+  TASK_PROMPT_DEFINITIONS,
   getDeveloperInstructions,
 } from './opencodeInstructions';
 import {
@@ -748,5 +749,63 @@ describe('数据分析 — 编写分析代码 → 代码校验 → 重写 → �
     const explore = getDeveloperInstructions('DATA_DEV_ENGINEER', 'alice', 'data-explore');
     expect(explore).toContain('## 分析交付闭环');
     expect(explore).toContain(AGENT_ANALYSIS_VERIFIER);
+  });
+});
+
+/**
+ * 设置页「智能体提示词」：按任务类型覆盖内置提示词。
+ *
+ * 覆盖只对命中的任务类型生效，且空白正文必须回落内置默认——否则旧配置升级后
+ * 系统指令会变成空字符串，模型行为直接失控。
+ */
+describe('任务提示词覆盖（设置页可编辑）', () => {
+  const CUSTOM = '## 自定义角色\n你是自定义智能体，分析结果写入 user_{{username}}.sql';
+
+  it('未配置覆盖时仍返回内置默认提示词', () => {
+    expect(getDeveloperInstructions('BUSINESS_REQUESTER', 'u', 'dev-assistant', {}))
+      .toBe(BUSINESS_REQUESTER_INSTRUCTIONS);
+  });
+
+  it('命中当前任务类型时使用自定义提示词，不影响其他任务类型', () => {
+    const overrides = { BUSINESS_REQUESTER: CUSTOM };
+    expect(getDeveloperInstructions('BUSINESS_REQUESTER', 'alice', 'dev-assistant', overrides))
+      .toContain('## 自定义角色');
+    expect(getDeveloperInstructions('DATA_WAREHOUSE_DEV', 'alice', 'dev-assistant', overrides))
+      .toBe(getDeveloperInstructions('DATA_WAREHOUSE_DEV', 'alice', 'dev-assistant'));
+  });
+
+  it('{{username}} 占位符替换为当前用户名，空用户名兜底为「用户」', () => {
+    const overrides = { DATA_ANALYST: CUSTOM };
+    expect(getDeveloperInstructions('DATA_ANALYST', 'alice', 'dev-assistant', overrides))
+      .toContain('user_alice.sql');
+    expect(getDeveloperInstructions('DATA_ANALYST', '', 'dev-assistant', overrides))
+      .toContain('user_用户.sql');
+  });
+
+  it('data-explore 下显式选择的任务类型覆盖同样生效', () => {
+    expect(getDeveloperInstructions('SUPER_ADMIN', 'u', 'data-explore', { SUPER_ADMIN: CUSTOM }))
+      .toContain('## 自定义角色');
+    // 未配置时仍按模块短路走分析闭环，行为与升级前一致
+    expect(getDeveloperInstructions('SUPER_ADMIN', 'u', 'data-explore', {}))
+      .toContain('## 分析交付闭环');
+  });
+
+  it('空白正文视为未配置，回落内置默认', () => {
+    expect(getDeveloperInstructions('BUSINESS_REQUESTER', 'u', 'dev-assistant', { BUSINESS_REQUESTER: '   ' }))
+      .toBe(BUSINESS_REQUESTER_INSTRUCTIONS);
+  });
+
+  it('设置页清单覆盖全部可选任务类型，默认提示词可直接载入', () => {
+    expect(TASK_PROMPT_DEFINITIONS.map(d => d.key)).toEqual([
+      'BUSINESS_REQUESTER',
+      'DATA_WAREHOUSE_DEV',
+      'DATA_ANALYST',
+      'SUPER_ADMIN',
+    ]);
+    for (const def of TASK_PROMPT_DEFINITIONS) {
+      expect(def.defaultPrompt('{{username}}').trim().length, `${def.key} 缺少默认提示词`).toBeGreaterThan(0);
+    }
+    expect(TASK_PROMPT_DEFINITIONS.find(d => d.key === 'DATA_ANALYST')?.defaultPrompt('{{username}}'))
+      .toContain('user_{{username}}.sql');
   });
 });

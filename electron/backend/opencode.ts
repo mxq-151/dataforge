@@ -13,7 +13,7 @@ import * as net from 'node:net';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { readStoreJSON } from './store';
-import { DEV_ASSISTANT_AGENTS } from './devAssistantAgents';
+import { resolveDevAssistantAgents } from './devAssistantAgents';
 import { getCompileServerEndpoint } from './serviceEndpoints';
 import { localizeLogTimestamps } from './logTime';
 import { emitToRenderer, getMainWindow } from '../eventBus';
@@ -53,6 +53,10 @@ interface StoredOpenCodeConfig {
   backendHost?: string;
   marquezApiUrl?: string;
   llmModels?: StoredLLMModel[];
+  /** 按任务类型覆盖的主智能体提示词（设置页写入，渲染进程按角色下发） */
+  taskPrompts?: Record<string, string>;
+  /** 按子代理名称覆盖的提示词（设置页写入，启动服务时合并进 agent 注册表） */
+  subagentPrompts?: Record<string, string>;
   javaHome?: string;
   scalaHome?: string;
   mavenHome?: string;
@@ -75,6 +79,7 @@ interface OpenCodeServerConfig {
   authToken?: string;
   marquezApiUrl?: string;
   llmModels?: StoredLLMModel[];
+  subagentPrompts?: Record<string, string>;
   javaHome?: string;
   mavenHome?: string;
   scalaHome?: string;
@@ -109,6 +114,7 @@ function toServerConfig(s: StoredOpenCodeConfig): OpenCodeServerConfig {
     authToken: s.authToken,
     marquezApiUrl: s.marquezApiUrl,
     llmModels: s.llmModels,
+    subagentPrompts: s.subagentPrompts,
     javaHome: s.javaHome,
     mavenHome: s.mavenHome,
     scalaHome: s.scalaHome,
@@ -396,7 +402,8 @@ function buildSdkConfig(config: OpenCodeServerConfig): Record<string, unknown> {
   // 未注册时主智能体的并行分派请求会直接失败。
   // 这些 agent 是 subagent 模式，不会出现在主智能体的切换列表里；
   // 数仓开发、需求编写与数据探索的提示词按各自的交付闭环引用其中一部分。
-  sdk.agent = DEV_ASSISTANT_AGENTS;
+  // 设置页可覆盖子代理提示词：只接受已注册的 agent 名称，空白覆盖回落内置默认。
+  sdk.agent = resolveDevAssistantAgents(config.subagentPrompts);
 
   return sdk;
 }

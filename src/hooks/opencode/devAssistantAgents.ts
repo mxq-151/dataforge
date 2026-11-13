@@ -20,6 +20,7 @@ import {
   AGENT_DESIGN_VERIFIER,
   AGENT_REQUIREMENT_VERIFIER,
   AGENT_REQUIREMENT_WRITER,
+  DEV_ASSISTANT_AGENTS,
 } from '../../../electron/backend/devAssistantAgents';
 
 export {
@@ -31,7 +32,14 @@ export {
   AGENT_DESIGN_VERIFIER,
   AGENT_REQUIREMENT_VERIFIER,
   AGENT_REQUIREMENT_WRITER,
+  /**
+   * 子代理注册表（含内置 prompt）。设置页需要展示并允许覆盖子代理提示词，
+   * 直接复用服务端的单一事实源，避免渲染侧另存一份会漂移的副本。
+   */
+  DEV_ASSISTANT_AGENTS,
 };
+
+export type { DevAssistantSubagent } from '../../../electron/backend/devAssistantAgents';
 
 /** 全部已注册子代理名称（顺序无意义，仅供一致性断言与提示词列举） */
 export const DEV_ASSISTANT_SUBAGENT_NAMES = [

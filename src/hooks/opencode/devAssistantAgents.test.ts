@@ -16,6 +16,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   DEV_ASSISTANT_AGENTS,
+  resolveDevAssistantAgents,
   AGENT_ANALYSIS_VERIFIER,
   AGENT_DATA_ARCHITECT,
   AGENT_DATA_DEV,
@@ -289,5 +290,37 @@ describe('子代理 prompt 不复制机器解析契约', () => {
     expect(def.prompt).toContain('resolved');
     expect(def.prompt).toContain('confidence');
     expect(def.prompt).toContain('unresolved');
+  });
+});
+
+/**
+ * 设置页可覆盖子代理提示词：覆盖必须只作用于指定 agent，
+ * 未知名称与空白正文要被忽略，否则会把内置注册表改坏。
+ */
+describe('resolveDevAssistantAgents — 设置页子代理提示词覆盖', () => {
+  it('没有覆盖时返回内置注册表', () => {
+    expect(resolveDevAssistantAgents()).toBe(DEV_ASSISTANT_AGENTS);
+    expect(resolveDevAssistantAgents({})).toBe(DEV_ASSISTANT_AGENTS);
+  });
+
+  it('只替换指定子代理的 prompt，其余保持内置', () => {
+    const resolved = resolveDevAssistantAgents({ [AGENT_DATA_DEV]: '## 自定义开发子代理' });
+
+    expect(resolved[AGENT_DATA_DEV].prompt).toBe('## 自定义开发子代理');
+    // description 与 mode 属于注册定义，不得被 prompt 覆盖连带改掉
+    expect(resolved[AGENT_DATA_DEV].description).toBe(DEV_ASSISTANT_AGENTS[AGENT_DATA_DEV].description);
+    expect(resolved[AGENT_DATA_DEV].mode).toBe('subagent');
+    expect(resolved[AGENT_DATA_VERIFIER]).toBe(DEV_ASSISTANT_AGENTS[AGENT_DATA_VERIFIER]);
+    expect(resolved[AGENT_DATA_DEV]).not.toBe(DEV_ASSISTANT_AGENTS[AGENT_DATA_DEV]);
+  });
+
+  it('未知 agent 名称与空白正文被忽略', () => {
+    const resolved = resolveDevAssistantAgents({
+      'no-such-agent': '不应被注入',
+      [AGENT_DATA_ARCHITECT]: '   ',
+    });
+
+    expect(resolved).toBe(DEV_ASSISTANT_AGENTS);
+    expect((resolved as Record<string, unknown>)['no-such-agent']).toBeUndefined();
   });
 });

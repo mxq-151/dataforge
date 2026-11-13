@@ -73,7 +73,7 @@ docker tag crpi-mcl4kmj9q60uvesn.cn-wulanchabu.personal.cr.aliyuncs.com/dataforg
 npm install
 ```
 
-`postinstall` 会自动执行 `patch-package` 应用 `patches/`。首次安装需下载 Electron（已配置 npmmirror 镜像），若下载中断可执行 `npm run install:electron` 重试。
+首次安装需下载 Electron（已配置 npmmirror 镜像），若下载中断可执行 `npm run install:electron` 重试。
 
 ### 2. 开发调试
 

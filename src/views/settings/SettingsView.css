@@ -894,3 +894,314 @@
   padding: 12px 20px;
   border-top: 1px solid #3c3c3c;
 }
+
+/* ================================================================
+ * 智能体提示词（按任务类型配置）
+ * ================================================================ */
+
+.settings-prompt-layout {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.settings-prompt-list {
+  width: 170px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settings-prompt-list__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 8px 10px;
+  background-color: #1e1e1e;
+  border: 1px solid #3e3e42;
+  border-radius: 4px;
+  color: #cccccc;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.settings-prompt-list__item:hover {
+  border-color: #4EC9B0;
+}
+
+.settings-prompt-list__item--active {
+  border-color: #4EC9B0;
+  background-color: rgba(78, 201, 176, 0.1);
+  color: #4EC9B0;
+}
+
+.settings-prompt-list__badge {
+  flex-shrink: 0;
+  padding: 1px 5px;
+  border-radius: 8px;
+  background-color: rgba(78, 201, 176, 0.15);
+  color: #4EC9B0;
+  font-size: 9px;
+}
+
+.settings-prompt-overview {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background-color: #1e1e1e;
+  border: 1px solid #3e3e42;
+  border-radius: 4px;
+}
+
+.settings-prompt-overview__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.settings-prompt-overview__meta {
+  min-width: 0;
+}
+
+.settings-prompt-overview__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #d4d4d4;
+}
+
+.settings-prompt-overview__desc {
+  margin-top: 3px;
+  font-size: 10px;
+  color: #6a6a6a;
+}
+
+.settings-prompt-overview__state {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border: 1px solid #3e3e42;
+  border-radius: 10px;
+  color: #858585;
+  font-size: 10px;
+}
+
+.settings-prompt-overview__state--custom {
+  border-color: rgba(78, 201, 176, 0.3);
+  background-color: rgba(78, 201, 176, 0.15);
+  color: #4EC9B0;
+}
+
+.settings-prompt-overview__agents {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settings-prompt-overview__agent {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background-color: #252526;
+  border: 1px solid #3e3e42;
+  border-radius: 4px;
+  color: #9cdcfe;
+  font-size: 12px;
+}
+
+.settings-prompt-overview__agent--custom {
+  border-color: rgba(78, 201, 176, 0.35);
+}
+
+.settings-prompt-overview__agent-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-prompt-overview__agent-badge {
+  padding: 1px 6px;
+  border-radius: 8px;
+  background-color: rgba(78, 201, 176, 0.15);
+  color: #4EC9B0;
+  font-size: 9px;
+}
+
+.settings-prompt-overview__empty {
+  padding: 6px 2px;
+  font-size: 11px;
+  color: #5a5a5a;
+}
+
+.settings-prompt-overview__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* ── 提示词配置模态框 ─────────────────────────────────────── */
+
+.settings-prompt-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.55);
+}
+
+.settings-prompt-modal {
+  display: flex;
+  flex-direction: column;
+  width: 920px;
+  max-width: 94vw;
+  height: 88vh;
+  background-color: #252526;
+  border: 1px solid #3c3c3c;
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+}
+
+.settings-prompt-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid #3c3c3c;
+}
+
+.settings-prompt-modal__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #4EC9B0;
+}
+
+.settings-prompt-modal__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.settings-prompt-modal__body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.settings-prompt-modal__body::-webkit-scrollbar-thumb {
+  background: #424242;
+  border-radius: 3px;
+}
+
+.settings-agent-prompt {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background-color: #1e1e1e;
+  border: 1px solid #3e3e42;
+  border-radius: 6px;
+}
+
+.settings-agent-prompt__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.settings-agent-prompt__meta {
+  min-width: 0;
+}
+
+.settings-agent-prompt__name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #d4d4d4;
+}
+
+.settings-agent-prompt__desc {
+  margin-top: 2px;
+  font-size: 10px;
+  color: #6a6a6a;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.settings-agent-prompt__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.settings-agent-prompt__badge {
+  padding: 1px 6px;
+  border-radius: 8px;
+  background-color: rgba(78, 201, 176, 0.15);
+  color: #4EC9B0;
+  font-size: 9px;
+}
+
+.settings-agent-prompt__textarea {
+  min-height: 180px;
+  height: 200px;
+  resize: vertical;
+  font-family: 'Cascadia Code', 'Fira Code', 'Courier New', monospace;
+  font-size: 12px;
+}
+
+.settings-agent-prompt__default summary {
+  font-size: 11px;
+  color: #569cd6;
+  cursor: pointer;
+  user-select: none;
+}
+
+.settings-agent-prompt__default pre {
+  margin: 8px 0 0;
+  max-height: 220px;
+  overflow: auto;
+  padding: 10px;
+  background-color: #252526;
+  border: 1px solid #3e3e42;
+  border-radius: 4px;
+  color: #858585;
+  font-family: 'Cascadia Code', 'Fira Code', 'Courier New', monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.settings-prompt-modal__footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 20px;
+  border-top: 1px solid #3c3c3c;
+}
+
+.settings-prompt-modal__hint {
+  flex: 1;
+  text-align: right;
+  font-size: 10px;
+  color: #6a6a6a;
+}

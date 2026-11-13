@@ -1,4 +1,5 @@
 import { createTimeout, ensureOkWithBody } from './httpCore';
+import { queryLogs } from './logs';
 import type {
   DolphinSchedulerResponse,
   DSWorkflowDefinition,
@@ -516,10 +517,43 @@ export function createRealDolphinSchedulerApi(apiUrl: string, token: string): Do
         });
       },
 
-      log(_projectCode, taskInstanceId) {
-        return dsRequest('/log/detail', {
-          params: { taskInstanceId, skipLineNum: 0, limit: 8192 },
-        });
+      /**
+       * 任务日志统一走 dataforge-server 的日志访问层（/api/logs/query），
+       * 不再由前端直连 DS 的 /log/detail。
+       *
+       * 返回值刻意保持原来的 DS 响应形状（data.message），这样
+       * TaskInstanceDetail / WorkflowInstanceDetail / ProjectDetailView
+       * 三个调用方无需改动，界面行为不变。
+       */
+      async log(_projectCode, taskInstanceId) {
+        try {
+          const res = await queryLogs({
+            serviceType: 'ds',
+            cluster: 'default',
+            componentRole: 'worker',
+            logKind: 'runtime',
+            ref: { taskInstanceId: String(taskInstanceId) },
+          });
+          const data = res?.data;
+          let message = data?.content || '';
+          if (!message && data?.degraded) {
+            message = `日志暂不可用: ${data.message || data.degradationReason || '上游服务不可达'}`;
+          }
+          if (!message) {
+            message = '暂无日志';
+          }
+          return {
+            code: 0,
+            msg: 'success',
+            data: { message },
+          } as unknown as DolphinSchedulerResponse<string>;
+        } catch (e: any) {
+          return {
+            code: 500,
+            msg: e?.message || '日志获取失败',
+            data: null,
+          } as unknown as DolphinSchedulerResponse<string>;
+        }
       },
 
       forceSuccess(taskInstanceId, projectCode) {
