@@ -6,6 +6,9 @@ import {
 import type { CodeExecutionResult, CodeExecutionRequest } from '../../api/codeExecution';
 import type { DevJarDependency } from '../../api/devProject';
 
+// 语句拆分实现已下沉到 api/codeExecution（异步/同步判定也需要），此处保留导出以兼容既有消费方
+export { parseSqlStatements } from '../../api/codeExecution';
+
 // ─── 类型定义 ────────────────────────────────────────────────
 
 export type TaskStatus = 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED' | 'CANCELLED';
@@ -368,57 +371,6 @@ export class TaskExecutionService {
 }
 
 // ─── 工具函数 ────────────────────────────────────────────────
-
-/** 将 SQL 文本按分号拆分为独立语句，正确处理注释和字符串内的分号 */
-export function parseSqlStatements(sql: string): string[] {
-  const statements: string[] = [];
-  let current = '';
-  let inSingleQuote = false;
-  let inDoubleQuote = false;
-  let inBlockComment = false;
-
-  for (let i = 0; i < sql.length; i++) {
-    const ch = sql[i];
-    const nextCh = sql[i + 1];
-
-    if (inBlockComment) {
-      if (ch === '*' && nextCh === '/') { i++; inBlockComment = false; }
-      continue;
-    }
-    if (inSingleQuote) {
-      current += ch;
-      if (ch === "'" && nextCh === "'") { current += nextCh; i++; }
-      else if (ch === "'") { inSingleQuote = false; }
-      continue;
-    }
-    if (inDoubleQuote) {
-      current += ch;
-      if (ch === '"') { inDoubleQuote = false; }
-      continue;
-    }
-    if (ch === '-' && nextCh === '-') {
-      const lineEnd = sql.indexOf('\n', i);
-      if (lineEnd === -1) break;
-      i = lineEnd;
-      continue;
-    }
-    if (ch === '/' && nextCh === '*') { inBlockComment = true; i++; continue; }
-    if (ch === "'") { inSingleQuote = true; current += ch; continue; }
-    if (ch === '"') { inDoubleQuote = true; current += ch; continue; }
-    if (ch === ';') {
-      current += ch;
-      const trimmed = current.trim();
-      if (trimmed.length > 0 && !/^(--|\/\*)/.test(trimmed)) statements.push(trimmed);
-      current = '';
-      continue;
-    }
-    current += ch;
-  }
-
-  const remaining = current.trim();
-  if (remaining.length > 0 && !/^(--|\/\*)/.test(remaining)) statements.push(remaining);
-  return statements;
-}
 
 function makeFailResult(execId: string, message: string): CodeExecutionResult {
   return {

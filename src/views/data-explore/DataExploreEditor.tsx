@@ -61,15 +61,16 @@ interface DataExploreEditorProps {
 /** 已保存到 individual 时间戳目录的默认 SQL（与 backend 新建会话目录写入内容一致） */
 const DEFAULT_SQL = '-- 输入 SQL 查询语句\nSELECT * FROM users LIMIT 10;';
 
-const SESSION_KEYWORDS = /^(USE|SET|SHOW|DESC|DESCRIBE|EXPLAIN|HELP)$/i;
-
-/** 从任务结果中解析查询结果（会话级语句返回 null） */
+/**
+ * 从任务结果中解析查询结果（无结果集的语句返回 null）。
+ *
+ * 判定依据只看后端返回的结果集（columns/rows 或 resultData），不按 SQL 首关键字
+ * 预判：SHOW / DESC / EXPLAIN 等语句同样会返回结果集，按关键字丢弃会导致
+ * 「执行成功但结果不展示」。
+ */
 function deriveQueryResult(task: TaskItem): QueryResult | null {
   const result = task.result;
   if (!result || !result.success) return null;
-
-  const firstKeyword = task.definition.code.trim().split(/\s+/)[0]?.toUpperCase() || '';
-  if (SESSION_KEYWORDS.test(firstKeyword)) return null;
 
   const duration = result.durationMs ?? 0;
   const sqlSnippet = task.definition.sqlSnippet || task.definition.code;

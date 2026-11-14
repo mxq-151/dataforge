@@ -264,17 +264,21 @@ const getExecutionLogs = async (
   return res.json();
 };
 
-const DDL_KEYWORDS = [
+// 同步执行语句：DDL 与元数据查询、会话语句。
+// 这类语句执行时间短，且 SHOW/DESC 等需要立即拿到结果集；走异步提交 + 轮询
+// 只会增加延迟，甚至出现「执行成功但结果不展示」。
+const SYNC_KEYWORDS = [
+  // DDL
   'CREATE', 'ALTER', 'DROP', 'TRUNCATE', 'GRANT', 'REVOKE', 'COMMENT',
-];
-
-// 会话级语句：执行时间极短、无结果集，应走同步执行
-const SESSION_KEYWORDS = [
+  // 元数据查询
+  'SHOW', 'DESC', 'DESCRIBE',
+  // 会话级语句
   'USE', 'SET',
 ];
 
-const isDdlStatement = (sql: string): boolean => {
-  const cleanedSql = sql
+/** 判断单条语句是否应同步执行（按首个关键字识别 DDL / 元数据查询 / 会话语句） */
+const isSyncStatement = (statement: string): boolean => {
+  const cleanedSql = statement
     .replace(/--.*$/gm, '')
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .trim();
@@ -282,27 +286,95 @@ const isDdlStatement = (sql: string): boolean => {
   if (!cleanedSql) return false;
 
   const firstKeyword = cleanedSql.split(/\s+/)[0]?.toUpperCase() || '';
-  return DDL_KEYWORDS.includes(firstKeyword);
+  return SYNC_KEYWORDS.includes(firstKeyword);
 };
 
-const isSessionStatement = (sql: string): boolean => {
-  const cleanedSql = sql
-    .replace(/--.*$/gm, '')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .trim();
+/** 将 SQL 文本按分号拆分为独立语句，正确处理注释和字符串内的分号 */
+export function parseSqlStatements(sql: string): string[] {
+  const statements: string[] = [];
+  let current = '';
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+  let inBlockComment = false;
 
-  if (!cleanedSql) return false;
+  for (let i = 0; i < sql.length; i++) {
+    const ch = sql[i];
+    const nextCh = sql[i + 1];
 
-  const firstKeyword = cleanedSql.split(/\s+/)[0]?.toUpperCase() || '';
-  return SESSION_KEYWORDS.includes(firstKeyword);
-};
+    if (inBlockComment) {
+      if (ch === '*' && nextCh === '/') {
+        i++;
+        inBlockComment = false;
+      }
+      continue;
+    }
+
+    if (inSingleQuote) {
+      current += ch;
+      if (ch === "'" && nextCh === "'") {
+        current += nextCh;
+        i++;
+      } else if (ch === "'") {
+        inSingleQuote = false;
+      }
+      continue;
+    }
+
+    if (inDoubleQuote) {
+      current += ch;
+      if (ch === '"') { inDoubleQuote = false; }
+      continue;
+    }
+
+    if (ch === '-' && nextCh === '-') {
+      const lineEnd = sql.indexOf('\n', i);
+      if (lineEnd === -1) break;
+      i = lineEnd;
+      continue;
+    }
+
+    if (ch === '/' && nextCh === '*') {
+      inBlockComment = true;
+      i++;
+      continue;
+    }
+
+    if (ch === "'") { inSingleQuote = true; current += ch; continue; }
+    if (ch === '"') { inDoubleQuote = true; current += ch; continue; }
+
+    if (ch === ';') {
+      current += ch;
+      const trimmed = current.trim();
+      if (trimmed.length > 0 && !/^(--|\/\*)/.test(trimmed)) {
+        statements.push(trimmed);
+      }
+      current = '';
+      continue;
+    }
+
+    current += ch;
+  }
+
+  const remaining = current.trim();
+  if (remaining.length > 0 && !/^(--|\/\*)/.test(remaining)) {
+    statements.push(remaining);
+  }
+
+  return statements;
+}
 
 export const shouldUseAsyncExecution = (codeType: string, codeContent?: string, engineType?: string): boolean => {
   if (codeType === 'java' || codeType === 'scala') {
     return true;
   }
 
-  if (codeType === 'sql' && codeContent && !isDdlStatement(codeContent) && !isSessionStatement(codeContent)) {
+  if (codeType === 'sql' && codeContent) {
+    // 单条 DDL / SHOW / DESC / USE / SET 同步执行；多语句脚本（如 Spark 整段提交）与
+    // 其余查询走异步提交 + 轮询，避免长任务阻塞请求。
+    const statements = parseSqlStatements(codeContent);
+    if (statements.length === 1 && isSyncStatement(statements[0])) {
+      return false;
+    }
     return true;
   }
 
