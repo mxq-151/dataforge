@@ -5,6 +5,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { spawn } from 'node:child_process';
+import { registerChild } from './childRegistry';
 
 export const isWindows = process.platform === 'win32';
 
@@ -126,6 +127,8 @@ export function runMvn(
           windowsHide: true,
           stdio: ['ignore', 'pipe', 'pipe'],
         });
+    // 登记到统一子进程表：编译可能跑很久（mvn package），应用退出时不能把它留在后台
+    registerChild(cp, 'mvn');
     let stdout = '';
     let stderr = '';
     cp.stdout.on('data', (d: Buffer) => {

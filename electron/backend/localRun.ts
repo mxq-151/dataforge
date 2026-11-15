@@ -12,6 +12,7 @@ import * as path from 'node:path';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { isWindows, resolveMvnBin, runMvn } from './maven';
 import { emitToRenderer, getMainWindow } from '../eventBus';
+import { registerChild } from './childRegistry';
 
 export interface LocalRunRequest {
   javaHome: string;
@@ -80,6 +81,8 @@ export async function runLocalJava(req: LocalRunRequest): Promise<{ sessionId: s
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   running.set(sessionId, proc);
+  // 登记到统一子进程表：用户程序可能长期运行，应用退出时必须一起收掉
+  registerChild(proc, 'localrun');
 
   emit('local-run-started', { sessionId });
   const collect = (chunk: Buffer): void => {

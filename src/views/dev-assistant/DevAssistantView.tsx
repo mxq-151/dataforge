@@ -324,7 +324,8 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
   const [explorerWidth, setExplorerWidth] = useState<number | null>(null);
   const [isExplorerCollapsed, setIsExplorerCollapsed] = useState(false);
   const editorAreaRef = useRef<EditorAreaHandle>(null);
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 每个标签各自的防抖保存定时器（tabId → timer）：切换标签时不会取消其他标签的待保存内容
+  const saveTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const isResizingRef = useRef(false);
   const resizeStartXRef = useRef(0);
   const resizeStartWidthRef = useRef(0);
@@ -983,22 +984,40 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
         )
       );
 
-      // 防抖保存：取消上一次定时器，800ms 后执行保存
-      if (saveTimerRef.current) {
-        clearTimeout(saveTimerRef.current);
+      // 防抖保存：按标签各自维护定时器，取消的只是该标签上一次待执行的保存，
+      // 切换标签不会取消其他标签尚未落盘的内容。
+      const prevTimer = saveTimersRef.current.get(tid);
+      if (prevTimer) {
+        clearTimeout(prevTimer);
       }
       const tabId = tid;
       const tabPath = currentTab?.path;
-      saveTimerRef.current = setTimeout(async () => {
+      saveTimersRef.current.set(tid, setTimeout(async () => {
+        saveTimersRef.current.delete(tabId);
         // 防御：只读 / 虚拟源码（metals:/jdt:）绝不落盘（避免把依赖源码等内容误写到真实文件）
-        if (tabPath && !isVirtualSourceTab(currentTab)) {
+        if (tabPath && currentTab && !isVirtualSourceTab(currentTab)) {
           // 标记为正在保存（黄色闪烁）
           setTabs(prev =>
             prev.map(tab =>
               tab.id === tabId ? { ...tab, isSaving: true } : tab
             )
           );
-          await saveFile(tabPath, value);
+          let saved = false;
+          try {
+            saved = await saveFile(tabPath, value);
+          } catch (error) {
+            console.error('[DevAssistant] 保存文件异常:', error);
+          }
+          if (!saved) {
+            // 写盘失败：不能显示「已保存」，保持已修改状态并明确提示
+            setTabs(prev =>
+              prev.map(tab =>
+                tab.id === tabId ? { ...tab, isModified: true, isSaving: false } : tab
+              )
+            );
+            toast.error(`保存失败：${getBaseName(tabPath)}，修改仍保留在编辑器中，请重试`);
+            return;
+          }
           // 保存完成（绿色圆点）
           setTabs(prev =>
             prev.map(tab =>
@@ -1006,7 +1025,7 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
             )
           );
         }
-      }, 800);
+      }, 800));
     }
   }, [activeTabId, tabs, saveFile, user]);
 
@@ -1115,12 +1134,12 @@ const DevAssistantView: React.FC<DevAssistantViewProps> = ({ chatBackend, projec
     rejectFileChange: handleRejectFile,
   }), [chatBackend, sendMessageWithSnapshot, handleRejectFile]);
 
-  // 组件卸载时清理保存定时器
+  // 组件卸载时清理所有标签的保存定时器
   useEffect(() => {
+    const timers = saveTimersRef.current;
     return () => {
-      if (saveTimerRef.current) {
-        clearTimeout(saveTimerRef.current);
-      }
+      timers.forEach(timer => clearTimeout(timer));
+      timers.clear();
     };
   }, []);
 

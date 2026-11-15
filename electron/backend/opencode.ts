@@ -14,18 +14,31 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { readStoreJSON } from './store';
 import { resolveDevAssistantAgents } from './devAssistantAgents';
+import {
+  AGENT_KITS,
+  materializeDocAgentKit,
+  materializeUserKit,
+  cleanupWorkspaceKit,
+  resolveKitSourceDir,
+} from './docAgentKit';
 import { getCompileServerEndpoint } from './serviceEndpoints';
 import { localizeLogTimestamps } from './logTime';
 import { emitToRenderer, getMainWindow } from '../eventBus';
+import {
+  currentAgentProcess,
+  registerAgentProcess,
+  releaseAgentProcessIfCurrent,
+  runExclusive,
+} from './agentLifecycle';
+import { hasExited, registerChild } from './childRegistry';
 
 const SERVER_PORT = 4096;
 const SERVER_URL = `http://127.0.0.1:${SERVER_PORT}`;
 const CONFIG_STORE = 'opencode-config.json';
 const SECURE_STORE = 'secure-store.json';
 
-// ─── 进程状态 ──────────────────────────────────────────────────
-let childProc: ChildProcess | null = null;
-let childPid: number | null = null;
+// 进程句柄不放在本模块：登记/释放与生命周期互斥统一收敛在 agentLifecycle.ts，
+// 保证「检查是否在跑 → spawn → 登记句柄」不会被另一次启动/停止交错。
 
 // ─── 配置类型（对齐 SDK / 前端配置结构）────────────────────────────
 
@@ -323,6 +336,72 @@ function sandboxProfilePath(): string {
   return path.join(app.getAppPath(), 'resources', 'sandbox', 'opencode-macos.sb');
 }
 
+/**
+ * 准备随包分发的 agent 套件（req-doc + dw-dev）。
+ *
+ * opencode 的目录清单固定为
+ *   [Global.Path.config, <cwd→worktree 的 .opencode>, ~/.opencode, OPENCODE_CONFIG_DIR]
+ * 其中 `~/.opencode` 与项目 `.opencode` 共用同一套 loader（agent/command 递归、tool/plugin 顶层，
+ * 均跟随软链）。所以把套件放在 `~/.dataforge/agents` 再让 `~/.opencode` 指过去，就得到
+ * 「多工作区共用一份」，且不动用户的 `~/.config/opencode`。
+ * 链接建不起来（权限/已存在同名目录）时退回按工作区物化，保证功能不退化为「没有」。
+ *
+ * 两套 kit 共用同一个用户目录，各自用独立 stateDir（.docagent / .dwagent）记录受管文件；
+ * 单套失败只影响该套件，不阻断另一套与 opencode 启动。
+ */
+function prepareAgentKits(cwd: string): void {
+  for (const kit of AGENT_KITS) prepareOneAgentKit(cwd, kit);
+}
+
+function prepareOneAgentKit(cwd: string, kit: (typeof AGENT_KITS)[number]): void {
+  const tag = `[${kit.kit}]`;
+  const sourceDir = resolveKitSourceDir(app.isPackaged, app.getAppPath(), process.resourcesPath, kit.dirName);
+  const report = (result: { updated: string[]; repaired: string[]; removed: string[]; overrides: string[] }) => {
+    if (result.updated.length || result.repaired.length || result.removed.length || result.overrides.length) {
+      console.log(
+        `${tag} 同步：写入 ${result.updated.length} / 修复 ${result.repaired.length} / 清理 ${result.removed.length} / 用户覆盖 ${result.overrides.length}`,
+      );
+    }
+    if (result.repaired.length > 0) {
+      console.warn(`${tag} 受管代码文件被修改，已恢复为随包版本：${result.repaired.join(', ')}`);
+    }
+  };
+
+  try {
+    // 旧版按工作区物化的副本必须清掉，否则同名工具会从两处各注册一次
+    const removed = cleanupWorkspaceKit(cwd, kit.stateDir);
+    if (removed.length > 0) console.log(`${tag} 已迁移：清理工作区旧副本 ${removed.length} 个文件`);
+
+    const { materialized, link } = materializeUserKit(sourceDir, app.getPath('home'), {
+      appVersion: app.getVersion(),
+      stateDir: kit.stateDir,
+    });
+    if (!materialized.ok) {
+      console.warn(`${tag} 用户级物化失败(${materialized.reason}): ${materialized.message}`);
+      emitToRenderer(getMainWindow(), 'agentkit-unavailable', `${kit.kit}: ${materialized.message ?? 'unknown'}`);
+      return;
+    }
+    report(materialized);
+    for (const warning of materialized.warnings) console.warn(`${tag} ${warning}`);
+    console.log(`${tag} 套件 ${materialized.kitVersion} 位于 ~/.dataforge/agents，链接方式 ${link.method}`);
+    if (link.method === 'none') {
+      console.warn(
+        `${tag} ~/.opencode 不可用（${link.message ?? (link.conflicts.join('; ') || '未知原因')}），退回按工作区物化`,
+      );
+      const fallback = materializeDocAgentKit(sourceDir, cwd, { appVersion: app.getVersion(), stateDir: kit.stateDir });
+      if (!fallback.ok) {
+        emitToRenderer(getMainWindow(), 'agentkit-unavailable', `${kit.kit}: ${fallback.message ?? 'unknown'}`);
+        return;
+      }
+      report(fallback);
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`${tag} 准备套件异常: ${message}`);
+    emitToRenderer(getMainWindow(), 'agentkit-unavailable', `${kit.kit}: ${message}`);
+  }
+}
+
 // ─── SDK 配置构造 ───────────────────────────────────────────────
 
 function buildSdkConfig(config: OpenCodeServerConfig): Record<string, unknown> {
@@ -332,6 +411,14 @@ function buildSdkConfig(config: OpenCodeServerConfig): Record<string, unknown> {
   // 权限：external_directory deny + bash 规则（最后匹配者优先）
   sdk.permission = {
     external_directory: 'deny',
+    // 需求文档只能由 docagent 的 finalize-doc 渲染落盘（增量合并 + 门禁）。
+    // 这条 deny 与工作区里的 guard 插件是双保险：guard 是可被用户改写的文件，
+    // 而权限规则来自 OPENCODE_CONFIG_CONTENT（由主进程注入），工作区改不动它。
+    // 只加 deny，不写 '*' allow：未命中的路径仍走默认的 ask 流程，避免改变现有编辑体验。
+    // 注意 wildcard 的 * 会跨越路径分隔符，docs/*_开发需求.md 覆盖子目录。
+    edit: {
+      'docs/*_开发需求.md': 'deny',
+    },
     bash: {
       '*': 'allow',
       'mysql*': 'deny',
@@ -529,23 +616,37 @@ function validateCwd(cwd: string): void {
 /**
  * 启动 opencode 服务核心逻辑。幂等：已有健康进程则复用；
  * 登录后调用前应先 stop，确保新配置生效。
+ *
+ * 整个启动流程经 runExclusive 串行化：应用启动的 autoStartOpencode 与登录后的
+ * start_opencode_after_login 是两条独立触发路径，若并发进入「判断是否在跑 →
+ * spawn → 登记句柄」这一段，两者都会通过判断各 spawn 一次，后到者因端口占用
+ * 启动失败却覆盖了前者句柄，留下无法 stop 的孤儿进程。
  */
 export async function startOpencodeServerCore(
   config: OpenCodeServerConfig,
   opts: { noSandbox?: boolean } = {},
 ): Promise<string> {
+  return runExclusive(() => startOpencodeServerLocked(config, opts));
+}
+
+/** startOpencodeServerCore 的实际实现：只能在 runExclusive 内调用，勿从外部直接调。 */
+async function startOpencodeServerLocked(
+  config: OpenCodeServerConfig,
+  opts: { noSandbox?: boolean } = {},
+): Promise<string> {
   // ── 幂等性检查 ──
-  if (childProc && childPid != null) {
+  const running = currentAgentProcess();
+  if (running && running.pid != null) {
     if (await healthCheck()) {
       console.log('[agent] 服务进程已在运行且健康，复用现有实例');
       return SERVER_URL;
     }
     console.warn('[agent] 子句柄存在但健康检查失败，进程可能已崩溃，清理后重新启动...');
-    await stopOpencodeServer();
+    await stopOpencodeServerLocked();
   }
 
   console.log(`[agent] === 开始启动流程，目标 cwd: ${config.cwd ?? '(未设置)'} ===`);
-  await stopOpencodeServer();
+  await stopOpencodeServerLocked();
 
   await cleanupOpencodeDbLocks(config.cwd);
   await waitPortFree(SERVER_PORT, 2000);
@@ -565,6 +666,13 @@ export async function startOpencodeServerCore(
   if (cwd && fs.existsSync(cwd)) {
     validateCwd(cwd);
     spawnCwd = cwd;
+  }
+
+  // ── 准备需求文档 agent 套件：默认用户级共用一份，失败退回工作区物化 ──
+  // opencode 只在启动时扫描一次目录，必须在 spawn 之前完成；
+  // 失败不阻断启动（仅套件不可用），并告知前端，避免用户以为整机功能损坏。
+  if (spawnCwd) {
+    prepareAgentKits(spawnCwd);
   }
 
   const { exe: opencodeExe, args: sandboxArgs, sandboxed } = makeSpawnSpec(config, opts.noSandbox === true);
@@ -613,8 +721,9 @@ export async function startOpencodeServerCore(
     shell: false,
     windowsHide: true,
   });
-  childProc = proc;
-  childPid = proc.pid ?? null;
+  registerAgentProcess(proc);
+  // 同时登记到统一的子进程表：退出时由 forceShutdownAll 统一收尾，不必等业务队列
+  registerChild(proc, 'opencode');
 
   console.log(`[agent] sidecar 进程已 spawn, PID: ${proc.pid}`);
 
@@ -667,13 +776,16 @@ export async function startOpencodeServerCore(
   }
 
   if (!ready) {
+    // 本次启动没成功（spawn 报错 / 进程秒退 / 就绪与健康检查都超时）：
+    // 先把句柄与进程一起收尾，不能让状态停在「已启动」，否则后续 stop/start 都
+    // 会对着一个死句柄操作，且日志会谎报"正在优雅终止"。
+    discardSpawnedProcess(proc);
     if (sandboxed) {
       // 沙箱包装导致启动失败时回退非沙箱重试，保证智能体可用（如 bwrap 命名空间受限、
       // 绑定目录异常等）。仅回退一次，重试再失败则报真实错误。
       const detail = stderrLines.length > 0 ? `\nstderr:\n${stderrLines.slice(-20).join('\n')}` : '';
       console.warn(`[agent] 沙箱模式启动失败，回退非沙箱模式重试${detail}`);
-      await stopOpencodeServer();
-      return startOpencodeServerCore(config, { noSandbox: true });
+      return startOpencodeServerLocked(config, { noSandbox: true });
     }
     const detail = stderrLines.length > 0 ? `\nstderr:\n${stderrLines.join('\n')}` : '';
     throw new Error(`Agent 服务器启动超时${detail}`);
@@ -683,24 +795,59 @@ export async function startOpencodeServerCore(
 
   // ── 后台监督：进程退出时通知前端 ──
   proc.on('exit', (code, signal) => {
+    // 身份校验：只有「当前登记的句柄」退出才清状态并通知前端。
+    // 重启/沙箱回退重试遗留的旧进程退出时，新实例可能已经在跑 —— 不得清掉新句柄，
+    // 也不得推「进程已退出」，否则前端会把正常运行的新实例显示成崩溃。
+    const wasCurrent = releaseAgentProcessIfCurrent(proc);
+    if (!wasCurrent && currentAgentProcess() !== null) {
+      console.log(
+        `[agent] 旧进程已退出 (code=${code ?? '?'}, signal=${signal ?? '?'})，当前有其它实例在跑，忽略`,
+      );
+      return;
+    }
     const detail = stderrLines.length > 0
       ? `Agent 进程已退出 (code: ${code ?? '?'}, signal: ${signal ?? '?'})\nstderr:\n${stderrLines.join('\n')}`
       : `Agent 进程已退出 (code: ${code ?? '?'}, signal: ${signal ?? '?'})`;
     console.log(`[agent] ${detail}`);
     emitToRenderer(getMainWindow(), 'opencode-process-terminated', detail);
-    childProc = null;
-    childPid = null;
   });
 
   console.log(`[agent] 服务器已启动，PID: ${proc.pid}，地址: ${SERVER_URL}`);
   return SERVER_URL;
 }
 
+/**
+ * 丢弃一个本次启动失败的进程：先释放句柄（仅当它仍是当前登记项），再强杀。
+ * 用于「就绪失败/健康检查超时/进程秒退」这些异常收尾，避免状态卡在已启动。
+ */
+function discardSpawnedProcess(proc: ChildProcess): void {
+  releaseAgentProcessIfCurrent(proc);
+  if (!hasExited(proc)) {
+    try { proc.kill('SIGKILL'); } catch { /* 进程可能已退出 */ }
+  }
+}
+
+/** 退出收尾用：只清理端口上的孤儿进程，不碰句柄与生命周期队列（幂等、不抛错）。 */
+export async function cleanupOpencodePort(): Promise<void> {
+  try {
+    if (await isPortInUse(SERVER_PORT)) {
+      console.log('[agent] 退出清理：端口 4096 仍被占用，清理孤儿进程...');
+      await killProcessOnPort(SERVER_PORT);
+    }
+  } catch {
+    /* 退出路径不允许抛错 */
+  }
+}
+
 /** 停止 opencode：SIGTERM → 等端口释放（5s）→ 强制 kill → 端口孤儿清理。 */
 export async function stopOpencodeServer(): Promise<void> {
-  const proc = childProc;
-  childProc = null;
-  childPid = null;
+  return runExclusive(() => stopOpencodeServerLocked());
+}
+
+/** stopOpencodeServer 的实际实现：只能在 runExclusive 内调用，勿从外部直接调。 */
+async function stopOpencodeServerLocked(): Promise<void> {
+  const proc = currentAgentProcess();
+  if (proc) releaseAgentProcessIfCurrent(proc);
   if (!proc || !proc.pid) {
     console.log('[agent] 没有运行中的服务器进程需要停止');
   }
@@ -715,12 +862,18 @@ export async function stopOpencodeServer(): Promise<void> {
     // 等待进程自行退出（最多 5s），给足时间做 WAL checkpoint
     for (let i = 0; i < 50; i++) {
       await sleep(100);
+      if (hasExited(proc)) {
+        console.log('[agent] 服务器进程已退出');
+        break;
+      }
       if (!(await isPortInUse(SERVER_PORT))) {
         console.log('[agent] 服务器进程已优雅退出（端口已释放）');
         break;
       }
     }
-    if (proc.exitCode === null && !proc.killed) {
+    // 升级判断只认「是否已经退出」：proc.killed 在 SIGTERM 成功发出后即为 true，
+    // 用它做条件会让 SIGKILL 升级永远不执行
+    if (!hasExited(proc)) {
       try { proc.kill('SIGKILL'); } catch { /* 忽略 */ }
     }
   }

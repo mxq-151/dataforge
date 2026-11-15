@@ -762,9 +762,11 @@ const useFileSystem = (initialPath?: string) => {
       if (newPath === srcPath) return false;
 
       // 防御：文件夹不能移动到自身或其子目录内（避免循环）
+      // 判定方向：目标路径位于源路径内部（newPath 以 srcPath + 分隔符开头）
       if (nodeType === 'folder') {
-        const prefix = newPath.endsWith(separator) ? newPath : newPath + separator;
-        if (srcPath === newPath || srcPath.startsWith(prefix)) return false;
+        const normSrc = srcPath.replace(/[\\/]+$/, '').replace(/\\/g, '/');
+        const normNew = newPath.replace(/[\\/]+$/, '').replace(/\\/g, '/');
+        if (normNew === normSrc || normNew.startsWith(normSrc + '/')) return false;
       }
 
       await api.rename(srcPath, newPath);
@@ -807,9 +809,11 @@ const useFileSystem = (initialPath?: string) => {
       const targetBase = targetDirPath.replace(/[\\/]+$/, '');
 
       // 防御：文件夹不能复制到自身或其子目录内（避免无限嵌套）
+      // 判定方向：目标目录位于源路径内部（targetBase 以 srcPath + 分隔符开头）
       if (nodeType === 'folder') {
-        const tPrefix = targetBase.endsWith(separator) ? targetBase : targetBase + separator;
-        if (targetBase === srcPath || srcPath.startsWith(tPrefix)) return false;
+        const normSrc = srcPath.replace(/[\\/]+$/, '').replace(/\\/g, '/');
+        const normTarget = targetBase.replace(/[\\/]+$/, '').replace(/\\/g, '/');
+        if (normTarget === normSrc || normTarget.startsWith(normSrc + '/')) return false;
       }
 
       // 目标已存在同名时自动追加"副本"后缀，避免覆盖

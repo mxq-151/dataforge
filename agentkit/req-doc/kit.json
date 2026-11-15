@@ -1,0 +1,13 @@
+{
+  "kit": "req-doc",
+  "kitVersion": "1.0.0",
+  "description": "需求文档编写 + 校验 agent 套件（随 DataForge 分发，物化到工作区 .opencode/）",
+  "outDir": "docagent",
+  "stateDir": ".docagent",
+  "entries": {
+    "tool": "tool",
+    "plugin": "plugin",
+    "agent": "agent",
+    "command": "command"
+  }
+}

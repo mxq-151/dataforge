@@ -170,15 +170,23 @@ export function useOpencodeChat(options: UseOpencodeChatOptions): UseOpencodeCha
 
     // 发送 prompt（v2 SDK 参数扁平化：sessionID/parts/system/model 直传）
     try {
-      await client.session.prompt({
+      const result = await client.session.prompt({
         sessionID: sessionId!,
         parts: [{ type: 'text', text: line }],
         ...(systemInstructions ? { system: systemInstructions } : {}),
         ...(model ? { model } : {}),
       });
+      // v2 SDK 默认不在 HTTP 错误时抛异常，错误放在 result.error 里，必须显式检查
+      if (result.error) {
+        throw result.error;
+      }
     } catch (err) {
       // 带上请求上下文：光看 message 很难判断是模型配置问题、鉴权问题还是服务不可达
-      const detail = err instanceof Error ? err.message : String(err);
+      const detail = err instanceof Error
+        ? err.message
+        : typeof (err as { message?: unknown } | null)?.message === 'string'
+          ? String((err as { message: string }).message)
+          : JSON.stringify(err);
       const status = (err as { status?: number } | null)?.status;
       console.error(
         '[agent-chat] Failed to send prompt:',
@@ -243,17 +251,21 @@ export function useOpencodeChat(options: UseOpencodeChatOptions): UseOpencodeCha
    * v2 SDK 使用 client.permission.reply({ requestID, reply }) 全局权限响应 API。
    * requestID 直接来自 permission.asked 事件的 properties.id（纯 ID，无 sessionID 前缀）。
    */
-  const sendPermissionResponse = useCallback((
+  const sendPermissionResponse = useCallback(async (
     client: OpencodeClient | null,
     requestId: string,
     response: 'once' | 'always' | 'reject'
   ) => {
     if (!client) return;
     try {
-      client.permission.reply({
+      const result = await client.permission.reply({
         requestID: requestId,
         reply: response,
       });
+      // v2 SDK 不抛错，错误在 result.error 中；不检查会导致「点了没反应」
+      if (result.error) {
+        reportError('权限响应失败', result.error);
+      }
     } catch (err) {
       reportError('权限响应失败', err);
     }
@@ -265,14 +277,17 @@ export function useOpencodeChat(options: UseOpencodeChatOptions): UseOpencodeCha
    * v2 SDK 使用 client.question.reply({ requestID, answers }) API。
    * answers 是 string[][]，每个元素对应一个 question 的选中项数组（多 question 时按序对应）。
    */
-  const sendQuestionReply = useCallback((
+  const sendQuestionReply = useCallback(async (
     client: OpencodeClient | null,
     requestId: string,
     answers: string[][],
   ) => {
     if (!client) return;
     try {
-      client.question.reply({ requestID: requestId, answers });
+      const result = await client.question.reply({ requestID: requestId, answers });
+      if (result.error) {
+        reportError('回复提问失败', result.error);
+      }
     } catch (err) {
       reportError('回复提问失败', err);
     }
@@ -283,10 +298,13 @@ export function useOpencodeChat(options: UseOpencodeChatOptions): UseOpencodeCha
    *
    * v2 SDK 使用 client.question.reject({ requestID }) API。
    */
-  const sendQuestionReject = useCallback((client: OpencodeClient | null, requestId: string) => {
+  const sendQuestionReject = useCallback(async (client: OpencodeClient | null, requestId: string) => {
     if (!client) return;
     try {
-      client.question.reject({ requestID: requestId });
+      const result = await client.question.reject({ requestID: requestId });
+      if (result.error) {
+        reportError('拒绝提问失败', result.error);
+      }
     } catch (err) {
       reportError('拒绝提问失败', err);
     }
@@ -309,11 +327,16 @@ export function useOpencodeChat(options: UseOpencodeChatOptions): UseOpencodeCha
       return { success: false };
     }
     try {
-      await client.session.summarize({
+      const result = await client.session.summarize({
         sessionID: currentSessionId,
         ...(options?.providerID ? { providerID: options.providerID } : {}),
         ...(options?.modelID ? { modelID: options.modelID } : {}),
       });
+      // v2 SDK 不抛错：必须检查 result.error，否则压缩失败会被当成成功
+      if (result.error) {
+        reportError('压缩会话失败', result.error);
+        return { success: false };
+      }
       return { success: true };
     } catch (err) {
       reportError('压缩会话失败', err);

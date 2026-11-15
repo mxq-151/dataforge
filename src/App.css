@@ -292,6 +292,10 @@ body,
   background-color: #1e1e1e;
 }
 
+.app__workspace--data-integration {
+  background-color: #1e1e1e;
+}
+
 .app__workspace--knowledge-base {
   background-color: #1e1e1e;
 }

@@ -18,9 +18,11 @@
     "install:electron": "cross-env ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ node node_modules/electron/install.js",
     "build:main": "tsc -p tsconfig.node.json",
     "build:renderer": "vite build",
+    "build:docagent": "node scripts/build-doc-agent.mjs",
+    "build:agentkits": "node scripts/build-doc-agent.mjs",
     "build": "npm run build:main && npm run build:renderer",
     "prepare:metals": "node scripts/prepare-metals-bundle.mjs",
-    "prebuild": "npm run prepare:metals",
+    "prebuild": "npm run prepare:metals && npm run build:agentkits",
     "pack": "npm run build && cross-env ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/ electron-builder --dir",
     "dist": "npm run build && cross-env ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/ electron-builder",
     "start": "electron .",
@@ -51,6 +53,22 @@
       "package.json"
     ],
     "extraResources": [
+      {
+        "from": "resources/docagent",
+        "to": "docagent",
+        "filter": [
+          "**/*",
+          "!**/*.map"
+        ]
+      },
+      {
+        "from": "resources/dwagent",
+        "to": "dwagent",
+        "filter": [
+          "**/*",
+          "!**/*.map"
+        ]
+      },
       {
         "from": "resources/sandbox",
         "to": "sandbox",
@@ -167,6 +185,7 @@
     "@codingame/monaco-vscode-editor-api": "^25.1.2",
     "@codingame/monaco-vscode-extension-api": "^25.1.2",
     "@monaco-editor/react": "^4.7.0",
+    "@opencode-ai/plugin": "^1.19.5",
     "@opencode-ai/sdk": "^1.19.5",
     "@tanstack/react-virtual": "^3.14.10",
     "@testing-library/react": "^16.3.3",
@@ -183,6 +202,7 @@
     "echarts": "^6.1.0",
     "electron": "^44.7.0",
     "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.2",
     "jsdom": "^30.0.1",
     "lucide-react": "^1.34.0",
     "monaco-languageclient": "^10.7.0",
@@ -197,6 +217,7 @@
     "vite": "^8.2.2",
     "vitest": "^4.1.11",
     "vscode": "npm:@codingame/monaco-vscode-extension-api@^25.1.2",
-    "wait-on": "^9.1.0"
+    "wait-on": "^9.1.0",
+    "zod": "^4.6.7"
   }
 }

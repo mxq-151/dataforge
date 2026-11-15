@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, waitFor, fireEvent, configure } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, configure, act } from '@testing-library/react';
 import AssetCatalogPanel from './AssetCatalogPanel';
 import { ToastProvider } from '../../components/Toast';
 
@@ -65,6 +65,16 @@ const h = vi.hoisted(() => {
   // 用一个可变标志控制详情接口成败，便于断言「重新加载」确实重新发起了请求
   const state = { detailFails: false };
 
+  // 详情初始快照：本文件所有用例共用同一个 detail 对象，写接口会原地改它，
+  // 每个用例开始前必须整体还原，否则前一个用例写入的天数/负责人会残留到下一个用例。
+  const detailBaseline = { ...detail };
+
+  /** updateLifecycle 的默认实现（成功路径）；「写失败」用例会用 mockRejectedValueOnce 临时覆盖 */
+  const defaultUpdateLifecycle = async (_id: number, payload: Record<string, number>) => {
+    Object.assign(detail, payload);
+    return { code: 200, data: null };
+  };
+
   const api = {
     getCatalogTree: vi.fn(async () => ({ code: 200, data: [tableNode] })),
     getTableDetail: vi.fn(async () => {
@@ -73,10 +83,7 @@ const h = vi.hoisted(() => {
       return { code: 200, data: { ...detail } };
     }),
     // 写成功后更新本地 detail，模拟「重拉详情拿到最新值」
-    updateLifecycle: vi.fn(async (_id: number, payload: Record<string, number>) => {
-      Object.assign(detail, payload);
-      return { code: 200, data: null };
-    }),
+    updateLifecycle: vi.fn(defaultUpdateLifecycle),
     // 默认页签为「资产概况」，面板挂载即会探测这 5 个接口；本文件不覆盖概况，
     // 统一返回空数据让看板落到「暂无数据」，避免因未定义方法抛错。
     getInventoryByEnvProject: vi.fn(async () => ({ code: 200, data: [] })),
@@ -132,7 +139,7 @@ const h = vi.hoisted(() => {
     })),
   };
 
-  return { tableNode, detail, state, api };
+  return { tableNode, detail, state, api, detailBaseline, defaultUpdateLifecycle };
 });
 
 vi.mock('../../api/assetCatalog', () => ({
@@ -208,15 +215,31 @@ function infoValue(label: string): string {
   return item?.querySelector('.table-detail-modal__value')?.textContent ?? '';
 }
 
+/**
+ * 进入治理区块的编辑态。
+ *
+ * AssetGovernanceEditor 挂载后会执行一次依赖 [detail] 的回填 effect，其中含 setEditing('')。
+ * 这个 passive effect 通常在 findBy 的 act 中就会 flush；但高负载时它可能被推迟到
+ * 「点击编辑」触发的那次渲染期间才执行，把刚进入的编辑态立刻复位 —— 表现为点击后
+ * 迟迟等不到编辑输入框（本文件此前不稳定失败的根因）。
+ * 这里先显式 flush 一次待处理的 effect，再点击，保证点击是该状态的最后一次写入。
+ */
+async function enterEdit(label: string) {
+  await screen.findByLabelText(label);
+  await act(async () => {});
+  // flush 可能伴随重渲染，重新查询节点后再点击，避免点到已失效的旧节点
+  fireEvent.click(screen.getByLabelText(label));
+}
+
 beforeEach(() => {
+  // 还原模块级共享状态（detail 对象被写接口原地修改，detailFails 被「接口不可用」用例修改）
+  Object.assign(h.detail, h.detailBaseline);
   h.state.detailFails = false;
-  h.detail.hotDays = 90;
-  h.detail.coldDays = 180;
-  h.detail.keepDays = 720;
-  h.api.getCatalogTree.mockClear();
-  h.api.getTableDetail.mockClear();
-  h.api.updateLifecycle.mockClear();
-  h.api.updateOwner.mockClear();
+  // 清空所有 mock 的调用记录；updateLifecycle 还要重置实现 ——
+  // clearAllMocks 不会清掉 mockRejectedValueOnce 队列，残留的 rejection 会串到下一个用例
+  vi.clearAllMocks();
+  h.api.updateLifecycle.mockReset();
+  h.api.updateLifecycle.mockImplementation(h.defaultUpdateLifecycle);
 });
 
 describe('AssetCatalogPanel 生命周期', () => {
@@ -239,7 +262,7 @@ describe('AssetCatalogPanel 生命周期', () => {
     await waitFor(() => expect(screen.getByLabelText('编辑生命周期')).toBeTruthy());
     expect(screen.queryByLabelText(/热数据天数/)).toBeNull();
 
-    fireEvent.click(screen.getByLabelText('编辑生命周期'));
+    await enterEdit('编辑生命周期');
 
     expect(await screen.findByLabelText(/热数据天数/)).toBeTruthy();
     expect(screen.getByLabelText(/冷数据天数/)).toBeTruthy();
@@ -249,7 +272,7 @@ describe('AssetCatalogPanel 生命周期', () => {
   it('热数据天数大于冷数据天数时拦截提交', async () => {
     renderPanel();
     await selectTable();
-    fireEvent.click(await screen.findByLabelText('编辑生命周期'));
+    await enterEdit('编辑生命周期');
 
     fireEvent.change(await screen.findByLabelText(/热数据天数/), { target: { value: '200' } });
     fireEvent.click(screen.getByLabelText('保存'));
@@ -261,7 +284,7 @@ describe('AssetCatalogPanel 生命周期', () => {
   it('非整数天数按校验拦截', async () => {
     renderPanel();
     await selectTable();
-    fireEvent.click(await screen.findByLabelText('编辑生命周期'));
+    await enterEdit('编辑生命周期');
 
     fireEvent.change(await screen.findByLabelText(/保留天数/), { target: { value: '720.5' } });
     fireEvent.click(screen.getByLabelText('保存'));
@@ -273,7 +296,7 @@ describe('AssetCatalogPanel 生命周期', () => {
   it('提交合法生命周期后写接口、退出编辑态并回填', async () => {
     renderPanel();
     await selectTable();
-    fireEvent.click(await screen.findByLabelText('编辑生命周期'));
+    await enterEdit('编辑生命周期');
 
     fireEvent.change(await screen.findByLabelText(/热数据天数/), { target: { value: '30' } });
     fireEvent.change(screen.getByLabelText(/冷数据天数/), { target: { value: '120' } });
@@ -294,13 +317,17 @@ describe('AssetCatalogPanel 生命周期', () => {
     h.api.updateLifecycle.mockRejectedValueOnce(new Error('权限不足'));
     renderPanel();
     await selectTable();
-    fireEvent.click(await screen.findByLabelText('编辑生命周期'));
+    await enterEdit('编辑生命周期');
 
     fireEvent.click(await screen.findByLabelText('保存'));
 
     expect(await screen.findByText('生命周期更新失败：权限不足')).toBeTruthy();
     // 失败后仍停留在编辑态，输入框仍在
     expect(screen.getByLabelText(/热数据天数/)).toBeTruthy();
+    // 等保存的异步收尾（finally 里清 busy）完成，避免未结束的异步写跨用例继续执行
+    await waitFor(() =>
+      expect((screen.getByLabelText('保存') as HTMLButtonElement).disabled).toBe(false)
+    );
   });
 
   it('详情接口不可用时降级显示，并可重新加载', async () => {
@@ -321,7 +348,7 @@ describe('AssetCatalogPanel 生命周期', () => {
   it('负责人下拉列出已绑定租户的平台用户，取值为其租户编码', async () => {
     renderPanel();
     await selectTable();
-    fireEvent.click(await screen.findByLabelText('编辑负责人'));
+    await enterEdit('编辑负责人');
 
     const select = (await screen.findByLabelText('业务负责人')) as HTMLSelectElement;
     expect(select.tagName).toBe('SELECT');
@@ -335,7 +362,7 @@ describe('AssetCatalogPanel 生命周期', () => {
   it('选择平台用户并保存，负责人写接口收到其租户编码', async () => {
     renderPanel();
     await selectTable();
-    fireEvent.click(await screen.findByLabelText('编辑负责人'));
+    await enterEdit('编辑负责人');
 
     const select = await screen.findByLabelText('业务负责人');
     await waitFor(() =>
@@ -347,5 +374,8 @@ describe('AssetCatalogPanel 生命周期', () => {
     await waitFor(() =>
       expect(h.api.updateOwner).toHaveBeenCalledWith(1, { businessOwner: 'T001', techOwner: '' })
     );
+    // 保存成功后宿主会重拉详情；等这次异步收尾，避免它的后续写状态跨用例继续执行
+    await waitFor(() => expect(h.api.getTableDetail.mock.calls.length).toBe(2));
+    await act(async () => {});
   });
 });

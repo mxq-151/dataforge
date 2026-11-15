@@ -184,6 +184,11 @@ const DataExploreEditor: React.FC<DataExploreEditorProps> = ({
   const lastSavedRef = useRef<Record<string, string>>({});
   // 每个会话目录对应的 SQL 文件路径（dir → filePath）
   const sqlFilePathsRef = useRef<Record<string, string>>({});
+  // 始终指向最新的 sqlContents：供 effect 读取当前内容，避免把 sqlContents 放进依赖数组后自我触发
+  const sqlContentsRef = useRef(sqlContents);
+  sqlContentsRef.current = sqlContents;
+  // 已处理过的文件变更（`seq:dir`），防止同一次变更在重新渲染/切换标签时被重复应用
+  const handledFileChangeRef = useRef<string | null>(null);
   // 本地激活目录（标签即时高亮；与 backend currentDirectory 同步）
   const [localActiveDir, setLocalActiveDir] = useState<string | null>(null);
   const [isExecuting, setIsExecuting] = useState(false);
@@ -332,6 +337,8 @@ const DataExploreEditor: React.FC<DataExploreEditorProps> = ({
   }, [activeDir, sqlContents]);
 
   // 监听 AI 智能体文件变更，刷新当前激活编辑器内容
+  // 依赖里刻意不含 sqlContents：effect 自身会写 sqlContents，若把它放进依赖，
+  // 每次输入都会重新触发并读盘，导致用户输入被磁盘旧内容回滚、且 lastSaved 被同步后永不落盘。
   useEffect(() => {
     if (!activeDir) return;
     const filePath = sqlFilePathsRef.current[activeDir];
@@ -339,23 +346,29 @@ const DataExploreEditor: React.FC<DataExploreEditorProps> = ({
     const normalized = filePath.replace(/\\/g, '/');
     const isAffected = lastFileChangePaths.some(p => p.replace(/\\/g, '/') === normalized);
     if (!isAffected) return;
-    const before = sqlContents[activeDir];
-    // 同步 lastSaved，防止自动保存定时器在异步读取期间将旧内容写回覆盖 AI 修改（竞态修复）
-    lastSavedRef.current[activeDir] = before;
+    // 同一次文件变更（同一 seq + 同一标签）只应用一次
+    const handledKey = `${lastFileChangeSeq}:${activeDir}`;
+    if (handledFileChangeRef.current === handledKey) return;
+    handledFileChangeRef.current = handledKey;
+
+    const targetDir = activeDir;
+    const before = sqlContentsRef.current[targetDir];
     (async () => {
       try {
         const api = await initFileSystemAPI();
         const buf = await api.readFile(filePath);
         const text = new TextDecoder().decode(buf);
-        if (text && text !== before) {
-          setSqlContents(prev => ({ ...prev, [activeDir]: text }));
-          lastSavedRef.current[activeDir] = text;
+        // 读盘期间用户可能继续输入：只有内容确实变化且编辑器内容未被改动时才覆盖
+        const current = sqlContentsRef.current[targetDir];
+        if (text && text !== current && current === before) {
+          setSqlContents(prev => ({ ...prev, [targetDir]: text }));
+          lastSavedRef.current[targetDir] = text;
         }
       } catch (error) {
         console.error('[DataExploreEditor] 刷新文件内容失败:', error);
       }
     })();
-  }, [lastFileChangeSeq, lastFileChangePaths, activeDir, sqlContents]);
+  }, [lastFileChangeSeq, lastFileChangePaths, activeDir]);
 
   // SQL 补全（统一使用 useSqlCompletion hook）
   const { setupSQLCompletion, disposeCompletion } = useSqlCompletion({

@@ -1,0 +1,13 @@
+{
+  "kit": "dw-dev",
+  "kitVersion": "1.0.0",
+  "description": "数仓设计 + 数据处理代码开发 agent 套件（随 DataForge 分发，优先物化到 ~/.dataforge/agents，工作区 .opencode/ 仅在软链失败时回退）",
+  "outDir": "dwagent",
+  "stateDir": ".dwagent",
+  "entries": {
+    "tool": "tool",
+    "plugin": "plugin",
+    "agent": "agent",
+    "command": "command"
+  }
+}

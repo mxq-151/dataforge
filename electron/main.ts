@@ -2,9 +2,10 @@ import { app, BrowserWindow, screen, shell } from 'electron';
 import * as path from 'node:path';
 import { installMainLogger } from './backend/logger';
 import { registerIpcHandlers } from './ipc';
-import { autoStartOpencode, stopOpencodeServer } from './backend/opencode';
+import { autoStartOpencode } from './backend/opencode';
 import { startCompileServer, stopCompileServer } from './backend/compileServer';
 import { stopAllLspBridges } from './backend/lspBridge';
+import { forceShutdownAll } from './backend/shutdown';
 import { detectWsl, runtimeId } from './backend/platform';
 
 // preload 编译产物与 main.js 同目录（dist-electron/）
@@ -114,10 +115,21 @@ if (!gotSingleInstanceLock) {
     app.quit();
   });
 
-  // 退出时优雅终止 opencode、compile server 与 LSP 桥（避免留下孤儿进程/占用端口）
-  app.on('before-quit', () => {
-    void stopOpencodeServer();
+  // 退出时优雅终止 opencode、compile server 与 LSP 桥（避免留下孤儿进程/占用端口）。
+  //
+  // 注意不能只写 `void stopOpencodeServer()`：那条要走 runExclusive 业务队列（可能排在
+  // 一次启动之后，最长约 20s），进程退出会把它截断，SIGKILL 升级与端口清理都来不及跑。
+  // 所以这里拦下本次退出，走独立的强制收尾（绕开队列、SIGTERM → 短宽限 → SIGKILL），
+  // 收尾完成后再真正退出。
+  let shuttingDown = false;
+  app.on('before-quit', (event) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    event.preventDefault();
+    // 同步部分：compile server 与 LSP 桥（SIGKILL，不依赖等待）
     stopCompileServer();
     stopAllLspBridges();
+    // 异步部分：按登记表收尾 opencode / mvn / localRun，并清理端口
+    void forceShutdownAll().finally(() => app.exit(0));
   });
 }

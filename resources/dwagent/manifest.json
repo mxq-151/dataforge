@@ -1,0 +1,148 @@
+{
+  "kit": "dw-dev",
+  "kitVersion": "1.0.0",
+  "stateDir": ".dwagent",
+  "builtAt": "2026-11-15T03:49:11.418Z",
+  "files": [
+    {
+      "path": "agent/dw-code-reviewer.md",
+      "sha256": "8c0a87b13ea1e99b11c471382e5892161e0fb34fce176a6fac05af04e8cff402",
+      "size": 3402
+    },
+    {
+      "path": "agent/dw-coder.md",
+      "sha256": "f2c43294eb7f7bc8bd9d9c3e711755d8eb06ab976706ea9625684c07fe7899fb",
+      "size": 8911
+    },
+    {
+      "path": "agent/dw-design-reviewer.md",
+      "sha256": "92237593c2051d423ba3b4d04a1ca57764f2879805acb5df4fd1e58f689ecab0",
+      "size": 3884
+    },
+    {
+      "path": "agent/dw-modeler.md",
+      "sha256": "322f6c7f71ea64151bb3506b7319f54d9a2a3cdd0cb1a7100a07e8b27b129293",
+      "size": 9214
+    },
+    {
+      "path": "agent/dw-orchestrator.md",
+      "sha256": "23688d574710eaa7f363afbb36b362ad6a8fcb93c2df662e01a76470ae16c441",
+      "size": 9888
+    },
+    {
+      "path": "command/dw-code.md",
+      "sha256": "a212aa9a142c2ff87432e3fe09fbc592d5d88eefb71dcf1bffb5c74ae76dec19",
+      "size": 3106
+    },
+    {
+      "path": "command/dw-design.md",
+      "sha256": "15bf80ed35f19254426371f83c226cd75a58bff7fee0bea1b8ebae8ead6434d4",
+      "size": 3667
+    },
+    {
+      "path": "tool/chunks/chunk-2HNE2SAV.js",
+      "sha256": "b82928b0840abb45e858ad10de4f6d9ab1ff5b8c4abb4f3003dba546a4244499",
+      "size": 1276
+    },
+    {
+      "path": "tool/chunks/chunk-BM4CP7DT.js",
+      "sha256": "b38aeb0d5485bd3c406dfe4a24a774e2cb5f5ced1587751ebec7857157821173",
+      "size": 743
+    },
+    {
+      "path": "tool/chunks/chunk-CLVOOR4K.js",
+      "sha256": "9c49d1c212e984c8b7f8396838ad54fe44d5c8382001c11d56624a1db0fa81be",
+      "size": 20664
+    },
+    {
+      "path": "tool/chunks/chunk-ENNIMXHE.js",
+      "sha256": "bf845ffc05036c73e5c67b8095d5f856f0807a76da0db5dcb8057ca188cb7030",
+      "size": 469588
+    },
+    {
+      "path": "tool/chunks/chunk-HGYCMDT7.js",
+      "sha256": "f8888e4630eb21e5d2bc617e3f6384b3681cc82959070c89a1989f154843aa8e",
+      "size": 23737
+    },
+    {
+      "path": "tool/chunks/chunk-KHE5FELK.js",
+      "sha256": "43cb4be104a75a1fb584abb24e0be4f872b40da49d661da69483270c3cf226a0",
+      "size": 16364
+    },
+    {
+      "path": "tool/chunks/chunk-KX6TIZOY.js",
+      "sha256": "4881d55d3475b7386fe80f628105039597fc3e79840a8cd690030299626e9009",
+      "size": 7442
+    },
+    {
+      "path": "tool/chunks/chunk-OVCRAJX5.js",
+      "sha256": "5fde0050e8efecd57a7e78022d6b32499b2353d3ae50a3ecd4ff59a4d22808b5",
+      "size": 294397
+    },
+    {
+      "path": "tool/dw-check-code.js",
+      "sha256": "64510487757f11fd9190f8580d57d84d1778b4f86a370ee6fabaf44c3c86d275",
+      "size": 3410
+    },
+    {
+      "path": "tool/dw-extract-design.js",
+      "sha256": "a0b62efef2640319cbf35fa3e96f480eebe44fbcb78f422dfa5ebd62c38dee59",
+      "size": 3663
+    },
+    {
+      "path": "tool/dw-extract-req.js",
+      "sha256": "2f73f767b9efbed21aafd05fa66ce8515737efcea44499dd7930042f85a7e03f",
+      "size": 6953
+    },
+    {
+      "path": "tool/dw-finalize-code.js",
+      "sha256": "22b322475c9834d577de647d9e46180ded7e39ce73fa10e94557840480907b6f",
+      "size": 3658
+    },
+    {
+      "path": "tool/dw-finalize-design.js",
+      "sha256": "fbcb843567c62a79ee1203b96f2cf90aca2e3e0b94962d3b561496d31a342e91",
+      "size": 4897
+    },
+    {
+      "path": "tool/dw-submit-job.js",
+      "sha256": "eb7133f3b9b85fefcc7c003d09ee4b8730a02748430666b1ca3ed5d40581c636",
+      "size": 3423
+    },
+    {
+      "path": "tool/dw-submit-meta.js",
+      "sha256": "bbbbfeaf01727c0bec8b5860ba46d7969ee50b98f26df3dbc0fa47b715e34b0b",
+      "size": 1749
+    },
+    {
+      "path": "tool/dw-submit-metrics.js",
+      "sha256": "fa2a03af3fdd8bf181ce7e7de7dc8631b50d68d6dade1d9550eac9473706830a",
+      "size": 2529
+    },
+    {
+      "path": "tool/dw-submit-quality.js",
+      "sha256": "6c5f3f2990076fa07120387af5dee87bc135f28d85aa7a961626dcaeb838468b",
+      "size": 1817
+    },
+    {
+      "path": "tool/dw-submit-review.js",
+      "sha256": "9752a35ee52d034998b1f2a5f317512430e4cc5f8d31bbf662867cdff0c3f4b2",
+      "size": 2013
+    },
+    {
+      "path": "tool/dw-submit-tables.js",
+      "sha256": "997bda7f3adba07e1587d026ff34ae8d478d4b97c49f149da314dbd12bc2e02c",
+      "size": 2169
+    },
+    {
+      "path": "tool/dw-trace-metric.js",
+      "sha256": "ebd01bdd9ad55266f100bb10b56670c697d9a2cd94a0965de2c2a79a0007cbb3",
+      "size": 1294
+    },
+    {
+      "path": "tool/dw-validate-design.js",
+      "sha256": "c5cb5c0dee5baeb58bdfd93e062a8fdb6a4e5a2f7d111640c7e127433b36d6e3",
+      "size": 2495
+    }
+  ]
+}

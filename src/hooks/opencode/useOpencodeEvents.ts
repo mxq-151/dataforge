@@ -627,6 +627,9 @@ export function useOpencodeEvents(
    * 重连前兜底清除 busy 状态（流断开后大概率收不到 session.status:idle 事件）。
    */
   const subscribe = useCallback((client: OpencodeClient, directory: string | null): (() => void) => {
+    // 切换目录/重建订阅前先关闭旧连接，保证同一时刻只有一条 SSE 订阅，
+    // 避免旧连接与新连接同时推送事件导致重复消费。
+    abortRef.current?.abort();
     const abortController = new AbortController();
     abortRef.current = abortController;
 
@@ -665,6 +668,13 @@ export function useOpencodeEvents(
       let reconnectDelay = sse.initialReconnectDelay;
 
       while (!abortController.signal.aborted) {
+        // 每次（重）连接使用独立的 AbortController：退出该次连接前必须 abort，
+        // 让 SDK 内部挂在 signal 上的监听触发 reader.cancel()，真正终止底层 HTTP 流。
+        // 只 break 出 for await 时 SDK 只做 releaseLock 并移除监听，连接会一直挂着。
+        const connectionController = new AbortController();
+        const onOuterAbort = () => connectionController.abort();
+        abortController.signal.addEventListener('abort', onOuterAbort, { once: true });
+
         // 心跳看护：定期检查最后活动时间，超时则置位标记，由 for await 主动跳出重连
         // （不能 abortController.abort()，否则会跳出整个重连循环）
         const stopHeartbeatWatch = sse.startHeartbeatWatch(
@@ -674,7 +684,7 @@ export function useOpencodeEvents(
         try {
           // v2 SDK: client.global.event() 返回 ServerSentEventsResult<GlobalEvent>
           // 其中 GlobalEvent = { directory, payload: Event }
-          const result = await client.global.event();
+          const result = await client.global.event({ signal: connectionController.signal });
           // 连接成功，重置退避延迟
           reconnectDelay = sse.initialReconnectDelay;
           if (!everConnected) {
@@ -722,10 +732,15 @@ export function useOpencodeEvents(
           }
 
           for await (const globalEvent of result.stream) {
-            if (abortController.signal.aborted) break;
+            if (abortController.signal.aborted) {
+              connectionController.abort();
+              break;
+            }
             // 心跳超时标记：主动跳出 for await，进入重连
             if (sse.consumeHeartbeatTimeout()) {
               console.warn('[agent-events] 心跳超时，主动中断当前 SSE 流');
+              // 先 abort 当前连接触发 reader.cancel()，再跳出；否则底层流不会被真正关闭
+              connectionController.abort();
               break;
             }
             // GlobalEvent = { directory, payload: Event }
@@ -759,6 +774,7 @@ export function useOpencodeEvents(
 
           // for await 正常退出（流结束，非 abort）
           if (abortController.signal.aborted) {
+            connectionController.abort();
             stopHeartbeatWatch();
             break;
           }
@@ -799,6 +815,7 @@ export function useOpencodeEvents(
           }
         } catch (err: any) {
           if (abortController.signal.aborted) {
+            connectionController.abort();
             stopHeartbeatWatch();
             return;
           }
@@ -816,6 +833,9 @@ export function useOpencodeEvents(
           setBusyLabel(undefined);
           setRetry(null);
         } finally {
+          abortController.signal.removeEventListener('abort', onOuterAbort);
+          // 兜底：任何退出路径都确保本次连接被取消，避免残留一条悬挂的 SSE 流
+          connectionController.abort();
           stopHeartbeatWatch();
           // 清理重连恢复定时器（无论是否触发，都不再需要）
           sse.clearRecoveryTimers();

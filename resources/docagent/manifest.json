@@ -1,0 +1,98 @@
+{
+  "kit": "req-doc",
+  "kitVersion": "1.0.0",
+  "stateDir": ".docagent",
+  "builtAt": "2026-11-15T03:49:11.460Z",
+  "files": [
+    {
+      "path": "agent/chapter-writer.md",
+      "sha256": "cafcd7b893a9ba828d7e6cfe889797dded0f4bb0018c7403f57abd31991ff5d3",
+      "size": 5002
+    },
+    {
+      "path": "agent/doc-orchestrator.md",
+      "sha256": "c55af9c821776a0d978ac8f57c42b7c6da7390e353dfe1f0b294d042a7c9cb23",
+      "size": 5434
+    },
+    {
+      "path": "agent/logic-reviewer.md",
+      "sha256": "71b3c36b02600949a11cbf08b088ea015a8f62399fb9b5fac4ce85964d7ca248",
+      "size": 6076
+    },
+    {
+      "path": "agent/metrics-writer.md",
+      "sha256": "de8796ae06670350e152ab66570ea1adb7a70d5218db9cfa4da4aed2ce88deda",
+      "size": 4667
+    },
+    {
+      "path": "command/review-req.md",
+      "sha256": "fe346fb70dfb42b93e68073eb4f322e6342adc8a5a4ff63d351ff4d97349552f",
+      "size": 1444
+    },
+    {
+      "path": "command/write-req.md",
+      "sha256": "65514b2bd96f81836bd7a9f072244555a8f98a938186426201da92aaf72f3f74",
+      "size": 1852
+    },
+    {
+      "path": "plugin/guard.js",
+      "sha256": "b8b0aaed9ddf14ab0707f35ad8c71757bb3b7f71c130356df9180a813024b53c",
+      "size": 15459
+    },
+    {
+      "path": "tool/check-logic-graph.js",
+      "sha256": "9ea24b85cc805698fbe600f5bd685276d2eb57c3fab920e47a39e37c910487a5",
+      "size": 4915
+    },
+    {
+      "path": "tool/chunks/chunk-37Q5DPU5.js",
+      "sha256": "c678f6259739532357f696d38958f51f9b41b256600fa84d2bf69a3b60ebfcc3",
+      "size": 3901
+    },
+    {
+      "path": "tool/chunks/chunk-CMR4JGHS.js",
+      "sha256": "ee571461478fb823197864985b02be37ae7d23e468957b8022fc1a89020cad53",
+      "size": 469588
+    },
+    {
+      "path": "tool/chunks/chunk-KP2HCJCQ.js",
+      "sha256": "aca2bef34efa12626c87ea628aa2e82e744a9fe672cc64037980f042019eb57b",
+      "size": 4448
+    },
+    {
+      "path": "tool/chunks/chunk-Z2H3KGHP.js",
+      "sha256": "0a8bda9229d97f9fa2bf3d4387198d5ce9d7cf9d78a72f3702643c2de6182b79",
+      "size": 292311
+    },
+    {
+      "path": "tool/extract-context.js",
+      "sha256": "cd1327533fdc5d6905f25d61ec3ca18e24b9cc521abe4f661aaa475c0bc0ec1a",
+      "size": 2156
+    },
+    {
+      "path": "tool/finalize-doc.js",
+      "sha256": "91587740bdd516d09b81e77a46a7d1bc625242e4d772920fbcd1370c5b31613a",
+      "size": 9577
+    },
+    {
+      "path": "tool/submit-chapter.js",
+      "sha256": "87d9111bc3f066a7ca10daf2ad4b6696a96827774a3abb9f45895a0feb6de630",
+      "size": 1866
+    },
+    {
+      "path": "tool/submit-metrics-batch.js",
+      "sha256": "ab78a7319a5853bae9e997bd98ac3cb0e3fbcf8ba384b5ac97392a5d8ed7318d",
+      "size": 4083
+    },
+    {
+      "path": "tool/submit-review-findings.js",
+      "sha256": "30d6d871145d41057794582fc79b972cb01670cea4b853f43fe2a71557343f14",
+      "size": 3701
+    },
+    {
+      "path": "tool/validate-json.js",
+      "sha256": "a49efc2ee64de3e6158990328218b9634adc2bc9608c06bcb8e20a904b7c1c32",
+      "size": 2094
+    }
+  ]
+}
