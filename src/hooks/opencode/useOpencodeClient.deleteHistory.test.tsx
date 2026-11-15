@@ -114,7 +114,6 @@ function mountProvider() {
         config={config}
         username="admin"
         moduleId="dev-assistant"
-        roleType="DATA_ARCHITECT"
         projectId="test_project"
         directory="/tmp/project"
       >

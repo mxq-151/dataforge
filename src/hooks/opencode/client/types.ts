@@ -10,6 +10,7 @@ import type { ReactNode } from 'react';
 import type { OpencodeClient } from '@opencode-ai/sdk/v2/client';
 import type { DataExploreSessionService } from '../dataExploreSessionService';
 import type { ContextUsage } from '../useOpencodeEvents';
+import { AGENTKIT_TASK_IDS } from '../agentKitTasks';
 import type {
   FileChange,
   LogEntry,
@@ -28,12 +29,12 @@ export const DATA_EXPLORE_MODULE_ID = 'data-explore';
 export const DEV_ASSISTANT_MODULE_ID = 'dev-assistant';
 
 /**
- * 各模块默认任务类型（决定系统指令）。
- * 数据探索默认数据分析；开发助手默认数仓开发（一个入口，编排设计与开发两个子代理）。
+ * 各模块默认任务类型（决定走哪套 AgentKit 编排）。
+ * 数据探索默认数据分析 kit；开发助手默认数仓开发 kit。
  */
 export const DEFAULT_TASK_TYPE_BY_MODULE: Record<string, string> = {
-  [DATA_EXPLORE_MODULE_ID]: 'DATA_ANALYST',
-  [DEV_ASSISTANT_MODULE_ID]: 'DATA_WAREHOUSE_DEV',
+  [DATA_EXPLORE_MODULE_ID]: AGENTKIT_TASK_IDS.ANALYSIS,
+  [DEV_ASSISTANT_MODULE_ID]: AGENTKIT_TASK_IDS.DW_DEV,
 };
 
 /** 任务历史记录（从 SDK Session 映射） */
@@ -168,7 +169,6 @@ export interface OpencodeClientProviderProps {
   config: OpenCodeConfig;
   username?: string;
   moduleId: string;
-  roleType?: string;
   projectId: string;
   /** 工作目录（项目路径），用于创建 OpencodeClient 时指定 directory */
   directory?: string | null;

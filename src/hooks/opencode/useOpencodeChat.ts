@@ -4,24 +4,16 @@
 
 import { useCallback } from 'react';
 import type { OpencodeClient } from '@opencode-ai/sdk/v2/client';
-import { getDeveloperInstructions } from './opencodeInstructions';
 import { resolveAgentKitTask } from './agentKitTasks';
 import type { LogEntry } from '../../types/opencode-backend';
 
 export interface UseOpencodeChatOptions {
-  username?: string;
   moduleId?: string;
-  roleType?: string;
   /**
    * 当前任务类型。命中 AgentKit 工作流时改走 session.command，
    * 显式带 command + agent；其余任务类型维持旧的 session.prompt + system 路径。
    */
   taskType?: string;
-  /**
-   * 按任务类型覆盖的系统提示词（来自设置页「智能体提示词」）。
-   * key 为任务类型，value 为提示词正文；缺省或空白时使用内置默认提示词。
-   */
-  taskPrompts?: Record<string, string>;
   currentSessionId: string | null;
   setCurrentSessionId: (id: string | null) => void;
   /**
@@ -118,7 +110,7 @@ export interface UseOpencodeChatReturn {
 }
 
 export function useOpencodeChat(options: UseOpencodeChatOptions): UseOpencodeChatReturn {
-  const { username, moduleId, roleType, taskType, taskPrompts, currentSessionId, setCurrentSessionId, addLog } = options;
+  const { moduleId, taskType, currentSessionId, setCurrentSessionId, addLog } = options;
 
   /** 上报错误到 UI 日志面板（如果 addLog 可用）+ console.error */
   const reportError = useCallback((label: string, err: unknown) => {
@@ -149,16 +141,6 @@ export function useOpencodeChat(options: UseOpencodeChatOptions): UseOpencodeCha
     if (!client) return null;
 
     const agentKitTask = resolveAgentKitTask(taskType);
-    // AgentKit 工作流由 command 模板与 agent md 提供系统指令；不能再叠加旧任务提示词，
-    // 否则两套编排会同时进入同一个会话。
-    const systemInstructions = agentKitTask
-      ? ''
-      : getDeveloperInstructions(
-          roleType ?? '',
-          username ?? '',
-          moduleId ?? '',
-          taskPrompts
-        );
 
     // 如果没有 session，先创建一个
     let sessionId = existingSessionId || currentSessionId;
@@ -181,7 +163,7 @@ export function useOpencodeChat(options: UseOpencodeChatOptions): UseOpencodeCha
 
     // 发送请求。
     // - AgentKit：走 session.command，显式带 command + agent（command frontmatter 也声明了同一 agent）。
-    // - 旧任务：走 session.prompt，把任务提示词作为 system 逐轮下发。
+    // - 非 AgentKit 任务（如运维管理）：走 session.prompt，把任务提示词作为 system 逐轮下发。
     try {
       if (agentKitTask) {
         addLog?.({
@@ -205,7 +187,6 @@ export function useOpencodeChat(options: UseOpencodeChatOptions): UseOpencodeCha
         const result = await client.session.prompt({
           sessionID: sessionId!,
           parts: [{ type: 'text', text: line }],
-          ...(systemInstructions ? { system: systemInstructions } : {}),
           ...(model ? { model } : {}),
         });
         if (result.error) {
@@ -225,11 +206,9 @@ export function useOpencodeChat(options: UseOpencodeChatOptions): UseOpencodeCha
         {
           sessionId,
           moduleId,
-          roleType,
           taskType,
           command: agentKitTask?.command,
           agent: agentKitTask?.agent,
-          hasSystem: !!systemInstructions,
           model,
           status,
           detail,
@@ -243,7 +222,7 @@ export function useOpencodeChat(options: UseOpencodeChatOptions): UseOpencodeCha
     }
 
     return sessionId || null;
-  }, [username, moduleId, roleType, taskType, taskPrompts, currentSessionId, setCurrentSessionId, addLog]);
+  }, [moduleId, taskType, currentSessionId, setCurrentSessionId, addLog]);
 
   /**
    * 中断当前对话

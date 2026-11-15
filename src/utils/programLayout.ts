@@ -1,5 +1,5 @@
 /**
- * 程序目录布局约定（与 `hooks/opencode/opencodeInstructions.ts` 里的开发规范一致）
+ * 程序目录布局约定（与 agentkit dw-dev 的开发规范一致）
  *
  * 工作空间按「程序类型」分三类目录，再按数仓分层归类：
  *   {项目编码}/code/{分层}/...   java / scala 程序

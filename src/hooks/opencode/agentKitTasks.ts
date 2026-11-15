@@ -1,16 +1,15 @@
 /**
- * agentKitTasks — 「开发助手」里的 AgentKit 工作流入口定义与发送前校验。
+ * agentKitTasks — 「开发助手 / 数据探索」的 AgentKit 工作流入口定义与发送前校验。
  *
  * 这一层只负责：任务类型 ↔ command / agent 的映射，以及发送前检查产物文件是否存在。
- * 真正的路由在 useOpencodeChat：命中这里的工作流时走 session.command（而不是旧 session.prompt），
+ * 真正的路由在 useOpencodeChat：命中这里的工作流时走 session.command（而不是 session.prompt），
  * 请求里会显式带上 command 与 agent，确保落到 agentkit 的 primary agent。
  */
 
-/** 开发助手任务下拉里的 AgentKit 工作流（与旧任务类型并存，旧类型由第二批下线）。 */
+/** 任务下拉里的 AgentKit 工作流（经典内存子代理已下线）。 */
 export const AGENTKIT_TASK_IDS = {
   REQ_DOC: 'AGENTKIT_REQ_DOC',
-  DW_DESIGN: 'AGENTKIT_DW_DESIGN',
-  DW_CODE: 'AGENTKIT_DW_CODE',
+  DW_DEV: 'AGENTKIT_DW_DEV',
   DIAG: 'AGENTKIT_DIAG',
   ANALYSIS: 'AGENTKIT_ANALYSIS',
 } as const;
@@ -37,27 +36,19 @@ export interface AgentKitTaskDef {
 export const AGENTKIT_TASKS: Record<AgentKitTaskId, AgentKitTaskDef> = {
   [AGENTKIT_TASK_IDS.REQ_DOC]: {
     id: AGENTKIT_TASK_IDS.REQ_DOC,
-    label: '需求文档编写',
+    label: '需求编写',
     command: 'write-req',
     agent: 'doc-orchestrator',
     inputHint: '输入业务名称，例如：订单域（将生成 docs/订单域_开发需求.md）',
     artifactSuffix: '_开发需求.md',
   },
-  [AGENTKIT_TASK_IDS.DW_DESIGN]: {
-    id: AGENTKIT_TASK_IDS.DW_DESIGN,
-    label: '数仓设计',
-    command: 'dw-design',
+  [AGENTKIT_TASK_IDS.DW_DEV]: {
+    id: AGENTKIT_TASK_IDS.DW_DEV,
+    label: '数仓开发',
+    command: 'dw-dev',
     agent: 'dw-orchestrator',
-    inputHint: '输入业务名称，例如：订单域（需已存在 docs/订单域_开发需求.md）',
+    inputHint: '输入业务名称，例如：订单域（需已存在 docs/订单域_开发需求.md，将完成设计到代码）',
     artifactSuffix: '_开发需求.md',
-  },
-  [AGENTKIT_TASK_IDS.DW_CODE]: {
-    id: AGENTKIT_TASK_IDS.DW_CODE,
-    label: '数据处理代码开发',
-    command: 'dw-code',
-    agent: 'dw-orchestrator',
-    inputHint: '输入业务名称，例如：订单域（需已定稿 docs/订单域_数仓设计.md）',
-    artifactSuffix: '_数仓设计.md',
   },
   [AGENTKIT_TASK_IDS.DIAG]: {
     id: AGENTKIT_TASK_IDS.DIAG,
@@ -100,15 +91,6 @@ async function listDocFiles(workspacePath: string): Promise<DirEntry[]> {
     return Array.isArray(entries) ? (entries as DirEntry[]) : [];
   } catch {
     return [];
-  }
-}
-
-async function fileExists(filePath: string): Promise<boolean> {
-  try {
-    await window.dataforge.fs('readFile', { path: filePath });
-    return true;
-  } catch {
-    return false;
   }
 }
 
@@ -186,30 +168,13 @@ export async function validateAgentKitTaskInput(
     .filter(n => n.endsWith(suffix))
     .map(n => n.slice(0, -suffix.length));
 
-  const root = workspacePath.replace(/[\\/]+$/, '');
   const requiredPath = `docs/${businessName}${suffix}`;
   if (!fileNames.includes(`${businessName}${suffix}`)) {
     const missingHint = candidateHint(bases);
-    if (task.id === AGENTKIT_TASK_IDS.DW_DESIGN) {
-      return {
-        ok: false,
-        message: `未找到 ${requiredPath}。请先选择「需求文档编写」生成需求文档。${missingHint}`,
-      };
-    }
     return {
       ok: false,
-      message: `未找到 ${requiredPath}。请先完成「数仓设计」。${missingHint}`,
+      message: `未找到 ${requiredPath}。请先选择「需求编写」生成需求文档。${missingHint}`,
     };
-  }
-
-  if (task.id === AGENTKIT_TASK_IDS.DW_CODE) {
-    const traceExists = await fileExists(`${root}/.dw/trace.json`);
-    if (!traceExists) {
-      return {
-        ok: false,
-        message: `已找到 ${requiredPath}，但缺少 .dw/trace.json（设计尚未定稿）。请先完成「数仓设计」并定稿后再开发代码。`,
-      };
-    }
   }
 
   return { ok: true, args: businessName };

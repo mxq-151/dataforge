@@ -1,7 +1,7 @@
 /**
  * extractMetrics.test.ts — 指标提取逻辑测试
  *
- * 测试覆盖两种提示词规范的表格格式（见 src/hooks/opencode/opencodeInstructions.ts）：
+ * 测试覆盖两种规范的表格格式（数仓设计文档与需求文档）：
  * - 9 列数仓设计文档格式（数据架构师，含下钻维度、字段来源、数据源列）
  * - 7 列业务需求文档格式（业务需求方，含下钻维度列），兼容旧版 4 列文档
  * 无"下钻维度"列的历史文档（8 列设计 / 6 列需求 / 4 列需求）仍须可解析，见向后兼容用例。
@@ -18,10 +18,6 @@ import {
   expandCalcExprBatch,
   parseFieldSource,
 } from './extractMetrics';
-import {
-  DATA_ARCHITECT_INSTRUCTIONS,
-  BUSINESS_REQUESTER_INSTRUCTIONS,
-} from '../hooks/opencode/opencodeInstructions';
 
 // ── 8 列数仓设计文档（数据架构师）──────────────────────────────
 
@@ -195,33 +191,30 @@ describe('extractMetricsFromMarkdown — 8 列数仓设计文档', () => {
   });
 });
 
-// ── 提示词与解析器一致性（防止修改提示词时破坏指标解析）──────────────
+// ── 数仓设计文档表头与解析器一致性 ──────────────────────────────
 
-/** 从数仓设计提示词中取出"数据指标"章节的示例表头行与列数 */
-function promptMetricHeader(): { header: string; colCount: number } {
-  const line = DATA_ARCHITECT_INSTRUCTIONS
-    .split('\n')
-    .map(l => l.trim())
-    .find(l => l.startsWith('| 指标编码'));
-  if (!line) throw new Error('提示词中未找到指标表头行');
-  const colCount = line.slice(1, -1).split('|').length;
-  return { header: line, colCount };
+/** 数仓设计文档"数据指标"章节的标准 9 列表头（由 dw-dev kit 产出） */
+const DESIGN_METRIC_HEADER = '| 指标编码 | 指标名称 | 所属主题 | 指标含义 | 计算口径 | 默认过滤条件 | 下钻维度 | 字段来源 | 数据源 |';
+
+function designMetricHeader(): { header: string; colCount: number } {
+  const colCount = DESIGN_METRIC_HEADER.slice(1, -1).split('|').length;
+  return { header: DESIGN_METRIC_HEADER, colCount };
 }
 
-describe('extractMetricsFromMarkdown — 数仓设计提示词表头与解析器一致', () => {
-  it('提示词给出的是 9 列表头', () => {
-    const { colCount } = promptMetricHeader();
+describe('extractMetricsFromMarkdown — 数仓设计文档表头与解析器一致', () => {
+  it('标准表头为 9 列', () => {
+    const { colCount } = designMetricHeader();
     expect(colCount).toBe(9);
   });
 
-  it('提示词表头含下钻维度列，且位于字段来源之前', () => {
-    const { header } = promptMetricHeader();
+  it('标准表头含下钻维度列，且位于字段来源之前', () => {
+    const { header } = designMetricHeader();
     expect(header).toContain('下钻维度');
     expect(header.indexOf('下钻维度')).toBeLessThan(header.indexOf('字段来源'));
   });
 
-  it('按提示词表头生成的文档可被完整解析（含指标含义列）', () => {
-    const { header, colCount } = promptMetricHeader();
+  it('按标准表头生成的文档可被完整解析（含指标含义列）', () => {
+    const { header, colCount } = designMetricHeader();
     const sep = `|${'---|'.repeat(colCount)}`;
     const row = `| USR_0009 | 次日留存率 | 用户域 | 次日仍活跃的用户占比 `
       + `| USR_0002 / USR_0001 * 100 | | 时间(dim_date:date_id);渠道(dws_user.keep:channel) `
@@ -252,32 +245,29 @@ describe('extractMetricsFromMarkdown — 数仓设计提示词表头与解析器
   });
 });
 
-// ── 业务需求提示词与解析器一致性 ──────────────────────────────
+// ── 业务需求文档表头与解析器一致性 ──────────────────────────────
 
-/** 从业务需求提示词中取出"数据指标"章节的示例表头行与列数 */
-function businessPromptMetricHeader(): { header: string; colCount: number } {
-  const line = BUSINESS_REQUESTER_INSTRUCTIONS
-    .split('\n')
-    .map(l => l.trim())
-    .find(l => l.startsWith('| 指标名称'));
-  if (!line) throw new Error('业务需求提示词中未找到指标表头行');
-  const colCount = line.slice(1, -1).split('|').length;
-  return { header: line, colCount };
+/** 需求文档"数据指标"章节的标准 7 列表头（由 req-doc kit 产出） */
+const BIZ_METRIC_HEADER = '| 指标名称 | 所属主题 | 业务定义 | 计算口径 | 默认过滤条件 | 下钻维度 | 应用场景 |';
+
+function businessDocMetricHeader(): { header: string; colCount: number } {
+  const colCount = BIZ_METRIC_HEADER.slice(1, -1).split('|').length;
+  return { header: BIZ_METRIC_HEADER, colCount };
 }
 
-describe('extractMetricsFromMarkdown — 业务需求提示词表头与解析器一致', () => {
-  it('提示词给出的是 7 列表头', () => {
-    const { colCount } = businessPromptMetricHeader();
+describe('extractMetricsFromMarkdown — 需求文档表头与解析器一致', () => {
+  it('标准表头为 7 列', () => {
+    const { colCount } = businessDocMetricHeader();
     expect(colCount).toBe(7);
   });
 
-  it('提示词表头含下钻维度列', () => {
-    const { header } = businessPromptMetricHeader();
+  it('标准表头含下钻维度列', () => {
+    const { header } = businessDocMetricHeader();
     expect(header).toContain('下钻维度');
   });
 
-  it('按提示词表头生成的文档可被完整解析', () => {
-    const { header, colCount } = businessPromptMetricHeader();
+  it('按标准表头生成的文档可被完整解析', () => {
+    const { header, colCount } = businessDocMetricHeader();
     const sep = `|${'---|'.repeat(colCount)}`;
     const row = '| 日活用户数 | 用户域 | 当日产生有效行为的去重用户数 '
       + '| 登录且产生有效行为的用户按用户 ID 去重计数 | 仅统计正式渠道的用户 '

@@ -33,7 +33,6 @@ import PermissionDock from './PermissionDock';
 import QuestionDock from './QuestionDock';
 import ContextUsageBar from './ContextUsageBar';
 import { useTodoDockState } from './useTodoDockState';
-import { resolveAgentKitTask } from '../../hooks/opencode/agentKitTasks';
 import './AIPanel.css';
 
 /** 智能体模块的用户偏好存储（按 userId 记录所选模型） */
@@ -141,27 +140,15 @@ const AIPanel: React.FC<AIPanelProps> = ({ chatBackend, llmModels, onRollback, o
     setSelectedLLMId(m ? m.id : null);
   }, []);
 
-  // ── 任务类型切换：开发助手保留上下文，数据探索维持新建 ──
-  // 任务类型的系统指令是「逐轮下发」的：useOpencodeChat 每次 sendMessage 都重算
-  // getDeveloperInstructions(roleType) 并作为 session.prompt 的 system 传入；服务端只取
-  // 「最后一条用户消息」的 system 拼进系统提示（opencode session/llm/request.ts::prepare
-  // → input.user.system），历史消息的 system 不参与回放。
-  // 因此开发助手这里只更新 taskType：新角色从下一轮生效，之前的对话与工具调用结果全部保留，
-  // 智能体仍能看到「之前做了什么」。不要调用 newSession() —— 那会清空 messages 并开新会话。
-  // 需要真正开一段全新对话时，走头部的「新建会话」按钮（SessionSwitcher.onNewSession）。
-  //
-  // 数据探索例外：该模块的指令在 getDeveloperInstructions 里按 moduleName 短路返回
-  // （opencodeInstructions.ts:687），与 roleType 无关 ⇒ 保留上下文没有收益；而 newSession()
-  // 同时承担「新建时间戳工作目录」（会话=标签页）的语义，去掉会破坏该模型。故维持原行为。
+  // ── 任务类型切换：任务类型全部走 AgentKit 编排，切换即新建会话 ──
+  // 不同 kit 的 command/agent 差异很大（提示词、工具与产物目录都不同），
+  // 混在同一条历史里用户无法判断当前处于哪个流程，因此切换任务类型一律开新会话。
+  // 数据探索同理：newSession() 还承担「新建时间戳工作目录」（会话=标签页）的语义。
   const handleTaskTypeChange = useCallback((newType: string) => {
     if (newType === taskType) return;
-    const agentKitSwitch = !!resolveAgentKitTask(newType) || !!resolveAgentKitTask(taskType);
     setTaskType(newType);
-    // 数据探索：会话=独立时间戳目录，沿用原行为。
-    // 开发助手：进入/离开 AgentKit 工作流时也开新会话，避免旧任务提示词的上下文
-    // 与 command/agent 编排混在同一条历史里，用户无法判断当前处于哪个流程。
-    if (moduleId === 'data-explore' || agentKitSwitch) newSession();
-  }, [taskType, setTaskType, newSession, moduleId]);
+    newSession();
+  }, [taskType, setTaskType, newSession]);
 
   const [panelWidth, setPanelWidth] = useState(() => {
     const saved = localStorage.getItem('ai-panel-width');

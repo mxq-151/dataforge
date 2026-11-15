@@ -40,7 +40,6 @@ export interface UseOpencodeClientCoreOptions {
   config: OpenCodeConfig;
   username?: string;
   moduleId: string;
-  roleType?: string;
   projectId: string;
   /** 工作目录（项目路径），用于创建 OpencodeClient 时指定 directory */
   directory?: string | null;
@@ -54,7 +53,6 @@ export interface OpencodeClientCore {
   config: OpenCodeConfig;
   username?: string;
   moduleId: string;
-  roleType?: string;
   projectId: string;
 
   // ── 日志 ──
@@ -104,7 +102,7 @@ export interface OpencodeClientCore {
 }
 
 export function useOpencodeClientCore(options: UseOpencodeClientCoreOptions): OpencodeClientCore {
-  const { config, username, moduleId, roleType, projectId, directory, defaultTaskType } = options;
+  const { config, username, moduleId, projectId, directory, defaultTaskType } = options;
 
   // ── 全局后端实例（仅用于服务进程管理和客户端创建） ──
   const backend = useOpencodeBackend();
@@ -221,7 +219,7 @@ export function useOpencodeClientCore(options: UseOpencodeClientCoreOptions): Op
     addLog,
   });
 
-  // ── 任务类型（覆盖 roleType，决定系统指令） ──
+  // ── 任务类型（决定 AgentKit 路由与非 kit 任务的模块级系统指令） ──
   const [taskType, setTaskType] = useState<string>(defaultTaskType);
 
   // ── 文件变更审批 ──
@@ -233,11 +231,8 @@ export function useOpencodeClientCore(options: UseOpencodeClientCoreOptions): Op
 
   // ── 对话控制 ──
   const chat = useOpencodeChat({
-    username,
     moduleId,
-    roleType: taskType || roleType,
     taskType,
-    taskPrompts: config.taskPrompts,
     currentSessionId,
     setCurrentSessionId,
     addLog,
@@ -281,7 +276,6 @@ export function useOpencodeClientCore(options: UseOpencodeClientCoreOptions): Op
     config,
     username,
     moduleId,
-    roleType,
     projectId,
     logs,
     addLog,

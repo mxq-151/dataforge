@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
-import { Settings, RotateCcw, Server, Sliders, Wifi, Loader2, Bot, Cpu, FileText, Trash2, Clock, Calendar, Info, Pencil, Check, X, Plug, CheckCircle, XCircle, Coffee, GitBranch, Plus, Boxes, AlertCircle, Download, ScrollText } from 'lucide-react';
-import { type OpenCodeConfig, type LogEntry, type LLMModelConfig, isResponsesApiSupported, DEFAULT_POM_TEMPLATE } from '../../types/opencode-backend';
-import { TASK_PROMPT_DEFINITIONS } from '../../hooks/opencode/opencodeInstructions';
-import { DEV_ASSISTANT_AGENTS } from '../../hooks/opencode/devAssistantAgents';
+import { Settings, RotateCcw, Server, Sliders, Wifi, Loader2, Bot, Cpu, Trash2, Calendar, Info, Pencil, Check, X, Plug, CheckCircle, XCircle, Coffee, GitBranch, Plus, Boxes, AlertCircle, Download } from 'lucide-react';
+import { type OpenCodeConfig, type LLMModelConfig, isResponsesApiSupported, DEFAULT_POM_TEMPLATE } from '../../types/opencode-backend';
 import { testDolphinSchedulerConnection } from '../../api/dolphinscheduler';
 import { testMarquezConnection } from '../../api/marquez';
 import { canExportConfig, exportDiagnosticConfig } from '../../utils/configExport';
@@ -12,15 +10,10 @@ interface SettingsViewProps {
   config: OpenCodeConfig;
   onUpdateConfig: (partial: Partial<OpenCodeConfig>) => void;
   onResetConfig: () => void;
-  logs: LogEntry[];
-  onClearLogs: () => void;
 }
 
-type SettingsTab = 'basic' | 'agent' | 'prompts' | 'logs' | 'jdtls';
+type SettingsTab = 'basic' | 'agent';
 type TestConnectionState = 'idle' | 'testing' | 'success' | 'error';
-
-/** 提示词草稿里主 Agent 的 key（子 Agent 直接以 agent 名称作为 key） */
-const MAIN_AGENT_PROMPT_KEY = '__main__';
 
 const getPlatformPlaceholders = (): Record<string, string> => {
   const isWindows = navigator.userAgent.includes('Windows');
@@ -58,8 +51,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   config,
   onUpdateConfig,
   onResetConfig,
-  logs,
-  onClearLogs,
 }) => {
   const [activeTab, setActiveTab] = useState<SettingsTab>('basic');
   const [isEditing, setIsEditing] = useState(false);
@@ -68,26 +59,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   const [testMessage, setTestMessage] = useState('');
   const [marquezTestState, setMarquezTestState] = useState<TestConnectionState>('idle');
   const [marquezTestMessage, setMarquezTestMessage] = useState('');
-
-  // ── 智能体提示词（主 Agent 与子 Agent 分块配置） ──
-  const [selectedPromptKey, setSelectedPromptKey] = useState<string>(TASK_PROMPT_DEFINITIONS[0]?.key ?? '');
-  /** 提示词模态框：null=关闭；values 的 key 为 __main__ 或子代理名称 */
-  const [promptModal, setPromptModal] = useState<{ taskKey: string; values: Record<string, string> } | null>(null);
-
-  const currentPromptDef = TASK_PROMPT_DEFINITIONS.find(d => d.key === selectedPromptKey) ?? TASK_PROMPT_DEFINITIONS[0];
-  const currentMainCustom = Boolean((config.taskPrompts?.[selectedPromptKey] ?? '').trim());
-  const currentSubagentCustomCount = currentPromptDef
-    ? currentPromptDef.subagents.filter(name => (config.subagentPrompts?.[name] ?? '').trim()).length
-    : 0;
-  const currentPromptCustom = currentMainCustom || currentSubagentCustomCount > 0;
-  /** 有任意自定义（主 Agent 或子 Agent）的任务类型数量，用于页签角标 */
-  const customizedPromptCount = TASK_PROMPT_DEFINITIONS.filter(def =>
-    Boolean((config.taskPrompts?.[def.key] ?? '').trim()) ||
-    def.subagents.some(name => Boolean((config.subagentPrompts?.[name] ?? '').trim()))
-  ).length;
-  const promptModalDef = promptModal
-    ? TASK_PROMPT_DEFINITIONS.find(d => d.key === promptModal.taskKey) ?? null
-    : null;
 
   // ── 诊断配置导出（凭据剥离在主进程完成） ──
   const [exportingConfig, setExportingConfig] = useState(false);
@@ -247,75 +218,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
-  // ── 智能体提示词 ──
-
-  const openPromptsTab = () => {
-    setActiveTab('prompts');
-  };
-
-  const selectPromptTask = (key: string) => {
-    setSelectedPromptKey(key);
-  };
-
-  /**
-   * 打开当前任务类型的提示词模态框。
-   * 每个块都回填「当前生效正文」：有自定义用自定义，否则直接展示系统内置提示词。
-   */
-  const openPromptModal = () => {
-    if (!currentPromptDef) return;
-    const values: Record<string, string> = {
-      [MAIN_AGENT_PROMPT_KEY]:
-        (config.taskPrompts?.[currentPromptDef.key] ?? '').trim() ||
-        currentPromptDef.defaultPrompt('{{username}}'),
-    };
-    for (const name of currentPromptDef.subagents) {
-      values[name] = (config.subagentPrompts?.[name] ?? '').trim() || DEV_ASSISTANT_AGENTS[name]?.prompt || '';
-    }
-    setPromptModal({ taskKey: currentPromptDef.key, values });
-  };
-
-  const updatePromptDraft = (key: string, value: string) => {
-    setPromptModal(prev => (prev ? { ...prev, values: { ...prev.values, [key]: value } } : prev));
-  };
-
-  /** 把单个 agent 块的正文恢复为系统内置提示词（仍需点击保存才写入配置） */
-  const resetPromptDraft = (key: string) => {
-    const def = promptModal ? TASK_PROMPT_DEFINITIONS.find(d => d.key === promptModal.taskKey) : null;
-    if (!def) return;
-    updatePromptDraft(
-      key,
-      key === MAIN_AGENT_PROMPT_KEY ? def.defaultPrompt('{{username}}') : DEV_ASSISTANT_AGENTS[key]?.prompt ?? ''
-    );
-  };
-
-  /** 与内置正文一致或留空的块不落盘，避免把内置提示词复制成自定义快照 */
-  const savePromptModal = () => {
-    if (!promptModal) return;
-    const def = TASK_PROMPT_DEFINITIONS.find(d => d.key === promptModal.taskKey);
-    if (!def) return;
-
-    const nextTaskPrompts = { ...(config.taskPrompts ?? {}) };
-    const mainValue = promptModal.values[MAIN_AGENT_PROMPT_KEY] ?? '';
-    if (mainValue.trim() && mainValue !== def.defaultPrompt('{{username}}')) {
-      nextTaskPrompts[def.key] = mainValue;
-    } else {
-      delete nextTaskPrompts[def.key];
-    }
-
-    const nextSubagentPrompts = { ...(config.subagentPrompts ?? {}) };
-    for (const name of def.subagents) {
-      const value = promptModal.values[name] ?? '';
-      if (value.trim() && value !== DEV_ASSISTANT_AGENTS[name]?.prompt) {
-        nextSubagentPrompts[name] = value;
-      } else {
-        delete nextSubagentPrompts[name];
-      }
-    }
-
-    onUpdateConfig({ taskPrompts: nextTaskPrompts, subagentPrompts: nextSubagentPrompts });
-    setPromptModal(null);
-  };
-
   return (
     <div className="settings-view" style={{ width: '100%', height: '100%' }}>
       <div className="settings-view__header">
@@ -340,36 +242,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({
           <Bot size={16} />
           <span>智能体相关设置</span>
         </button>
-        <button
-          className={`settings-view__tab ${activeTab === 'prompts' ? 'settings-view__tab--active' : ''}`}
-          onClick={openPromptsTab}
-        >
-          <ScrollText size={16} />
-          <span>智能体提示词</span>
-          {customizedPromptCount > 0 && (
-            <span className="settings-view__tab-badge">{customizedPromptCount}</span>
-          )}
-        </button>
-{/*         <button
-          className={`settings-view__tab ${activeTab === 'logs' ? 'settings-view__tab--active' : ''}`}
-          onClick={() => setActiveTab('logs')}
-        >
-          <FileText size={16} />
-          <span>智能体运行日志</span>
-          {logs.length > 0 && (
-            <span className="settings-view__tab-badge">{logs.length}</span>
-          )}
-        </button>
-        <button
-          className={`settings-view__tab ${activeTab === 'jdtls' ? 'settings-view__tab--active' : ''}`}
-          onClick={() => setActiveTab('jdtls')}
-        >
-          <Activity size={16} />
-          <span>JDT.LS 日志</span>
-          {jdtlsLogs.length > 0 && (
-            <span className="settings-view__tab-badge">{jdtlsLogs.length}</span>
-          )}
-        </button> */}
       </div>
 
       <div className="settings-view__content">
@@ -711,136 +583,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({
             </section>
           </div>
         )}
-
-        {activeTab === 'prompts' && currentPromptDef && (
-          <div className="settings-view__panel">
-            <section className="settings-section">
-              <div className="settings-section__header">
-                <ScrollText size={14} />
-                <span>智能体提示词</span>
-                {customizedPromptCount > 0 && (
-                  <span className="settings-section__badge settings-section__badge--connected">
-                    已自定义 {customizedPromptCount} 个任务
-                  </span>
-                )}
-              </div>
-              <div className="settings-field__hint" style={{ marginBottom: 10 }}>
-                按任务类型配置：主 Agent 负责任务编排，子 Agent 各自拥有独立提示词。打开配置后可查看并修改系统内置提示词；
-                恢复内置或留空即回到默认。主 Agent 提示词下一轮对话生效，子 Agent 提示词在智能体服务重启后生效。
-                正文支持 {`{{username}}`} 占位符，发送时替换为当前用户名。
-              </div>
-              <div className="settings-prompt-layout">
-                <div className="settings-prompt-list">
-                  {TASK_PROMPT_DEFINITIONS.map(def => {
-                    const customized = Boolean((config.taskPrompts?.[def.key] ?? '').trim()) ||
-                      def.subagents.some(name => Boolean((config.subagentPrompts?.[name] ?? '').trim()));
-                    return (
-                      <button
-                        key={def.key}
-                        className={`settings-prompt-list__item ${def.key === selectedPromptKey ? 'settings-prompt-list__item--active' : ''}`}
-                        onClick={() => selectPromptTask(def.key)}
-                      >
-                        <span>{def.label}</span>
-                        {customized && <span className="settings-prompt-list__badge">自定义</span>}
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="settings-prompt-overview">
-                  <div className="settings-prompt-overview__header">
-                    <div className="settings-prompt-overview__meta">
-                      <div className="settings-prompt-overview__title">{currentPromptDef.label}</div>
-                      <div className="settings-prompt-overview__desc">{currentPromptDef.description}</div>
-                    </div>
-                    <span className={`settings-prompt-overview__state ${currentPromptCustom ? 'settings-prompt-overview__state--custom' : ''}`}>
-                      {currentPromptCustom ? '已自定义' : '内置默认'}
-                    </span>
-                  </div>
-                  <div className="settings-prompt-overview__agents">
-                    <div className={`settings-prompt-overview__agent ${currentMainCustom ? 'settings-prompt-overview__agent--custom' : ''}`}>
-                      <ScrollText size={12} />
-                      <span className="settings-prompt-overview__agent-name">主 Agent · {currentPromptDef.label}</span>
-                      {currentMainCustom && <span className="settings-prompt-overview__agent-badge">已自定义</span>}
-                    </div>
-                    {currentPromptDef.subagents.map(name => {
-                      const custom = Boolean((config.subagentPrompts?.[name] ?? '').trim());
-                      return (
-                        <div key={name} className={`settings-prompt-overview__agent ${custom ? 'settings-prompt-overview__agent--custom' : ''}`}>
-                          <Bot size={12} />
-                          <span className="settings-prompt-overview__agent-name">子 Agent · {name}</span>
-                          {custom && <span className="settings-prompt-overview__agent-badge">已自定义</span>}
-                        </div>
-                      );
-                    })}
-                    {currentPromptDef.subagents.length === 0 && (
-                      <div className="settings-prompt-overview__empty">该任务不派发子 Agent</div>
-                    )}
-                  </div>
-                  <div className="settings-prompt-overview__actions">
-                    <button className="settings-view__btn settings-view__btn--edit" onClick={openPromptModal}>
-                      <Pencil size={12} />
-                      配置提示词
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </section>
-          </div>
-        )}
-
-        {activeTab === 'logs' && (
-          <div className="settings-view__panel settings-view__panel--logs">
-            <div className="logs-header">
-              <div className="logs-header__info">
-                <Clock size={14} />
-                <span>共 {logs.length} 条日志</span>
-              </div>
-              <button
-                className="settings-view__btn settings-view__btn--clear"
-                onClick={onClearLogs}
-                disabled={logs.length === 0}
-              >
-                <Trash2 size={12} />
-                清空日志
-              </button>
-            </div>
-
-            <div className="logs-container">
-              {logs.length === 0 ? (
-                <div className="logs-empty">
-                  <FileText size={48} strokeWidth={1} />
-                  <p>暂无运行日志</p>
-                  <span>启动 Agent 服务后，日志将在此显示</span>
-                </div>
-              ) : (
-                <div className="logs-list">
-                  {logs.map((log, index) => (
-                    <div
-                      key={index}
-                      className={`log-entry log-entry--${log.source}`}
-                    >
-                      <div className="log-entry__header">
-                        <span className="log-entry__timestamp">
-                          {new Date(log.timestamp).toLocaleTimeString('zh-CN', {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                            second: '2-digit',
-                          })}
-                        </span>
-                        <span className={`log-entry__source log-entry__source--${log.source}`}>
-                          {log.source.toUpperCase()}
-                        </span>
-                      </div>
-                      <div className="log-entry__content">
-                        {log.text}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
       </div>
 
       <div className="settings-view__footer">
@@ -873,98 +615,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         </div>
       </div>
-
-      {/* 智能体提示词配置模态框：主 Agent 在首，其后按 agent 名称分块展示子 Agent */}
-      {promptModal && promptModalDef && (
-        <div className="settings-prompt-modal-overlay" onClick={() => setPromptModal(null)}>
-          <div className="settings-prompt-modal" onClick={e => e.stopPropagation()}>
-            <div className="settings-prompt-modal__header">
-              <div className="settings-prompt-modal__title">
-                <ScrollText size={16} />
-                <span>配置提示词 · {promptModalDef.label}</span>
-              </div>
-              <button className="settings-llm-modal__close" onClick={() => setPromptModal(null)} title="关闭">
-                <X size={14} />
-              </button>
-            </div>
-            <div className="settings-prompt-modal__body">
-              {/* 第一个块：主 Agent */}
-              <section className="settings-agent-prompt">
-                <div className="settings-agent-prompt__header">
-                  <div className="settings-agent-prompt__meta">
-                    <div className="settings-agent-prompt__name">主 Agent · {promptModalDef.label}</div>
-                    <div className="settings-agent-prompt__desc">{promptModalDef.description}</div>
-                  </div>
-                  <div className="settings-agent-prompt__actions">
-                    {currentMainCustom && <span className="settings-agent-prompt__badge">已自定义</span>}
-                    <button
-                      className="settings-view__btn"
-                      onClick={() => resetPromptDraft(MAIN_AGENT_PROMPT_KEY)}
-                    >
-                      <RotateCcw size={12} />
-                      恢复内置
-                    </button>
-                  </div>
-                </div>
-                <textarea
-                  className="settings-field__textarea settings-agent-prompt__textarea"
-                  value={promptModal.values[MAIN_AGENT_PROMPT_KEY] ?? ''}
-                  onChange={e => updatePromptDraft(MAIN_AGENT_PROMPT_KEY, e.target.value)}
-                  spellCheck={false}
-                />
-                <details className="settings-agent-prompt__default">
-                  <summary>查看系统内置提示词</summary>
-                  <pre>{promptModalDef.defaultPrompt('{{username}}')}</pre>
-                </details>
-              </section>
-
-              {/* 后续块：按 agent 名称展示子 Agent */}
-              {promptModalDef.subagents.map(name => {
-                const agentDef = DEV_ASSISTANT_AGENTS[name];
-                const custom = Boolean((config.subagentPrompts?.[name] ?? '').trim());
-                return (
-                  <section key={name} className="settings-agent-prompt">
-                    <div className="settings-agent-prompt__header">
-                      <div className="settings-agent-prompt__meta">
-                        <div className="settings-agent-prompt__name">子 Agent · {name}</div>
-                        <div className="settings-agent-prompt__desc">{agentDef?.description ?? ''}</div>
-                      </div>
-                      <div className="settings-agent-prompt__actions">
-                        {custom && <span className="settings-agent-prompt__badge">已自定义</span>}
-                        <button className="settings-view__btn" onClick={() => resetPromptDraft(name)}>
-                          <RotateCcw size={12} />
-                          恢复内置
-                        </button>
-                      </div>
-                    </div>
-                    <textarea
-                      className="settings-field__textarea settings-agent-prompt__textarea"
-                      value={promptModal.values[name] ?? ''}
-                      onChange={e => updatePromptDraft(name, e.target.value)}
-                      spellCheck={false}
-                    />
-                    <details className="settings-agent-prompt__default">
-                      <summary>查看系统内置提示词</summary>
-                      <pre>{agentDef?.prompt ?? ''}</pre>
-                    </details>
-                  </section>
-                );
-              })}
-            </div>
-            <div className="settings-prompt-modal__footer">
-              <span className="settings-prompt-modal__hint">子 Agent 提示词需重启智能体服务后生效</span>
-              <button className="settings-view__btn settings-view__btn--cancel" onClick={() => setPromptModal(null)}>
-                <X size={12} />
-                取消
-              </button>
-              <button className="settings-view__btn settings-view__btn--save" onClick={savePromptModal}>
-                <Check size={12} />
-                保存
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* LLM 模型新增/编辑模态框 */}
       {llmModalOpen && (

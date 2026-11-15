@@ -36,9 +36,9 @@ permission:
  */
 ```
 
-   - `@引擎` 必须在 `CODE_ENGINES` 允许取值内，并与 JobSpec 的 `engine` 一致；
+   - `@引擎` 必须在 `CODE_ENGINES` 允许取值内，并与 JobSpec 的 `engine` 一致；合法值只有：`spark`、`flink`、`kyuubi`、`hive`、`doris`、`clickhouse`、`starrocks`、`mysql`、`postgresql`、`presto`（存储格式如 parquet/orc 不是引擎）；
    - `@依赖` 与 `dependencies` 完全一致，只写前置作业名（如 `dwd_trade_orderdetail_etl_d`），不写调度项目前缀；无依赖写 `无`；
-   - `@数据源` 与 `datasource` 完全一致；
+   - `@数据源` 与 `datasource` 完全一致，且该名称必须是 metadata 查证过的真实数据源名，不得写近似名；
    - 所有 `${变量}` 都必须在 `@程序参数` 里有同名 `--变量`。
 
    资源参数与任务参数按「谁消费、在哪生效」分工，不得混写：
@@ -60,6 +60,8 @@ permission:
    - 引用的库.表必须在设计 DDL 或证据中存在；
    - `insert` 目标列顺序必须与设计字段顺序完全一致；
    - 产出指标的作业必须写注释 `-- 指标: {编码} {名称}`。
+   - 必须按分区幂等：同一分区重复执行结果一致，不得依赖非确定性函数或未声明状态。
+   - 敏感字段必须按设计中的 `masking` 与分级实现脱敏（掩码/哈希/加密），禁止明文落库。
 
 4. **方言必须显式**
    - Hive/Spark：`insert overwrite table ... partition(dt='${day}')`；
@@ -82,6 +84,8 @@ permission:
    - 不得写 `DROP TABLE`、`TRUNCATE TABLE`、`DELETE FROM`（W47）；清理靠分区覆盖写入与生命周期完成。
 
 6. **单批 ≤5 个作业**；同一目标表的处理作业与质检作业分开提交。
+7. **提交前自检**：代码头 7 字段齐全、作业名/路径/周期合法、分区过滤齐全、列顺序与设计一致、指标注释齐全、无破坏性语句、无硬编码日期或凭据。
+8. **独立失败域**：每个作业只依赖必要前驱，支持按分区重试/跳过；关键中间结果落临时表以支持断点续跑，不把多个独立业务单元塞进一个作业。
 
 ## 边界
 
@@ -89,7 +93,8 @@ permission:
 - 不在 DWD 做 ADS 口径：DWD 作业只做明细加工，场景汇总/应用口径不得写进 DWD。
 - 不自行改设计：不改表结构、不改指标口径、不改作业名；设计与代码冲突时停下来上报。
 - 不确定的版本/仓库差异（函数是否存在、参数是否支持、平台写法）不得按记忆硬写：在代码注释中标注 `-- 需按你的版本或仓库确认：{具体点}`，并在提交说明里列出，交由人工确认。
-- DDL 的 `cla:{行业}-{级别}` 注释与 `dw.classification`/`dw.level` 表属性由工具生成，编码阶段不得改写。
+- 只读写工作空间内的路径；不得删除文件、表或代码。用户明确要求删除时，只在代码里给出注释掉的语句并提示确认，不得直接执行。
+- DDL 的 `cla:{分类}-{分级}` 注释与 `dw.classification`/`dw.level` 表属性由工具生成，编码阶段不得改写。
 
 ## 质检作业
 
@@ -97,8 +102,8 @@ permission:
 
 - 读取本表分区数据，按设计中的规则逐条计算；
 - 输出统一结果集，至少包含：`datasourceName`、`batchNo`、`ruleName`、`ruleType`、`passed`、`checkTime`；
-- 回传地址与令牌只从环境变量 `DATAFORGE_QUALITY_REPORT_URL`、`DATAFORGE_QUALITY_REPORT_TOKEN` 读取，禁止硬编码 `http(s)://` 地址或令牌（W46）；
-- 规则类型与阈值必须来自设计第 6 章，不得自创规则；
+- 回传地址与令牌只从环境变量 `DATAFORGE_QUALITY_REPORT_URL`、`DATAFORGE_QUALITY_REPORT_TOKEN` 读取，禁止硬编码 `http(s)://` 地址或令牌（W46）；任何账号、密码、密钥都不得写进代码或注释。
+- 规则类型与阈值必须来自设计第 6 章，不得自创规则；`ruleName` 必须与设计逐字一致，不得改名、缩写或加后缀。
 - 不写下游表，只产出校验结果。
 
 ## 失败处理

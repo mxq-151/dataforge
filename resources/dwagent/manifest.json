@@ -2,7 +2,7 @@
   "kit": "dw-dev",
   "kitVersion": "1.0.0",
   "stateDir": ".dwagent",
-  "builtAt": "2026-11-15T15:47:23.665Z",
+  "builtAt": "2026-11-15T16:52:58.000Z",
   "files": [
     {
       "path": "agent/dw-code-reviewer.md",
@@ -11,8 +11,8 @@
     },
     {
       "path": "agent/dw-coder.md",
-      "sha256": "e7cceb71705c825a4f4c21729b03c907386f4fd053143f15a11bd6275ca960a8",
-      "size": 9062
+      "sha256": "ecd67056d38ef570b1a2b241ffdb68da722a29bd5f3928baa13209eff88e4fce",
+      "size": 10293
     },
     {
       "path": "agent/dw-design-reviewer.md",
@@ -21,13 +21,13 @@
     },
     {
       "path": "agent/dw-modeler.md",
-      "sha256": "322f6c7f71ea64151bb3506b7319f54d9a2a3cdd0cb1a7100a07e8b27b129293",
-      "size": 9214
+      "sha256": "b450fb312a80e62220b6533df89cbfff557ac8e69f0b4272342f20e75a698385",
+      "size": 10626
     },
     {
       "path": "agent/dw-orchestrator.md",
-      "sha256": "23688d574710eaa7f363afbb36b362ad6a8fcb93c2df662e01a76470ae16c441",
-      "size": 9888
+      "sha256": "869f58dccce558cd10673fbe4b9cac4f74b63d34e8f4bc66f12883731081f173",
+      "size": 11358
     },
     {
       "path": "command/dw-code.md",
@@ -38,6 +38,11 @@
       "path": "command/dw-design.md",
       "sha256": "15bf80ed35f19254426371f83c226cd75a58bff7fee0bea1b8ebae8ead6434d4",
       "size": 3667
+    },
+    {
+      "path": "command/dw-dev.md",
+      "sha256": "bf19b84feefdcfc40c8fc53a561ea08c844acf6febdde699b5cb88ffdfef25e5",
+      "size": 4611
     },
     {
       "path": "tool/chunks/chunk-2Q3POL27.js",

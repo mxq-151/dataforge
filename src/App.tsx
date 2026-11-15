@@ -19,7 +19,6 @@ import useOpencodeConfig from './hooks/useOpencodeConfig';
 import { OpencodeBackendProvider } from './hooks/opencode/useOpencodeBackend';
 import { OpencodeClientProvider, useOpencodeClient } from './hooks/opencode/useOpencodeClient';
 import { createDeSessionService, buildDeBaseDir } from './hooks/opencode/dataExploreSessionService';
-import type { LogEntry } from './types/opencode-backend';
 import type { OpenCodeConfig } from './types/opencode-backend';
 import { ActiveTab } from './types';
 import { DataSourceProvider } from './contexts/DataSourceContext';
@@ -200,14 +199,6 @@ const AppContent: React.FC = () => {
   const { authenticated, loading, user } = useAuth();
   const [activeTab, setActiveTab] = useState<ActiveTab>('devAssist');
 
-  // 从用户角色中提取 roleType，用于生成 OpenCode 系统指令
-  const roleType = useMemo(() => {
-    if (!user?.roles?.length) return undefined;
-    const currentRole = user.currentRoleId
-      ? user.roles.find(r => r.id === user.currentRoleId)
-      : user.roles[0];
-    return currentRole?.roleType;
-  }, [user?.roles, user?.currentRoleId]);
   const [visitedTabs, setVisitedTabs] = useState<Set<ActiveTab>>(new Set(['devAssist']));
   const [selectedProject, setSelectedProject] = useState<ProjectInfo | null>(null);
   // 跟踪所有访问过的项目，为每个项目保持 OpencodeClientProvider 挂载
@@ -548,12 +539,6 @@ const AppContent: React.FC = () => {
     for (const project of Array.from(visitedProjects.values())) void ensureOne(project);
   }, [visitedProjects, selectedProject, baseWorkspace, loaded, projectDirs]);
 
-  // Log aggregation: since each client instance lives inside its own provider,
-  // we cannot easily aggregate logs from all instances here.
-  // The SettingsView will receive empty arrays for now.
-  const allLogs: LogEntry[] = [];
-  const clearAllLogs = useCallback(() => {}, []);
-
   useEffect(() => {
     // 窗口初始尺寸/居中/聚焦已由主进程 createWindow 原生实现（工作区 70%），
     // 不再通过渲染层桥接垫片设置。
@@ -681,7 +666,6 @@ const AppContent: React.FC = () => {
                   config={config}
                   username={user?.username}
                   moduleId="dev-assistant"
-                  roleType={roleType}
                   projectId={project.projectCode}
                   directory={getProjectCwd(project)}
                 >
@@ -709,7 +693,6 @@ const AppContent: React.FC = () => {
               config={config}
               username={user?.username}
               moduleId="data-explore"
-              roleType={roleType}
               projectId="__data_explore__"
               directory={deBaseDir}
               dataExploreService={deSessionService}
@@ -758,8 +741,6 @@ const AppContent: React.FC = () => {
             config={config}
             onUpdateConfig={updateConfig}
             onResetConfig={resetConfig}
-            logs={allLogs}
-            onClearLogs={clearAllLogs}
           />
           )}
         </div>

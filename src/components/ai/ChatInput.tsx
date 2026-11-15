@@ -251,26 +251,14 @@ const ChatInput: React.FC<ChatInputProps> = ({ busy, onSend, onInterrupt, fileTr
         >
           {moduleId === 'data-explore' ? (
             <>
-              <option value="DATA_ANALYST">数据分析</option>
-              <option value="SUPER_ADMIN">运维管理</option>
+              <option value={AGENTKIT_TASK_IDS.ANALYSIS}>{AGENTKIT_TASKS[AGENTKIT_TASK_IDS.ANALYSIS].label}</option>
+              <option value={AGENTKIT_TASK_IDS.DIAG}>运维管理</option>
             </>
           ) : (
             <>
-              <optgroup label="AgentKit 工作流">
-                <option value={AGENTKIT_TASK_IDS.REQ_DOC}>{AGENTKIT_TASKS[AGENTKIT_TASK_IDS.REQ_DOC].label}</option>
-                <option value={AGENTKIT_TASK_IDS.DW_DESIGN}>{AGENTKIT_TASKS[AGENTKIT_TASK_IDS.DW_DESIGN].label}</option>
-                <option value={AGENTKIT_TASK_IDS.DW_CODE}>{AGENTKIT_TASKS[AGENTKIT_TASK_IDS.DW_CODE].label}</option>
-                <option value={AGENTKIT_TASK_IDS.DIAG}>{AGENTKIT_TASKS[AGENTKIT_TASK_IDS.DIAG].label}</option>
-              </optgroup>
-              <optgroup label="经典编排">
-                <option value="BUSINESS_REQUESTER">需求编写</option>
-                <option
-                  value="DATA_WAREHOUSE_DEV"
-                  title="闭环编排：data-architect 数仓设计 → design-verifier 设计校验（通过才开发）→ data-dev 代码开发 → data-verifier 代码校验（通过才结束）"
-                >
-                  数仓开发
-                </option>
-              </optgroup>
+              <option value={AGENTKIT_TASK_IDS.REQ_DOC}>{AGENTKIT_TASKS[AGENTKIT_TASK_IDS.REQ_DOC].label}</option>
+              <option value={AGENTKIT_TASK_IDS.DW_DEV}>{AGENTKIT_TASKS[AGENTKIT_TASK_IDS.DW_DEV].label}</option>
+              <option value={AGENTKIT_TASK_IDS.DIAG}>{AGENTKIT_TASKS[AGENTKIT_TASK_IDS.DIAG].label}</option>
             </>
           )}
         </select>

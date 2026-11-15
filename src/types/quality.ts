@@ -2,17 +2,16 @@
  * 数据质量共享常量与类型（质量模块的唯一事实源）
  *
  * ── 为什么放在 types/ ────────────────────────────────────────
- * 7 类规则类型是「全链路统一术语」：智能体提示词（S1/S2/S3 三方）、桌面端 UI、
+ * 7 类规则类型是「全链路统一术语」：智能体提示词（agentkit dw-dev）、桌面端 UI、
  * 服务端枚举三处必须完全一致，且**禁止自造同义词**。
  *
- * 因此这里只定义一次，提示词由本文件的常量拼装（见 opencodeInstructions.ts
- * 的 QUALITY_RULE_SPEC），UI 也直接引用本文件 —— 任何口径变更只改一处。
- * 放在 types/ 而不是 hooks/opencode/ 或 api/，是为了让三个消费面（提示词、api、视图）
+ * 因此这里只定义一次，UI 与解析器直接引用本文件 —— 任何口径变更只改一处。
+ * 放在 types/ 而不是 hooks/opencode/ 或 api/，是为了让各消费面（api、视图、kit 契约）
  * 都能向下依赖它，不产生反向依赖。
  *
  * ⚠ 改动前必读：
- * - label / desc 的文案与提示词中的表述**逐字一致**，改文案等于改提示词契约，
- *   必须同时跑 opencodeInstructions.test.ts 与 qualityContract.test.ts。
+ * - label / desc 的文案与 kit 提示词中的表述**逐字一致**，改文案等于改提示词契约，
+ *   必须同时跑 qualityContract.test.ts 与 kit 侧相关测试。
  * - 规则类型固定为 7 类。自定义校验 SQL 也必须归属其中一类（自定义体现在
  *   SQL 模板而非类型），否则覆盖率统计会失去口径 —— 见 QualityTemplateKind。
  *

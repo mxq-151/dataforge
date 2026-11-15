@@ -5,7 +5,7 @@ import type { IndicatorDTO, IndicatorFieldDTO } from '../types/indicator';
  *
  * 从 Markdown 文档的"## 数据指标"章节中解析指标表格，转换为 IndicatorDTO。
  *
- * 支持两种提示词规范的表格格式（见 src/hooks/opencode/opencodeInstructions.ts）：
+ * 支持两种规范的表格格式（数仓设计文档与需求文档，分别由 dw-dev / req-doc kit 产出）：
  *
  * 1. 数仓设计文档（数据架构师，9 列）：
  *    | 指标编码 | 指标名称 | 主题域 | 指标含义 | 计算表达式 | 过滤条件 | 下钻维度 | 字段来源 | 数据源 |

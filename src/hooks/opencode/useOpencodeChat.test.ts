@@ -1,10 +1,11 @@
 /**
- * useOpencodeChat.test.ts — 角色指令逐轮下发 + 会话复用
+ * useOpencodeChat.test.ts — 系统指令选择 + 会话复用
  *
- * 这是「中途切换任务类型仍保留上下文」的机制基础，且不依赖 UI：
- * 1. 每次 sendMessage 都按**当前** roleType 重算 system ⇒ 新角色从下一轮生效
- * 2. 传入 existingSessionId 时复用会话、不再 session.create ⇒ 历史得以保留
- * 3. 没有会话时才创建（首次对话）
+ * 任务类型与用户角色已解耦，且不依赖 UI：
+ * 1. AgentKit 任务改走 session.command，不注入旧 system
+ * 2. 非 kit 任务只按任务类型/模块取指令：data-explore 用分析师提示词，其余模块不注入
+ * 3. 传入 existingSessionId 时复用会话、不再 session.create ⇒ 历史得以保留
+ * 4. 没有会话时才创建（首次对话）
  *
  * 服务端侧只取「最后一条用户消息」的 system 拼进系统提示
  * （opencode session/llm/request.ts::prepare → input.user.system），
@@ -56,9 +57,7 @@ describe('useOpencodeChat 回滚（revert + 边界消息删除）', () => {
     ]);
     const { result } = renderHook(() =>
       useOpencodeChat({
-        username: 'u',
         moduleId: 'dev-assistant',
-        roleType: 'DATA_ARCHITECT',
         currentSessionId: 'sess-1',
         setCurrentSessionId: vi.fn(),
       }),
@@ -82,9 +81,7 @@ describe('useOpencodeChat 回滚（revert + 边界消息删除）', () => {
     ]);
     const { result } = renderHook(() =>
       useOpencodeChat({
-        username: 'u',
         moduleId: 'dev-assistant',
-        roleType: 'DATA_ARCHITECT',
         currentSessionId: 'sess-1',
         setCurrentSessionId: vi.fn(),
       }),
@@ -111,9 +108,7 @@ describe('useOpencodeChat 回滚（revert + 边界消息删除）', () => {
     } as any;
     const { result } = renderHook(() =>
       useOpencodeChat({
-        username: 'u',
         moduleId: 'dev-assistant',
-        roleType: 'DATA_ARCHITECT',
         currentSessionId: 'sess-1',
         setCurrentSessionId: vi.fn(),
       }),
@@ -133,9 +128,7 @@ describe('useOpencodeChat 回滚（revert + 边界消息删除）', () => {
     ]);
     const { result } = renderHook(() =>
       useOpencodeChat({
-        username: 'u',
         moduleId: 'dev-assistant',
-        roleType: 'DATA_ARCHITECT',
         currentSessionId: 'sess-1',
         setCurrentSessionId: vi.fn(),
       }),
@@ -149,99 +142,30 @@ describe('useOpencodeChat 回滚（revert + 边界消息删除）', () => {
   });
 });
 
-describe('useOpencodeChat 角色指令逐轮下发', () => {
-  it('切换 roleType 后下一轮 prompt 带新角色的 system，且会话被复用', async () => {
-    const { client, prompt, create } = createClient();
-    const { result, rerender } = renderHook(
-      ({ roleType }: { roleType: string }) =>
-        useOpencodeChat({
-          username: 'u',
-          moduleId: 'dev-assistant',
-          roleType,
-          currentSessionId: 'sess-1',
-          setCurrentSessionId: vi.fn(),
-        }),
-      { initialProps: { roleType: 'DATA_ARCHITECT' } },
+describe('useOpencodeChat 系统指令 — 非 kit 任务不注入', () => {
+  it.each(['data-explore', 'dev-assistant'])('%s 的非 kit 任务走 session.prompt 且不带 system', async (moduleId) => {
+    const { client, prompt } = createClient();
+    const { result } = renderHook(() =>
+      useOpencodeChat({
+        moduleId,
+        taskType: 'UNKNOWN_TASK',
+        currentSessionId: 'sess-1',
+        setCurrentSessionId: vi.fn(),
+      }),
     );
 
-    await act(async () => { await result.current.sendMessage(client, '第一条', 'sess-1'); });
-    const firstSystem = prompt.mock.calls[0][0].system as string;
+    await act(async () => { await result.current.sendMessage(client, 'hi', 'sess-1'); });
 
-    // 中途切换任务类型（等价于 AIPanel 只调用 setTaskType）
-    rerender({ roleType: 'DATA_DEV_ENGINEER' });
-
-    await act(async () => { await result.current.sendMessage(client, '第二条', 'sess-1'); });
-    const secondSystem = prompt.mock.calls[1][0].system as string;
-
-    expect(firstSystem).toBeTruthy();
-    expect(secondSystem).toBeTruthy();
-    // 新角色从下一轮生效
-    expect(secondSystem).not.toBe(firstSystem);
-    // 两次都落在同一个会话上 ⇒ 历史保留
-    expect(prompt.mock.calls[0][0].sessionID).toBe('sess-1');
-    expect(prompt.mock.calls[1][0].sessionID).toBe('sess-1');
-    expect(create).not.toHaveBeenCalled();
-  });
-
-  it('四种开发角色的 system 互不相同（含数仓开发编排角色）', async () => {
-    const systems: string[] = [];
-    for (const roleType of ['BUSINESS_REQUESTER', 'DATA_ARCHITECT', 'DATA_DEV_ENGINEER', 'DATA_WAREHOUSE_DEV']) {
-      const { client, prompt } = createClient();
-      const { result } = renderHook(() =>
-        useOpencodeChat({
-          username: 'u',
-          moduleId: 'dev-assistant',
-          roleType,
-          currentSessionId: 'sess-1',
-          setCurrentSessionId: vi.fn(),
-        }),
-      );
-      await act(async () => { await result.current.sendMessage(client, 'x', 'sess-1'); });
-      systems.push(prompt.mock.calls[0][0].system as string);
-    }
-
-    expect(new Set(systems).size).toBe(4);
-  });
-
-  it('质量规则模板改由 quality-template 工具现拉：S3 system 只给调用约束，不带 SQL 骨架', async () => {
-    const systemOf = async (roleType: string): Promise<string> => {
-      const { client, prompt } = createClient();
-      const { result } = renderHook(() =>
-        useOpencodeChat({
-          username: 'u',
-          moduleId: 'dev-assistant',
-          roleType,
-          currentSessionId: 'sess-1',
-          setCurrentSessionId: vi.fn(),
-        }),
-      );
-      await act(async () => { await result.current.sendMessage(client, 'x', 'sess-1'); });
-      return prompt.mock.calls[0][0].system as string;
-    };
-
-    const dev = await systemOf('DATA_DEV_ENGINEER');
-    // 工具调用约束随 S3 提示词下发
-    expect(dev).toContain('## 质量规则模板获取（强约束）');
-    expect(dev).toContain('quality-template');
-    expect(dev).toContain('PRIMARY_KEY_UNIQUE');
-    // 模板 SQL 骨架不再内嵌（改由工具按规则类型现拉）
-    expect(dev).not.toContain('HAVING COUNT(1) > 1');
-    // 回传规范里新加的字段必须随提示词下发，否则 S3 不知道要带 ruleId / execSql
-    expect(dev).toContain('execSql');
-    expect(dev).toContain('ruleId');
-
-    const architect = await systemOf('DATA_ARCHITECT');
-    expect(architect).not.toContain('## 质量规则模板获取');
+    expect(prompt.mock.calls[0][0].system).toBeUndefined();
   });
 
   it('没有会话时才创建新会话', async () => {
+
     const { client, prompt, create } = createClient();
     const setCurrentSessionId = vi.fn();
     const { result } = renderHook(() =>
       useOpencodeChat({
-        username: 'u',
         moduleId: 'dev-assistant',
-        roleType: 'DATA_ARCHITECT',
         currentSessionId: null,
         setCurrentSessionId,
       }),
@@ -258,16 +182,14 @@ describe('useOpencodeChat 角色指令逐轮下发', () => {
 describe('useOpencodeChat AgentKit 路由', () => {
   it.each([
     ['AGENTKIT_REQ_DOC', 'write-req', 'doc-orchestrator'],
-    ['AGENTKIT_DW_DESIGN', 'dw-design', 'dw-orchestrator'],
-    ['AGENTKIT_DW_CODE', 'dw-code', 'dw-orchestrator'],
+    ['AGENTKIT_DW_DEV', 'dw-dev', 'dw-orchestrator'],
+    ['AGENTKIT_ANALYSIS', 'ana-analyze', 'ana-orchestrator'],
   ])('%s 走 session.command，携带 command 与 agent，且不再下发旧 system', async (taskType, expectedCommand, expectedAgent) => {
     const { client, prompt, command } = createClient();
     const addLog = vi.fn();
     const { result } = renderHook(() =>
       useOpencodeChat({
-        username: 'u',
         moduleId: 'dev-assistant',
-        roleType: taskType,
         taskType,
         currentSessionId: 'sess-1',
         setCurrentSessionId: vi.fn(),
@@ -297,10 +219,8 @@ describe('useOpencodeChat AgentKit 路由', () => {
     const { client, command } = createClient();
     const { result } = renderHook(() =>
       useOpencodeChat({
-        username: 'u',
         moduleId: 'dev-assistant',
-        roleType: 'AGENTKIT_DW_DESIGN',
-        taskType: 'AGENTKIT_DW_DESIGN',
+        taskType: 'AGENTKIT_DW_DEV',
         currentSessionId: 'sess-1',
         setCurrentSessionId: vi.fn(),
       }),
@@ -313,14 +233,12 @@ describe('useOpencodeChat AgentKit 路由', () => {
     expect(command.mock.calls[0][0].model).toBe('anthropic/claude-sonnet-4');
   });
 
-  it('旧任务类型仍走 session.prompt 并下发 system', async () => {
+  it('非 AgentKit 任务仍走 session.prompt，且不注入 system', async () => {
     const { client, prompt, command } = createClient();
     const { result } = renderHook(() =>
       useOpencodeChat({
-        username: 'u',
-        moduleId: 'dev-assistant',
-        roleType: 'BUSINESS_REQUESTER',
-        taskType: 'BUSINESS_REQUESTER',
+        moduleId: 'data-explore',
+        taskType: 'UNKNOWN_TASK',
         currentSessionId: 'sess-1',
         setCurrentSessionId: vi.fn(),
       }),
@@ -330,6 +248,6 @@ describe('useOpencodeChat AgentKit 路由', () => {
 
     expect(command).not.toHaveBeenCalled();
     expect(prompt).toHaveBeenCalledTimes(1);
-    expect(prompt.mock.calls[0][0].system).toBeTruthy();
+    expect(prompt.mock.calls[0][0].system).toBeUndefined();
   });
 });

@@ -1,20 +1,20 @@
 /**
- * fileHeader.test.ts — 代码头解析与数据开发提示词的一致性测试
+ * fileHeader.test.ts — 代码头解析、生成与校验契约测试
  *
  * 代码头是机器解析契约：src/utils/fileHeader.ts 的 parseFileHeader 扫描文件头注释区，
  * 优先按块注释（/* ... *\/）逐行匹配 * @键: 值，容忍开头 BOM/空行，
  * 遇到首个真实代码行（非注释）即终止；未出现块注释时回退按旧式行注释（-- // #）扫描。
- * 因此 opencodeInstructions.ts 中数据开发提示词的代码头样例必须：
+ * 合法代码头必须：
  * - 使用块注释（/* ... *\/）逐行书写，行注释书写的代码头会被判为不合规
  * - 位于文件开头，不得被 import 或 package 语句隔断
  * - 含 @备注 / @引擎 / @数据源 必填项，且 @引擎 取值可被识别为调度任务类型
  *
  * 代码头承载的运行参数只保留 @程序参数：声明程序运行期参数，时间类参数的取值一律写成
  * `${变量名}` 变量（与 SQL 正文同名），由调度侧以 DolphinScheduler 内置时间变量作为取值解析。
- * 历史字段 @用法 / @资源参数 / @任务参数 已废弃，解析器不再识别、提示词样例也不再书写。
+ * 历史字段 @用法 / @资源参数 / @任务参数 已废弃，解析器不再识别。
  * SQL 正文里的 `${参数名}` 与代码头声明合并后，作为「运行程序」弹窗的预填来源。
  *
- * 本测试直接从提示词中抽取样例代码块并喂给真实解析器，防止改提示词时破坏解析。
+ * 本测试用生成模板与固定样例喂给真实解析器，防止解析规则回退。
  * 文末另锁「SQL 开发规范」里的变量写法（${参数名}）：正文变量由 parseSqlVarKeys 识别。
  */
 
@@ -22,142 +22,9 @@ import { describe, it, expect } from 'vitest';
 import { generateFileHeader, parseFileHeader, validateFileHeader } from './fileHeader';
 import { extractProgramParams } from './programArgs';
 import { mapCodeFileToTask } from './schedulerMapping';
-import { DATA_DEV_ENGINEER_INSTRUCTIONS } from '../hooks/opencode/opencodeInstructions';
 
-interface PromptSample {
-  lang: string;
-  content: string;
-}
-
-/**
- * 从数据开发提示词中抽取 ```语言 ... ``` 代码块。
- * 提示词中的代码块为了排版整体缩进了两格，解析前需还原。
- */
-function promptSamples(): PromptSample[] {
-  const re = /```(sql|java|scala|python|py)\n([\s\S]*?)```/g;
-  const samples: PromptSample[] = [];
-  for (const m of DATA_DEV_ENGINEER_INSTRUCTIONS.matchAll(re)) {
-    samples.push({
-      lang: m[1],
-      content: m[2].split('\n').map(l => l.replace(/^ {2}/, '')).join('\n'),
-    });
-  }
-  return samples;
-}
-
-function sampleOf(lang: string): PromptSample {
-  const found = promptSamples().find(s => s.lang === lang);
-  if (!found) throw new Error(`数据开发提示词中未找到 ${lang} 样例`);
-  return found;
-}
-
-/** 代码头已废弃的参数字段（解析器不再识别，提示词样例也不应再出现） */
+/** 代码头已废弃的参数字段（解析器不再识别） */
 const DEPRECATED_HEADER_FIELDS = ['@用法', '@资源参数', '@任务参数'];
-
-describe('数据开发提示词样例 — 代码头可被解析', () => {
-  it('提示词给出了 SQL 与 Java 两个样例', () => {
-    const langs = promptSamples().map(s => s.lang);
-    expect(langs).toContain('sql');
-    expect(langs).toContain('java');
-  });
-
-  it('每个样例都解析出 备注 / 引擎 / 数据源，且为块注释', () => {
-    for (const s of promptSamples()) {
-      const header = parseFileHeader(s.content);
-      expect(header, `.${s.lang} 样例的代码头未被解析（须用块注释且位于文件开头）`).not.toBeNull();
-      expect(header!.remark).toBeTruthy();
-      expect(header!.engine).toBeTruthy();
-      expect(header!.dataSource).toBeTruthy();
-      expect(header!.style).toBe('block');
-    }
-  });
-
-  it('每个样例都声明了 @程序参数，且不再书写已废弃的参数字段', () => {
-    for (const s of promptSamples()) {
-      const header = parseFileHeader(s.content);
-      expect(header!.programArgs, `.${s.lang} 样例缺少 @程序参数`).toBeTruthy();
-      for (const field of DEPRECATED_HEADER_FIELDS) {
-        expect(s.content, `.${s.lang} 样例不应再出现 ${field}`).not.toContain(field);
-      }
-    }
-  });
-
-  it('Java 样例 @程序参数 为「无」：不扫描正文 ${}，无预填参数名', () => {
-    const { content } = sampleOf('java');
-    expect(extractProgramParams(content, 'java')).toEqual({ keys: [], programArgs: '无' });
-  });
-
-  it('SQL 样例：代码头 @程序参数 与正文 ${day} 同名合并，只留业务入参', () => {
-    const { content } = sampleOf('sql');
-    expect(extractProgramParams(content, 'sql')).toEqual({ keys: ['day'], programArgs: '--day ${day}' });
-  });
-
-  it('SQL 样例被识别为 SQL 任务，数据源取自 @数据源', () => {
-    const { content } = sampleOf('sql');
-    const mapping = mapCodeFileToTask('dwd_user_login_etl_d.sql', content);
-    expect(mapping.recommendedTaskType).toBe('SQL');
-    expect(mapping.dataSource).toBe('test_datasource');
-  });
-
-  it('Java 样例依据 @引擎 识别为 FLINK，而非默认的 SPARK', () => {
-    const { content } = sampleOf('java');
-    const mapping = mapCodeFileToTask('ods_trade_order_load_r.java', content);
-    // .java 文件漏写 @引擎 时会被默认判为 SPARK，故该断言同时守住"必填 @引擎"的规范
-    expect(mapping.recommendedTaskType).toBe('FLINK');
-    expect(mapping.recommendationReason).toContain('flink');
-  });
-
-  it('Java 样例通过包声明与类名校验（块注释代码头不下发包校验）', () => {
-    const { content } = sampleOf('java');
-    const result = validateFileHeader(content, 'test.java', 'java/ods/test.java', 'TEST');
-    expect(result.packageErrors).toEqual([]);
-    expect(result.valid).toBe(true);
-  });
-});
-
-/**
- * 「SQL 开发规范」里的变量写法同样是机器解析契约：src/utils/programArgs.ts::parseSqlVarKeys
- * 先剥离注释，再扫 SQL 正文的 ${} 取纯标识符名，作为「运行程序」弹窗的预填兜底。
- * 提示词写错（用 $[yyyyMMdd]、只在注释里写变量）都会让参数漏配，这里钉住口径。
- */
-describe('数据开发提示词 — SQL 变量规范与解析器口径一致', () => {
-  it('提示词声明了变量的写法约束', () => {
-    for (const key of ['变量编写规范', '${参数名}', '$[yyyyMMdd]', '取值由「运行程序」弹窗']) {
-      expect(DATA_DEV_ENGINEER_INSTRUCTIONS, `S3 提示词缺少 SQL 变量规范片段: ${key}`).toContain(key);
-    }
-  });
-
-  it('提示词不再提已废弃的代码头参数字段，并恢复 @程序参数 与调度侧取值说明', () => {
-    for (const field of DEPRECATED_HEADER_FIELDS) {
-      expect(DATA_DEV_ENGINEER_INSTRUCTIONS, `S3 提示词不应再出现 ${field}`).not.toContain(field);
-    }
-    expect(DATA_DEV_ENGINEER_INSTRUCTIONS).toContain('@程序参数');
-    // 时间类参数在调度侧的取值来自 DS 内置时间变量
-    expect(DATA_DEV_ENGINEER_INSTRUCTIONS).toContain('$[yyyyMMdd]');
-  });
-
-  it('SQL 样例正文里的 ${day} 被识别为参数名 day', () => {
-    const { content } = sampleOf('sql');
-    expect(content).toContain('${day}');
-    expect(extractProgramParams(content, 'sql').keys).toEqual(['day']);
-  });
-
-  it('提示词里的错误写法不会被解析器误收：$[yyyyMMdd] 与带默认值的模板表达式', () => {
-    // 取自提示词的反例说明：这两种写法都不是合法参数名，写进正文也不会被识别
-    const sql = "select 1 from t where dt = '$[yyyyMMdd]' and d = '${day:20260501}' limit 1";
-    expect(extractProgramParams(sql, 'sql').keys).toEqual([]);
-  });
-
-  it('只在注释里出现的变量不算参数（注释先被剥离）', () => {
-    const sql = [
-      '/*',
-      ' * @备注: 示例 ${notParam} 只是注释里的说明',
-      ' */',
-      'select 1 from t;',
-    ].join('\n');
-    expect(extractProgramParams(sql, 'sql').keys).toEqual([]);
-  });
-});
 
 /**
  * 新建文件时由 generateFileHeader 灌入的代码头模板，是人工书写代码头的范本。

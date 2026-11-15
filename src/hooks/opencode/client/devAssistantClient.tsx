@@ -30,7 +30,6 @@ export function DevAssistantClientProvider({
   config,
   username,
   moduleId,
-  roleType,
   projectId,
   directory,
 }: OpencodeClientProviderProps) {
@@ -38,7 +37,6 @@ export function DevAssistantClientProvider({
     config,
     username,
     moduleId,
-    roleType,
     projectId,
     directory,
     defaultTaskType: DEFAULT_TASK_TYPE_BY_MODULE[DEV_ASSISTANT_MODULE_ID],

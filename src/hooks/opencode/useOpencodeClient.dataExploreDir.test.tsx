@@ -138,7 +138,6 @@ function mountProvider() {
         config={config}
         username="admin"
         moduleId="data-explore"
-        roleType="DATA_ANALYST"
         projectId="__data_explore__"
         directory={BASE_DIR}
         dataExploreService={{

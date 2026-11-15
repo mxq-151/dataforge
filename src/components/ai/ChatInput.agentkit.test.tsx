@@ -48,14 +48,14 @@ afterEach(() => {
 });
 
 describe('ChatInput AgentKit 入口', () => {
-  it('开发助手下拉包含三个 AgentKit 工作流', () => {
+  it('开发助手下拉包含三种 kit 任务入口', () => {
     renderInput();
-    expect(screen.getByRole('option', { name: '需求文档编写' })).toBeTruthy();
-    expect(screen.getByRole('option', { name: '数仓设计' })).toBeTruthy();
-    expect(screen.getByRole('option', { name: '数据处理代码开发' })).toBeTruthy();
+    expect(screen.getByRole('option', { name: '需求编写' })).toBeTruthy();
+    expect(screen.getByRole('option', { name: '数仓开发' })).toBeTruthy();
+    expect(screen.getByRole('option', { name: '任务智能诊断' })).toBeTruthy();
   });
 
-  it('需求文档编写发送业务名，并提示当前路由目标', async () => {
+  it('需求编写发送业务名，并提示当前路由目标', async () => {
     const { onSend } = renderInput();
     expect(screen.getByText(/doc-orchestrator · \/write-req/)).toBeTruthy();
     fireEvent.change(screen.getByRole('textbox'), { target: { value: '订单域' } });
@@ -64,9 +64,9 @@ describe('ChatInput AgentKit 入口', () => {
     await waitFor(() => expect(onSend).toHaveBeenCalledWith('订单域'));
   });
 
-  it('数仓设计缺少需求文档时不发送，并给出可操作的引导', async () => {
+  it('数仓开发缺少需求文档时不发送，并给出可操作的引导', async () => {
     fsMock.mockResolvedValueOnce([{ name: '库存域_开发需求.md', isFile: true }]);
-    const { onSend } = renderInput({ taskType: 'AGENTKIT_DW_DESIGN' });
+    const { onSend } = renderInput({ taskType: 'AGENTKIT_DW_DEV' });
 
     fireEvent.change(screen.getByRole('textbox'), { target: { value: '订单域' } });
     fireEvent.click(screen.getByTitle('发送'));

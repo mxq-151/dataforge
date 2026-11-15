@@ -1,22 +1,16 @@
 // @vitest-environment jsdom
 /**
- * AIPanel.taskType.test.tsx — 任务类型切换与会话上下文保留
+ * AIPanel.taskType.test.tsx — 任务类型切换与会话隔离
  *
- * 背景（2026-09-13）：任务类型的系统指令是「逐轮下发」的 —— useOpencodeChat 每次 sendMessage
- * 都重算 getDeveloperInstructions(roleType) 并作为 session.prompt 的 body.system 传入；服务端
- * 只取「最后一条用户消息」的 system 拼进系统提示（opencode session/llm/request.ts::prepare
- * → input.user.system），历史消息的 system 不参与回放。
- *
- * 因此开发助手切换任务类型**不需要**新建会话：只更新 taskType，新角色从下一轮生效，
- * 而历史对话与工具调用结果全部保留，智能体仍能看到「之前做了什么」。
+ * 任务类型已与用户角色解耦：开发助手的入口全部是 AgentKit 工作流，
+ * 各自有独立的 command/agent 与产物目录，切换时新建会话，避免两套编排混在一条历史。
+ * 数据探索的会话本身承载「新建时间戳工作目录」语义，切换任务类型同样新建会话。
  *
  * 覆盖点：
- * 1. 开发助手在经典编排之间切换任务类型只更新 taskType，不调用 newSession（上下文不被清空）
- * 2. 切换后当前会话 ID 与消息历史保持不变
+ * 1. 开发助手切换 kit 任务类型时新建会话，避免两套编排混在一条历史
+ * 2. 数据探索模块切换任务类型仍新建会话（该模块会话=独立时间戳工作目录）
  * 3. 头部「新建会话」入口仍然可用（能力未被误删）
- * 4. 数据探索模块维持原行为：切换任务类型仍新建会话（该模块的提示词按模块短路、
- *    与 roleType 无关，且 newSession 承担「新建时间戳工作目录」的语义）
- * 5. 两个模块的任务类型下拉选项齐备；切入 AgentKit 工作流时新建会话，避免两套编排混用
+ * 4. 两个模块的任务类型下拉选项齐备
  */
 
 import React from 'react';
@@ -106,7 +100,7 @@ function createBackend(overrides: Record<string, unknown> = {}) {
     deleteSession: vi.fn(),
     renameTask: vi.fn(),
     setActiveLLMModel: vi.fn(),
-    taskType: 'DATA_WAREHOUSE_DEV',
+    taskType: 'AGENTKIT_DW_DEV',
     setTaskType: setTaskTypeSpy,
     client: null,
     readPartText: vi.fn(),
@@ -124,7 +118,7 @@ function createBackend(overrides: Record<string, unknown> = {}) {
  * 有状态挂具：让 setTaskType 真正更新受控 select 的 value，
  * 从而能断言「切换后选中项变了」而不只是「回调被调用」。
  */
-function Harness({ moduleId = 'dev-assistant', initialTaskType = 'DATA_WAREHOUSE_DEV' }: {
+function Harness({ moduleId = 'dev-assistant', initialTaskType = 'AGENTKIT_DW_DEV' }: {
   moduleId?: string;
   initialTaskType?: string;
 }) {
@@ -152,29 +146,14 @@ describe('AIPanel 任务类型切换', () => {
     localStorage.clear();
   });
 
-  it('开发助手：切换任务类型只更新 taskType，不新建会话', () => {
+  it('开发助手：切换任务类型时新建会话，避免两套 kit 编排混在同一条历史', () => {
     render(<Harness />);
 
-    fireEvent.change(taskTypeSelect(), { target: { value: 'BUSINESS_REQUESTER' } });
+    fireEvent.change(taskTypeSelect(), { target: { value: 'AGENTKIT_DIAG' } });
 
     expect(setTaskTypeSpy).toHaveBeenCalledTimes(1);
-    expect(setTaskTypeSpy).toHaveBeenCalledWith('BUSINESS_REQUESTER');
-    // 关键断言：不再清空会话，否则上下文会被整体丢弃
-    expect(newSessionSpy).not.toHaveBeenCalled();
-  });
-
-  it('开发助手：切换后当前会话与消息历史保持不变', () => {
-    render(<Harness />);
-    expect(screen.getByTestId('ss-current').textContent).toBe('sess-1');
-    expect(screen.getByTestId('ai-panel-timeline').getAttribute('data-count')).toBe('1');
-
-    fireEvent.change(taskTypeSelect(), { target: { value: 'BUSINESS_REQUESTER' } });
-
-    // 会话 ID 未被置空、历史消息仍在 ⇒ 智能体仍能看到「之前做了什么」
-    expect(screen.getByTestId('ss-current').textContent).toBe('sess-1');
-    expect(screen.getByTestId('ai-panel-timeline').getAttribute('data-count')).toBe('1');
-    expect(newSessionSpy).not.toHaveBeenCalled();
-    expect(loadSessionSpy).not.toHaveBeenCalled();
+    expect(setTaskTypeSpy).toHaveBeenCalledWith('AGENTKIT_DIAG');
+    expect(newSessionSpy).toHaveBeenCalledTimes(1);
   });
 
   it('开发助手：头部「新建会话」入口仍会新建会话（能力未被误删）', () => {
@@ -186,53 +165,35 @@ describe('AIPanel 任务类型切换', () => {
   });
 
   it('数据探索：维持原行为，切换任务类型仍新建会话', () => {
-    render(<Harness moduleId="data-explore" initialTaskType="DATA_ANALYST" />);
+    render(<Harness moduleId="data-explore" initialTaskType="AGENTKIT_ANALYSIS" />);
 
-    fireEvent.change(taskTypeSelect(), { target: { value: 'SUPER_ADMIN' } });
+    fireEvent.change(taskTypeSelect(), { target: { value: 'AGENTKIT_DIAG' } });
 
-    expect(setTaskTypeSpy).toHaveBeenCalledWith('SUPER_ADMIN');
+    expect(setTaskTypeSpy).toHaveBeenCalledWith('AGENTKIT_DIAG');
     expect(newSessionSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('开发助手下拉提供三项 AgentKit 工作流与两项经典编排', () => {
+  it('开发助手下拉提供三种 kit 任务入口', () => {
     render(<Harness />);
 
     const options = Array.from(taskTypeSelect().options);
     expect(options.map(o => o.value)).toEqual([
       'AGENTKIT_REQ_DOC',
-      'AGENTKIT_DW_DESIGN',
-      'AGENTKIT_DW_CODE',
-      'BUSINESS_REQUESTER',
-      'DATA_WAREHOUSE_DEV',
+      'AGENTKIT_DW_DEV',
+      'AGENTKIT_DIAG',
     ]);
     expect(options.map(o => o.textContent)).toEqual([
-      '需求文档编写',
-      '数仓设计',
-      '数据处理代码开发',
       '需求编写',
       '数仓开发',
+      '任务智能诊断',
     ]);
-    // 「数仓开发」必须能看出一共会拉起哪四类子代理，否则用户会以为它只是换了个名字
-    const legacyDw = options.find(o => o.value === 'DATA_WAREHOUSE_DEV')!;
-    for (const agent of ['data-architect', 'design-verifier', 'data-dev', 'data-verifier']) {
-      expect(legacyDw.title, `tooltip 未提及子代理: ${agent}`).toContain(agent);
-    }
-  });
-
-  it('开发助手：切入 AgentKit 工作流时新建会话，避免两套编排混在同一条历史', () => {
-    render(<Harness />);
-
-    fireEvent.change(taskTypeSelect(), { target: { value: 'AGENTKIT_REQ_DOC' } });
-
-    expect(setTaskTypeSpy).toHaveBeenCalledWith('AGENTKIT_REQ_DOC');
-    expect(newSessionSpy).toHaveBeenCalledTimes(1);
   });
 
   it('数据探索下拉提供数据分析与运维管理', () => {
-    render(<Harness moduleId="data-explore" initialTaskType="DATA_ANALYST" />);
+    render(<Harness moduleId="data-explore" initialTaskType="AGENTKIT_ANALYSIS" />);
 
     const options = Array.from(taskTypeSelect().options);
-    expect(options.map(o => o.value)).toEqual(['DATA_ANALYST', 'SUPER_ADMIN']);
+    expect(options.map(o => o.value)).toEqual(['AGENTKIT_ANALYSIS', 'AGENTKIT_DIAG']);
     expect(options.map(o => o.textContent)).toEqual(['数据分析', '运维管理']);
   });
 });
