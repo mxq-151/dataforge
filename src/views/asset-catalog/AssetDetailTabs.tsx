@@ -357,7 +357,7 @@ const DocTab: React.FC<{ tableId: number }> = ({ tableId }) => {
 const PermissionTab: React.FC<{ detail: AssetTableDetailVO }> = ({ detail }) => (
   <div className="ac-section ac-section--tight">
     <p className="ac-muted">
-      权限无独立端点：目录树、检索与详情由服务端按 <code>sys_table_permission</code>（含行 / 列级）
+      权限无独立端点：目录树、检索与详情由服务端按 <code>sys_table_permission</code>（含列级）
       fail-close 过滤 —— 越权表名与字段名根本不会下发到客户端，因此这里展示的即「你有权看的部分」。
     </p>
     <table className="ac-table">

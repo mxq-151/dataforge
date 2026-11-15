@@ -54,10 +54,8 @@ describe('supportsWholeDatabase', () => {
     expect(supportsWholeDatabase(1)).toBe(true);
   });
 
-  it('指定字段/指定行/组合都不支持', () => {
+  it('指定字段不支持', () => {
     expect(supportsWholeDatabase(2)).toBe(false);
-    expect(supportsWholeDatabase(3)).toBe(false);
-    expect(supportsWholeDatabase(4)).toBe(false);
   });
 
   it('缺省值不视为支持', () => {
@@ -101,11 +99,9 @@ describe('validateTableSelection', () => {
     expect(validateTableSelection({ permissionScope: 1, tableNames: ['ods_user'] })).toBeNull();
   });
 
-  it('指定字段/指定行/组合 配整库授权被拒绝', () => {
-    for (const scope of [2, 3, 4]) {
-      const message = validateTableSelection({ permissionScope: scope, tableNames: ['*'] });
-      expect(message).toContain('不支持整库授权');
-    }
+  it('指定字段 配整库授权被拒绝', () => {
+    const message = validateTableSelection({ permissionScope: 2, tableNames: ['*'] });
+    expect(message).toContain('不支持整库授权');
   });
 
   it('指定字段 + 逐表授权通过（逐表非空由调用方另行校验）', () => {

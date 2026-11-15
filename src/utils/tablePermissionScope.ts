@@ -31,15 +31,15 @@ export function wholeDatabaseSelection(): string[] {
 /**
  * 该权限范围是否允许整库授权。
  *
- * 只有「整表」（scope = 1）可以：列白名单（scope 2/4）与行过滤 SQL（scope 3/4）都是按
- * **真实表名**写进 `sys_table_permission_column` / `sys_table_permission_row`，
- * 匹配时用真实表名反查（`selectByPermissionIdAndTable`），存 `*` 永远命中不了。
+ * 只有「整表」（scope = 1）可以：列白名单（scope 2）是按**真实表名**写进
+ * `sys_table_permission_column`，匹配时用真实表名反查（`selectByPermissionIdAndTable`），
+ * 存 `*` 永远命中不了。
  */
 export function supportsWholeDatabase(permissionScope: number | null | undefined): boolean {
   return permissionScope === 1;
 }
 
-/** 剔除整库占位符，只保留可参与列/行配置的具体表名。 */
+/** 剔除整库占位符，只保留可参与列配置的具体表名。 */
 export function splitPerTableNames(tableNames: readonly string[] | null | undefined): string[] {
   if (!tableNames) return [];
   return tableNames.filter((name) => name !== WHOLE_DATABASE_TABLE);
@@ -54,8 +54,8 @@ export function describeTableSelection(tableNames: readonly string[] | null | un
 /**
  * 提交前的「授权范围」校验。
  *
- * 只覆盖与授权范围本身有关的规则；列白名单逐表非空、行过滤 SQL 语法这两条仍由调用方
- * 各自校验（它们需要按表给出定位到具体输入框的错误）。
+ * 只覆盖与授权范围本身有关的规则；列白名单逐表非空仍由调用方各自校验
+ * （它需要按表给出定位到具体输入框的错误）。
  *
  * @returns 通过返回 `null`，否则返回给用户看的提示文案。
  */
@@ -66,7 +66,7 @@ export function validateTableSelection(params: {
   const names = params.tableNames ?? [];
   if (names.length === 0) return '请选择库表';
   if (isWholeDatabaseSelection(names) && !supportsWholeDatabase(params.permissionScope)) {
-    return '「指定字段」「指定行」「组合」权限范围不支持整库授权，请逐张选择库表';
+    return '「指定字段」权限范围不支持整库授权，请逐张选择库表';
   }
   return null;
 }
@@ -74,8 +74,8 @@ export function validateTableSelection(params: {
 /**
  * 权限范围切换后规整选中的库表。
  *
- * 从「整表」的整库授权切到需要逐表配置的范围时，`*` 已经不可能命中任何列/行子表配置，
- * 因此直接清空选择，让用户重新挑表，而不是留下一个配不出列/行规则的占位符。
+ * 从「整表」的整库授权切到需要逐表配置的范围时，`*` 已经不可能命中任何列子表配置，
+ * 因此直接清空选择，让用户重新挑表，而不是留下一个配不出列规则的占位符。
  */
 export function normalizeScopeSelection(params: {
   permissionScope: number | null | undefined;

@@ -20,92 +20,10 @@ import {
   normalizeScopeSelection,
 } from '../../../utils/tablePermissionScope';
 
-const SCOPE_MAP: Record<number, string> = { 1: '整表', 2: '指定字段', 3: '指定行', 4: '组合' };
-const SCOPE_TAG_MAP: Record<number, string> = { 1: 'info', 2: 'warning', 3: 'danger', 4: '' };
+const SCOPE_MAP: Record<number, string> = { 1: '整表', 2: '指定字段' };
+const SCOPE_TAG_MAP: Record<number, string> = { 1: 'info', 2: 'warning' };
 const PERM_TYPE_MAP: Record<number, string> = { 1: '可读', 2: '读写', 3: '完全控制' };
 const PERM_TYPE_TAG_MAP: Record<number, string> = { 1: 'info', 2: 'warning', 3: 'danger' };
-
-// 禁止出现在行过滤条件中的 SQL 语句关键字（防注入，仅允许表达式）
-const FILTER_BLOCKED_KEYWORDS =
-  /\b(select|insert|update|delete|drop|alter|create|truncate|grant|revoke|union|replace|merge)\b/i;
-
-/**
- * 校验行过滤条件（WHERE 子句条件）的语法正确性。
- * 仅做轻量级前端校验：括号/引号配对、单语句限制、必须包含比较运算、禁用语句关键字。
- */
-function validateRowFilterSql(sql: string): { valid: boolean; error?: string } {
-  const cleaned = (sql || '')
-    .replace(/--.*$/gm, '')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .trim();
-
-  if (!cleaned) {
-    return { valid: false, error: '请填写行过滤条件' };
-  }
-
-  let paren = 0;
-  let bracket = 0;
-  let inSingle = false;
-  let inDouble = false;
-  for (let i = 0; i < cleaned.length; i++) {
-    const ch = cleaned[i];
-    if (inSingle) {
-      if (ch === "'") {
-        // 连续两个单引号表示转义，不结束字符串
-        if (cleaned[i + 1] === "'") i++;
-        else inSingle = false;
-      }
-      continue;
-    }
-    if (inDouble) {
-      if (ch === '"') {
-        if (cleaned[i + 1] === '"') i++;
-        else inDouble = false;
-      }
-      continue;
-    }
-    if (ch === "'") inSingle = true;
-    else if (ch === '"') inDouble = true;
-    else if (ch === '(') paren++;
-    else if (ch === ')') {
-      paren--;
-      if (paren < 0) return { valid: false, error: '圆括号不匹配，缺少左括号 "("' };
-    } else if (ch === '[') bracket++;
-    else if (ch === ']') {
-      bracket--;
-      if (bracket < 0) return { valid: false, error: '中括号不匹配，缺少左括号 "["' };
-    }
-  }
-
-  if (inSingle || inDouble) return { valid: false, error: '存在未闭合的引号，请检查字符串是否闭合' };
-  if (paren !== 0) return { valid: false, error: '圆括号不匹配，请检查括号数量与配对' };
-  if (bracket !== 0) return { valid: false, error: '中括号不匹配，请检查括号数量与配对' };
-
-  const statements = cleaned
-    .split(';')
-    .map(s => s.trim())
-    .filter(Boolean);
-  if (statements.length > 1) {
-    return { valid: false, error: '仅支持单个过滤条件，不允许包含分号分隔的多条语句' };
-  }
-
-  // 过滤条件必须包含比较运算（=、>/>=/</<=、LIKE、IN、BETWEEN、IS NULL 等）
-  // 符号运算符（= < > ! <>）用字符匹配即可，不能用词边界（= 后跟空格/引号时无词边界）；
-  // 关键字类运算符（like/in/between/is null）才需要词边界，避免与字符串内的普通单词误判。
-  const hasOperator =
-    /[<>!=]/.test(cleaned) ||
-    /\b(?:like|rlike|in|between)\b/i.test(cleaned) ||
-    /\bis\s+(?:not\s+)?null\b/i.test(cleaned);
-  if (!hasOperator) {
-    return { valid: false, error: '过滤条件缺少比较运算符（如 =、>、>=、<、<=、LIKE、IN、BETWEEN、IS NULL 等）' };
-  }
-
-  if (FILTER_BLOCKED_KEYWORDS.test(cleaned)) {
-    return { valid: false, error: '过滤条件不允许包含 SELECT、INSERT、UPDATE、DELETE 等 SQL 语句关键字' };
-  }
-
-  return { valid: true };
-}
 
 type PermSubTab = 'menu' | 'file' | 'table' | 'project';
 
@@ -154,13 +72,12 @@ const PermissionManageTab: React.FC = () => {
     canUpdate: number;
     canDelete: number;
     canExport: number;
-    rowFilterSql: Record<string, string>;
     dataMaskingRule: string;
     columnPermissions: Record<string, string[]>;
     description: string;
     roleIds: number[];
     selectedDatasourceId?: number;
-  }>({ permissionName: '', datasourceName: '', databaseName: '', tableNames: [], tableMetadataIds: [], canSelect: 1, canInsert: 0, canUpdate: 0, canDelete: 0, canExport: 0, permissionScope: 1, rowFilterSql: {}, dataMaskingRule: '', columnPermissions: {}, description: '', roleIds: [] });
+  }>({ permissionName: '', datasourceName: '', databaseName: '', tableNames: [], tableMetadataIds: [], canSelect: 1, canInsert: 0, canUpdate: 0, canDelete: 0, canExport: 0, permissionScope: 1, dataMaskingRule: '', columnPermissions: {}, description: '', roleIds: [] });
 
   const [projectPermData, setProjectPermData] = useState<ProjectPermissionVO[]>([]);
   const [projectPermLoading, setProjectPermLoading] = useState(false);
@@ -178,7 +95,6 @@ const PermissionManageTab: React.FC = () => {
   const [tableList, setTableList] = useState<TableInfo[]>([]);
   const [columnsByTable, setColumnsByTable] = useState<Record<string, string[]>>({});
   const [columnsLoading, setColumnsLoading] = useState(false);
-  const [rowFilterErrors, setRowFilterErrors] = useState<Record<string, string>>({});
 
   const [submitLoading, setSubmitLoading] = useState(false);
   const [confirmModal, setConfirmModal] = useState<ConfirmModalState>({ visible: false, title: '', message: '', onConfirm: () => {} });
@@ -333,7 +249,7 @@ const PermissionManageTab: React.FC = () => {
 
   // 指定列权限范围时，库表选择变化后自动刷新各表列选项
   useEffect(() => {
-    const isColumnScope = tableForm.permissionScope === 2 || tableForm.permissionScope === 4;
+    const isColumnScope = tableForm.permissionScope === 2;
     if (!isColumnScope) {
       setColumnsByTable({});
       return;
@@ -357,7 +273,7 @@ const PermissionManageTab: React.FC = () => {
   // 因此不需要枚举该库下的全部表名，也不需要后端改动。
   const wholeDatabase = isWholeDatabaseSelection(tableForm.tableNames);
   const scopeAllowsWholeDb = supportsWholeDatabase(tableForm.permissionScope);
-  // 列白名单 / 行过滤 SQL 都按真实表名落子表，整库占位符不参与这两类配置
+  // 列白名单按真实表名落子表，整库占位符不参与该配置
   const perTableNames = useMemo(() => splitPerTableNames(tableForm.tableNames), [tableForm.tableNames]);
 
   // 编辑模式下，表列表加载完成后通过 tableName 匹配修正 tableMetadataIds
@@ -470,10 +386,9 @@ const PermissionManageTab: React.FC = () => {
   };
 
   const handleAddTablePerm = () => {
-    setTableForm({ permissionName: '', datasourceName: '', databaseName: '', tableNames: [], tableMetadataIds: [], canSelect: 1, canInsert: 0, canUpdate: 0, canDelete: 0, canExport: 0, permissionScope: 1, rowFilterSql: {}, dataMaskingRule: '', columnPermissions: {}, description: '', roleIds: [], selectedDatasourceId: undefined });
+    setTableForm({ permissionName: '', datasourceName: '', databaseName: '', tableNames: [], tableMetadataIds: [], canSelect: 1, canInsert: 0, canUpdate: 0, canDelete: 0, canExport: 0, permissionScope: 1, dataMaskingRule: '', columnPermissions: {}, description: '', roleIds: [], selectedDatasourceId: undefined });
     setTableList([]);
     setColumnsByTable({});
-    setRowFilterErrors({});
     reloadRoles();
     reloadDatasources();
     setTableDialogOpen(true);
@@ -481,6 +396,8 @@ const PermissionManageTab: React.FC = () => {
 
   const handleEditTablePerm = (row: TablePermissionVO) => {
     const ds = datasourceList.find(d => d.datasourceName === row.datasourceName);
+    // 范围 3/4 已随对应能力下线：编辑存量数据时归并为 1（整表）/ 2（指定字段），保存即按新范围落库
+    const permissionScope = row.permissionScope === 2 || row.permissionScope === 4 ? 2 : 1;
     setTableForm({
       id: row.id,
       permissionName: row.permissionName,
@@ -488,13 +405,12 @@ const PermissionManageTab: React.FC = () => {
       databaseName: row.databaseName,
       tableNames: row.tableNames || [],
       tableMetadataIds: row.tableMetadataIds || [],
-      permissionScope: row.permissionScope,
+      permissionScope,
       canSelect: row.canSelect,
       canInsert: row.canInsert,
       canUpdate: row.canUpdate,
       canDelete: row.canDelete,
       canExport: row.canExport,
-      rowFilterSql: row.rowFilterSql || {},
       dataMaskingRule: row.dataMaskingRule || '',
       columnPermissions: row.columnPermissions || {},
       description: row.description,
@@ -502,7 +418,6 @@ const PermissionManageTab: React.FC = () => {
       selectedDatasourceId: ds?.id,
     });
     setTableList([]);
-    setRowFilterErrors({});
     reloadRoles();
     reloadDatasources();
     if (ds?.id) {
@@ -530,26 +445,10 @@ const PermissionManageTab: React.FC = () => {
       tableNames: tableForm.tableNames,
     });
     if (rangeError) { toast.warning(rangeError); return; }
-    if ((tableForm.permissionScope === 2 || tableForm.permissionScope === 4)) {
+    if (tableForm.permissionScope === 2) {
       const noColumnTables = perTableNames.filter(n => !(tableForm.columnPermissions[n]?.length));
       if (noColumnTables.length > 0) {
         toast.warning(`表「${noColumnTables[0]}」未选择列，已选择「指定字段」权限范围时每张表至少需选择一列`);
-        return;
-      }
-    }
-    if (tableForm.permissionScope === 3 || tableForm.permissionScope === 4) {
-      setRowFilterErrors({});
-      const errors: Record<string, string> = {};
-      for (const tableName of perTableNames) {
-        const sql = tableForm.rowFilterSql[tableName] || '';
-        if (!sql.trim()) { errors[tableName] = '请填写行过滤条件'; continue; }
-        const validation = validateRowFilterSql(sql);
-        if (!validation.valid) errors[tableName] = validation.error || '行过滤条件语法错误';
-      }
-      if (Object.keys(errors).length > 0) {
-        setRowFilterErrors(errors);
-        const firstTable = Object.keys(errors)[0];
-        toast.warning(`表「${firstTable}」：${errors[firstTable]}`);
         return;
       }
     }
@@ -567,7 +466,6 @@ const PermissionManageTab: React.FC = () => {
         canUpdate: tableForm.canUpdate,
         canDelete: tableForm.canDelete,
         canExport: tableForm.canExport,
-        rowFilterSql: tableForm.rowFilterSql,
         dataMaskingRule: tableForm.dataMaskingRule || undefined,
         columnPermissions: tableForm.columnPermissions,
         description: tableForm.description,
@@ -775,10 +673,10 @@ const PermissionManageTab: React.FC = () => {
           </div>
           <div className="sys-mgmt__table-wrap">
             <table className="sys-mgmt__table">
-              <thead><tr><th>权限名称</th><th>数据源</th><th>数据库</th><th>表名</th><th>权限范围</th><th>CRUD权限</th><th>关联角色</th><th>行过滤SQL</th><th className="sys-mgmt__th-actions">操作</th></tr></thead>
+              <thead><tr><th>权限名称</th><th>数据源</th><th>数据库</th><th>表名</th><th>权限范围</th><th>CRUD权限</th><th>关联角色</th><th className="sys-mgmt__th-actions">操作</th></tr></thead>
               <tbody>
-                {tableLoading ? <tr><td colSpan={9} className="sys-mgmt__table-empty">加载中...</td></tr> :
-                filteredTableData.length === 0 ? <tr><td colSpan={9} className="sys-mgmt__table-empty">暂无数据</td></tr> :
+                {tableLoading ? <tr><td colSpan={8} className="sys-mgmt__table-empty">加载中...</td></tr> :
+                filteredTableData.length === 0 ? <tr><td colSpan={8} className="sys-mgmt__table-empty">暂无数据</td></tr> :
                 filteredTableData.map(row => (
                   <tr key={row.id}>
                     <td>{row.permissionName}</td>
@@ -800,16 +698,6 @@ const PermissionManageTab: React.FC = () => {
                       {row.canExport === 1 && <span className="sys-mgmt__tag sys-mgmt__tag--info" style={{ margin: '1px' }}>导出</span>}
                     </td>
                     <td>{row.roleNames?.map(n => <span key={n} className="sys-mgmt__tag sys-mgmt__tag--warning" style={{ margin: '1px' }}>{n}</span>) || <span style={{ color: '#666' }}>-</span>}</td>
-                    <td>
-                      {row.rowFilterSql && Object.keys(row.rowFilterSql).length > 0
-                        ? Object.entries(row.rowFilterSql).map(([t, sql]) => (
-                            <div key={t} style={{ margin: '2px 0' }}>
-                              <span className="sys-mgmt__tag sys-mgmt__tag--info" style={{ marginRight: 4 }}>{t}</span>
-                              <code className="sys-mgmt__code" style={{ color: '#d1a855' }}>{sql}</code>
-                            </div>
-                          ))
-                        : <span style={{ color: '#666' }}>-</span>}
-                    </td>
                     <td className="sys-mgmt__td-actions">
                       <button className="sys-mgmt__btn-link" onClick={() => handleEditTablePerm(row)}><Edit3 size={12} /> 编辑</button>
                       <button className="sys-mgmt__btn-link sys-mgmt__btn-link--danger" onClick={() => handleDeleteTablePerm(row)}><Trash2 size={12} /> 删除</button>
@@ -978,7 +866,7 @@ const PermissionManageTab: React.FC = () => {
                   <div className="sys-mgmt__whole-db-hint">已授权该库全部表，无需逐张勾选。</div>
                 )}
                 {!scopeAllowsWholeDb && (
-                  <div className="sys-mgmt__whole-db-hint">「指定字段」「指定行」「组合」需逐张选择库表 —— 列白名单与行过滤条件按具体表名存放。</div>
+                  <div className="sys-mgmt__whole-db-hint">「指定字段」需逐张选择库表 —— 列白名单按具体表名存放。</div>
                 )}
               </div>
               <div className="sys-mgmt__form-group"><label>CRUD权限</label>
@@ -994,9 +882,8 @@ const PermissionManageTab: React.FC = () => {
                   const scope = Number(k);
                   setTableForm(f => {
                     const next = { ...f, permissionScope: scope };
-                    if (scope !== 2 && scope !== 4) next.columnPermissions = {};
-                    if (scope !== 3 && scope !== 4) next.rowFilterSql = {};
-                    // 切到不支持整库的范围时，'*' 配不出列白名单/行过滤，清空选择让用户重新逐张挑表
+                    if (scope !== 2) next.columnPermissions = {};
+                    // 切到不支持整库的范围时，'*' 配不出列白名单，清空选择让用户重新逐张挑表
                     const normalized = normalizeScopeSelection({
                       permissionScope: scope,
                       tableNames: next.tableNames,
@@ -1006,9 +893,8 @@ const PermissionManageTab: React.FC = () => {
                     next.tableMetadataIds = normalized.tableMetadataIds;
                     return next;
                   });
-                  if (scope !== 3 && scope !== 4) setRowFilterErrors({});
                 }} />{v}</label>)}</div></div>
-              {(tableForm.permissionScope === 2 || tableForm.permissionScope === 4) && (perTableNames.length === 0 ? (
+              {tableForm.permissionScope === 2 && (perTableNames.length === 0 ? (
                 <div className="sys-mgmt__form-group"><label>选择列 <span className="sys-mgmt__required">*</span></label><div style={{ color: '#888', fontSize: 12 }}>请先在上方选择库表</div></div>
               ) : (
                 perTableNames.map(tableName => {
@@ -1023,31 +909,6 @@ const PermissionManageTab: React.FC = () => {
                         onChange={ids => setTableForm(f => ({ ...f, columnPermissions: { ...f.columnPermissions, [tableName]: ids as string[] } }))}
                         placeholder={columnsLoading ? '列加载中...' : (hasCols ? '请选择列' : '暂无列数据')}
                       />
-                    </div>
-                  );
-                })
-              ))}
-              {(tableForm.permissionScope === 3 || tableForm.permissionScope === 4) && (perTableNames.length === 0 ? (
-                <div className="sys-mgmt__form-group"><label>行过滤SQL <span className="sys-mgmt__required">*</span></label><div style={{ color: '#888', fontSize: 12 }}>请先在上方选择库表</div></div>
-              ) : (
-                perTableNames.map(tableName => {
-                  const sqlValue = tableForm.rowFilterSql[tableName] || '';
-                  const error = rowFilterErrors[tableName];
-                  return (
-                    <div className="sys-mgmt__form-group" key={tableName}><label>表「{tableName}」行过滤SQL <span className="sys-mgmt__required">*</span></label>
-                      <textarea className="sys-mgmt__textarea" maxLength={2000} value={sqlValue} onChange={e => {
-                        setTableForm(f => ({ ...f, rowFilterSql: { ...f.rowFilterSql, [tableName]: e.target.value } }));
-                        if (error) setRowFilterErrors(errs => { const n = { ...errs }; delete n[tableName]; return n; });
-                      }} onBlur={() => {
-                        const v = validateRowFilterSql(sqlValue);
-                        setRowFilterErrors(errs => {
-                          const n = { ...errs };
-                          if (v.valid) delete n[tableName];
-                          else n[tableName] = v.error || '行过滤条件语法错误';
-                          return n;
-                        });
-                      }} placeholder="WHERE条件，如：dept_id = 101" rows={2} />
-                      {error && <div className="sys-mgmt__form-error">{error}</div>}
                     </div>
                   );
                 })

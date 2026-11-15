@@ -54,8 +54,6 @@ export interface TablePermissionDTO {
   canUpdate: number;
   canDelete: number;
   canExport: number;
-  /** 指定行权限范围时，表名 -> 行过滤SQL（WHERE条件，支持WHERE前缀或裸表达式） */
-  rowFilterSql?: Record<string, string>;
   dataMaskingRule?: string;
   /** 指定列权限范围时，表名 -> 允许可见的列名列表 */
   columnPermissions?: Record<string, string[]>;
@@ -76,8 +74,6 @@ export interface TablePermissionVO {
   canUpdate: number;
   canDelete: number;
   canExport: number;
-  /** 指定行权限范围时，表名 -> 行过滤SQL（WHERE条件） */
-  rowFilterSql?: Record<string, string>;
   dataMaskingRule?: string;
   /** 指定列权限范围时，表名 -> 允许可见的列名列表 */
   columnPermissions?: Record<string, string[]>;

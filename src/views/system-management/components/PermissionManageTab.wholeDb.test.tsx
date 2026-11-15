@@ -10,7 +10,7 @@ import { ToastProvider } from '../../../components/Toast';
  * 匹配语义在 `DataAccessPermissionService.matchesTablePermission`。
  * 这里只验证前端有没有把这条路径接对：
  *   ① 勾「全部表（整库授权）」后提交，落库的 tableNames 就是 `['*']`；
- *   ② 切到需要逐表配置的权限范围时，整库开关被禁用且选择被清空（`*` 配不出列/行规则）；
+ *   ② 切到需要逐表配置的权限范围时，整库开关被禁用且选择被清空（`*` 配不出列规则）；
  *   ③ 列表把 `*` 显示成「全部表」而不是一个 `*` 标签；
  *   ④ 编辑已有整库记录时正确回显勾选态（不被按表名反查的逻辑清空）。
  */
@@ -135,7 +135,7 @@ function wholeDbCheckbox(): HTMLInputElement {
   return label.querySelector('input[type="checkbox"]') as HTMLInputElement;
 }
 
-/** 权限范围单选（1 整表 / 2 指定字段 / 3 指定行 / 4 组合）。 */
+/** 权限范围单选（1 整表 / 2 指定字段）。 */
 function scopeRadio(label: string): HTMLInputElement {
   // 列表行里也会渲染「整表」等范围文案，所以按 radio 的 name 收敛范围再比对 label 文本
   const radios = Array.from(
