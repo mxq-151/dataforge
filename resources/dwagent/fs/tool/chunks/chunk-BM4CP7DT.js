@@ -1,3 +1,0 @@
-import{a as e}from"./chunk-OVCRAJX5.js";function u(t){let n=/^##(?!#)\s+(.*\S)\s*$/.exec(t);return n?n[1].replace(/^\d+\s*[.、)．]\s*/,"").trim():null}e(u,"headingText");function p(t){return t.replace(/\s+/g," ").trim()}e(p,"normalize");function c(t){return t.trim().replace(/^\|/,"").replace(/\|$/,"").split("|").map(n=>n.trim())}e(c,"splitRow");function a(t){let n=[...t];for(;n.length&&n[n.length-1].trim()==="";)n.pop();return n}e(a,"trimTrailingBlank");function h(t,n){let o=t.replace(/\r\n?/g,`
-`).split(`
-`),s=[],l=[],i=null;for(let r of o){let g=u(r);if(g!==null){i={key:n(g),heading:r,lines:[]},l.push(i);continue}i?i.lines.push(r):s.push(r)}return{preamble:s,sections:l}}e(h,"splitSections");export{u as a,p as b,c,a as d,h as e};

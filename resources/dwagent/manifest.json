@@ -2,7 +2,7 @@
   "kit": "dw-dev",
   "kitVersion": "1.0.0",
   "stateDir": ".dwagent",
-  "builtAt": "2026-11-15T03:49:11.418Z",
+  "builtAt": "2026-11-15T09:56:10.332Z",
   "files": [
     {
       "path": "agent/dw-code-reviewer.md",
@@ -11,8 +11,8 @@
     },
     {
       "path": "agent/dw-coder.md",
-      "sha256": "f2c43294eb7f7bc8bd9d9c3e711755d8eb06ab976706ea9625684c07fe7899fb",
-      "size": 8911
+      "sha256": "e7cceb71705c825a4f4c21729b03c907386f4fd053143f15a11bd6275ca960a8",
+      "size": 9062
     },
     {
       "path": "agent/dw-design-reviewer.md",
@@ -40,108 +40,108 @@
       "size": 3667
     },
     {
-      "path": "tool/chunks/chunk-2HNE2SAV.js",
-      "sha256": "b82928b0840abb45e858ad10de4f6d9ab1ff5b8c4abb4f3003dba546a4244499",
-      "size": 1276
+      "path": "tool/chunks/chunk-2Q3POL27.js",
+      "sha256": "847a65152c02729e33ff978ec384639d5f9011abde646728880769a8fe59c1da",
+      "size": 296213
     },
     {
-      "path": "tool/chunks/chunk-BM4CP7DT.js",
-      "sha256": "b38aeb0d5485bd3c406dfe4a24a774e2cb5f5ced1587751ebec7857157821173",
-      "size": 743
-    },
-    {
-      "path": "tool/chunks/chunk-CLVOOR4K.js",
-      "sha256": "9c49d1c212e984c8b7f8396838ad54fe44d5c8382001c11d56624a1db0fa81be",
-      "size": 20664
-    },
-    {
-      "path": "tool/chunks/chunk-ENNIMXHE.js",
-      "sha256": "bf845ffc05036c73e5c67b8095d5f856f0807a76da0db5dcb8057ca188cb7030",
-      "size": 469588
-    },
-    {
-      "path": "tool/chunks/chunk-HGYCMDT7.js",
-      "sha256": "f8888e4630eb21e5d2bc617e3f6384b3681cc82959070c89a1989f154843aa8e",
+      "path": "tool/chunks/chunk-7LKII4EL.js",
+      "sha256": "3b456108f9f9bb66a3e9e55f2a7996f8d80b0fd95bcc0b6331e106a282c09368",
       "size": 23737
     },
     {
-      "path": "tool/chunks/chunk-KHE5FELK.js",
-      "sha256": "43cb4be104a75a1fb584abb24e0be4f872b40da49d661da69483270c3cf226a0",
-      "size": 16364
+      "path": "tool/chunks/chunk-FQYGA2YM.js",
+      "sha256": "5d7e263c145c9661ed6584746fedecfd955a185b6043839495f3e7f2b2148038",
+      "size": 469588
     },
     {
-      "path": "tool/chunks/chunk-KX6TIZOY.js",
-      "sha256": "4881d55d3475b7386fe80f628105039597fc3e79840a8cd690030299626e9009",
+      "path": "tool/chunks/chunk-M4BFJLJK.js",
+      "sha256": "524651af453e922bc7e76d2a7a3510d83ee948b4225aef043f9dc6f3e8a6ffc6",
+      "size": 1276
+    },
+    {
+      "path": "tool/chunks/chunk-QRHYFCMP.js",
+      "sha256": "f61c36fa711412bfbeaa03286878010e9678fc02d622215daab15a937e44ec4b",
+      "size": 20669
+    },
+    {
+      "path": "tool/chunks/chunk-VXUZHMD4.js",
+      "sha256": "8974348ea844c68b29c465e6dc43f65a90432b55b7806e10484ee5364b48ed87",
+      "size": 743
+    },
+    {
+      "path": "tool/chunks/chunk-WM32WQIE.js",
+      "sha256": "a1919930b5aa84af9ac6de85f03e7e7722903b3414d058a7b49e7f1348ff4a88",
       "size": 7442
     },
     {
-      "path": "tool/chunks/chunk-OVCRAJX5.js",
-      "sha256": "5fde0050e8efecd57a7e78022d6b32499b2353d3ae50a3ecd4ff59a4d22808b5",
-      "size": 294397
+      "path": "tool/chunks/chunk-YH3AD3HU.js",
+      "sha256": "e48d7cfd916d44c7f811c9cbc246e787a82fd79591de9a2b2d7fc278afc3f28f",
+      "size": 16365
     },
     {
       "path": "tool/dw-check-code.js",
-      "sha256": "64510487757f11fd9190f8580d57d84d1778b4f86a370ee6fabaf44c3c86d275",
+      "sha256": "492f80cbe202d8c764dd1d187e20d4fbaca5f6b766331ac5f8324dfcced74598",
       "size": 3410
     },
     {
       "path": "tool/dw-extract-design.js",
-      "sha256": "a0b62efef2640319cbf35fa3e96f480eebe44fbcb78f422dfa5ebd62c38dee59",
-      "size": 3663
+      "sha256": "e73fb134f84b18b46ddba13e49e71c5d55837795d32035153061a1c9a97e983e",
+      "size": 3669
     },
     {
       "path": "tool/dw-extract-req.js",
-      "sha256": "2f73f767b9efbed21aafd05fa66ce8515737efcea44499dd7930042f85a7e03f",
+      "sha256": "4b9ac0b632c4bb2fd929ab2f4afd6d2e912a228154a688f6a6100ebf9e1394e4",
       "size": 6953
     },
     {
       "path": "tool/dw-finalize-code.js",
-      "sha256": "22b322475c9834d577de647d9e46180ded7e39ce73fa10e94557840480907b6f",
+      "sha256": "7d4cac2ae2d2899197134ece09c76dfac5da0a5f834b6521dee5c55129b2198d",
       "size": 3658
     },
     {
       "path": "tool/dw-finalize-design.js",
-      "sha256": "fbcb843567c62a79ee1203b96f2cf90aca2e3e0b94962d3b561496d31a342e91",
+      "sha256": "1ebb7f892ed2bfc7268c938b79d976e72a5913b8caf91122193c52bc4e6d310a",
       "size": 4897
     },
     {
       "path": "tool/dw-submit-job.js",
-      "sha256": "eb7133f3b9b85fefcc7c003d09ee4b8730a02748430666b1ca3ed5d40581c636",
-      "size": 3423
+      "sha256": "4f95556810be5c84591e84404b7ca749efaf7857176b372f868e78ecc0a2c637",
+      "size": 3448
     },
     {
       "path": "tool/dw-submit-meta.js",
-      "sha256": "bbbbfeaf01727c0bec8b5860ba46d7969ee50b98f26df3dbc0fa47b715e34b0b",
-      "size": 1749
+      "sha256": "e5fde0b8723162ab03b188265d7979a51185f07a97177bcac1a432da78d10602",
+      "size": 1795
     },
     {
       "path": "tool/dw-submit-metrics.js",
-      "sha256": "fa2a03af3fdd8bf181ce7e7de7dc8631b50d68d6dade1d9550eac9473706830a",
-      "size": 2529
+      "sha256": "b63b00c3b947f3446c7fd3da2f6b31ff1c545a68ad02a04125356030c5fa4468",
+      "size": 2579
     },
     {
       "path": "tool/dw-submit-quality.js",
-      "sha256": "6c5f3f2990076fa07120387af5dee87bc135f28d85aa7a961626dcaeb838468b",
-      "size": 1817
+      "sha256": "c3024537d162ea1e1d5f1ce749d94f2d7fb604e555e1cefbd34ae32fc6f779b6",
+      "size": 1867
     },
     {
       "path": "tool/dw-submit-review.js",
-      "sha256": "9752a35ee52d034998b1f2a5f317512430e4cc5f8d31bbf662867cdff0c3f4b2",
-      "size": 2013
+      "sha256": "4571d0a42cf43395d21ec06b079afde48a2a55cedc244bd8cf91d31f5c1720e9",
+      "size": 2054
     },
     {
       "path": "tool/dw-submit-tables.js",
-      "sha256": "997bda7f3adba07e1587d026ff34ae8d478d4b97c49f149da314dbd12bc2e02c",
-      "size": 2169
+      "sha256": "b7fb7b3fd33a00b533632972f41cffb089b181b50cd3603360841124f251de21",
+      "size": 2221
     },
     {
       "path": "tool/dw-trace-metric.js",
-      "sha256": "ebd01bdd9ad55266f100bb10b56670c697d9a2cd94a0965de2c2a79a0007cbb3",
+      "sha256": "e33267bd5e840186cb1b9da34e8a2ccdc25ab81344227e303d41fa603700eb19",
       "size": 1294
     },
     {
       "path": "tool/dw-validate-design.js",
-      "sha256": "c5cb5c0dee5baeb58bdfd93e062a8fdb6a4e5a2f7d111640c7e127433b36d6e3",
+      "sha256": "102f182e9c14be2461cb70c1530ec14700538eae0c5065e8cf468e63aad93230",
       "size": 2495
     }
   ]

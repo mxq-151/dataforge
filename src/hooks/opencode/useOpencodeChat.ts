@@ -5,12 +5,18 @@
 import { useCallback } from 'react';
 import type { OpencodeClient } from '@opencode-ai/sdk/v2/client';
 import { getDeveloperInstructions } from './opencodeInstructions';
+import { resolveAgentKitTask } from './agentKitTasks';
 import type { LogEntry } from '../../types/opencode-backend';
 
 export interface UseOpencodeChatOptions {
   username?: string;
   moduleId?: string;
   roleType?: string;
+  /**
+   * 当前任务类型。命中 AgentKit 工作流时改走 session.command，
+   * 显式带 command + agent；其余任务类型维持旧的 session.prompt + system 路径。
+   */
+  taskType?: string;
   /**
    * 按任务类型覆盖的系统提示词（来自设置页「智能体提示词」）。
    * key 为任务类型，value 为提示词正文；缺省或空白时使用内置默认提示词。
@@ -112,7 +118,7 @@ export interface UseOpencodeChatReturn {
 }
 
 export function useOpencodeChat(options: UseOpencodeChatOptions): UseOpencodeChatReturn {
-  const { username, moduleId, roleType, taskPrompts, currentSessionId, setCurrentSessionId, addLog } = options;
+  const { username, moduleId, roleType, taskType, taskPrompts, currentSessionId, setCurrentSessionId, addLog } = options;
 
   /** 上报错误到 UI 日志面板（如果 addLog 可用）+ console.error */
   const reportError = useCallback((label: string, err: unknown) => {
@@ -142,12 +148,17 @@ export function useOpencodeChat(options: UseOpencodeChatOptions): UseOpencodeCha
   ): Promise<string | null> => {
     if (!client) return null;
 
-    const systemInstructions = getDeveloperInstructions(
-      roleType ?? '',
-      username ?? '',
-      moduleId ?? '',
-      taskPrompts
-    );
+    const agentKitTask = resolveAgentKitTask(taskType);
+    // AgentKit 工作流由 command 模板与 agent md 提供系统指令；不能再叠加旧任务提示词，
+    // 否则两套编排会同时进入同一个会话。
+    const systemInstructions = agentKitTask
+      ? ''
+      : getDeveloperInstructions(
+          roleType ?? '',
+          username ?? '',
+          moduleId ?? '',
+          taskPrompts
+        );
 
     // 如果没有 session，先创建一个
     let sessionId = existingSessionId || currentSessionId;
@@ -168,17 +179,38 @@ export function useOpencodeChat(options: UseOpencodeChatOptions): UseOpencodeCha
       }
     }
 
-    // 发送 prompt（v2 SDK 参数扁平化：sessionID/parts/system/model 直传）
+    // 发送请求。
+    // - AgentKit：走 session.command，显式带 command + agent（command frontmatter 也声明了同一 agent）。
+    // - 旧任务：走 session.prompt，把任务提示词作为 system 逐轮下发。
     try {
-      const result = await client.session.prompt({
-        sessionID: sessionId!,
-        parts: [{ type: 'text', text: line }],
-        ...(systemInstructions ? { system: systemInstructions } : {}),
-        ...(model ? { model } : {}),
-      });
-      // v2 SDK 默认不在 HTTP 错误时抛异常，错误放在 result.error 里，必须显式检查
-      if (result.error) {
-        throw result.error;
+      if (agentKitTask) {
+        addLog?.({
+          source: 'agent',
+          text: `AgentKit 路由：command=${agentKitTask.command} agent=${agentKitTask.agent} 参数=${line}`,
+          timestamp: new Date(),
+          level: 'info',
+        });
+        const result = await client.session.command({
+          sessionID: sessionId!,
+          command: agentKitTask.command,
+          arguments: line,
+          agent: agentKitTask.agent,
+          ...(model ? { model: `${model.providerID}/${model.modelID}` } : {}),
+        });
+        // v2 SDK 默认不在 HTTP 错误时抛异常，错误放在 result.error 里，必须显式检查
+        if (result.error) {
+          throw result.error;
+        }
+      } else {
+        const result = await client.session.prompt({
+          sessionID: sessionId!,
+          parts: [{ type: 'text', text: line }],
+          ...(systemInstructions ? { system: systemInstructions } : {}),
+          ...(model ? { model } : {}),
+        });
+        if (result.error) {
+          throw result.error;
+        }
       }
     } catch (err) {
       // 带上请求上下文：光看 message 很难判断是模型配置问题、鉴权问题还是服务不可达
@@ -189,18 +221,29 @@ export function useOpencodeChat(options: UseOpencodeChatOptions): UseOpencodeCha
           : JSON.stringify(err);
       const status = (err as { status?: number } | null)?.status;
       console.error(
-        '[agent-chat] Failed to send prompt:',
-        { sessionId, moduleId, roleType, hasSystem: !!systemInstructions, model, status, detail },
+        agentKitTask ? '[agent-chat] Failed to send command:' : '[agent-chat] Failed to send prompt:',
+        {
+          sessionId,
+          moduleId,
+          roleType,
+          taskType,
+          command: agentKitTask?.command,
+          agent: agentKitTask?.agent,
+          hasSystem: !!systemInstructions,
+          model,
+          status,
+          detail,
+        },
         err,
       );
       // 包装后抛出，让上层 catch 后能直接展示可读原因（原错误常是 SDK 内部对象）
       throw new Error(
-        `发送 prompt 失败${status ? ` (HTTP ${status})` : ''}：${detail}`,
+        `${agentKitTask ? '发送 AgentKit 命令' : '发送 prompt'} 失败${status ? ` (HTTP ${status})` : ''}：${detail}`,
       );
     }
 
     return sessionId || null;
-  }, [username, moduleId, roleType, taskPrompts, currentSessionId, setCurrentSessionId]);
+  }, [username, moduleId, roleType, taskType, taskPrompts, currentSessionId, setCurrentSessionId, addLog]);
 
   /**
    * 中断当前对话

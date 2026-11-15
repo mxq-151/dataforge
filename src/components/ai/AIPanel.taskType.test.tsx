@@ -11,12 +11,12 @@
  * 而历史对话与工具调用结果全部保留，智能体仍能看到「之前做了什么」。
  *
  * 覆盖点：
- * 1. 开发助手切换任务类型只更新 taskType，不调用 newSession（上下文不被清空）
+ * 1. 开发助手在经典编排之间切换任务类型只更新 taskType，不调用 newSession（上下文不被清空）
  * 2. 切换后当前会话 ID 与消息历史保持不变
  * 3. 头部「新建会话」入口仍然可用（能力未被误删）
  * 4. 数据探索模块维持原行为：切换任务类型仍新建会话（该模块的提示词按模块短路、
  *    与 roleType 无关，且 newSession 承担「新建时间戳工作目录」的语义）
- * 5. 两个模块的任务类型下拉选项齐备
+ * 5. 两个模块的任务类型下拉选项齐备；切入 AgentKit 工作流时新建会话，避免两套编排混用
  */
 
 import React from 'react';
@@ -194,16 +194,38 @@ describe('AIPanel 任务类型切换', () => {
     expect(newSessionSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('开发助手下拉提供需求编写与数仓开发两项（四阶段闭环由子代理编排）', () => {
+  it('开发助手下拉提供三项 AgentKit 工作流与两项经典编排', () => {
     render(<Harness />);
 
     const options = Array.from(taskTypeSelect().options);
-    expect(options.map(o => o.value)).toEqual(['BUSINESS_REQUESTER', 'DATA_WAREHOUSE_DEV']);
-    expect(options.map(o => o.textContent)).toEqual(['需求编写', '数仓开发']);
+    expect(options.map(o => o.value)).toEqual([
+      'AGENTKIT_REQ_DOC',
+      'AGENTKIT_DW_DESIGN',
+      'AGENTKIT_DW_CODE',
+      'BUSINESS_REQUESTER',
+      'DATA_WAREHOUSE_DEV',
+    ]);
+    expect(options.map(o => o.textContent)).toEqual([
+      '需求文档编写',
+      '数仓设计',
+      '数据处理代码开发',
+      '需求编写',
+      '数仓开发',
+    ]);
     // 「数仓开发」必须能看出一共会拉起哪四类子代理，否则用户会以为它只是换了个名字
+    const legacyDw = options.find(o => o.value === 'DATA_WAREHOUSE_DEV')!;
     for (const agent of ['data-architect', 'design-verifier', 'data-dev', 'data-verifier']) {
-      expect(options[1].title, `tooltip 未提及子代理: ${agent}`).toContain(agent);
+      expect(legacyDw.title, `tooltip 未提及子代理: ${agent}`).toContain(agent);
     }
+  });
+
+  it('开发助手：切入 AgentKit 工作流时新建会话，避免两套编排混在同一条历史', () => {
+    render(<Harness />);
+
+    fireEvent.change(taskTypeSelect(), { target: { value: 'AGENTKIT_REQ_DOC' } });
+
+    expect(setTaskTypeSpy).toHaveBeenCalledWith('AGENTKIT_REQ_DOC');
+    expect(newSessionSpy).toHaveBeenCalledTimes(1);
   });
 
   it('数据探索下拉提供数据分析与运维管理', () => {

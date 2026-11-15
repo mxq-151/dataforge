@@ -236,6 +236,7 @@ export function useOpencodeClientCore(options: UseOpencodeClientCoreOptions): Op
     username,
     moduleId,
     roleType: taskType || roleType,
+    taskType,
     taskPrompts: config.taskPrompts,
     currentSessionId,
     setCurrentSessionId,

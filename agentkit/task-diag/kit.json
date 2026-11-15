@@ -1,0 +1,13 @@
+{
+  "kit": "task-diag",
+  "kitVersion": "1.0.0",
+  "description": "任务智能诊断 agent 套件（按被诊断任务的引擎类型划分诊断 agent；产物落 diagnosis/，运行态落 .diag/）",
+  "outDir": "diagagent",
+  "stateDir": ".diagagent",
+  "entries": {
+    "tool": "tool",
+    "plugin": "plugin",
+    "agent": "agent",
+    "command": "command"
+  }
+}

@@ -33,6 +33,7 @@ import PermissionDock from './PermissionDock';
 import QuestionDock from './QuestionDock';
 import ContextUsageBar from './ContextUsageBar';
 import { useTodoDockState } from './useTodoDockState';
+import { resolveAgentKitTask } from '../../hooks/opencode/agentKitTasks';
 import './AIPanel.css';
 
 /** 智能体模块的用户偏好存储（按 userId 记录所选模型） */
@@ -154,8 +155,12 @@ const AIPanel: React.FC<AIPanelProps> = ({ chatBackend, llmModels, onRollback, o
   // 同时承担「新建时间戳工作目录」（会话=标签页）的语义，去掉会破坏该模型。故维持原行为。
   const handleTaskTypeChange = useCallback((newType: string) => {
     if (newType === taskType) return;
+    const agentKitSwitch = !!resolveAgentKitTask(newType) || !!resolveAgentKitTask(taskType);
     setTaskType(newType);
-    if (moduleId === 'data-explore') newSession();
+    // 数据探索：会话=独立时间戳目录，沿用原行为。
+    // 开发助手：进入/离开 AgentKit 工作流时也开新会话，避免旧任务提示词的上下文
+    // 与 command/agent 编排混在同一条历史里，用户无法判断当前处于哪个流程。
+    if (moduleId === 'data-explore' || agentKitSwitch) newSession();
   }, [taskType, setTaskType, newSession, moduleId]);
 
   const [panelWidth, setPanelWidth] = useState(() => {

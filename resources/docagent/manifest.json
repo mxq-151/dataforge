@@ -2,7 +2,7 @@
   "kit": "req-doc",
   "kitVersion": "1.0.0",
   "stateDir": ".docagent",
-  "builtAt": "2026-11-15T03:49:11.460Z",
+  "builtAt": "2026-11-15T09:56:10.383Z",
   "files": [
     {
       "path": "agent/chapter-writer.md",
@@ -36,62 +36,62 @@
     },
     {
       "path": "plugin/guard.js",
-      "sha256": "b8b0aaed9ddf14ab0707f35ad8c71757bb3b7f71c130356df9180a813024b53c",
-      "size": 15459
+      "sha256": "4376c7b1c34c2df82625bd6a65d5d08c873553c52ed01d8794e08c450eb11172",
+      "size": 15534
     },
     {
       "path": "tool/check-logic-graph.js",
-      "sha256": "9ea24b85cc805698fbe600f5bd685276d2eb57c3fab920e47a39e37c910487a5",
+      "sha256": "889c993cfa61f22a2e8c73330cc6df70924ae36dedafefc0512bb30bbfc9eb3c",
       "size": 4915
     },
     {
-      "path": "tool/chunks/chunk-37Q5DPU5.js",
-      "sha256": "c678f6259739532357f696d38958f51f9b41b256600fa84d2bf69a3b60ebfcc3",
-      "size": 3901
+      "path": "tool/chunks/chunk-JX645LP3.js",
+      "sha256": "fae2235ec30f38f2c2cb2cada6dc3bc30d0c95d4add34bb5dfe733d7cb12e47a",
+      "size": 3896
     },
     {
-      "path": "tool/chunks/chunk-CMR4JGHS.js",
-      "sha256": "ee571461478fb823197864985b02be37ae7d23e468957b8022fc1a89020cad53",
-      "size": 469588
-    },
-    {
-      "path": "tool/chunks/chunk-KP2HCJCQ.js",
-      "sha256": "aca2bef34efa12626c87ea628aa2e82e744a9fe672cc64037980f042019eb57b",
+      "path": "tool/chunks/chunk-L4CQLNRY.js",
+      "sha256": "0870153d4110810a62269a04e79519810a3bc68a4074389243018df746e72b79",
       "size": 4448
     },
     {
-      "path": "tool/chunks/chunk-Z2H3KGHP.js",
-      "sha256": "0a8bda9229d97f9fa2bf3d4387198d5ce9d7cf9d78a72f3702643c2de6182b79",
-      "size": 292311
+      "path": "tool/chunks/chunk-LNCSETNQ.js",
+      "sha256": "92bf6c763f019dba9c913e4bb07337a94732739aef9ef94e1a3354575feb8171",
+      "size": 294131
+    },
+    {
+      "path": "tool/chunks/chunk-RUJQND7H.js",
+      "sha256": "3675fb13d161f0a23bd81e6227970a24faef98f204ed1aaf7bbc097a24e753a2",
+      "size": 469588
     },
     {
       "path": "tool/extract-context.js",
-      "sha256": "cd1327533fdc5d6905f25d61ec3ca18e24b9cc521abe4f661aaa475c0bc0ec1a",
-      "size": 2156
+      "sha256": "9a5b371dd8267e8f5de125652e06e5f3c5b05c252e8871d45cafe88ca061b78a",
+      "size": 2151
     },
     {
       "path": "tool/finalize-doc.js",
-      "sha256": "91587740bdd516d09b81e77a46a7d1bc625242e4d772920fbcd1370c5b31613a",
-      "size": 9577
+      "sha256": "7175e4a700512d318337454f27a1eb4a8d02f24398f1dd8e1cc0db6d85ab620c",
+      "size": 9567
     },
     {
       "path": "tool/submit-chapter.js",
-      "sha256": "87d9111bc3f066a7ca10daf2ad4b6696a96827774a3abb9f45895a0feb6de630",
-      "size": 1866
+      "sha256": "38063992b956b52108a72dc6939fb32e5a6c16d30a3ecc9373938e40754ba24f",
+      "size": 1842
     },
     {
       "path": "tool/submit-metrics-batch.js",
-      "sha256": "ab78a7319a5853bae9e997bd98ac3cb0e3fbcf8ba384b5ac97392a5d8ed7318d",
-      "size": 4083
+      "sha256": "fecce22c7b788b0594b375fcbf2e56841b2bca6cd1fb393d36c15b1d058e92c3",
+      "size": 4104
     },
     {
       "path": "tool/submit-review-findings.js",
-      "sha256": "30d6d871145d41057794582fc79b972cb01670cea4b853f43fe2a71557343f14",
-      "size": 3701
+      "sha256": "ab6fdc5feb899167f910805e4d102b83095aa45aaa12659ec64c5b5d4428d6e9",
+      "size": 3722
     },
     {
       "path": "tool/validate-json.js",
-      "sha256": "a49efc2ee64de3e6158990328218b9634adc2bc9608c06bcb8e20a904b7c1c32",
+      "sha256": "09a770f0bb7204cf55f4d930ac5bfba4dd153e6e15378a5d1a6bf0dc6f35e43f",
       "size": 2094
     }
   ]

@@ -35,6 +35,7 @@ const DEFAULT_STATE_DIR = '.docagent';
 export const AGENT_KITS = [
   { kit: 'req-doc', dirName: 'docagent', stateDir: '.docagent' },
   { kit: 'dw-dev', dirName: 'dwagent', stateDir: '.dwagent' },
+  { kit: 'task-diag', dirName: 'diagagent', stateDir: '.diagagent' },
 ] as const;
 
 export type AgentKitId = (typeof AGENT_KITS)[number]['kit'];

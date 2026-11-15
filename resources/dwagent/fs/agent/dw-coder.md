@@ -30,8 +30,8 @@ permission:
  * @引擎: spark
  * @依赖: 无
  * @程序参数: --day ${day}
- * @资源参数: --driver-memory 2g --executor-memory 4g --executor-cores 2
- * @任务参数: --queue root.default --priority 5 --retry 3
+ * @资源参数: --driver-memory 2g --executor-memory 4g --executor-cores 2 --queue root.default
+ * @任务参数: --priority 5 --retry 3
  * @数据源: 交易库
  */
 ```
@@ -45,8 +45,8 @@ permission:
 
    | 字段 | 管辖什么 | 谁消费、在哪生效 | 典型形态 | 边界（写错字段即 W30） |
    |---|---|---|---|---|
-   | `@资源参数` | CPU、内存、并发等资源配额 | 调度平台在资源分配环节读取，作用于本作业实例 | `--driver-memory 2g --executor-memory 4g --executor-cores 2`、`--conf spark.executor.memory=4g` | 不写队列、优先级、重试、超时、告警；`--conf` 只用于资源类配置 |
-   | `@任务参数` | 队列、优先级、重试、超时、告警等调度行为 | 调度平台在排队、触发、重试、告警环节读取 | `--queue default --priority 5 --retry 3 --timeout 3600` | 不写内存、核数、并发、`--conf` 资源项 |
+   | `@资源参数` | CPU、内存、并发、队列等数量类资源配额 | 调度平台在资源分配环节读取，作用于本作业实例 | `--driver-memory 2g --executor-memory 4g --executor-cores 2`、`--queue root.default`、`--conf spark.executor.memory=4g` | 不写 master/deploy-mode/application.name 等提交形态（W30）；`--conf` 只用于资源类配置 |
+   | `@任务参数` | 提交形态与引擎侧配置，以及优先级、重试、超时、告警等调度行为 | 调度平台在提交、排队、重试、告警环节读取 | `--master yarn --deploy-mode cluster`、`--priority 5 --retry 3 --timeout 3600` | 不写内存、核数、并发、slot、队列（`--queue`/`pool`）、`--conf` 资源项 |
 
    若作业声明了 `resourceParams` / `taskParams`，代码头必须与声明逐字一致（W34）。平台自定义参数暂无固定取值白名单，未纳入校验，按平台实际约定填写。
 

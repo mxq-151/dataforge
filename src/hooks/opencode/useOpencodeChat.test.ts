@@ -15,11 +15,12 @@ import { describe, it, expect, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useOpencodeChat } from './useOpencodeChat';
 
-/** 构造只有 session.create / session.prompt 的最小 client 桩 */
+/** 构造只有 session.create / session.prompt / session.command 的最小 client 桩 */
 function createClient() {
   const prompt = vi.fn().mockResolvedValue({ data: {} });
+  const command = vi.fn().mockResolvedValue({ data: { info: {}, parts: [] } });
   const create = vi.fn().mockResolvedValue({ data: { id: 'sess-new' } });
-  return { client: { session: { create, prompt } } as any, prompt, create };
+  return { client: { session: { create, prompt, command } } as any, prompt, create, command };
 }
 
 /**
@@ -251,5 +252,84 @@ describe('useOpencodeChat 角色指令逐轮下发', () => {
     expect(create).toHaveBeenCalledTimes(1);
     expect(prompt.mock.calls[0][0].sessionID).toBe('sess-new');
     expect(setCurrentSessionId).toHaveBeenCalledWith('sess-new');
+  });
+});
+
+describe('useOpencodeChat AgentKit 路由', () => {
+  it.each([
+    ['AGENTKIT_REQ_DOC', 'write-req', 'doc-orchestrator'],
+    ['AGENTKIT_DW_DESIGN', 'dw-design', 'dw-orchestrator'],
+    ['AGENTKIT_DW_CODE', 'dw-code', 'dw-orchestrator'],
+  ])('%s 走 session.command，携带 command 与 agent，且不再下发旧 system', async (taskType, expectedCommand, expectedAgent) => {
+    const { client, prompt, command } = createClient();
+    const addLog = vi.fn();
+    const { result } = renderHook(() =>
+      useOpencodeChat({
+        username: 'u',
+        moduleId: 'dev-assistant',
+        roleType: taskType,
+        taskType,
+        currentSessionId: 'sess-1',
+        setCurrentSessionId: vi.fn(),
+        addLog,
+      }),
+    );
+
+    await act(async () => { await result.current.sendMessage(client, '订单域', 'sess-1'); });
+
+    expect(prompt).not.toHaveBeenCalled();
+    expect(command).toHaveBeenCalledTimes(1);
+    const body = command.mock.calls[0][0];
+    expect(body).toMatchObject({
+      sessionID: 'sess-1',
+      command: expectedCommand,
+      agent: expectedAgent,
+      arguments: '订单域',
+    });
+    expect(body.system).toBeUndefined();
+    // UI 日志里能直接看到实际路由目标（现场排查证据）
+    expect(addLog).toHaveBeenCalledWith(expect.objectContaining({
+      text: expect.stringContaining(`command=${expectedCommand} agent=${expectedAgent}`),
+    }));
+  });
+
+  it('AgentKit 工作流带模型参数时把 model 转成 providerID/modelID', async () => {
+    const { client, command } = createClient();
+    const { result } = renderHook(() =>
+      useOpencodeChat({
+        username: 'u',
+        moduleId: 'dev-assistant',
+        roleType: 'AGENTKIT_DW_DESIGN',
+        taskType: 'AGENTKIT_DW_DESIGN',
+        currentSessionId: 'sess-1',
+        setCurrentSessionId: vi.fn(),
+      }),
+    );
+
+    await act(async () => {
+      await result.current.sendMessage(client, '订单域', 'sess-1', { providerID: 'anthropic', modelID: 'claude-sonnet-4' });
+    });
+
+    expect(command.mock.calls[0][0].model).toBe('anthropic/claude-sonnet-4');
+  });
+
+  it('旧任务类型仍走 session.prompt 并下发 system', async () => {
+    const { client, prompt, command } = createClient();
+    const { result } = renderHook(() =>
+      useOpencodeChat({
+        username: 'u',
+        moduleId: 'dev-assistant',
+        roleType: 'BUSINESS_REQUESTER',
+        taskType: 'BUSINESS_REQUESTER',
+        currentSessionId: 'sess-1',
+        setCurrentSessionId: vi.fn(),
+      }),
+    );
+
+    await act(async () => { await result.current.sendMessage(client, '写需求', 'sess-1'); });
+
+    expect(command).not.toHaveBeenCalled();
+    expect(prompt).toHaveBeenCalledTimes(1);
+    expect(prompt.mock.calls[0][0].system).toBeTruthy();
   });
 });

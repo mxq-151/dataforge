@@ -239,18 +239,25 @@ describe('用户作用域（~/.dataforge/agents）', () => {
   });
 });
 
-describe('多套件共存（req-doc + dw-dev）', () => {
+describe('多套件共存（req-doc + dw-dev + task-diag）', () => {
   const dwSource = path.join(repoRoot, 'resources', 'dwagent');
+  const diagSource = path.join(repoRoot, 'resources', 'diagagent');
 
-  it('两套 kit 的 dirName/stateDir 与构建产物一致', () => {
+  it('三套 kit 的 dirName/stateDir 与构建产物一致', () => {
     const req = readKitManifest(path.join(repoRoot, 'resources', 'docagent'))!;
     const dw = readKitManifest(dwSource)!;
-    expect(AGENT_KITS.map((kit) => kit.dirName)).toEqual(['docagent', 'dwagent']);
+    const diag = readKitManifest(diagSource)!;
+    expect(AGENT_KITS.map((kit) => kit.dirName)).toEqual(['docagent', 'dwagent', 'diagagent']);
     expect(req.kit).toBe('req-doc');
     expect(dw.kit).toBe('dw-dev');
     expect(dw.files.some((file) => file.path.startsWith('tool/dw-'))).toBe(true);
     expect(dw.files.some((file) => file.path === 'agent/dw-orchestrator.md')).toBe(true);
     expect(dw.files.some((file) => file.path === 'command/dw-design.md')).toBe(true);
+    expect(diag.kit).toBe('task-diag');
+    expect(diag.files.some((file) => file.path === 'agent/diag-orchestrator.md')).toBe(true);
+    expect(diag.files.some((file) => file.path === 'tool/diag-collect-logs.js')).toBe(true);
+    expect(diag.files.some((file) => file.path === 'plugin/guard.js')).toBe(true);
+    expect(diag.files.some((file) => file.path === 'command/diag-spark-failed.md')).toBe(true);
   });
 
   it('两套物化到同一用户目录时状态隔离、文件共存', () => {
@@ -258,14 +265,18 @@ describe('多套件共存（req-doc + dw-dev）', () => {
     try {
       const first = materializeUserKit(sourceDir, home, { appVersion: '0.1.0' });
       const second = materializeUserKit(dwSource, home, { appVersion: '0.1.0', stateDir: '.dwagent' });
+      const third = materializeUserKit(diagSource, home, { appVersion: '0.1.0', stateDir: '.diagagent' });
       expect(first.materialized.ok).toBe(true);
       expect(second.materialized.ok).toBe(true);
+      expect(third.materialized.ok).toBe(true);
 
       const userDir = resolveUserKitDir(home);
       expect(readKitState(userDir, '.docagent')?.kit).toBe('req-doc');
       expect(readKitState(userDir, '.dwagent')?.kit).toBe('dw-dev');
+      expect(readKitState(userDir, '.diagagent')?.kit).toBe('task-diag');
       expect(fs.existsSync(path.join(userDir, 'tool', 'finalize-doc.js'))).toBe(true);
       expect(fs.existsSync(path.join(userDir, 'tool', 'dw-finalize-design.js'))).toBe(true);
+      expect(fs.existsSync(path.join(userDir, 'tool', 'diag-collect-logs.js'))).toBe(true);
 
       // 第二套不把自己的 state 写进 .docagent
       const firstState = readKitState(userDir, '.docagent')!;

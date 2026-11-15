@@ -1,0 +1,228 @@
+{
+  "kit": "task-diag",
+  "kitVersion": "1.0.0",
+  "stateDir": ".diagagent",
+  "builtAt": "2026-11-15T09:56:10.472Z",
+  "files": [
+    {
+      "path": "agent/diag-clickhouse.md",
+      "sha256": "508386158eb48561d4ea3804df16a5464ea789c5f30c52dad722922de53a2360",
+      "size": 3015
+    },
+    {
+      "path": "agent/diag-doris.md",
+      "sha256": "28c9e0afdb4b8d0a0915bc3dbfb6268fc3464096146cbb2502f94da002f38e4d",
+      "size": 3809
+    },
+    {
+      "path": "agent/diag-flink.md",
+      "sha256": "9b03dc5471a015928081d13eaec2f89ca54b49284454ac18a4a9d02057bac302",
+      "size": 3899
+    },
+    {
+      "path": "agent/diag-hbase.md",
+      "sha256": "59d9a91f8f1e1c04277a2412fb7bb2e075f2551b448dd2bd2c83e518eaf8052f",
+      "size": 2759
+    },
+    {
+      "path": "agent/diag-hudi.md",
+      "sha256": "604dac2b07586b01f7c62a08c64c572dbb84026305dcbf9c07f84b5c7dc42a21",
+      "size": 4454
+    },
+    {
+      "path": "agent/diag-kafka.md",
+      "sha256": "ea270238e4a49a88c96b59b77d758de635697a96d36374d73c7cd50865a8a35e",
+      "size": 2976
+    },
+    {
+      "path": "agent/diag-orchestrator.md",
+      "sha256": "ad0398916095969da8740c5acc8179fac0a402f3b6e9a65cb786033fa3a0e946",
+      "size": 5622
+    },
+    {
+      "path": "agent/diag-pulsar.md",
+      "sha256": "615bbbc053dc00cd6c5b3df1c148fc2f9440e38970b55b48d96088641e1989f4",
+      "size": 2971
+    },
+    {
+      "path": "agent/diag-spark.md",
+      "sha256": "3ac697caafbaef749bf267f2b80a896e4e592d34b696e586d7e0dd6281241407",
+      "size": 4468
+    },
+    {
+      "path": "agent/diag-starrocks.md",
+      "sha256": "493b13f603b3c9e3b13f0c8d7facc5d8a53aa21969dd0de085509ed66bc31f2a",
+      "size": 3412
+    },
+    {
+      "path": "command/diag-clickhouse-failed.md",
+      "sha256": "6e83393c5aad2e9abd23bdfe614e513130cc7adfbf3e666ceff117720fdd9afe",
+      "size": 1346
+    },
+    {
+      "path": "command/diag-clickhouse-slow.md",
+      "sha256": "ee4f4ee91b68bea6cfaa8fb869eba05675a41485cc20d90642ecc4926070e75c",
+      "size": 1394
+    },
+    {
+      "path": "command/diag-doris-failed.md",
+      "sha256": "6477e3a4288078b11a57cbb6196b503b7e87018de060f1dd3c536fb7a5cfd891",
+      "size": 1311
+    },
+    {
+      "path": "command/diag-doris-slow.md",
+      "sha256": "aaa59f7286c105c2b11515d7aece45889f8b1f23a87eedd3f50c948e79dc0710",
+      "size": 1359
+    },
+    {
+      "path": "command/diag-flink-failed.md",
+      "sha256": "7bc097fe633c9b51c996f369f6d6652ecd8271e5a195c1b2cdb28ca9a107edc7",
+      "size": 1311
+    },
+    {
+      "path": "command/diag-flink-slow.md",
+      "sha256": "d03bace4becca014de3b87c838c3294ce4e260be490a94ccd681ddd441174bb7",
+      "size": 1359
+    },
+    {
+      "path": "command/diag-hbase-failed.md",
+      "sha256": "b427f09ab00de554aaefd8a9f03512299fb8abb0b47aeb04bef834afabc5e335",
+      "size": 1311
+    },
+    {
+      "path": "command/diag-hbase-slow.md",
+      "sha256": "ba0a7ebefc3f0732216ee7ac3480563f7398eef76adf4d2674fa8482a0e0df61",
+      "size": 1359
+    },
+    {
+      "path": "command/diag-hudi-failed.md",
+      "sha256": "617a4e6a20df557f0bc877cd5a6e0bbfca356fb3c769462e210e72012bf33867",
+      "size": 1304
+    },
+    {
+      "path": "command/diag-hudi-slow.md",
+      "sha256": "95ae19f5eb8759feba906b12ab8fc25a72ad2a0600ac791a3bb02933632a2b48",
+      "size": 1352
+    },
+    {
+      "path": "command/diag-kafka-failed.md",
+      "sha256": "548c7b8c0761dc77dc7d051fe8e2590ac28f42958768ed0b448776281009a5f1",
+      "size": 1311
+    },
+    {
+      "path": "command/diag-kafka-slow.md",
+      "sha256": "2c655aa77e9d39f9da2160fa6f0424acd7fa86f9ee68572b155cd90bb9d00dc0",
+      "size": 1359
+    },
+    {
+      "path": "command/diag-pulsar-failed.md",
+      "sha256": "2b1e0dd4698bcb3bd985cdca4d1cffeaa0f10c8281f860e1885b80ac23c138fe",
+      "size": 1318
+    },
+    {
+      "path": "command/diag-pulsar-slow.md",
+      "sha256": "e57f0da59988fac660c5a51b90a3f6005e38e22c072206a3376600bdd2ff934b",
+      "size": 1366
+    },
+    {
+      "path": "command/diag-spark-failed.md",
+      "sha256": "0f4c3b95115c9631d04ffb05709f8062b7d74cd059521063945e93f20fe765af",
+      "size": 1311
+    },
+    {
+      "path": "command/diag-spark-slow.md",
+      "sha256": "a14a5f60986580bf28c842307dc7a106b84f240a2e5e33a29f085912b332424e",
+      "size": 1359
+    },
+    {
+      "path": "command/diag-starrocks-failed.md",
+      "sha256": "059d949bcc65f65666111004f8f7c992ebbc2ace8718765dcbedab83c5b22b76",
+      "size": 1339
+    },
+    {
+      "path": "command/diag-starrocks-slow.md",
+      "sha256": "09411d9b56655ee1de5d9e789f08125350202e47bac7c2d38a6d5405dd9ac2e8",
+      "size": 1387
+    },
+    {
+      "path": "command/diag-task.md",
+      "sha256": "2d83b4c66daf5b16a48aa620c7828c61ffb12c41de62ab1521b748ff7399fdb8",
+      "size": 1685
+    },
+    {
+      "path": "plugin/guard.js",
+      "sha256": "391e1626b8ba3503e575b51e29720530319e3633f5fc0332a56e73dc30d5f372",
+      "size": 953
+    },
+    {
+      "path": "tool/chunks/chunk-4SSARPZO.js",
+      "sha256": "7f17aad9bfcec4447f9fba0728cdb90f51c98477cdd5d7b091e5a04ab07147af",
+      "size": 2951
+    },
+    {
+      "path": "tool/chunks/chunk-B5NTOLPB.js",
+      "sha256": "0921ec405229a8b3ffef28af03b993767898baa87254f192fe0b4c894d436d70",
+      "size": 12025
+    },
+    {
+      "path": "tool/chunks/chunk-DJHMOOEK.js",
+      "sha256": "96ab27cfa45b66f11014e8a5e5dcdc0a3694ad742060b0f59a277d9983aa3457",
+      "size": 1626
+    },
+    {
+      "path": "tool/chunks/chunk-E5T2DG32.js",
+      "sha256": "04edd42f4c0d449d1f41084277ee0ce2cb1f77d63dc460930eade5938fc1c8ad",
+      "size": 773671
+    },
+    {
+      "path": "tool/diag-budget.js",
+      "sha256": "b3cf27ebe8a0b2465de290e9f3cd10cc5e2ca1fe42be7e0b42176453efcf7347",
+      "size": 1225
+    },
+    {
+      "path": "tool/diag-capabilities.js",
+      "sha256": "e7fcdbf5cf7fb4634efbe9b6708082d791037befdd17f4dff3ed5d07e52970d7",
+      "size": 6666
+    },
+    {
+      "path": "tool/diag-collect-logs.js",
+      "sha256": "13d0e3b46af7582721d3b498ef1fc23501a0f870a0ad1b6bccf5e46a9aa227bd",
+      "size": 5093
+    },
+    {
+      "path": "tool/diag-collect-runtime.js",
+      "sha256": "1bdd52e4cb8e39f3aff214ef361e4b2f51f5a4087f90451ddc8fcf867bff9282",
+      "size": 4354
+    },
+    {
+      "path": "tool/diag-compare.js",
+      "sha256": "d789ecb2338f511ded6b539b8865719652d5d10747d1f50d0af507fce88351ae",
+      "size": 4306
+    },
+    {
+      "path": "tool/diag-record-evidence.js",
+      "sha256": "7a0b5f9cd1be9873b81768d3d540952cb5512ed8bc1cb4033dc1adddac3eb185",
+      "size": 2588
+    },
+    {
+      "path": "tool/diag-resolve-target.js",
+      "sha256": "52011c5e6351804f8eacb95e0ceaf9916e2c70fa13e59e0dc75ac2751e7896ba",
+      "size": 5402
+    },
+    {
+      "path": "tool/diag-save-report.js",
+      "sha256": "4537b7d7e97c2caff845ee66488adbe039ac62940203a0832f91a3ccb308f25c",
+      "size": 2817
+    },
+    {
+      "path": "tool/diag-unsupported-report.js",
+      "sha256": "486a041f3e52bcf63334e06436ca384e2c2a2285e92e50c31e2f41bc24b364a5",
+      "size": 4200
+    },
+    {
+      "path": "tool/diag-upstream-context.js",
+      "sha256": "37caa63e99f4d424fa5f8d8fbedb2cd787165a55e8447835852115ebb60b0c14",
+      "size": 3525
+    }
+  ]
+}

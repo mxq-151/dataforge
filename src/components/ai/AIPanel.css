@@ -1130,6 +1130,29 @@
   border-color: #0078d4;
 }
 
+/* AgentKit 工作流：当前路由目标（agent + command），让用户明确不在旧编排里 */
+.ai-panel__agentkit-badge {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  border: 1px solid #3a6ea5;
+  border-radius: 4px;
+  background: rgba(0, 120, 212, 0.12);
+  color: #7cc4ff;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.ai-panel__agentkit-hint {
+  margin-top: 4px;
+  color: #8a8a8a;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.ai-panel__agentkit-hint--error {
+  color: #f48771;
+}
+
 .ai-panel__input {
   flex: 1;
   padding: 8px 12px;
