@@ -1,0 +1,13 @@
+{
+  "kit": "data-analysis",
+  "kitVersion": "0.1.0",
+  "description": "数据分析 agent 套件（按分析问题类型划分分析子代理；产物落 analysis/，运行态落 .analysisagent/）",
+  "outDir": "analysisagent",
+  "stateDir": ".analysisagent",
+  "entries": {
+    "tool": "tool",
+    "plugin": "plugin",
+    "agent": "agent",
+    "command": "command"
+  }
+}

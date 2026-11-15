@@ -1,20 +1,20 @@
 /**
  * task-diag 套件的常量、九引擎画像、预算与错误码。
- *
  * 与其他两套 agentkit 的约定保持一致：
  * - tool / agent / command 前缀统一 `diag-`，错误码用 D 前缀（req-doc 用 E、dw-dev 用 W）；
  * - 运行态放 `.diag/`（req-doc 用 `.work/`、dw-dev 用 `.dw/`），用户级状态由构建清单写到 `.diagagent/`；
  * - 本目录不会被 opencode 注册成工具（扫描只匹配 `{tool,tools}/*.{ts,js}`，非递归）。
  *
  * 事实基线（不得凭印象改）：
- * - 服务端日志层只实现 5 个 serviceType：ds / yarn / spark / flink / file
- *   （modules/logs/model/ServiceType.java），且 file 适配器 supports() 只看 serviceType，
- *   任何 logKind 都接受，但必须命中 logs.sources[file].root-dirs 且默认 enabled=false。
- * - 服务端运行态只实现 spark / flink（modules/runtime/model/MetricFamily.java + application.yml）。
- * - 因此除 spark / flink 外的七个引擎没有专属日志适配器与指标；
- *   它们的通道只能是「file + 运维挂载的进程日志」，属于**条件能力**，默认取不到。
+ * - 日志与指标统一走 telemetry v1：`/api/telemetry/v1/logs|metrics|discovery|runtime/*`。
+ *   不存在 ds / file 服务类型，也不存在 logs.sources 配置。
+ * - 数据标识是「四元组 + 数据类型」：serviceType → componentId → hostId → dataTypeId，
+ *   dataTypeId 只有 `log.service`（服务自身日志，local-disk / ES）与 `log.task`（任务日志，YARN 聚合）。
+ * - 运行态只有 spark / flink 有指标族（RuntimeEngine）；其它七个引擎只能依赖
+ *   「local-disk / ES 的进程日志」，属于**条件能力**，默认取不到。
  */
 import path from "node:path"
+import { channelIdentityOf } from "../../shared/lib/channel"
 
 export { nowIso, readJson, readText, updateJson, writeJsonAtomic, writeTextAtomic } from "../../shared/lib/io"
 
@@ -113,19 +113,32 @@ export type VerdictCategory = (typeof VERDICT_CATEGORIES)[number]
 
 // ── 通道与引擎画像 ──────────────────────────────────────────────────────
 /**
- * 一个通道 = 服务端的 (serviceType, logKind, componentRole) 三元组 + 必需的业务引用键。
- * 字段名与 `LogQueryDTO` 逐字对应，不要改写。
+ * 一个通道 = 后端五层模型的四元组（serviceType → componentId → hostId → dataTypeId）
+ * + 日志流（stream）+ 必需的业务引用（ref）。
  *
- * `id` 是逻辑名，只用于「降级链」与提示词引用；同一引擎内两个 file 通道三元组可能相同，
- * 靠 ref.path 区分，去重键里包含 ref，因此不会互相覆盖。
+ * `dataTypeId` 与后端 `LogDataType` 逐字一致：
+ * - `log.service`：服务自身运行日志，后端只允许 local-disk / elasticsearch；
+ * - `log.task`：在服务上运行的任务日志，后端只允许 yarn，且要求 jobName / jobId 至少一个。
+ *
+ * `hostId` 默认 `cluster`：Phase 1 没有 host 清单，cluster 表示不绑定单台主机；
+ * local-disk 命中多个 host 源时后端返回 HOST_REQUIRED，需要调用方显式指定 hostId。
+ *
+ * `id` 是逻辑名，只用于「降级链」与提示词引用；去重键由四元组 + stream + ref 组成。
  */
+export type LogDataTypeId = "log.service" | "log.task"
+export type LogStream = "stdout" | "stderr" | "slowquery"
+
 export type ChannelSpec = {
   id: string
   serviceType: string
-  logKind: string
-  componentRole: string
-  /** ref 里必须出现的键：applicationId / jobId / taskInstanceId / containerId / appId / path */
-  refKey: string
+  componentId: string
+  hostId: string
+  dataTypeId: LogDataTypeId
+  stream: LogStream
+  /** ref 里必须出现的键：applicationId / jobId / taskInstanceId */
+  refKey?: string
+  /** 多选一必填：log.task 为 jobName / jobId */
+  requiredAnyRefs?: string[]
   label: string
   /** 已知限制，必须原样进入能力自述 */
   caveat?: string
@@ -167,18 +180,51 @@ export type EngineProfile = {
   configOnly?: boolean
 }
 
-const FILE_SOURCE_REQUIRES = "运维配置 logs.sources 中 file 源的 root-dirs 并挂载对应日志目录"
+/** Phase 1 的 host 占位值，与后端 `Target.CLUSTER_HOST` 逐字一致。 */
+export const CLUSTER_HOST = "cluster"
 
-function fileChannel(id: string, label: string, logKind: string, caveat?: string): ChannelSpec {
+const SERVICE_LOG_REQUIRES =
+  "运维配置 telemetry.backends.local-disk[].sources 或 elasticsearch 索引，并挂载/采集对应日志"
+const TASK_LOG_REQUIRES =
+  "开启 YARN 日志聚合并配置 telemetry.backends.yarn[]（rm-base-url / command）"
+
+/** 服务自身运行日志（log.service）：local-disk / elasticsearch。 */
+function serviceChannel(input: {
+  id: string
+  serviceType: string
+  componentId: string
+  stream: LogStream
+  label: string
+  refKey?: string
+  caveat?: string
+  requires?: string
+}): ChannelSpec {
   return {
-    id,
-    serviceType: "file",
-    logKind,
-    componentRole: "generic",
-    refKey: "path",
-    label,
-    caveat,
-    requires: FILE_SOURCE_REQUIRES,
+    ...input,
+    hostId: CLUSTER_HOST,
+    dataTypeId: "log.service",
+    requires: input.requires ?? SERVICE_LOG_REQUIRES,
+    defaultAvailable: false,
+  }
+}
+
+/** 任务日志（log.task）：YARN 聚合日志，要求 jobName / jobId 至少一个。 */
+function taskChannel(input: {
+  id: string
+  serviceType: string
+  componentId: string
+  stream: "stdout" | "stderr"
+  label: string
+  refKey?: string
+  caveat?: string
+  requires?: string
+}): ChannelSpec {
+  return {
+    ...input,
+    hostId: CLUSTER_HOST,
+    dataTypeId: "log.task",
+    requiredAnyRefs: ["jobName", "jobId"],
+    requires: input.requires ?? TASK_LOG_REQUIRES,
     defaultAvailable: false,
   }
 }
@@ -189,71 +235,70 @@ export const ENGINE_PROFILES: Record<Engine, EngineProfile> = {
     label: "Spark",
     agent: "diag-spark",
     channels: [
-      {
+      taskChannel({
         id: "yarn-am",
-        serviceType: "yarn",
-        logKind: "aggregate",
-        componentRole: "application_master",
+        serviceType: "spark",
+        componentId: "spark.driver",
+        stream: "stdout",
         refKey: "applicationId",
-        label: "YARN 聚合日志 / ApplicationMaster（driver 日志）",
+        label: "YARN 聚合日志 / stdout（AM + executor）",
         caveat: "需要 YARN 日志聚合已开启，且服务端主机可执行 yarn CLI",
-        requires: "yarn.log-aggregation-enable=true + 服务端可执行 yarn CLI",
-        defaultAvailable: true,
-      },
-      {
+      }),
+      taskChannel({
         id: "yarn-generic",
-        serviceType: "yarn",
-        logKind: "aggregate",
-        componentRole: "generic",
+        serviceType: "spark",
+        componentId: "spark.driver",
+        stream: "stderr",
         refKey: "applicationId",
-        label: "YARN 聚合日志 / 通用",
+        label: "YARN 聚合日志 / stderr（AM + executor）",
         caveat: "同上",
-        requires: "同上",
-        defaultAvailable: true,
-      },
-      {
-        id: "yarn-nm",
-        serviceType: "yarn",
-        logKind: "runtime",
-        componentRole: "node_manager",
-        refKey: "containerId",
-        label: "YARN 运行中容器日志",
-        caveat: "容器结束后不可读，只能覆盖正在运行的任务",
-        defaultAvailable: true,
-      },
-      {
-        id: "shs-driver",
+      }),
+      serviceChannel({
+        id: "spark-driver-log",
         serviceType: "spark",
-        logKind: "runtime",
-        componentRole: "driver",
-        refKey: "appId",
-        label: "Spark History Server / driver",
-        caveat: "SHS 该接口返回事件日志压缩包（二进制），application.yml 中默认 enabled=false",
-        requires: "SHS base-url + 该源启用（当前实现仍不适合当日志用）",
-        defaultAvailable: false,
-      },
-      {
-        id: "shs-executor",
+        componentId: "spark.driver",
+        stream: "stdout",
+        refKey: "applicationId",
+        label: "Spark driver 服务日志（local-disk / ES）",
+        caveat: "需要把 driver 文本日志接入 local-disk 或 Elasticsearch",
+      }),
+      serviceChannel({
+        id: "spark-executor-log",
         serviceType: "spark",
-        logKind: "runtime",
-        componentRole: "executor",
-        refKey: "appId",
-        label: "Spark History Server / executor",
-        caveat: "同上",
-        requires: "同上",
-        defaultAvailable: false,
-      },
+        componentId: "spark.executor",
+        stream: "stderr",
+        refKey: "applicationId",
+        label: "Spark executor 服务日志（local-disk / ES）",
+        caveat: "需要把 executor 文本日志接入 local-disk 或 Elasticsearch",
+      }),
     ],
     families: ["jvm_gc", "throughput", "shuffle", "failures"],
     ceiling: "L1",
     ceilingReason: "拿到 YARN 聚合日志时可按异常类名 + 行号给出 L1；只有指标时上限 L2（stage 级瓶颈）",
     evidenceTier: "job-executor",
-    degradeChain: ["yarn-am", "yarn-generic", "runtime:compare", "runtime:snapshot", "yarn-nm", "shs-driver", "shs-executor"],
+    degradeChain: [
+      "yarn-am",
+      "yarn-generic",
+      "runtime:compare",
+      "runtime:snapshot",
+      "spark-driver-log",
+      "spark-executor-log",
+    ],
     gaps: [
       {
         signal: "Spark UI SQL 执行计划",
-        reason: "服务端无对应接口",
-        neededInterface: "GET /api/runtime/jobs/{appId}/sql-plan（需确认是否必要）",
+        reason: "v1 runtime 未覆盖 SQL 执行计划",
+        neededInterface: "需要后端新增 SQL 执行计划查询接口（v1 runtime 未覆盖）",
+      },
+      {
+        signal: "运行中容器日志（未聚合）",
+        reason: "v1 的 yarn 后端只读聚合日志，NodeManager 本地未聚合文件没有 HTTP 接口",
+        neededInterface: "开启 YARN 日志聚合，或把容器日志接入 telemetry.backends.local-disk / elasticsearch",
+      },
+      {
+        signal: "Spark SHS 文本日志",
+        reason: "SHS 的 /logs 返回事件日志 zip（二进制），v1 明确不作为 stdout/stderr",
+        neededInterface: "用 local-disk / elasticsearch 采集 driver/executor 文本日志",
       },
     ],
   },
@@ -263,55 +308,55 @@ export const ENGINE_PROFILES: Record<Engine, EngineProfile> = {
     label: "Flink",
     agent: "diag-flink",
     channels: [
-      {
-        id: "flink-exception",
-        serviceType: "flink",
-        logKind: "exception",
-        componentRole: "job_manager",
-        refKey: "jobId",
-        label: "Flink 异常摘要（结构化，非原始日志）",
-        caveat: "返回作业状态、tasks.failed、numRestarts、checkpoint 摘要与异常列表，不含原始日志行",
-        defaultAvailable: true,
-      },
-      {
+      serviceChannel({
         id: "flink-jm-log",
         serviceType: "flink",
-        logKind: "runtime",
-        componentRole: "job_manager",
+        componentId: "flink.jobmanager",
+        stream: "stdout",
         refKey: "jobId",
-        label: "Flink JobManager 原始日志",
-        caveat: "需要配置 jobmanager-log-dirs，当前默认未配置",
-        requires: "logs.sources 中配置 jobmanager-log-dirs",
-        defaultAvailable: false,
-      },
-      {
+        label: "Flink JobManager 服务日志（local-disk / ES）",
+        caveat: "需要把 JM 文本日志接入 local-disk 或 Elasticsearch",
+      }),
+      serviceChannel({
         id: "flink-tm-log",
         serviceType: "flink",
-        logKind: "runtime",
-        componentRole: "task_manager",
+        componentId: "flink.taskmanager",
+        stream: "stderr",
         refKey: "jobId",
-        label: "Flink TaskManager 原始日志",
-        caveat: "需要配置 taskmanager-log-dirs，当前默认未配置",
-        requires: "logs.sources 中配置 taskmanager-log-dirs",
-        defaultAvailable: false,
-      },
-      {
+        label: "Flink TaskManager stderr（local-disk / ES）",
+        caveat: "需要把 TM 文本日志接入 local-disk 或 Elasticsearch",
+      }),
+      serviceChannel({
         id: "flink-tm-stdout",
         serviceType: "flink",
-        logKind: "stdout",
-        componentRole: "task_manager",
+        componentId: "flink.taskmanager",
+        stream: "stdout",
         refKey: "jobId",
-        label: "Flink TaskManager stdout",
+        label: "Flink TaskManager stdout（local-disk / ES）",
         caveat: "同上",
-        requires: "同上",
-        defaultAvailable: false,
-      },
+      }),
+      taskChannel({
+        id: "flink-task-log",
+        serviceType: "flink",
+        componentId: "flink.jobmanager",
+        stream: "stdout",
+        label: "YARN 聚合日志 / Flink 任务 stdout",
+        caveat: "YARN 聚合日志没有统一行首时间戳，不支持时间范围过滤",
+      }),
     ],
     families: ["jvm_gc", "checkpoint", "throughput", "backpressure", "failures"],
     ceiling: "L1",
-    ceilingReason: "异常摘要含作业状态与异常列表时可到 L1/L2；原始日志未配置时不具备行级证据，措辞须注明证据来源是摘要",
+    ceilingReason:
+      "checkpoint / 背压 / 失败任务等结构化快照可到 L1/L2；异常摘要在 v1 只有目录声明（engineEvidence），原始日志未配置时不具备行级证据",
     evidenceTier: "job-vertex-tm",
-    degradeChain: ["flink-exception", "runtime:snapshot", "runtime:compare", "flink-jm-log", "flink-tm-log", "flink-tm-stdout"],
+    degradeChain: [
+      "runtime:snapshot",
+      "runtime:compare",
+      "flink-jm-log",
+      "flink-tm-log",
+      "flink-tm-stdout",
+      "flink-task-log",
+    ],
     gaps: [
       {
         signal: "作业结束后的事后指标",
@@ -320,8 +365,13 @@ export const ENGINE_PROFILES: Record<Engine, EngineProfile> = {
       },
       {
         signal: "Savepoint / 重启历史",
-        reason: "服务端无对应接口",
-        neededInterface: "GET /api/runtime/jobs/{jobId}/savepoints（需确认）",
+        reason: "v1 runtime 未覆盖 savepoint",
+        neededInterface: "需要后端新增 savepoint 查询接口（v1 runtime 未覆盖）",
+      },
+      {
+        signal: "Flink 异常摘要",
+        reason: "v1 只在目录 engineEvidence 声明 exception_summary，没有查询端点",
+        neededInterface: "新增 engineEvidence 查询接口，或把异常摘要并入 runtime/snapshot",
       },
     ],
   },
@@ -331,9 +381,31 @@ export const ENGINE_PROFILES: Record<Engine, EngineProfile> = {
     label: "Doris",
     agent: "diag-doris",
     channels: [
-      fileChannel("doris-fe-log", "Doris FE 日志", "runtime", "需挂载 FE 日志目录；无 job/query 级结构化证据"),
-      fileChannel("doris-be-log", "Doris BE 日志", "runtime", "需挂载 BE 日志目录"),
-      fileChannel("doris-audit", "Doris 审计日志（audit_log）", "audit", "需开启审计插件并挂载输出文件"),
+      serviceChannel({
+        id: "doris-fe-log",
+        serviceType: "doris",
+        componentId: "doris.fe",
+        stream: "stdout",
+        label: "Doris FE 服务日志",
+        caveat: "需挂载/采集 FE 日志；无 job/query 级结构化证据",
+      }),
+      serviceChannel({
+        id: "doris-be-log",
+        serviceType: "doris",
+        componentId: "doris.be",
+        stream: "stdout",
+        label: "Doris BE 服务日志",
+        caveat: "需挂载/采集 BE 日志目录",
+      }),
+      serviceChannel({
+        id: "doris-audit",
+        serviceType: "doris",
+        componentId: "doris.fe",
+        stream: "slowquery",
+        label: "Doris 审计日志（audit_log / slowquery）",
+        caveat: "目录已声明 declared_not_implemented，查询返回 NOT_IMPLEMENTED + requirements",
+        requires: "开启 Doris 审计插件、配置慢查询阈值与审计日志路径",
+      }),
     ],
     families: [],
     ceiling: "L3",
@@ -348,7 +420,7 @@ export const ENGINE_PROFILES: Record<Engine, EngineProfile> = {
       },
       {
         signal: "慢查询",
-        reason: "audit_log 未接入，file 源也需额外挂载",
+        reason: "audit_log 未接入，local-disk / ES 也需额外配置 slowquery 源",
         neededInterface: "POST /api/diagnosis/probe {probeId:'doris.audit_slow'}（方案 D4）",
       },
       {
@@ -364,9 +436,31 @@ export const ENGINE_PROFILES: Record<Engine, EngineProfile> = {
     label: "StarRocks",
     agent: "diag-starrocks",
     channels: [
-      fileChannel("sr-fe-log", "StarRocks FE 日志", "runtime", "环境未部署，仅保留配置层验证路径"),
-      fileChannel("sr-be-log", "StarRocks BE 日志", "runtime", "环境未部署，仅保留配置层验证路径"),
-      fileChannel("sr-audit", "StarRocks 审计日志", "audit", "需审计插件；环境未部署"),
+      serviceChannel({
+        id: "sr-fe-log",
+        serviceType: "starrocks",
+        componentId: "starrocks.fe",
+        stream: "stdout",
+        label: "StarRocks FE 服务日志",
+        caveat: "环境未部署，仅保留配置层验证路径",
+      }),
+      serviceChannel({
+        id: "sr-be-log",
+        serviceType: "starrocks",
+        componentId: "starrocks.be",
+        stream: "stdout",
+        label: "StarRocks BE 服务日志",
+        caveat: "环境未部署，仅保留配置层验证路径",
+      }),
+      serviceChannel({
+        id: "sr-audit",
+        serviceType: "starrocks",
+        componentId: "starrocks.fe",
+        stream: "slowquery",
+        label: "StarRocks 审计日志（slowquery）",
+        caveat: "目录已声明 declared_not_implemented；环境未部署",
+        requires: "开启 StarRocks 审计日志、配置慢查询阈值与审计日志路径",
+      }),
     ],
     families: [],
     ceiling: "L4",
@@ -378,7 +472,8 @@ export const ENGINE_PROFILES: Record<Engine, EngineProfile> = {
       {
         signal: "全部诊断证据",
         reason: "StarRocks 环境尚未部署，通道定义与 agent 已就绪但无法验证",
-        neededInterface: "部署后配置 logs.sources[file] root-dirs；其余同 Doris（probe + runtime adapter）",
+        neededInterface:
+          "部署后配置 telemetry.backends.local-disk[].sources 或 elasticsearch；其余同 Doris（probe + runtime adapter）",
       },
       {
         signal: "慢查询 / 导入失败",
@@ -393,8 +488,22 @@ export const ENGINE_PROFILES: Record<Engine, EngineProfile> = {
     label: "ClickHouse",
     agent: "diag-clickhouse",
     channels: [
-      fileChannel("ck-server-log", "ClickHouse server 日志", "runtime", "需挂载 /var/log/clickhouse-server/；无查询级证据"),
-      fileChannel("ck-error-log", "ClickHouse server 错误日志", "runtime", "同上"),
+      serviceChannel({
+        id: "ck-server-log",
+        serviceType: "clickhouse",
+        componentId: "clickhouse.server",
+        stream: "stdout",
+        label: "ClickHouse server 日志",
+        caveat: "需挂载 /var/log/clickhouse-server/；无查询级证据",
+      }),
+      serviceChannel({
+        id: "ck-error-log",
+        serviceType: "clickhouse",
+        componentId: "clickhouse.server",
+        stream: "stderr",
+        label: "ClickHouse server 错误日志",
+        caveat: "同上",
+      }),
     ],
     families: [],
     ceiling: "L3",
@@ -425,8 +534,22 @@ export const ENGINE_PROFILES: Record<Engine, EngineProfile> = {
     label: "HBase",
     agent: "diag-hbase",
     channels: [
-      fileChannel("hbase-master-log", "HBase Master 日志", "runtime", "需挂载 Master 日志目录；无 Region/JMX 证据"),
-      fileChannel("hbase-rs-log", "HBase RegionServer 日志", "runtime", "需挂载 RS 日志目录"),
+      serviceChannel({
+        id: "hbase-master-log",
+        serviceType: "hbase",
+        componentId: "hbase.master",
+        stream: "stdout",
+        label: "HBase Master 服务日志",
+        caveat: "需挂载/采集 Master 日志；无 Region/JMX 证据",
+      }),
+      serviceChannel({
+        id: "hbase-rs-log",
+        serviceType: "hbase",
+        componentId: "hbase.regionserver",
+        stream: "stdout",
+        label: "HBase RegionServer 服务日志",
+        caveat: "需挂载/采集 RegionServer 日志",
+      }),
     ],
     families: [],
     ceiling: "L3",
@@ -477,8 +600,22 @@ export const ENGINE_PROFILES: Record<Engine, EngineProfile> = {
     label: "Kafka",
     agent: "diag-kafka",
     channels: [
-      fileChannel("kafka-broker-log", "Kafka broker server.log", "runtime", "需挂载 broker 日志；无 lag/ISR 证据"),
-      fileChannel("kafka-controller-log", "Kafka controller 日志", "runtime", "需挂载 controller 日志"),
+      serviceChannel({
+        id: "kafka-broker-log",
+        serviceType: "kafka",
+        componentId: "kafka.broker",
+        stream: "stdout",
+        label: "Kafka broker server.log",
+        caveat: "需挂载/采集 broker 日志；无 lag/ISR 证据",
+      }),
+      serviceChannel({
+        id: "kafka-controller-log",
+        serviceType: "kafka",
+        componentId: "kafka.controller",
+        stream: "stdout",
+        label: "Kafka controller 日志",
+        caveat: "需挂载/采集 controller 日志",
+      }),
     ],
     families: [],
     ceiling: "L3",
@@ -504,8 +641,22 @@ export const ENGINE_PROFILES: Record<Engine, EngineProfile> = {
     label: "Pulsar",
     agent: "diag-pulsar",
     channels: [
-      fileChannel("pulsar-broker-log", "Pulsar broker 日志", "runtime", "需挂载 broker 日志；服务端对 Pulsar 零支持"),
-      fileChannel("pulsar-bk-log", "BookKeeper 日志", "runtime", "需挂载 BK 日志"),
+      serviceChannel({
+        id: "pulsar-broker-log",
+        serviceType: "pulsar",
+        componentId: "pulsar.broker",
+        stream: "stdout",
+        label: "Pulsar broker 服务日志",
+        caveat: "需挂载/采集 broker 日志；v1 未提供 Pulsar 管理接口",
+      }),
+      serviceChannel({
+        id: "pulsar-bk-log",
+        serviceType: "pulsar",
+        componentId: "pulsar.bookkeeper",
+        stream: "stdout",
+        label: "BookKeeper 服务日志",
+        caveat: "需挂载/采集 BK 日志",
+      }),
     ],
     families: [],
     ceiling: "L3",
@@ -549,34 +700,66 @@ export function channelById(engine: string, id: string): ChannelSpec | null {
   return channelsOf(engine).find((channel) => channel.id === id) ?? null
 }
 
-export function channelKeyOf(channel: {
-  serviceType: string
-  logKind: string
-  componentRole: string
-  ref?: Record<string, string>
-}): string {
-  const refPart = Object.entries(channel.ref ?? {})
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([k, v]) => `${k}=${v}`)
-    .join(",")
-  return [channel.serviceType, channel.logKind, channel.componentRole, refPart].join("|")
-}
+/**
+ * 通道身份与幂等键已下沉到 shared：task-diag 与 data-analysis 必须使用同一份格式。
+ * 这里保留 re-export，保证既有 import 路径与行为不变。
+ */
+export { channelKeyOf, channelIdentityOf, type ChannelIdentity } from "../../shared/lib/channel"
 
-/** 通道三元组（不含 ref），用于作用域白名单。 */
-export function channelTripleOf(channel: {
-  serviceType: string
-  logKind: string
-  componentRole: string
-}): string {
-  return [channel.serviceType, channel.logKind, channel.componentRole].join("|")
-}
-
-/** 某三元组是否属于其它引擎的通道（用于区分「越权」与「不可用」）。 */
-export function ownerEngineOfChannel(triple: string): Engine | null {
+/** 某通道身份是否属于其它引擎（用于区分「越权」与「不可用」）。 */
+export function ownerEngineOfChannel(identity: string): Engine | null {
   for (const engine of ALL_ENGINES) {
-    if (ENGINE_PROFILES[engine].channels.some((channel) => channelTripleOf(channel) === triple)) return engine
+    if (ENGINE_PROFILES[engine].channels.some((channel) => channelIdentityOf(channel) === identity)) return engine
   }
   return null
+}
+
+/** 更新目标默认组件：运行态端点只覆盖 spark / flink。 */
+export const RUNTIME_COMPONENTS: Record<string, string> = {
+  spark: "spark.driver",
+  flink: "flink.jobmanager",
+}
+
+/** 构造后端 `Target` 四层身份；hostId 缺省用通道默认值。 */
+export function backendTargetOf(channel: ChannelIdentity, hostId?: string) {
+  return {
+    serviceType: channel.serviceType,
+    componentId: channel.componentId,
+    hostId: hostId?.trim() || channel.hostId || CLUSTER_HOST,
+  }
+}
+
+export function runtimeTargetOf(engine: string, hostId = CLUSTER_HOST) {
+  const componentId = RUNTIME_COMPONENTS[engine]
+  if (!componentId) return null
+  return { serviceType: engine, componentId, hostId }
+}
+
+/**
+ * ref 是否满足通道要求。
+ *
+ * `jobId` 允许由 applicationId / appId 代偿（Spark 的作业标识就是 YARN application id）；
+ * `jobName` 允许由 target.taskName 代偿。log.task 要求两者至少一个。
+ */
+export function channelRefStatus(
+  channel: Pick<ChannelSpec, "refKey" | "requiredAnyRefs">,
+  refs: Record<string, string>,
+  taskName?: string,
+): { ok: boolean; missing: string[] } {
+  const missing: string[] = []
+  const has = (key: string): boolean => {
+    if (key === "jobId") return Boolean(refs.jobId || refs.applicationId || refs.appId)
+    if (key === "jobName") return Boolean(refs.jobName || taskName)
+    return Boolean(refs[key])
+  }
+
+  if (channel.refKey && !has(channel.refKey)) missing.push(`ref.${channel.refKey}`)
+  if (channel.requiredAnyRefs && channel.requiredAnyRefs.length > 0) {
+    if (!channel.requiredAnyRefs.some(has)) {
+      missing.push(channel.requiredAnyRefs.map((key) => `ref.${key}`).join(" / "))
+    }
+  }
+  return { ok: missing.length === 0, missing }
 }
 
 // ── 运行态指标族（与服务端 MetricFamily 枚举逐字一致）─────────────────

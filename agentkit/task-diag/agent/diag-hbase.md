@@ -26,10 +26,12 @@ tools:
 
 ## 可用通道
 
-| 通道 id | serviceType | logKind | componentRole | refKey | 条件 |
-|---|---|---|---|---|---|
-| `hbase-master-log` | file | runtime | generic | path | 需挂载 Master 日志 + 配置 `root-dirs` |
-| `hbase-rs-log` | file | runtime | generic | path | 需挂载 RegionServer 日志 |
+通道身份是「四元组 + 数据类型」：`serviceType → componentId → hostId → dataTypeId`，再加 `stream`。
+
+| 通道 id | serviceType | componentId | hostId | dataType | stream | 条件 |
+|---|---|---|---|---|---|---|
+| `hbase-master-log` | hbase | hbase.master | cluster | log.service | stdout | 需 local-disk / ES 采集 Master 日志 |
+| `hbase-rs-log` | hbase | hbase.regionserver | cluster | log.service | stdout | 需 local-disk / ES 采集 RegionServer 日志 |
 
 默认不可用。
 
@@ -56,7 +58,7 @@ tools:
 
 ### mode=FAILED
 
-1. `diag_collect_logs({ runId, channelId:"hbase-rs-log", ref:{path:"<路径>"}, focusLevels:["FATAL","ERROR","WARN"] })`
+1. `diag_collect_logs({ runId, channelId:"hbase-rs-log", focusLevels:["FATAL","ERROR","WARN"] })`
 2. 关注 `RegionTooBusy`、`NotServingRegion`、`ZooKeeper` 连接类文本
 3. 无命中再试 master
 

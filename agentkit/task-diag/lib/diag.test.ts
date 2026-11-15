@@ -17,6 +17,8 @@ import {
   ALL_ENGINES,
   ENGINE_AGENT,
   ENGINE_PROFILES,
+  channelKeyOf,
+  channelRefStatus,
   channelsOf,
   clampVerdict,
   hasEngineAgent,
@@ -24,7 +26,6 @@ import {
   profileOf,
 } from './constants';
 import { assertChannel, assertEngine, buildScope, saveEvidencePack } from './scope';
-import { channelKeyOf } from './constants';
 import { fingerprint, normalizeLine } from './signature';
 import type { EvidencePack } from './schema';
 
@@ -57,7 +58,7 @@ function sparkScope(available: string[]) {
       ref: { applicationId: 'application_1_1', appId: 'application_1_1' },
     },
     availableChannelIds: available,
-    unavailable: [{ id: 'shs-executor', reason: 'SHS 未启用' }],
+    unavailable: [{ id: 'spark-executor-log', reason: '日志源未配置' }],
     calls: 10,
   });
 }
@@ -148,28 +149,50 @@ describe('作用域票据', () => {
   it('只授权能力表里可用的通道', () => {
     const scope = sparkScope(['yarn-am']);
     expect(scope.allowedChannels).toHaveLength(1);
-    expect(scope.allowedChannels[0].componentRole).toBe('application_master');
-    expect(scope.forbiddenChannels.map(f => f.channelKey)).toContain('spark|runtime|executor');
+    expect(scope.allowedChannels[0].componentId).toBe('spark.driver');
+    expect(scope.allowedChannels[0].dataTypeId).toBe('log.task');
+    expect(scope.allowedChannels[0].stream).toBe('stdout');
+    expect(scope.forbiddenChannels.map(f => f.channelKey)).toContain(
+      'spark|spark.executor|cluster|log.service|stderr',
+    );
   });
 
   it('已授权通道放行', () => {
     const scope = sparkScope(['yarn-am']);
     expect(() =>
-      assertChannel(scope, { serviceType: 'yarn', logKind: 'aggregate', componentRole: 'application_master' }),
+      assertChannel(scope, {
+        serviceType: 'spark',
+        componentId: 'spark.driver',
+        hostId: 'cluster',
+        dataTypeId: 'log.task',
+        stream: 'stdout',
+      }),
     ).not.toThrow();
   });
 
   it('跨引擎通道被拒绝（D04），不是「不可用」', () => {
     const scope = sparkScope(['yarn-am']);
     expect(() =>
-      assertChannel(scope, { serviceType: 'flink', logKind: 'exception', componentRole: 'job_manager' }),
+      assertChannel(scope, {
+        serviceType: 'flink',
+        componentId: 'flink.jobmanager',
+        hostId: 'cluster',
+        dataTypeId: 'log.service',
+        stream: 'stdout',
+      }),
     ).toThrow(/D04_SCOPE_DENIED/);
   });
 
   it('本引擎但未授权的通道被拒绝（D10）', () => {
     const scope = sparkScope(['yarn-am']);
     expect(() =>
-      assertChannel(scope, { serviceType: 'spark', logKind: 'runtime', componentRole: 'executor' }),
+      assertChannel(scope, {
+        serviceType: 'spark',
+        componentId: 'spark.executor',
+        hostId: 'cluster',
+        dataTypeId: 'log.service',
+        stream: 'stderr',
+      }),
     ).toThrow(/D10_CHANNEL_UNAVAILABLE/);
   });
 
@@ -196,12 +219,33 @@ describe('channelKey 与幂等落盘', () => {
     };
   }
 
-  it('channelKey 对 ref 键顺序不敏感，对 ref 值敏感', () => {
-    const a = channelKeyOf({ serviceType: 'yarn', logKind: 'aggregate', componentRole: 'generic', ref: { applicationId: 'x', path: '/a' } });
-    const b = channelKeyOf({ serviceType: 'yarn', logKind: 'aggregate', componentRole: 'generic', ref: { path: '/a', applicationId: 'x' } });
-    const c = channelKeyOf({ serviceType: 'yarn', logKind: 'aggregate', componentRole: 'generic', ref: { applicationId: 'y', path: '/a' } });
+  it('channelKey 对 ref 键顺序不敏感，对 ref 值与 stream 敏感', () => {
+    const base = {
+      serviceType: 'spark',
+      componentId: 'spark.driver',
+      hostId: 'cluster',
+      dataTypeId: 'log.task',
+      stream: 'stdout',
+    };
+    const a = channelKeyOf({ ...base, ref: { applicationId: 'x', taskId: 'application_1_2' } });
+    const b = channelKeyOf({ ...base, ref: { taskId: 'application_1_2', applicationId: 'x' } });
+    const c = channelKeyOf({ ...base, ref: { applicationId: 'y', taskId: 'application_1_2' } });
+    const d = channelKeyOf({ ...base, stream: 'stderr', ref: { applicationId: 'x', taskId: 'application_1_2' } });
     expect(a).toBe(b);
     expect(a).not.toBe(c);
+    expect(a).not.toBe(d);
+  });
+
+  it('log.task 要求 jobName/jobId，log.service 只要求 refKey', () => {
+    const task = { dataTypeId: 'log.task', requiredAnyRefs: ['jobName', 'jobId'] };
+    expect(channelRefStatus(task, {}).ok).toBe(false);
+    expect(channelRefStatus(task, { jobId: 'a4f1a1a028310ef81f8f912eff920595' }).ok).toBe(true);
+    expect(channelRefStatus(task, { applicationId: 'application_1_2' }).ok).toBe(true);
+    expect(channelRefStatus(task, {}, 'task-name').ok).toBe(true);
+
+    const service = { dataTypeId: 'log.service', refKey: 'jobId' };
+    expect(channelRefStatus(service, {}).ok).toBe(false);
+    expect(channelRefStatus(service, { jobId: 'x' }).ok).toBe(true);
   });
 
   it('同一 dedupeKey 第二次落盘复用原文件，不再写新文件', () => {

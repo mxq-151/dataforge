@@ -22,28 +22,29 @@ tools:
 
 - 证据层级：`job-executor`（有 job / stage / executor 级指标，日志条件可得）
 - **结论上限：L1** —— 拿到 YARN 聚合日志时可按异常类名 + 行号下 L1；只有指标时上限 L2
-- 上限原因：原始日志依赖 YARN 日志聚合（CLI + 聚合开关），SHS 的日志接口返回二进制压缩包不可用
+- 上限原因：原始日志依赖 YARN 日志聚合（CLI + 聚合开关）；SHS 的日志接口返回事件日志 zip，v1 明确不作为文本日志
 
 ## 可用通道
 
-| 通道 id | serviceType | logKind | componentRole | refKey | 条件 |
-|---|---|---|---|---|---|
-| `yarn-am` | yarn | aggregate | application_master | applicationId | 需 YARN 日志聚合开启 + 服务端可执行 yarn CLI |
-| `yarn-generic` | yarn | aggregate | generic | applicationId | 同上 |
-| `yarn-nm` | yarn | runtime | node_manager | containerId | 仅运行中的容器 |
-| `shs-driver` | spark | runtime | driver | appId | 默认不可用（返回事件日志 zip） |
-| `shs-executor` | spark | runtime | executor | appId | 同上 |
+通道身份是「四元组 + 数据类型」：`serviceType → componentId → hostId → dataTypeId`，再加 `stream`。
+`log.task` 是 YARN 聚合任务日志，要求 `jobName` 或 `jobId` 非空；`log.service` 是服务自身日志，走 local-disk / ES。
+
+| 通道 id | serviceType | componentId | hostId | dataType | stream | refKey | 条件 |
+|---|---|---|---|---|---|---|---|
+| `yarn-am` | spark | spark.driver | cluster | log.task | stdout | applicationId | 需 YARN 日志聚合开启 + 服务端可执行 yarn CLI |
+| `yarn-generic` | spark | spark.driver | cluster | log.task | stderr | applicationId | 同上 |
+| `spark-driver-log` | spark | spark.driver | cluster | log.service | stdout | applicationId | 需 local-disk / ES 采集 driver 文本日志 |
+| `spark-executor-log` | spark | spark.executor | cluster | log.service | stderr | applicationId | 需 local-disk / ES 采集 executor 文本日志 |
 
 `capabilities.json` 里 `status!=available` 的通道**一次都不要试**——试了只会拿到 D10，白耗预算。
 
 ## 降级链（取不到就按这个顺序换，不要跳）
 
-1. `yarn-am`（driver 日志，首选）
-2. `yarn-generic`
+1. `yarn-am`（YARN 聚合 stdout，首选）
+2. `yarn-generic`（stderr）
 3. `runtime:compare`（速率/增量；**变慢类必做**）
 4. `runtime:snapshot`
-5. `yarn-nm`（只看运行中的容器）
-6. `shs-driver` / `shs-executor`（默认不可用，除非能力表说 available）
+5. `spark-driver-log` / `spark-executor-log`（默认不可用，除非能力表说 available）
 
 ## 能下什么结论 / 不能假装什么
 
@@ -79,8 +80,9 @@ tools:
 
 | 信号 | 原因 | neededInterface |
 |---|---|---|
-| Spark UI SQL 计划 | 服务端无接口 | `GET /api/runtime/jobs/{appId}/sql-plan`（需确认是否必要） |
-| SHS 文本日志 | 接口返回事件日志 zip | 需后端提供解压/解析后的文本日志通道 |
+| Spark UI SQL 计划 | v1 runtime 未覆盖 | 需要后端新增 SQL 执行计划查询接口 |
+| SHS 文本日志 | 接口返回事件日志 zip | 用 local-disk / ES 采集 driver/executor 文本日志 |
+| 运行中容器日志（未聚合） | YARN 后端只读聚合日志 | 开启 YARN 日志聚合，或接入 local-disk / ES |
 
 能力表把这些写进 `gaps` 时，你要原样带进 `findings.gaps`，不要删。
 

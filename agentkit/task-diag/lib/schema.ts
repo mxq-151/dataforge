@@ -16,19 +16,25 @@ export const ConfidenceSchema = z.number().min(0).max(1)
 const RefMapSchema = z.record(z.string(), z.string())
 
 // ── 通道 ────────────────────────────────────────────────────────────────
+/** 后端五层模型的四元组 + stream：serviceType → componentId → hostId → dataTypeId。 */
 export const ChannelSchema = z.object({
   serviceType: z.string().min(1),
-  logKind: z.string().min(1),
-  componentRole: z.string().min(1),
+  componentId: z.string().min(1),
+  hostId: z.string().min(1),
+  dataTypeId: z.enum(["log.service", "log.task"]),
+  stream: z.enum(["stdout", "stderr", "slowquery"]),
   refKey: z.string().optional(),
+  requiredAnyRefs: z.array(z.string()).optional(),
   label: z.string().optional(),
 })
 export type Channel = z.infer<typeof ChannelSchema>
 
 export const ChannelRefSchema = z.object({
   serviceType: z.string().min(1),
-  logKind: z.string().min(1),
-  componentRole: z.string().min(1),
+  componentId: z.string().min(1),
+  hostId: z.string().min(1),
+  dataTypeId: z.enum(["log.service", "log.task"]),
+  stream: z.enum(["stdout", "stderr", "slowquery"]),
   ref: RefMapSchema,
 })
 
@@ -69,11 +75,15 @@ export const SignalSchema = z.object({
   signal: z.string().min(1),
   status: z.enum(["available", "unavailable", "unverified"]),
   via: z.string().optional(),
-  logKind: z.string().optional(),
+  dataTypeId: z.string().optional(),
+  stream: z.string().optional(),
   reason: z.string().optional(),
+  /** 类型化能力码：NOT_CONFIGURED / DATA_TYPE_NOT_IMPLEMENTED / STREAM_NOT_SUPPORTED / INVALID_ARGUMENT ... */
   code: z.string().optional(),
   detail: z.string().optional(),
   need: z.string().optional(),
+  /** 需要补齐的配置键或接口；不可用时不得为空。 */
+  requirements: z.array(z.string()).default([]),
   verified: z.boolean().optional(),
 })
 export type Signal = z.infer<typeof SignalSchema>
@@ -116,6 +126,7 @@ export type Scope = z.infer<typeof ScopeSchema>
 
 // ── 证据包 ──────────────────────────────────────────────────────────────
 export const SignatureSchema = z.object({
+
   id: z.string(),
   signature: z.string(),
   level: z.enum(["FATAL", "ERROR", "WARN", "INFO", "DEBUG", "UNKNOWN"]),
@@ -134,15 +145,24 @@ export const SignatureSchema = z.object({
   ),
 })
 
+export type Signature = z.infer<typeof SignatureSchema>
+
 export const MetricPointSchema = z.object({
   family: z.string().optional(),
   name: z.string().min(1),
   scope: z.string().optional(),
   component: z.string().optional(),
+  sourceMetric: z.string().optional(),
   value: z.union([z.number(), z.string()]).nullable(),
+  unit: z.string().optional(),
+  /** AVAILABLE / ZERO / UNAVAILABLE / NOT_SUPPORTED；与后端 RuntimeMetric 逐字一致。 */
+  availability: z.string().optional(),
+  reason: z.string().nullish(),
   verified: z.boolean().optional(),
   unavailable: z.boolean().optional(),
 })
+
+export type MetricPoint = z.infer<typeof MetricPointSchema>
 
 export const FactSchema = z.object({
   key: z.string().min(1),
@@ -150,10 +170,14 @@ export const FactSchema = z.object({
   source: z.string().min(1),
 })
 
+export type Fact = z.infer<typeof FactSchema>
+
 export const GapSchema = z.object({
   signal: z.string().min(1),
   reason: z.string().min(1),
   code: z.string().optional(),
+  /** 需要补齐的配置键 / 接口；不可用时不得为空。 */
+  requirements: z.array(z.string()).default([]),
   neededInterface: z.string().optional(),
 })
 export type Gap = z.infer<typeof GapSchema>

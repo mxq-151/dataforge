@@ -58,7 +58,8 @@ tools:
 
 ### S1.5 上游取证（只调一次）
 
-`diag_upstream_context({ runId })`：取 DS 任务实例日志（与引擎无关的那部分）。
+`diag_upstream_context({ runId })`：取与引擎无关的上游上下文（v1 discovery 的 sources / jobs）。
+DS 调度侧任务日志在 v1 没有对应接口，工具会把它写成显式 gap，不要伪造。
 **只调一次**；引擎 agent 只读这个文件，不得重取。
 
 ### S1.8 路由

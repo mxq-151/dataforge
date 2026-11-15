@@ -18,13 +18,14 @@ import { diagError } from "./http"
 import {
   CODES,
   DIAG_DIR,
-  channelTripleOf,
+  channelIdentityOf,
   channelsOf,
   evidenceDir,
   handoffPath,
   isSafeRunId,
   ownerEngineOfChannel,
   scopePath,
+  type ChannelIdentity,
 } from "./constants"
 import { EvidencePackSchema, ScopeSchema, type EvidencePack, type Scope, type Target } from "./schema"
 import { readJson, writeJsonAtomic, nowIso } from "../../shared/lib/io"
@@ -67,36 +68,35 @@ export function assertEngine(scope: Scope, engine: string): void {
 /**
  * 通道校验：
  * 1) 命中 forbiddenChannels → D10（能力表已判定不可用）；
- * 2) 三元组不属于本引擎画像 → D04（跨引擎越权）；
+ * 2) 四元组 + stream 不属于本引擎画像 → D04（跨引擎越权）；
  * 3) 不在 allowedChannels → D10（本引擎通道，但本次运行未授权，通常是配置未就绪）。
  */
-export function assertChannel(
-  scope: Scope,
-  channel: { serviceType: string; logKind: string; componentRole: string },
-): void {
-  const triple = channelTripleOf(channel)
+export function assertChannel(scope: Scope, channel: ChannelIdentity): void {
+  const identity = channelIdentityOf(channel)
 
-  const forbidden = scope.forbiddenChannels.find((item) => item.channelKey === triple)
+  const forbidden = scope.forbiddenChannels.find((item) => item.channelKey === identity)
   if (forbidden) {
-    throw diagError(CODES.CHANNEL_UNAVAILABLE, `通道不可用：${triple}（${forbidden.reason}）`)
+    throw diagError(CODES.CHANNEL_UNAVAILABLE, `通道不可用：${identity}（${forbidden.reason}）`)
   }
 
-  const owner = ownerEngineOfChannel(triple)
+  const owner = ownerEngineOfChannel(identity)
   if (owner && owner !== scope.engine) {
-    throw diagError(CODES.SCOPE_DENIED, `通道 ${triple} 属于 ${owner}，本次运行是 ${scope.engine}，拒绝访问`)
+    throw diagError(CODES.SCOPE_DENIED, `通道 ${identity} 属于 ${owner}，本次运行是 ${scope.engine}，拒绝访问`)
   }
 
   const allowed = scope.allowedChannels.some(
     (item) =>
       item.serviceType === channel.serviceType &&
-      item.logKind === channel.logKind &&
-      item.componentRole === channel.componentRole,
+      item.componentId === channel.componentId &&
+      item.hostId === channel.hostId &&
+      item.dataTypeId === channel.dataTypeId &&
+      item.stream === channel.stream,
   )
   if (!allowed) {
     throw diagError(
       CODES.CHANNEL_UNAVAILABLE,
-      `通道未在本次运行的作用域内：${triple}；已授权：${
-        scope.allowedChannels.map((item) => channelTripleOf(item)).join("、") || "（空）"
+      `通道未在本次运行的作用域内：${identity}；已授权：${
+        scope.allowedChannels.map((item) => channelIdentityOf(item)).join("、") || "（空）"
       }`,
     )
   }
@@ -118,16 +118,19 @@ export function buildScope(input: {
     .filter((channel) => input.availableChannelIds.includes(channel.id) && !unavailableIds.has(channel.id))
     .map((channel) => ({
       serviceType: channel.serviceType,
-      logKind: channel.logKind,
-      componentRole: channel.componentRole,
+      componentId: channel.componentId,
+      hostId: channel.hostId,
+      dataTypeId: channel.dataTypeId,
+      stream: channel.stream,
       refKey: channel.refKey,
+      requiredAnyRefs: channel.requiredAnyRefs,
       label: channel.label,
     }))
 
   const forbidden = channels
-    .filter((channel) => !allowed.some((item) => channelTripleOf(item) === channelTripleOf(channel)))
+    .filter((channel) => !allowed.some((item) => channelIdentityOf(item) === channelIdentityOf(channel)))
     .map((channel) => ({
-      channelKey: channelTripleOf(channel),
+      channelKey: channelIdentityOf(channel),
       reason: input.unavailable.find((item) => item.id === channel.id)?.reason ?? "能力表未标记为可用",
     }))
 

@@ -239,15 +239,17 @@ describe('用户作用域（~/.dataforge/agents）', () => {
   });
 });
 
-describe('多套件共存（req-doc + dw-dev + task-diag）', () => {
+describe('多套件共存（req-doc + dw-dev + task-diag + data-analysis）', () => {
   const dwSource = path.join(repoRoot, 'resources', 'dwagent');
   const diagSource = path.join(repoRoot, 'resources', 'diagagent');
+  const analysisSource = path.join(repoRoot, 'resources', 'analysisagent');
 
-  it('三套 kit 的 dirName/stateDir 与构建产物一致', () => {
+  it('四套 kit 的 dirName/stateDir 与构建产物一致', () => {
     const req = readKitManifest(path.join(repoRoot, 'resources', 'docagent'))!;
     const dw = readKitManifest(dwSource)!;
     const diag = readKitManifest(diagSource)!;
-    expect(AGENT_KITS.map((kit) => kit.dirName)).toEqual(['docagent', 'dwagent', 'diagagent']);
+    const analysis = readKitManifest(analysisSource)!;
+    expect(AGENT_KITS.map((kit) => kit.dirName)).toEqual(['docagent', 'dwagent', 'diagagent', 'analysisagent']);
     expect(req.kit).toBe('req-doc');
     expect(dw.kit).toBe('dw-dev');
     expect(dw.files.some((file) => file.path.startsWith('tool/dw-'))).toBe(true);
@@ -258,25 +260,32 @@ describe('多套件共存（req-doc + dw-dev + task-diag）', () => {
     expect(diag.files.some((file) => file.path === 'tool/diag-collect-logs.js')).toBe(true);
     expect(diag.files.some((file) => file.path === 'plugin/guard.js')).toBe(true);
     expect(diag.files.some((file) => file.path === 'command/diag-spark-failed.md')).toBe(true);
+    expect(analysis.kit).toBe('data-analysis');
+    expect(analysis.files.some((file) => file.path === 'agent/ana-orchestrator.md')).toBe(true);
+    expect(analysis.files.some((file) => file.path === 'command/ana-analyze.md')).toBe(true);
   });
 
-  it('两套物化到同一用户目录时状态隔离、文件共存', () => {
+  it('四套物化到同一用户目录时状态隔离、文件共存', () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'kit-home-'));
     try {
       const first = materializeUserKit(sourceDir, home, { appVersion: '0.1.0' });
       const second = materializeUserKit(dwSource, home, { appVersion: '0.1.0', stateDir: '.dwagent' });
       const third = materializeUserKit(diagSource, home, { appVersion: '0.1.0', stateDir: '.diagagent' });
+      const fourth = materializeUserKit(analysisSource, home, { appVersion: '0.1.0', stateDir: '.analysisagent' });
       expect(first.materialized.ok).toBe(true);
       expect(second.materialized.ok).toBe(true);
       expect(third.materialized.ok).toBe(true);
+      expect(fourth.materialized.ok).toBe(true);
 
       const userDir = resolveUserKitDir(home);
       expect(readKitState(userDir, '.docagent')?.kit).toBe('req-doc');
       expect(readKitState(userDir, '.dwagent')?.kit).toBe('dw-dev');
       expect(readKitState(userDir, '.diagagent')?.kit).toBe('task-diag');
+      expect(readKitState(userDir, '.analysisagent')?.kit).toBe('data-analysis');
       expect(fs.existsSync(path.join(userDir, 'tool', 'finalize-doc.js'))).toBe(true);
       expect(fs.existsSync(path.join(userDir, 'tool', 'dw-finalize-design.js'))).toBe(true);
       expect(fs.existsSync(path.join(userDir, 'tool', 'diag-collect-logs.js'))).toBe(true);
+      expect(fs.existsSync(path.join(userDir, 'agent', 'ana-orchestrator.md'))).toBe(true);
 
       // 第二套不把自己的 state 写进 .docagent
       const firstState = readKitState(userDir, '.docagent')!;

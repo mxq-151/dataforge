@@ -26,9 +26,9 @@ const OC_DIR = '.opencode';
 const DEFAULT_STATE_DIR = '.docagent';
 
 /**
- * 随包分发的两套 agentkit。
+ * 随包分发的 agentkit。
  *
- * 两套共用 `~/.dataforge/agents`，所以状态目录必须分开：否则后物化的那套会用自己的
+ * 多套共用 `~/.dataforge/agents`，所以状态目录必须分开：否则后物化的那套会用自己的
  * managed 清单覆盖前一套，升级清理时会把另一套的文件当「旧文件」删掉。
  * dirName 与 `resources/<dirName>` / `extraResources.to` 一一对应。
  */
@@ -36,6 +36,7 @@ export const AGENT_KITS = [
   { kit: 'req-doc', dirName: 'docagent', stateDir: '.docagent' },
   { kit: 'dw-dev', dirName: 'dwagent', stateDir: '.dwagent' },
   { kit: 'task-diag', dirName: 'diagagent', stateDir: '.diagagent' },
+  { kit: 'data-analysis', dirName: 'analysisagent', stateDir: '.analysisagent' },
 ] as const;
 
 export type AgentKitId = (typeof AGENT_KITS)[number]['kit'];

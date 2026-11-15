@@ -26,10 +26,12 @@ tools:
 
 ## 可用通道
 
-| 通道 id | serviceType | logKind | componentRole | refKey | 条件 |
-|---|---|---|---|---|---|
-| `pulsar-broker-log` | file | runtime | generic | path | 需挂载 broker 日志 + 配置 `root-dirs` |
-| `pulsar-bk-log` | file | runtime | generic | path | 需挂载 BookKeeper 日志 |
+通道身份是「四元组 + 数据类型」：`serviceType → componentId → hostId → dataTypeId`，再加 `stream`。
+
+| 通道 id | serviceType | componentId | hostId | dataType | stream | 条件 |
+|---|---|---|---|---|---|---|
+| `pulsar-broker-log` | pulsar | pulsar.broker | cluster | log.service | stdout | 需 local-disk / ES 采集 broker 日志 |
+| `pulsar-bk-log` | pulsar | pulsar.bookkeeper | cluster | log.service | stdout | 需 local-disk / ES 采集 BookKeeper 日志 |
 
 默认不可用。
 
@@ -56,7 +58,7 @@ tools:
 
 ### mode=FAILED
 
-1. `diag_collect_logs({ runId, channelId:"pulsar-broker-log", ref:{path:"<路径>"}, focusLevels:["FATAL","ERROR","WARN"] })`
+1. `diag_collect_logs({ runId, channelId:"pulsar-broker-log", focusLevels:["FATAL","ERROR","WARN"] })`
 2. 无命中再试 BookKeeper
 
 ### mode=SLOW
@@ -75,7 +77,7 @@ tools:
 
 ## 输出
 
-`diag_record_evidence({ runId, kind:"findings", finding:{...} })`。无通道时 `UNRESOLVED` / `confidence:0` / `L4`，`rejected` 里写"file 源未配置且服务端无 Pulsar 通道"。
+`diag_record_evidence({ runId, kind:"findings", finding:{...} })`。无通道时 `UNRESOLVED` / `confidence:0` / `L4`，`rejected` 里写"local-disk / ES 日志源未配置且 v1 无 Pulsar 管理接口"。
 
 回传 ≤40 行，不要写报告文件。
 

@@ -26,12 +26,14 @@ tools:
 
 ## 可用通道
 
-| 通道 id | serviceType | logKind | componentRole | refKey | 条件 |
-|---|---|---|---|---|---|
-| `ck-server-log` | file | runtime | generic | path | 需挂载 `/var/log/clickhouse-server/` 并配置 `root-dirs` |
-| `ck-error-log` | file | runtime | generic | path | 同上（`clickhouse-server.err.log`） |
+通道身份是「四元组 + 数据类型」：`serviceType → componentId → hostId → dataTypeId`，再加 `stream`。
 
-默认不可用（file 源 `enabled=false`）。
+| 通道 id | serviceType | componentId | hostId | dataType | stream | 条件 |
+|---|---|---|---|---|---|---|
+| `ck-server-log` | clickhouse | clickhouse.server | cluster | log.service | stdout | 需 local-disk / ES 采集 `/var/log/clickhouse-server/` |
+| `ck-error-log` | clickhouse | clickhouse.server | cluster | log.service | stderr | 同上（`clickhouse-server.err.log`） |
+
+默认不可用（local-disk / ES 未配置）。
 
 ## 降级链
 
@@ -58,7 +60,7 @@ tools:
 
 ### mode=FAILED
 
-1. `diag_collect_logs({ runId, channelId:"ck-server-log", ref:{path:"<路径>"}, focusLevels:["FATAL","ERROR","WARN"] })`
+1. `diag_collect_logs({ runId, channelId:"ck-server-log", focusLevels:["FATAL","ERROR","WARN"] })`
 2. 若指纹里有 `Code: N`，按错误码归类（不要猜业务含义）
 3. 无命中再试 `ck-error-log`
 
@@ -78,7 +80,7 @@ tools:
 
 ## 输出
 
-`diag_record_evidence({ runId, kind:"findings", finding:{...} })`。无通道时 `category:"UNRESOLVED"`、`confidence:0`、`level:"L4"`，`rejected` 里写清"file 源未配置"。
+`diag_record_evidence({ runId, kind:"findings", finding:{...} })`。无通道时 `category:"UNRESOLVED"`、`confidence:0`、`level:"L4"`，`rejected` 里写清"local-disk / ES 日志源未配置"。
 
 回传 ≤40 行，不要写报告文件。
 

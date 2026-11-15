@@ -26,10 +26,12 @@ tools:
 
 ## 可用通道
 
-| 通道 id | serviceType | logKind | componentRole | refKey | 条件 |
-|---|---|---|---|---|---|
-| `kafka-broker-log` | file | runtime | generic | path | 需挂载 broker `server.log` + 配置 `root-dirs` |
-| `kafka-controller-log` | file | runtime | generic | path | 需挂载 controller 日志 |
+通道身份是「四元组 + 数据类型」：`serviceType → componentId → hostId → dataTypeId`，再加 `stream`。
+
+| 通道 id | serviceType | componentId | hostId | dataType | stream | 条件 |
+|---|---|---|---|---|---|---|
+| `kafka-broker-log` | kafka | kafka.broker | cluster | log.service | stdout | 需 local-disk / ES 采集 broker `server.log` |
+| `kafka-controller-log` | kafka | kafka.controller | cluster | log.service | stdout | 需 local-disk / ES 采集 controller 日志 |
 
 默认不可用。
 
@@ -57,7 +59,7 @@ tools:
 
 ### mode=FAILED
 
-1. `diag_collect_logs({ runId, channelId:"kafka-broker-log", ref:{path:"<路径>"}, focusLevels:["FATAL","ERROR","WARN"] })`
+1. `diag_collect_logs({ runId, channelId:"kafka-broker-log", focusLevels:["FATAL","ERROR","WARN"] })`
 2. 按错误文本归类（副本 / 网络 / 磁盘 / GC）
 3. 无命中再试 controller
 

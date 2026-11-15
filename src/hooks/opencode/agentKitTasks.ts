@@ -12,6 +12,7 @@ export const AGENTKIT_TASK_IDS = {
   DW_DESIGN: 'AGENTKIT_DW_DESIGN',
   DW_CODE: 'AGENTKIT_DW_CODE',
   DIAG: 'AGENTKIT_DIAG',
+  ANALYSIS: 'AGENTKIT_ANALYSIS',
 } as const;
 
 export type AgentKitTaskId = typeof AGENTKIT_TASK_IDS[keyof typeof AGENTKIT_TASK_IDS];
@@ -64,6 +65,13 @@ export const AGENTKIT_TASKS: Record<AgentKitTaskId, AgentKitTaskDef> = {
     command: 'diag-task',
     agent: 'diag-orchestrator',
     inputHint: '输入任务实例 ID / applicationId / jobId，或一段现象描述（例如：订单同步任务今天比平时慢 3 倍）',
+  },
+  [AGENTKIT_TASK_IDS.ANALYSIS]: {
+    id: AGENTKIT_TASK_IDS.ANALYSIS,
+    label: '数据分析',
+    command: 'ana-analyze',
+    agent: 'ana-orchestrator',
+    inputHint: '输入分析问题与目标，例如：订单表最近 7 天分区是否完整（可带数据源、库表、时间窗）',
   },
 };
 
@@ -140,6 +148,15 @@ export async function validateAgentKitTaskInput(
     const value = rawArgs.trim();
     if (!value) {
       return { ok: false, message: '请输入任务引用（任务实例 ID / applicationId / jobId）或一段现象描述' };
+    }
+    return { ok: true, args: value };
+  }
+
+  // 数据分析：输入是分析问题与目标，不依赖工作区里已有的产物文件。
+  if (task.id === AGENTKIT_TASK_IDS.ANALYSIS) {
+    const value = rawArgs.trim();
+    if (!value) {
+      return { ok: false, message: '请输入分析问题与目标（可带数据源、库表、时间窗）' };
     }
     return { ok: true, args: value };
   }

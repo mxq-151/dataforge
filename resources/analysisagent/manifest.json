@@ -1,0 +1,123 @@
+{
+  "kit": "data-analysis",
+  "kitVersion": "0.1.0",
+  "stateDir": ".analysisagent",
+  "builtAt": "2026-11-15T15:47:23.588Z",
+  "files": [
+    {
+      "path": "agent/ana-attribution.md",
+      "sha256": "5842ceb3f395fa8926a201f7a299a7e683b7f1131ce6189a59f49ce971711bbd",
+      "size": 2549
+    },
+    {
+      "path": "agent/ana-compare.md",
+      "sha256": "2c602477b25bdd15d917f8a5117be89c0fd3c25aa518db58d89d92641dbf25f4",
+      "size": 1996
+    },
+    {
+      "path": "agent/ana-indicator.md",
+      "sha256": "1283de25cf8b998ca320facbb9d8f61191ac53560466077b71332bf784b552a6",
+      "size": 2509
+    },
+    {
+      "path": "agent/ana-orchestrator.md",
+      "sha256": "1e066d3d457219be7166a3efa9d81e0831ea218e29c3a051d55cc21a34a3e1c9",
+      "size": 4906
+    },
+    {
+      "path": "agent/ana-profile.md",
+      "sha256": "5f9bd1e0de57f8bbce6c1c36fea5c695f57446b7a3f72d9225c49705299f2955",
+      "size": 2700
+    },
+    {
+      "path": "agent/ana-runtime.md",
+      "sha256": "e37c00a2c0f82e2007e9af5cb1bfb8d1a09824da876ac061e481151e0a33e7af",
+      "size": 3872
+    },
+    {
+      "path": "agent/ana-trend.md",
+      "sha256": "0f5f2d7d540195f815a8fcfe7b4032e8c1632149792e34118b07fe4c27376af2",
+      "size": 2252
+    },
+    {
+      "path": "command/ana-analyze.md",
+      "sha256": "59aaec7eb948a21f55856e3c2fb28d46384ff653efe2e3c69afd878ca6550169",
+      "size": 2220
+    },
+    {
+      "path": "command/ana-reconcile.md",
+      "sha256": "8e622acdfdb052bcbee999b2edb413b7cd8107894f4cd3f6cf26ed6e0abd3c4c",
+      "size": 1037
+    },
+    {
+      "path": "plugin/guard.js",
+      "sha256": "208b44644de0dd7f33f1cc3534ff2c55349125474c26d7112ef6ced222f1bf4c",
+      "size": 973
+    },
+    {
+      "path": "tool/ana-budget.js",
+      "sha256": "d56c2bdb4b919158dff3af2db33fa11475474adf45e8ce4f2017758dc711ecc8",
+      "size": 1244
+    },
+    {
+      "path": "tool/ana-capabilities.js",
+      "sha256": "e17a949356a5c3c4353d71c94f3e1babd9f10ca2a2b0f59ca930b49643ba19ea",
+      "size": 2263
+    },
+    {
+      "path": "tool/ana-finalize-report.js",
+      "sha256": "b62ac23275a3f659eb9f9e04b87634bd92131b386dc43f6904274057ed61bf79",
+      "size": 8390
+    },
+    {
+      "path": "tool/ana-handoff-read.js",
+      "sha256": "d16d2e19935f796f3589f26c19e7329c59be2416a32a9dd9051db174799c9c2a",
+      "size": 2439
+    },
+    {
+      "path": "tool/ana-indicator.js",
+      "sha256": "6a34f279f3e3985bef59e238f2383113ddb807577ac68c3dba361f026fa81a8b",
+      "size": 5614
+    },
+    {
+      "path": "tool/ana-metadata-detail.js",
+      "sha256": "2a35e8a7fbe27ca8ad84996c47727d7e20f2eb0bf5a028e5489c3791b66e9923",
+      "size": 5108
+    },
+    {
+      "path": "tool/ana-query.js",
+      "sha256": "56e8ff61f392db71cfda1499718a66c26074fbba64c558a9a45e4b0d3a99892b",
+      "size": 2178
+    },
+    {
+      "path": "tool/ana-record-evidence.js",
+      "sha256": "2bff1be9525cf6ec2cde20a23174c1642dd87d089228955380e13f1a796952ec",
+      "size": 3642
+    },
+    {
+      "path": "tool/ana-resolve-target.js",
+      "sha256": "920cb48aedc0c4e1bb6ae75a31e2811533b43ddc88b5dedfc018b4c217e24de3",
+      "size": 3652
+    },
+    {
+      "path": "tool/ana-telemetry.js",
+      "sha256": "86225efef36fe458ceb0c745757fcf834f68637e7f460af6672d4b4811d44941",
+      "size": 8598
+    },
+    {
+      "path": "tool/chunks/chunk-7X5DRFGF.js",
+      "sha256": "9d6b097883b697c5aa58979ef8cbe481e3c460426107906e28a925b477f75e61",
+      "size": 11329
+    },
+    {
+      "path": "tool/chunks/chunk-S2FAV53O.js",
+      "sha256": "63e6e09363d9d67c48fe0896248d122f9398671cec6cf1a6d25a5f17c0ed2ea7",
+      "size": 760868
+    },
+    {
+      "path": "tool/chunks/chunk-VQVLI7JN.js",
+      "sha256": "3b2975432715fdf121af1e2ea86fe93f76c4f7a03b73184014d3c3ebe7b032e1",
+      "size": 1665
+    }
+  ]
+}

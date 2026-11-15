@@ -26,11 +26,13 @@ tools:
 
 ## 可用通道（定义已就位，当前不可用）
 
-| 通道 id | serviceType | logKind | componentRole | refKey | 条件 |
-|---|---|---|---|---|---|
-| `sr-fe-log` | file | runtime | generic | path | 部署后挂载 FE 日志 + 配置 `root-dirs` |
-| `sr-be-log` | file | runtime | generic | path | 部署后挂载 BE 日志 |
-| `sr-audit` | file | audit | generic | path | 需审计插件 + 挂载输出文件 |
+通道身份是「四元组 + 数据类型」：`serviceType → componentId → hostId → dataTypeId`，再加 `stream`。
+
+| 通道 id | serviceType | componentId | hostId | dataType | stream | 条件 |
+|---|---|---|---|---|---|---|
+| `sr-fe-log` | starrocks | starrocks.fe | cluster | log.service | stdout | 部署后配置 local-disk / ES |
+| `sr-be-log` | starrocks | starrocks.be | cluster | log.service | stdout | 部署后配置 local-disk / ES |
+| `sr-audit` | starrocks | starrocks.fe | cluster | log.service | slowquery | 需审计插件；目录声明 declared_not_implemented |
 
 ## 降级链
 
@@ -57,16 +59,16 @@ tools:
 
 | 验证项 | 怎么验证 | 期望 |
 |---|---|---|
-| file 源是否启用 | `GET /api/logs/sources` 看 `serviceType=file` 的 `enabled` | `true` |
-| 日志目录是否在 root-dirs | 同上，看 `root-dirs` 是否包含 FE/BE 日志父目录 | 包含 |
-| 单条通道能否取到 | 部署后调一次 `diag_collect_logs({channelId:"sr-fe-log", ref:{path:"..."}})` | `ok=true` 且 `scan.lines>0` |
+| 日志后端是否启用 | `POST /api/telemetry/v1/metrics/query`（mode=catalog）看 `logStreams[].supportedBackends[].status` | 至少一个 `implemented` |
+| 日志目录是否在 sources | 看 local-disk 源的 `sources[].rootDir` 是否包含 FE/BE 日志父目录 | 包含 |
+| 单条通道能否取到 | 部署后调一次 `diag_collect_logs({ runId, channelId:"sr-fe-log" })` | `ok=true` 且 `scan.lines>0` |
 | 审计插件 | 检查 `starrocks_audit_db__.audit_log` 是否存在 | 存在 |
 
 ## 缺口 → neededInterface
 
 | 信号 | neededInterface |
 |---|---|
-| 全部诊断证据 | 部署 + 配置 `logs.sources[file].root-dirs`（无需新增接口） |
+| 全部诊断证据 | 部署 + 配置 `telemetry.backends.local-disk[].sources`（无需新增接口） |
 | 慢查询 / 导入失败 | `POST /api/diagnosis/probe {probeId:'sr.audit_slow'\|'sr.load_error'}`（方案 D4） |
 | FE/BE 指标 | 新增 runtime adapter + `MetricCatalog` |
 

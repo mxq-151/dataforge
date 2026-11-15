@@ -2,7 +2,7 @@
   "kit": "req-doc",
   "kitVersion": "1.0.0",
   "stateDir": ".docagent",
-  "builtAt": "2026-11-15T09:56:10.383Z",
+  "builtAt": "2026-11-15T15:47:23.736Z",
   "files": [
     {
       "path": "agent/chapter-writer.md",

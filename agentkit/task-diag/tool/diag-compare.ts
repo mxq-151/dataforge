@@ -1,54 +1,36 @@
 /**
- * S2.2b 速率/增量对比：变慢类问题的核心判据。
+ * S2.3 运行态前后对比（telemetry v1）。
  *
- * 为什么单独一个工具：`/compare` 返回的是「两次进程内快照的差值 + 每秒速率」，
- * 语义与绝对快照不同，混在一起容易让模型把速率当总量。原始行落盘，
- * 返回体只给「越界项」，避免把几十行数值全塞进上下文。
+ * v1 契约：`POST /api/telemetry/v1/runtime/compare`
+ * - target 四层身份 + jobId + windowSeconds；
+ * - 数据来自服务端进程内环形缓冲，必须先成功取过至少两次 snapshot 才可能 comparable=true；
+ * - 不可比时返回 comparable=false + reason，禁止把缺失对比当「无变化」。
  */
-import fs from "node:fs"
-import path from "node:path"
 import { tool } from "@opencode-ai/plugin"
 import { z } from "zod"
-import { BUDGET, CODES, evidenceDir, profileOf } from "../lib/constants"
-import { requestJson, toolError, toolFail, toolOk } from "../lib/http"
-import { assertEngine, evidenceKey, loadScope, saveEvidencePack } from "../lib/scope"
+import { BUDGET, CODES, profileOf, runtimeTargetOf } from "../lib/constants"
+import { toolError, toolFail, toolOk } from "../lib/http"
+import {
+  failureOf,
+  telemetryQuery,
+  warningTexts,
+  type CompareData,
+} from "../lib/telemetry"
+import { assertEngine, loadScope, saveEvidencePack } from "../lib/scope"
 import { spend } from "../lib/budget"
-import { nowIso, writeJsonAtomic } from "../lib/constants"
+import { nowIso } from "../lib/constants"
 import type { EvidencePack, Fact, Gap, MetricPoint } from "../lib/schema"
 
-type CompareRow = {
-  name?: string
-  family?: string
-  component?: string
-  from?: number | null
-  to?: number | null
-  delta?: number | null
-  perSecond?: number | null
-}
-
-type CompareResult = {
-  jobId?: string
-  comparable?: boolean
-  reason?: string
-  windowSeconds?: number
-  fromCapturedAt?: number
-  toCapturedAt?: number
-  rows?: CompareRow[]
-  degraded?: boolean
-  degradationReason?: string
-  warnings?: string[]
-}
+const COMPARE_PATH = "/api/telemetry/v1/runtime/compare"
 
 export default tool({
   description:
-    "S2.2b：对比同一作业两次快照的增量与每秒速率（变慢类首选判据）。原始行落盘，只返回变化最显著的若干项。",
+    "S2.3：对比两次运行态快照，返回吞吐/失败的每秒增量。只有 spark/flink 支持；comparable=false 时必须如实报告原因，不能推断「无变化」。",
   args: {
     runId: z.string().min(1).describe("运行 ID"),
-    jobId: z.string().optional().describe("作业 ID；缺省从 target.ref 推导"),
-    families: z.array(z.string()).optional().describe("指标族，缺省取引擎画像的全部族"),
-    windowSeconds: z.number().int().positive().optional().describe("对比窗口，默认沿用服务端默认"),
+    jobId: z.string().optional().describe("作业 ID；缺省时从 target.ref 推导"),
+    windowSeconds: z.number().int().positive().max(3600).optional().describe("回看窗口秒数，默认 300"),
     runtimeMode: z.enum(["live", "history"]).optional().describe("spark 默认 history，flink 只有 live"),
-    top: z.number().int().positive().max(20).optional().describe("返回多少条变化最大的行，默认 8"),
   },
   async execute(args, context) {
     try {
@@ -57,108 +39,127 @@ export default tool({
       assertEngine(scope, scope.engine)
       const profile = profileOf(scope.engine)
       if (!profile || profile.families.length === 0) {
-        return toolFail(CODES.CHANNEL_UNAVAILABLE, `引擎 ${scope.engine} 没有运行态指标，无法做速率对比。`, {
-          gaps: profile?.gaps ?? [],
-        })
+        return toolFail(
+          CODES.CHANNEL_UNAVAILABLE,
+          `引擎 ${scope.engine} 没有运行态通道，无法做前后对比。`,
+          { gaps: profile?.gaps ?? [] },
+        )
       }
 
-      const jobId = args.jobId || scope.target?.jobId || scope.target?.appId || scope.target?.applicationId || ""
-      if (!jobId) return toolFail(CODES.CHANNEL_UNAVAILABLE, "缺少 jobId")
+      const jobId =
+        args.jobId || scope.target?.jobId || scope.target?.appId || scope.target?.applicationId || ""
+      if (!jobId) {
+        return toolFail(CODES.CHANNEL_UNAVAILABLE, "缺少 jobId：请先解析目标或显式传入")
+      }
 
-      const families = args.families && args.families.length > 0 ? args.families : profile.families
+      const target = runtimeTargetOf(scope.engine)
+      if (!target) {
+        return toolFail(CODES.CHANNEL_UNAVAILABLE, `v1 runtime 只覆盖 spark / flink，不支持 ${scope.engine}`)
+      }
       const runtimeMode = args.runtimeMode ?? (scope.engine === "spark" ? "history" : "live")
+      const windowSeconds = args.windowSeconds ?? 300
 
-      const result = await requestJson<CompareResult>(`/api/runtime/jobs/${encodeURIComponent(jobId)}/compare`, {
-        query: {
-          serviceType: scope.engine,
-          cluster: scope.target?.cluster || "default",
-          mode: runtimeMode,
-          families,
-          windowSeconds: args.windowSeconds,
-        },
-        timeoutMs: BUDGET.apiTimeoutMs,
-      })
+      const response = await telemetryQuery<CompareData>(
+        COMPARE_PATH,
+        { target, sourceMode: runtimeMode, jobId, windowSeconds },
+        BUDGET.apiTimeoutMs,
+      )
 
-      const dir = evidenceDir(root, args.runId)
-      fs.mkdirSync(dir, { recursive: true })
-      const rawPath = path.join(dir, `compare-${evidenceKey(`compare|${jobId}|${families.join(",")}`)}.json`)
-      writeJsonAtomic(rawPath, result)
+      const failure = failureOf(response)
+      if (failure) {
+        return toolFail(
+          failure.outcome === "failed" ? CODES.API_UNAVAILABLE : CODES.CHANNEL_UNAVAILABLE,
+          `v1 运行态对比失败：${failure.code} ${failure.message}`,
+          {
+            runId: args.runId,
+            jobId,
+            outcome: failure.outcome,
+            backendCode: failure.code,
+            retryable: failure.retryable,
+            requirements: failure.requirements,
+            backend: failure.backend,
+          },
+        )
+      }
 
-      const rows = result.rows ?? []
-      const metrics: MetricPoint[] = rows
-        .filter((row) => row.name)
-        .map((row) => ({
-          family: row.family,
-          name: row.name as string,
-          component: row.component,
-          value: row.perSecond ?? null,
-          verified: true,
-        }))
+      const compare = response.data ?? {}
+      const metrics: MetricPoint[] = (compare.rows ?? []).map((row) => ({
+        family: row.family,
+        name: row.name || "unknown",
+        scope: row.componentType,
+        component: row.component,
+        value: row.perSecond ?? null,
+        unit: row.unit,
+        availability: compare.comparable ? "AVAILABLE" : "UNAVAILABLE",
+        reason: compare.comparable ? null : compare.reason ?? null,
+        verified: Boolean(compare.comparable),
+        unavailable: !compare.comparable,
+      }))
 
       const facts: Fact[] = [
-        { key: "compare.comparable", value: Boolean(result.comparable), source: "runtime.compare" },
-        { key: "compare.windowSeconds", value: result.windowSeconds ?? null, source: "runtime.compare" },
-        { key: "compare.fromCapturedAt", value: result.fromCapturedAt ?? null, source: "runtime.compare" },
-        { key: "compare.toCapturedAt", value: result.toCapturedAt ?? null, source: "runtime.compare" },
-        { key: "compare.rowCount", value: rows.length, source: "runtime.compare" },
-        { key: "compare.rawPath", value: path.relative(root, rawPath), source: "local" },
+        { key: "compare.comparable", value: Boolean(compare.comparable), source: "runtime.compare" },
+        { key: "compare.reason", value: compare.reason ?? null, source: "runtime.compare" },
+        { key: "compare.windowSeconds", value: compare.windowSeconds ?? windowSeconds, source: "runtime.compare" },
+        { key: "compare.rows", value: (compare.rows ?? []).length, source: "runtime.compare" },
+        { key: "compare.fromCapturedAt", value: compare.fromCapturedAt ?? null, source: "runtime.compare" },
+        { key: "compare.toCapturedAt", value: compare.toCapturedAt ?? null, source: "runtime.compare" },
       ]
 
       const gaps: Gap[] = []
-      if (result.comparable === false) {
-        gaps.push({
-          signal: "两次快照对比",
-          reason: result.reason || "服务端判定不可对比（可能只有一份快照）",
-          code: CODES.SOURCE_DEGRADED,
-          neededInterface: "同一进程内需至少两次快照；可先调 diag_collect_runtime 再调本工具",
-        })
-      }
-      if (result.degraded) {
+      if (!compare.comparable) {
         gaps.push({
           signal: "runtime.compare",
-          reason: result.degradationReason || "上游降级",
-          code: CODES.SOURCE_DEGRADED,
+          reason: compare.reason || "服务端没有足够的快照样本，无法对比",
+          code: "NOT_ENOUGH_SAMPLES",
+          requirements: ["先成功调用两次 runtime/snapshot（间隔 ≥ windowSeconds），再执行 compare"],
         })
+      }
+      for (const warning of warningTexts(response.meta)) {
+        gaps.push({ signal: "runtime.compare", reason: warning, code: CODES.SOURCE_DEGRADED, requirements: [] })
       }
 
       const pack: EvidencePack = {
         runId: args.runId,
         engine: scope.engine,
         step: "s2-compare",
+        fingerprintVersion: undefined,
         scan: {
-          bytes: Buffer.byteLength(JSON.stringify(result), "utf8"),
+          bytes: Buffer.byteLength(JSON.stringify(compare), "utf8"),
           lines: 0,
           pages: 1,
           truncated: false,
-          degraded: Boolean(result.degraded),
-          degradationReason: result.degradationReason,
+          degraded: Boolean(response.meta?.degraded),
+          degradationReason: warningTexts(response.meta).join("; ") || null,
         },
         signatures: [],
-        metrics,
+        metrics: metrics.slice(0, 200),
         facts,
         gaps,
         createdAt: nowIso(),
       }
-      const saved = saveEvidencePack(root, args.runId, "s2-compare", pack, `compare|${jobId}|${families.join(",")}`)
-      const spent = spend(root, args.runId, { calls: 1, bytes: pack.scan.bytes }, "s2-compare")
 
-      const ranked = [...rows]
-        .filter((row) => typeof row.delta === "number" || typeof row.perSecond === "number")
-        .sort((a, b) => Math.abs(b.delta ?? b.perSecond ?? 0) - Math.abs(a.delta ?? a.perSecond ?? 0))
-        .slice(0, args.top ?? 8)
+      const dedupeKey = `runtime:compare|v1|${scope.engine}|${target.componentId}|${jobId}|${windowSeconds}|${runtimeMode}`
+      const saved = saveEvidencePack(root, args.runId, "s2-compare", pack, dedupeKey)
+      const spent = spend(root, args.runId, { calls: 1, bytes: pack.scan.bytes }, "s2-compare")
 
       return toolOk({
         runId: args.runId,
         jobId,
-        comparable: result.comparable !== false,
-        windowSeconds: result.windowSeconds ?? null,
+        comparable: Boolean(compare.comparable),
+        reason: compare.reason ?? null,
+        windowSeconds: compare.windowSeconds ?? windowSeconds,
+        fromCapturedAt: compare.fromCapturedAt ?? null,
+        toCapturedAt: compare.toCapturedAt ?? null,
+        rowCount: (compare.rows ?? []).length,
         packPath: saved.path,
-        rawPath: path.relative(root, rawPath),
-        rowCount: rows.length,
-        topChanges: ranked,
+        reused: saved.reused,
+        backend: response.backend ?? null,
+        metrics: metrics.filter((metric) => metric.value !== null).slice(0, 15),
+        warnings: compare.warnings ?? [],
         gaps,
-        warnings: result.warnings ?? [],
-        note: "perSecond 是速率，delta 是窗口内增量；不要把速率当总量。",
+        note: compare.comparable
+          ? "perSecond 是快照窗口内的增量/秒；请与作业启动时长一起解释。"
+          : "comparable=false：不能据此推断「无变化」，必须把原因写进报告。",
         budget: { callsLeft: spent.remaining.calls, bytesLeft: spent.remaining.bytes },
       })
     } catch (error) {

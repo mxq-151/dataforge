@@ -70,6 +70,22 @@
         ]
       },
       {
+        "from": "resources/diagagent",
+        "to": "diagagent",
+        "filter": [
+          "**/*",
+          "!**/*.map"
+        ]
+      },
+      {
+        "from": "resources/analysisagent",
+        "to": "analysisagent",
+        "filter": [
+          "**/*",
+          "!**/*.map"
+        ]
+      },
+      {
         "from": "resources/sandbox",
         "to": "sandbox",
         "filter": [

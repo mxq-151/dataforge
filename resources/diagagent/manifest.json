@@ -2,27 +2,27 @@
   "kit": "task-diag",
   "kitVersion": "1.0.0",
   "stateDir": ".diagagent",
-  "builtAt": "2026-11-15T09:56:10.472Z",
+  "builtAt": "2026-11-15T15:47:23.845Z",
   "files": [
     {
       "path": "agent/diag-clickhouse.md",
-      "sha256": "508386158eb48561d4ea3804df16a5464ea789c5f30c52dad722922de53a2360",
-      "size": 3015
+      "sha256": "39a0c70575708a1d5465e3997e4d4bd72427e13f50875493f32ec7d40c38ca63",
+      "size": 3207
     },
     {
       "path": "agent/diag-doris.md",
-      "sha256": "28c9e0afdb4b8d0a0915bc3dbfb6268fc3464096146cbb2502f94da002f38e4d",
-      "size": 3809
+      "sha256": "3e679f8c5095287de88059c0c7fea06c6562b2399192da68b428a6d16a7f29b7",
+      "size": 3982
     },
     {
       "path": "agent/diag-flink.md",
-      "sha256": "9b03dc5471a015928081d13eaec2f89ca54b49284454ac18a4a9d02057bac302",
-      "size": 3899
+      "sha256": "5bf786da309903584256dcfff1621c1a4a62fd4f8e41e06bc238a2381e6ee9e4",
+      "size": 4409
     },
     {
       "path": "agent/diag-hbase.md",
-      "sha256": "59d9a91f8f1e1c04277a2412fb7bb2e075f2551b448dd2bd2c83e518eaf8052f",
-      "size": 2759
+      "sha256": "55928d3d3a15d10b48d731f78cb7fb7485a503e3b72451bc0924c51d567376ca",
+      "size": 2937
     },
     {
       "path": "agent/diag-hudi.md",
@@ -31,28 +31,28 @@
     },
     {
       "path": "agent/diag-kafka.md",
-      "sha256": "ea270238e4a49a88c96b59b77d758de635697a96d36374d73c7cd50865a8a35e",
-      "size": 2976
+      "sha256": "9f97d5f054f61b4b7ef63448590a7f469a872cd7344eef29945d7806ce7cec19",
+      "size": 3152
     },
     {
       "path": "agent/diag-orchestrator.md",
-      "sha256": "ad0398916095969da8740c5acc8179fac0a402f3b6e9a65cb786033fa3a0e946",
-      "size": 5622
+      "sha256": "12b50065fe4f197b07f1361a4f7a34d84b037118c0f279eb4ed8d4860df07db3",
+      "size": 5739
     },
     {
       "path": "agent/diag-pulsar.md",
-      "sha256": "615bbbc053dc00cd6c5b3df1c148fc2f9440e38970b55b48d96088641e1989f4",
-      "size": 2971
+      "sha256": "b51422a605767012095244bc287fee8d56b7801e4199af9acabe43c788c87288",
+      "size": 3169
     },
     {
       "path": "agent/diag-spark.md",
-      "sha256": "3ac697caafbaef749bf267f2b80a896e4e592d34b696e586d7e0dd6281241407",
-      "size": 4468
+      "sha256": "605184e06c9e143af8d1f4361324e3a30f00933fb337023a776c9cd54f29fc8e",
+      "size": 4964
     },
     {
       "path": "agent/diag-starrocks.md",
-      "sha256": "493b13f603b3c9e3b13f0c8d7facc5d8a53aa21969dd0de085509ed66bc31f2a",
-      "size": 3412
+      "sha256": "2854a29c9658e8999f78ab48f2362fefb779ec77365286c7bb44703a1774d2cb",
+      "size": 3725
     },
     {
       "path": "command/diag-clickhouse-failed.md",
@@ -155,74 +155,74 @@
       "size": 953
     },
     {
-      "path": "tool/chunks/chunk-4SSARPZO.js",
-      "sha256": "7f17aad9bfcec4447f9fba0728cdb90f51c98477cdd5d7b091e5a04ab07147af",
-      "size": 2951
+      "path": "tool/chunks/chunk-3AYVBN6G.js",
+      "sha256": "878e4b1c262d814dd64165432e5c97e1f08264edc324d55ce91e65e2dee2081a",
+      "size": 948
     },
     {
-      "path": "tool/chunks/chunk-B5NTOLPB.js",
-      "sha256": "0921ec405229a8b3ffef28af03b993767898baa87254f192fe0b4c894d436d70",
-      "size": 12025
+      "path": "tool/chunks/chunk-BJBS2BQA.js",
+      "sha256": "3a3a74a59a811d689285a4c1f589f0adbc8319bde7d9bb6b41c523941479fe86",
+      "size": 12599
     },
     {
-      "path": "tool/chunks/chunk-DJHMOOEK.js",
-      "sha256": "96ab27cfa45b66f11014e8a5e5dcdc0a3694ad742060b0f59a277d9983aa3457",
+      "path": "tool/chunks/chunk-D2V5GWUF.js",
+      "sha256": "938b5c9721b8e312df8eacc3de7081caea53a06dd93201e21ebe3a94e490119a",
+      "size": 776641
+    },
+    {
+      "path": "tool/chunks/chunk-IZNEUOMP.js",
+      "sha256": "2a2a48613e76a3b6128fcf78b6d2158751e1498f42a2816b84bfb7e11057cad0",
       "size": 1626
     },
     {
-      "path": "tool/chunks/chunk-E5T2DG32.js",
-      "sha256": "04edd42f4c0d449d1f41084277ee0ce2cb1f77d63dc460930eade5938fc1c8ad",
-      "size": 773671
-    },
-    {
       "path": "tool/diag-budget.js",
-      "sha256": "b3cf27ebe8a0b2465de290e9f3cd10cc5e2ca1fe42be7e0b42176453efcf7347",
+      "sha256": "5899006863b0cea824811a2ec8f026c86544baf879e7c030dabb359ce3df9c82",
       "size": 1225
     },
     {
       "path": "tool/diag-capabilities.js",
-      "sha256": "e7fcdbf5cf7fb4634efbe9b6708082d791037befdd17f4dff3ed5d07e52970d7",
-      "size": 6666
+      "sha256": "415096094bf5fec44e8fd478c626653802051e02a6cf95c9003e76003ed79b92",
+      "size": 12324
     },
     {
       "path": "tool/diag-collect-logs.js",
-      "sha256": "13d0e3b46af7582721d3b498ef1fc23501a0f870a0ad1b6bccf5e46a9aa227bd",
-      "size": 5093
+      "sha256": "30adaa17018a3f90f708f69ffc4c1ca27cb837bc9feaf46d2d68ea06d6f2e20b",
+      "size": 11628
     },
     {
       "path": "tool/diag-collect-runtime.js",
-      "sha256": "1bdd52e4cb8e39f3aff214ef361e4b2f51f5a4087f90451ddc8fcf867bff9282",
-      "size": 4354
+      "sha256": "412b05ee715c8d1883878bac400b072a29c4515c9ab96b6fe9f13156f90ca936",
+      "size": 5846
     },
     {
       "path": "tool/diag-compare.js",
-      "sha256": "d789ecb2338f511ded6b539b8865719652d5d10747d1f50d0af507fce88351ae",
-      "size": 4306
+      "sha256": "c636b22e38cefc5d3f6830d695432f9a92d31cd22a9d8ce1fb128b974c514d66",
+      "size": 4649
     },
     {
       "path": "tool/diag-record-evidence.js",
-      "sha256": "7a0b5f9cd1be9873b81768d3d540952cb5512ed8bc1cb4033dc1adddac3eb185",
+      "sha256": "8628e3effa3a9f681448c17a7fd8e43c32478ff9f4c5c9cf5215e95c58148f75",
       "size": 2588
     },
     {
       "path": "tool/diag-resolve-target.js",
-      "sha256": "52011c5e6351804f8eacb95e0ceaf9916e2c70fa13e59e0dc75ac2751e7896ba",
-      "size": 5402
+      "sha256": "e5aac2f34ebacb369a3af81999442d4ec3dd9089fe2caa9220a8ca89d98e4126",
+      "size": 5987
     },
     {
       "path": "tool/diag-save-report.js",
-      "sha256": "4537b7d7e97c2caff845ee66488adbe039ac62940203a0832f91a3ccb308f25c",
+      "sha256": "867d37ef872e68fb6ce22e3a8c292025c656150d71332d08a3c385c6f45e7207",
       "size": 2817
     },
     {
       "path": "tool/diag-unsupported-report.js",
-      "sha256": "486a041f3e52bcf63334e06436ca384e2c2a2285e92e50c31e2f41bc24b364a5",
+      "sha256": "a0d506f7a9cacf08bca4b31247d762470c97927902813314f5a50f9885cf7a6a",
       "size": 4200
     },
     {
       "path": "tool/diag-upstream-context.js",
-      "sha256": "37caa63e99f4d424fa5f8d8fbedb2cd787165a55e8447835852115ebb60b0c14",
-      "size": 3525
+      "sha256": "cb8dda37752cd4bbf2db356fa867c16938028788f115ef5bad92fc884894d585",
+      "size": 5347
     }
   ]
 }

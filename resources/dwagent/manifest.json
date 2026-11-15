@@ -2,7 +2,7 @@
   "kit": "dw-dev",
   "kitVersion": "1.0.0",
   "stateDir": ".dwagent",
-  "builtAt": "2026-11-15T09:56:10.332Z",
+  "builtAt": "2026-11-15T15:47:23.665Z",
   "files": [
     {
       "path": "agent/dw-code-reviewer.md",

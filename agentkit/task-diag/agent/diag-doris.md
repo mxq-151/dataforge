@@ -26,13 +26,15 @@ tools:
 
 ## 可用通道
 
-| 通道 id | serviceType | logKind | componentRole | refKey | 条件 |
-|---|---|---|---|---|---|
-| `doris-fe-log` | file | runtime | generic | path | 需运维挂载 FE 日志并配置 `logs.sources[file].root-dirs` |
-| `doris-be-log` | file | runtime | generic | path | 需挂载 BE 日志 |
-| `doris-audit` | file | audit | generic | path | 需开启审计插件并挂载输出文件 |
+通道身份是「四元组 + 数据类型」：`serviceType → componentId → hostId → dataTypeId`，再加 `stream`。
 
-三个通道**默认全部不可用**（file 源 `enabled=false`、`root-dirs=[]`）。
+| 通道 id | serviceType | componentId | hostId | dataType | stream | 条件 |
+|---|---|---|---|---|---|---|
+| `doris-fe-log` | doris | doris.fe | cluster | log.service | stdout | 需 local-disk / ES 采集 FE 日志 |
+| `doris-be-log` | doris | doris.be | cluster | log.service | stdout | 需 local-disk / ES 采集 BE 日志 |
+| `doris-audit` | doris | doris.fe | cluster | log.service | slowquery | 需开启审计插件；目录声明 declared_not_implemented |
+
+三个通道**默认全部不可用**（local-disk / ES 未配置）。
 
 ## 降级链
 
@@ -60,7 +62,7 @@ tools:
 
 ### mode=FAILED
 
-1. 能力表若 `doris-fe-log` available → `diag_collect_logs({ runId, channelId:"doris-fe-log", ref:{path:"<FE 日志路径>"}, focusLevels:["FATAL","ERROR","WARN"] })`
+1. 能力表若 `doris-fe-log` available → `diag_collect_logs({ runId, channelId:"doris-fe-log", focusLevels:["FATAL","ERROR","WARN"] })`
 2. 无命中再试 `doris-be-log`
 3. 都没有 → `UNRESOLVED`
 
@@ -89,7 +91,7 @@ tools:
   phase: "UNKNOWN",
   verdict: { category: "UNRESOLVED", rootCause: null, confidence: 0, level: "L4" },
   evidence: [],
-  rejected: [{ category:"进程日志", reason:"file 源未配置，无任何可读日志" }],
+  rejected: [{ category:"进程日志", reason:"local-disk / ES 日志源未配置，无任何可读日志" }],
   gaps: [ ...上表... ],
   unknowns: ["Doris 无 job/query 级证据通道"]
 }
